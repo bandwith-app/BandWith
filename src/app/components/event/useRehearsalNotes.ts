@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { deleteNote, fetchOccurrenceNotes, saveNote, setNoteOk, setPractised } from '@/lib/services/rehearsalNotes';
 import { canMarkOk, type RehearsalNote } from '@/lib/rehearsalNotes';
+import { occurrenceNotesFromPack } from '@/lib/livePackStore';
 import {
   applyOps,
   flushOutbox,
@@ -76,8 +77,13 @@ export function useRehearsalNotes({ enabled, bandId, eventId, date, userId, isAd
     if (!on) return;
     const rows = await fetchOccurrenceNotes(eventId!, date!);
     if (rows) setSaved(rows);
+    else {
+      // No signal: the notes kept in this rehearsal's live pack (plan §3.1).
+      const kept = await occurrenceNotesFromPack(userId, eventId!, date!);
+      if (kept) setSaved(kept);
+    }
     setLoaded(true);
-  }, [on, eventId, date]);
+  }, [on, eventId, date, userId]);
 
   const flush = useCallback(async () => {
     if (!on || readOutbox(userId).length === 0) return;

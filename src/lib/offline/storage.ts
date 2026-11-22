@@ -165,6 +165,39 @@ export const removeOfflineItem = async (key: string): Promise<void> => {
   }
 };
 
+/** Every cached key starting with `prefix` (IndexedDB and the localStorage fallback). */
+export const listOfflineKeys = async (prefix: string): Promise<string[]> => {
+  const keys = new Set<string>();
+  if (isIndexedDBAvailable()) {
+    try {
+      const db = await getDB();
+      await new Promise<void>((resolve) => {
+        try {
+          const req = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).getAllKeys();
+          req.onsuccess = () => {
+            for (const k of req.result) if (typeof k === 'string' && k.startsWith(prefix)) keys.add(k);
+            resolve();
+          };
+          req.onerror = () => resolve();
+        } catch {
+          resolve();
+        }
+      });
+    } catch {
+      // Fall through to localStorage
+    }
+  }
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(prefix)) keys.add(k);
+    }
+  } catch {
+    // Ignore
+  }
+  return [...keys];
+};
+
 /** Removes every cached key `drop` says yes to (IndexedDB and the localStorage fallback). */
 const removeOfflineItemsWhere = async (drop: (key: string) => boolean): Promise<void> => {
   if (isIndexedDBAvailable()) {

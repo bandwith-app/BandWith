@@ -3,12 +3,13 @@
  * - StageBle: the app's own plugin, leader side (ios/App/App/StageBlePlugin.swift,
  *   android/app/src/main/java/com/bandwith/app/StageBlePlugin.java).
  * - Members use @capacitor-community/bluetooth-le (central), see useStageBle.
- * - The gig's key (migration 087) and the setlist are fetched while online and
- *   kept on the device, so Bluetooth still works when the venue has no internet.
+ * - The gig's key (migration 087) and the setlist (the live pack,
+ *   livePackStore.ts) are fetched while online and kept on the device, so
+ *   Bluetooth still works when the venue has no internet.
  */
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 import { supabase, isDemoMode } from './supabase';
-import type { SongChart } from './ireal';
+import { removeAllPackFiles } from './livePackFiles';
 
 export type StageBleState = 'on' | 'off' | 'unauthorized' | 'unsupported' | 'unknown';
 
@@ -81,53 +82,16 @@ export function prefetchStageKey(eventId?: string) {
   void stageKey(eventId);
 }
 
+/** The old copy of a setlist (until 11-21); moved into the live pack (livePackStore.ts). */
 const SETLIST_PREFIX = 'bw-setlist-songs:';
 
-/** Setlist songs as Stage mode shows them, kept on the phone (native apps only). */
-export interface CachedSetlistSong {
-  id?: string;
-  songId?: string;
-  setNumber?: number;
-  title: string;
-  artist?: string;
-  duration?: string;
-  key?: string;
-  lyrics?: string;
-  /** songs.chord_chart (iReal Pro import). */
-  chart?: SongChart;
-}
-
-export function readCachedSetlist(setlistId: string): CachedSetlistSong[] | null {
-  if (!stageBleAvailable()) return null;
-  try {
-    const raw = localStorage.getItem(SETLIST_PREFIX + setlistId);
-    const parsed = raw ? JSON.parse(raw) : null;
-    return Array.isArray(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-export function writeCachedSetlist(setlistId: string, songs: CachedSetlistSong[]) {
-  if (!stageBleAvailable()) return;
-  try {
-    if (songs.length === 0) localStorage.removeItem(SETLIST_PREFIX + setlistId);
-    else localStorage.setItem(SETLIST_PREFIX + setlistId, JSON.stringify(songs));
-  } catch {
-    // Storage full: keep at least the songs and lyrics, without chord charts.
-    try {
-      localStorage.setItem(SETLIST_PREFIX + setlistId, JSON.stringify(songs.map(({ chart: _chart, ...rest }) => rest)));
-    } catch {
-      /* Stage mode just needs internet */
-    }
-  }
-}
-
 /**
- * Sign-out: the band's setlists (with lyrics and charts) and the gigs'
- * Bluetooth keys kept on this phone go too.
+ * Sign-out: the gigs' Bluetooth keys kept on this phone go too, with any
+ * old setlist copy and my files kept for live mode. (The live packs
+ * themselves are in the offline store, which sign-out clears.)
  */
 export function clearStageCache() {
+  void removeAllPackFiles().catch(() => undefined);
   try {
     const keys: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {

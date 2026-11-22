@@ -3,6 +3,7 @@ import { fetchOpenBandNotes } from '@/lib/services/rehearsalNotes';
 import { applyOps, OUTBOX_EVENT, queueNoteOp, readOutbox, flushOutbox, type NoteOp } from '@/lib/rehearsalNotesOutbox';
 import { deleteNote, saveNote, setNoteOk, setPractised } from '@/lib/services/rehearsalNotes';
 import type { RehearsalNote } from '@/lib/rehearsalNotes';
+import { openBandNotesFromPacks } from '@/lib/livePackStore';
 
 const api = { save: saveNote, remove: deleteNote, practised: setPractised, ok: setNoteOk };
 
@@ -51,10 +52,14 @@ export function useBandNotes(bandId: string | null | undefined, userId: string |
       if (rows) {
         cache.set(bandId!, { at: Date.now(), notes: rows });
         setSaved(withOkHere(rows));
+      } else if (!hit) {
+        // No signal: the band's notes kept in its live packs (plan §3.1).
+        const kept = await openBandNotesFromPacks(userId, bandId!);
+        if (kept) setSaved(withOkHere(kept));
       }
       setLoaded(true);
     },
-    [on, bandId, withOkHere],
+    [on, bandId, userId, withOkHere],
   );
 
   useEffect(() => {

@@ -390,6 +390,9 @@ const UNIQUE_KEYS: Record<string, string[]> = {
 
 type Result = { data: any; error: any; count?: number | null; status: number; statusText: string };
 
+/** The e2e suite took the network away (dev builds only; the public demo always answers). */
+const demoNetworkDown = () => !!import.meta.env.DEV && typeof navigator !== 'undefined' && navigator.onLine === false;
+
 class DemoQuery implements PromiseLike<Result> {
   private op: 'select' | 'insert' | 'update' | 'upsert' | 'delete' = 'select';
   private selectStr: string | undefined;
@@ -627,6 +630,14 @@ class DemoQuery implements PromiseLike<Result> {
     onRejected?: ((reason: any) => B | PromiseLike<B>) | null
   ): Promise<A | B> {
     let res: Result;
+    // Dev builds (the e2e suite): the browser is offline (context.setOffline)
+    // → the request fails like a real one with no network, so offline
+    // screens can be tested (live packs, plan §3).
+    if (demoNetworkDown()) {
+      return new Promise<Result>((r) =>
+        setTimeout(() => r({ data: null, error: { message: 'TypeError: Failed to fetch', code: '' }, status: 0, statusText: '' }), 40),
+      ).then(onFulfilled, onRejected);
+    }
     try {
       res = this.run();
     } catch (e: any) {

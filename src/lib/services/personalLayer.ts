@@ -9,6 +9,7 @@ import { supabase } from '../supabase';
 import type { NoteAnchor, PersonalNote } from '../personalNotes';
 import { classifySongFile, safeName, songFileContentType, validateSongFile, type SongFileKind } from './songFiles';
 import { UserError } from '../userError';
+import { personalFromPacks } from '../livePackStore';
 import { t } from '@/lib/i18n';
 
 export const PERSONAL_BUCKET = 'personal-files';
@@ -21,6 +22,8 @@ export interface PersonalFile {
   ref: string;
   size?: number | null;
   created_at?: string;
+  /** Kept on this device for live mode (the live pack, livePackFiles.ts). */
+  local?: { path: string; directory: string };
 }
 
 // ── changes: every open view of the same song refreshes ──
@@ -34,6 +37,18 @@ const changed = (songId: string) => {
 };
 
 const uid = async () => (await supabase.auth.getUser()).data.user?.id ?? null;
+
+/** My notes and files for a song from the live packs on this device (offline). */
+const packedLayer = async (songId: string) => {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const me = data.session?.user?.id;
+    if (!me) return null;
+    return await personalFromPacks(me, songId);
+  } catch {
+    return null;
+  }
+};
 
 export const fetchPersonalLayer = async (songId: string) => {
   const [n, f] = await Promise.all([
@@ -106,8 +121,15 @@ export function usePersonalLayer(songId?: string | null) {
     if (!songId) return;
     let alive = true;
     const load = () =>
-      fetchPersonalLayer(songId).then((r) => {
-        if (alive && !r.error) setState({ songId, notes: r.notes, files: r.files });
+      fetchPersonalLayer(songId).then(async (r) => {
+        if (!alive) return;
+        if (!r.error) {
+          setState({ songId, notes: r.notes, files: r.files });
+          return;
+        }
+        // No signal: my notes and files kept in a live pack (plan §3.1).
+        const kept = await packedLayer(songId);
+        if (alive && kept) setState({ songId, notes: kept.notes as PersonalNote[], files: kept.files as PersonalFile[] });
       });
     load();
     const on = (e: Event) => {
