@@ -54,7 +54,7 @@ describe('QuoteClientLink: one conversation per client', () => {
     fireEvent.click(screen.getByText('Send reply'));
     await waitFor(() => expect(notify).toHaveBeenCalled());
     expect(mocks.reply).toHaveBeenCalledWith(quote.id, 'Yes, two sets.', TOKEN_B);
-    expect(notify.mock.calls[0][0]).toMatch(/previous client\. Your reply was not sent/);
+    expect(notify.mock.calls[0][0]).toMatch(/link changed meanwhile\. Your reply was not sent/);
     expect(notify.mock.calls[0][1]).toBe('error');
     await waitFor(() => expect(mocks.state.mock.calls.length).toBeGreaterThan(1));
   });

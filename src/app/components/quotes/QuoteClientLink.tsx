@@ -265,7 +265,12 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
   const sendReply = async () => {
     const body = reply.trim();
     if (!body || replying || draftOrphaned || draftReaddressed) return;
-    const on = draftLink ?? (link ? { id: link.id, token: link.token } : null);
+    // Round 6: the same link renewed since the draft started ("New link",
+    // same client): the draft follows it to the new token. Another link (a
+    // new client) never gets it: draftOrphaned above.
+    const on = draftLink && link && draftLink.id && draftLink.id === link.id
+      ? { id: link.id, token: link.token }
+      : draftLink ?? (link ? { id: link.id, token: link.token } : null);
     setReplying(true);
     // 183: on the link the draft was written on; if the quote went to
     // another client since, nothing is written (it never reaches them).
@@ -273,7 +278,9 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
     if (error) {
       setReplying(false);
       if (isLinkChangedError(error)) {
-        notify?.(t('This conversation was with the previous client. Your reply was not sent: open the quote again to write to the current client.'), 'error');
+        // The draft stays; the panel reloads the link: renewed, it follows
+        // it; another client's, the draft shows Copy / Discard.
+        notify?.(t('The client link changed meanwhile. Your reply was not sent: check it and send it again.'), 'error');
         void load();
       } else notify?.(t('Your reply was not sent. Try again.'), 'error');
       return;

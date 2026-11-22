@@ -539,12 +539,13 @@ const editClient = (Q, set) => asAdmin(() => q(`UPDATE quotes SET ${set} WHERE i
     `R3 flow: a reply written in the old client's conversation fails and never reaches the new client (${stale})`);
   // Round 5 (B1): published for the client the quote has now, an older build (383f15b: 2 named args) replies on it.
   const oldBuild = await asAdmin(() => q(`SELECT public.bw_quote_reply(p_quote_id => $1, p_body => 'Hello!')`, [Q])).then(() => 'written', (e) => e.message);
-  ok(oldBuild === 'written', `R5 B1: an older build's reply on the new client's published link is written (${oldBuild})`);
+  // Round 6 (Codex item 2): an older screen may hold a draft for the previous client: refused, even once published.
+  ok(/Update BandWith/.test(oldBuild), `R6 2: an older build's reply on the new client's published link is refused (${oldBuild})`);
   await asAdmin(() => q(`SELECT public.bw_quote_reply($1, 'Hi Jordan!', $2)`, [Q, T2])).catch(() => null);
   const v = await view(T2);
-  ok(v?.messages?.length === 2 && v.messages[1].body === 'Hi Jordan!', 'R3 flow: a reply on the current link reaches the new client');
+  ok(v?.messages?.length === 1 && v.messages[0].body === 'Hi Jordan!', 'R3 flow: a reply on the current link reaches the new client');
   const rows = (await qq(`SELECT kind, body, link_id FROM quote_activity WHERE quote_id = $1 AND kind IN ('client_message', 'band_reply') ORDER BY created_at`, [Q])).rows;
-  ok(rows.length === 3 && rows[0]?.link_id === L1 && rows[1].link_id === L.id && rows[2].link_id === L.id, `R3 flow: every line names its link (${JSON.stringify(rows.map((r) => r.link_id === L1 ? 'A' : 'B'))})`);
+  ok(rows.length === 2 && rows[0]?.link_id === L1 && rows[1].link_id === L.id, `R3 flow: every line names its link (${JSON.stringify(rows.map((r) => r.link_id === L1 ? 'A' : 'B'))})`);
 }
 {
   // R3-2 older builds publish without a token: fine on a quote never given to another client, refused on a new recipient's link.
@@ -886,6 +887,60 @@ const editClient = (Q, set) => asAdmin(() => q(`UPDATE quotes SET ${set} WHERE i
   await asAnon(() => q(`SELECT public.bw_quote_link_respond($1, 'accept', 'Emma Carter', NULL, 1)`, [T]));
   await asAdmin(() => q(`SELECT public.bw_quote_deposit_received($1, 'transfer', 500)`, [Q])).catch(() => null);
   ok((await link(Q)).deposit_received_currency === 'USD', 'R5 C8: a USD quote on a EUR gig records the deposit in USD');
+}
+
+// ---------------------------------------------------------------- 1g. round 6 of #286 (Codex review of 86dd51f6)
+{
+  // Item 3 (main's decision): an older build (383f15b: 4 named args, a summary with no client, here no PDF).
+  const oldPublish = (Q, total) => asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish(p_quote_id => $1, p_snapshot => $2::jsonb, p_lang => 'en', p_pdf_url => NULL)`, [Q, snap(total)]))
+    .then(() => 'published', (e) => e);
+  // a. The client unchanged: published exactly as today (a new version on the same link).
+  const Q = await sentQuote();
+  const before = await link(Q);
+  const same = await oldPublish(Q, 4600);
+  const after = await link(Q);
+  ok(same === 'published' && after.token === before.token && after.version === before.version + 1 && after.snapshot?.total === 4600,
+    `R6 3: an older build, same client, no PDF: published as today (${same?.message || same}, v${after.version})`);
+  // b. Another client since the link was last published: refused, nothing lands, the text asks to update.
+  const Q2 = await sentQuote();
+  await editClient(Q2, `client_name = 'Jordan Lee', client_email = 'jordan@brooklynevents.example'`);
+  const L2 = await link(Q2);
+  ok(L2.reassign_guard?.published?.name === 'Emma Carter', `R6 3: the new link keeps who the old one was published for (${JSON.stringify(L2.reassign_guard?.published)})`);
+  const moved = await oldPublish(Q2, 4200);
+  ok(moved?.code === '40001' && /Update BandWith/.test(moved.message) && (await link(Q2)).snapshot === null,
+    `R6 3: an older build, reassigned client, no PDF (notes match): refused, nothing published (${moved?.message || moved})`);
+  // c. A newer build names its client: the previous one is refused, the current one lands (not stored with the summary).
+  const withClient = (name, email) => JSON.stringify({ ...JSON.parse(snap(4700)), client: { name, email } });
+  const stale = await asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish($1, $2::jsonb, 'en', NULL, $3, $4)`, [Q2, withClient('Emma Carter', 'emma.carter@example.com'), L2.token, L2.version]))
+    .then(() => 'published', (e) => e);
+  ok(stale?.code === '40001' && /another client/.test(stale.message) && (await link(Q2)).snapshot === null,
+    `R6 3: a newer build's summary for the previous client: refused (${stale?.message || stale})`);
+  const fresh = await asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish($1, $2::jsonb, 'en', NULL, $3, $4)`, [Q2, withClient(' jordan  lee ', 'Jordan@BrooklynEvents.example'), L2.token, L2.version]))
+    .then(() => 'published', (e) => e);
+  const L2b = await link(Q2);
+  ok(fresh === 'published' && L2b.snapshot?.total === 4700 && !('client' in (L2b.snapshot || {})) && L2b.recipient_name === 'Jordan Lee',
+    `R6 3: a newer build's summary for the current client: published, the client is not stored (${fresh?.message || fresh})`);
+  // d. Published for Jordan: an older build with no PDF goes again.
+  const again = await oldPublish(Q2, 4800);
+  ok(again === 'published', `R6 3: once published for the new client, an older build publishes again (${again?.message || again})`);
+
+  // Item 2: an older build's reply (no token) never lands on a link made for a new recipient, even once published.
+  const reply = await asAdmin(() => q(`SELECT public.bw_quote_reply(p_quote_id => $1, p_body => 'See you Saturday, Emma!')`, [Q2])).then(() => 'written', (e) => e);
+  const msgs = ((await view(L2b.token))?.messages || []).length;
+  ok(reply?.code === '40001' && /Update BandWith/.test(reply.message) && msgs === 0, `R6 2: an older build's reply on a new recipient's link: refused (${reply?.message || reply})`);
+  const own = await asAdmin(() => q(`SELECT public.bw_quote_reply(p_quote_id => $1, p_body => 'See you Saturday!')`, [Q])).then(() => 'written', (e) => e.message);
+  ok(own === 'written', `R6 2: on a link never given to another client, an older build's reply is written (${own})`);
+
+  // Item 6: accepted by phone, no link, the deposit recorded on the gig: the currency stays.
+  const Q3 = id(n++);
+  const G3 = id(n++);
+  await db.exec(`INSERT INTO quotes (id, band_id, client_name, client_email, status, currency, converted_to_event_id) VALUES ('${Q3}', '${BAND}', 'Emma Carter', 'emma.carter@example.com', 'accepted', 'USD', '${G3}')`);
+  await db.exec(`INSERT INTO events (id, band_id, quote_id, status, payment_status, deposit_paid, deposit_amount, currency) VALUES ('${G3}', '${BAND}', '${Q3}', 'confirmed', 'partial', true, 500, 'EUR')`);
+  const cur = await editClient(Q3, `currency = 'EUR'`).then(() => null, (e) => e);
+  ok(cur?.hint === 'BW_QUOTE_CURRENCY_LOCKED' && cur?.detail === 'USD', `R6 6: a deposit on the gig (no link) keeps the quote's currency (${cur?.message})`);
+  await db.exec(`UPDATE events SET deposit_paid = false, payment_status = 'pending' WHERE id = '${G3}'`);
+  const free = await editClient(Q3, `currency = 'EUR'`).then(() => 'ok', (e) => e.message);
+  ok(free === 'ok', `R6 6: with no deposit recorded the currency can change (${free})`);
 }
 
 // ---------------------------------------------------------------- grants
