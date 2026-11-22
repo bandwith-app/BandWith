@@ -56,12 +56,11 @@ vi.mock('@/lib/supabase', () => {
 });
 vi.mock('../notifications', () => ({ sendPushToUsers: vi.fn() }));
 
-import { createChat, getMessages, subscribeToChat, ChatRuleError } from '../chats';
+import { createChat, getMessages, sendMessage, subscribeToChat, ChatRuleError } from '../chats';
 import type { Message } from '../chats';
 
 const called = (table: string, method: string) =>
   h.chains.some((c) => c.table === table && c.calls.some(([m]) => m === method));
-const selected = (calls: Call[]) => calls.find(([m]) => m === 'select')?.[1];
 
 beforeEach(() => {
   h.chains.length = 0;
@@ -125,17 +124,45 @@ describe('opening a gig or band chat (07 #6)', () => {
   });
 });
 
+// Codex review #291 r3 (193:52): sending to a gig chat re-added the whole
+// lineup, an ex-member still on it too.
+describe('sending to a gig chat restores the lineup', () => {
+  it('a lineup member who left the band is not brought back', async () => {
+    h.resolve = (table, calls) => {
+      const has = (m: string) => calls.some(([c]) => c === m);
+      if (table === 'chats' && has('single')) {
+        return { data: { band_id: 'band-1', type: 'event', event_id: 'gig-1', name: 'Rooftop Session', created_by: 'me' }, error: null };
+      }
+      if (table === 'event_members' && !has('maybeSingle')) return { data: [{ user_id: 'line-1' }, { user_id: 'ex-1' }], error: null };
+      if (table === 'band_members') {
+        return has('in') ? { data: [{ user_id: 'line-1' }], error: null } : { data: { role: 'admin' }, error: null };
+      }
+      if (table === 'messages' && has('single')) return { data: { id: 'm9', chat_id: 'ev-chat', sender_id: 'me', content: 'hi' }, error: null };
+      return { data: null, error: null };
+    };
+    const { error } = await sendMessage('ev-chat', 'hi');
+    expect(error).toBeNull();
+    const restored = h.chains
+      .filter((c) => c.table === 'chat_participants')
+      .flatMap((c) => c.calls.filter(([m]) => m === 'upsert').map(([, rows]) => rows))
+      .flatMap((rows) => (Array.isArray(rows) ? rows : [rows])) as { user_id: string }[];
+    expect(restored.map((r) => r.user_id)).toContain('line-1');
+    expect(restored.map((r) => r.user_id)).not.toContain('ex-1');
+  });
+});
+
 describe('reply quotes (07 #11)', () => {
   const at = (min: number) => new Date(Date.UTC(2026, 10, 20, 18, min)).toISOString();
   const original = { id: 'm1', chat_id: 'c1', sender_id: 'u1', content: 'Can you bring the long XLR?', created_at: at(0) };
   const reply = { id: 'm2', chat_id: 'c1', sender_id: 'me', content: 'Yes, two of them', created_at: at(5), reply_to_id: 'm1' };
 
+  let quotedRow: Record<string, unknown> | null = null;
+  beforeEach(() => { quotedRow = null; });
   const db = (clearedAt: string | null): Resolver => (table, calls) => {
     if (table === 'chat_participants') return { data: { cleared_at: clearedAt }, error: null };
     if (table === 'profiles') return { data: [{ id: 'u1', full_name: 'Leo Line' }, { id: 'me', full_name: 'Me' }], error: null };
     if (table === 'messages') {
-      const sel = selected(calls);
-      if (sel === 'id, content, sender_id, created_at') return { data: [original], error: null };
+      if (calls.some(([m]) => m === 'in')) return { data: [quotedRow ?? original], error: null };
       if (calls.some(([m]) => m === 'single')) return { data: reply, error: null };
       return { data: [reply], error: null };
     }
@@ -177,6 +204,17 @@ describe('reply quotes (07 #11)', () => {
     const { data, error } = await getMessages('c1', { limit: 50 });
     expect(data).toBeNull();
     expect(error).toBeTruthy();
+  });
+
+  // Codex review #291 r3: the quoted message was deleted, its text still showed.
+  it('a quote of a deleted message says so, not what it said', async () => {
+    h.resolve = db(null);
+    quotedRow = { ...original, deleted: true };
+    const { data } = await getMessages('c1', { limit: 50 });
+    const m = (data || []).find((x) => x.id === 'm2') as Message;
+    expect(m.reply_to?.content).toBe('Message deleted');
+    expect(m.reply_to?.deleted).toBe(true);
+    expect(JSON.stringify(m)).not.toContain('long XLR');
   });
 
   it('a reply from Realtime carries the quote for the recipient', async () => {

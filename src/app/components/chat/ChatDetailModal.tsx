@@ -37,7 +37,7 @@ import { createPortal } from 'react-dom';
 import { useRailLayout } from '@/lib/deviceRegions';
 import { useLineupSoFar } from '@/app/hooks/useLineupSoFar';
 import { ChatEventContextPane } from '@/app/components/chat/ChatEventContextPane';
-import { CHAT_PAGE_SIZE, mergeLatestPage, prependOlder, appendIncoming, normalizeChatType, isReplySwipe, catchUpPage, markSendFailed, canReplyTo, firstWords, type ChatKind } from '@/lib/chatMessages';
+import { CHAT_PAGE_SIZE, mergeLatestPage, restartFromLatest, prependOlder, appendIncoming, normalizeChatType, isReplySwipe, catchUpPage, markSendFailed, canReplyTo, firstWords, type ChatKind } from '@/lib/chatMessages';
 import { isOfflineError } from '@/lib/offline/networkErrors';
 import { haptic } from '@/lib/haptics';
 
@@ -504,6 +504,9 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
     // (re)joins, when the app comes back, or slowly while the channel is down
     // (src/lib/chatSync.ts). Never on a fast timer: that was most of our egress.
     const refreshLatest = async () => {
+      // On screen now: anything else in the list when the page lands came by
+      // Realtime meanwhile and is kept (Codex review #291 r3).
+      const known = new Set(messagesRef.current.map((m) => m.id));
       const { data } = await getMessages(chat.id, { limit: CHAT_PAGE_SIZE });
       if (!live()) return;
       if (data) {
@@ -515,10 +518,10 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
         );
         if (!live()) return;
         if (caught.complete) {
-          setMessages(prev => mergeLatestPage(prev, caught.page));
+          setMessages(prev => mergeLatestPage(prev, caught.page, known));
         } else {
           // Too far behind: the latest page, and "Load earlier" from there.
-          setMessages(prev => mergeLatestPage(prev.filter(m => m.id.startsWith('temp-')), data));
+          setMessages(prev => restartFromLatest(prev, data, known));
           setHasOlder(true);
         }
       }
@@ -986,7 +989,7 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
                               <p className="bw-label-xs text-accent truncate">
                                 {personName(replyTo.sender, t('Unknown'))}
                               </p>
-                              <p className="bw-body-sm text-white line-clamp-1">
+                              <p className={cn("bw-body-sm text-white line-clamp-1", replyTo.deleted && "italic opacity-70")}>
                                 {replyTo.content}
                               </p>
                             </div>

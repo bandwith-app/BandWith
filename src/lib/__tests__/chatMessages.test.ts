@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeLatestPage, prependOlder, normalizeChatType, appendIncoming, isReplySwipe, SWIPE_REPLY_PX, catchUpPage, markSendFailed, attachReplies, replyTargetIds } from '../chatMessages';
+import { mergeLatestPage, restartFromLatest, prependOlder, normalizeChatType, appendIncoming, isReplySwipe, SWIPE_REPLY_PX, catchUpPage, markSendFailed, attachReplies, replyTargetIds } from '../chatMessages';
 import type { Message } from '@/lib/services/chats';
 
 const msg = (i: number, over: Partial<Message> = {}): Message => ({
@@ -42,6 +42,31 @@ describe('mergeLatestPage (3 s poll)', () => {
     const temp = msg(99, { id: 'temp-1', content: 'sending…' });
     const next = mergeLatestPage([...range(0, 2), temp], range(0, 2));
     expect(ids(next)).toEqual(['m0', 'm1', 'temp-1']);
+  });
+
+  // Codex review #291 r3: a message from Realtime that arrived while the
+  // page was being fetched (newer than the page) disappeared.
+  it('keeps a Realtime message that arrived after the page was fetched', () => {
+    const known = new Set(ids(range(0, 3)));
+    const next = mergeLatestPage([...range(0, 3), msg(5)], range(0, 3), known);
+    expect(ids(next)).toEqual(['m0', 'm1', 'm2', 'm5']);
+  });
+
+  it('a message on screen before the fetch and gone from the page (deleted) still goes', () => {
+    const known = new Set(ids(range(0, 4)));
+    expect(ids(mergeLatestPage(range(0, 4), range(0, 3), known))).toEqual(['m0', 'm1', 'm2']);
+  });
+
+  it('same message in both: the newer row wins', () => {
+    const edited = msg(2, { content: 'fixed', edited: true, edited_at: new Date(Date.UTC(2026, 10, 1, 1)).toISOString() });
+    const next = mergeLatestPage([msg(0), msg(1), edited], range(0, 3));
+    expect(next[2].content).toBe('fixed');
+  });
+
+  it('too far behind: the latest page, and what Realtime brought meanwhile', () => {
+    const temp = msg(99, { id: 'temp-1', content: 'sending…' });
+    const next = restartFromLatest([...range(0, 3), msg(60), temp], range(40, 50), new Set(ids(range(0, 3))));
+    expect(ids(next)).toEqual([...ids(range(40, 50)), 'm60', 'temp-1']);
   });
 
   it('an empty page (chat cleared) empties the list as before', () => {

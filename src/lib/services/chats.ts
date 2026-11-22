@@ -757,12 +757,19 @@ const withReplies = async (chatId: string, rows: Message[], clearedAt?: string |
       if (cutError) return rows;
       cut = (mine as { cleared_at?: string | null } | null)?.cleared_at ?? null;
     }
+    // '*': messages.deleted may be missing on older databases.
     const { data: quoted } = await supabase
       .from('messages')
-      .select('id, content, sender_id, created_at')
+      .select('*')
       .eq('chat_id', chatId)
       .in('id', ids);
-    const targets = (quoted || []) as ReplyTarget[];
+    // A deleted message's text is never quoted (Codex review #291 r3).
+    const targets = ((quoted || []) as ReplyTarget[]).map((q): ReplyTarget => ({
+      id: q.id,
+      sender_id: q.sender_id,
+      created_at: q.created_at,
+      ...(q.deleted === true ? { content: t('Message deleted'), deleted: true } : { content: q.content }),
+    }));
     const authorIds = [...new Set(targets.map((q) => q.sender_id).filter(Boolean))];
     if (authorIds.length > 0) {
       const known = new Map(rows.filter((m) => m.sender).map((m) => [m.sender_id, m.sender]));
@@ -924,11 +931,25 @@ export const sendMessage = async (
         .select('user_id')
         .eq('event_id', chat.event_id)
         .neq('status', 'declined');
-      if (eMembers && eMembers.length > 0) {
+      // Only active members of the gig's band: someone who left the band
+      // can still be on the lineup (Codex review #291 r3; the server skips
+      // them too, 193). Membership unknown: nobody is restored.
+      let lineup = (eMembers || []).map((em) => em.user_id as string);
+      if (chat.band_id && lineup.length > 0) {
+        const { data: active, error: activeError } = await supabase
+          .from('band_members')
+          .select('user_id')
+          .eq('band_id', chat.band_id)
+          .eq('is_active', true)
+          .in('user_id', lineup);
+        const activeIds = new Set(((active || []) as { user_id: string }[]).map((m) => m.user_id));
+        lineup = activeError ? [] : lineup.filter((id) => activeIds.has(id));
+      }
+      if (lineup.length > 0) {
         await supabase
           .from('chat_participants')
           .upsert(
-            eMembers.map(em => ({ chat_id: chatId, user_id: em.user_id })),
+            lineup.map((userId) => ({ chat_id: chatId, user_id: userId })),
             { onConflict: 'chat_id,user_id', ignoreDuplicates: true }
           );
       }

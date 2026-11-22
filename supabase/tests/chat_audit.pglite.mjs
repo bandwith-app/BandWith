@@ -217,11 +217,19 @@ ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE body IN ('old
   'previews of messages deleted earlier are gone');
 ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'chat_id' = '${OTHERCHAT}'`) === 1,
   'an older preview of a message that still exists stays');
-// Claude review #291: an edited message no longer matches its old notice; it isn't gone.
-ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE body = 'see you at 9'`) === 1,
-  'the backfill keeps an older notice whose message was edited, not deleted');
+// Codex #291 r3 (main's rule): an older notice stays only if it matches a live
+// message as it reads now. "see you at 9" was edited to "nine": the notice
+// shows text the chat no longer has, so it goes (losing an old notice is
+// harmless; showing deleted text is not).
+ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE body = 'see you at 9'`) === 0,
+  'the backfill drops an older notice that matches no live message as it reads now (edited)');
 
 // ── 192 · Delete chat (direct): both people's history and the previews go
+// Codex #291 r3: a DM notice whose text matches no message (edited since,
+// another preview format) went unnoticed: deleting the DM takes every one.
+await db.exec(`INSERT INTO notifications (user_id, type, title, body, data, action_url, created_at) VALUES
+  ('${LINE}','chat_message','Ava Admin','see you at 7 instead', jsonb_build_object('chat_id','${DM}','content','see you at 7 instead'), '/chat/${DM}', now() - interval '100 minutes'),
+  ('${LINE}','chat_mention','Ava Admin mentioned you','Leo, bring the cables', jsonb_build_object('chatId','${DM}','content','Leo, bring the cables'), '/chat/${DM}', now() - interval '3 days')`);
 let r = await as(LINE, `SELECT public.bw_delete_chat_history('${DM}') AS n`);
 ok(!r.error && r.rows[0].n === 2, `delete chat removed the DM (${r.error ?? r.rows[0].n})`);
 ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'chat_id' = '${DM}' OR data->>'chatId' = '${DM}'`) === 0,
@@ -274,6 +282,22 @@ ok(await count(`SELECT count(*)::int AS n FROM chat_participants WHERE chat_id =
 r = await as(ADMIN, `INSERT INTO chats (type, name, band_id, event_id, created_by) VALUES ('event','Rooftop Session','${BAND}','${GIG}','${ADMIN}')`);
 ok(!!r.error, `a second chat for the same gig is refused (${r.error ? 'refused' : 'inserted'})`);
 ok(await count(`SELECT count(*)::int AS n FROM chats WHERE type = 'event' AND event_id = '${GIG}'`) === 1, 'still one chat for the gig');
+
+// Codex #291 r3 (193:52): Eli left the band but is still on the gig's lineup.
+// Sending to the gig chat restores the lineup (older builds: every row in one
+// upsert): Eli's row is skipped, the others go in, nothing errors.
+r = await as(LINE, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${LINE}'),('${EVCHAT}','${EX}') ON CONFLICT (chat_id, user_id) DO NOTHING`);
+ok(!r.error, `lineup restore with a former member does not fail (${r.error ?? 'ok'})`);
+ok(await count(`SELECT count(*)::int AS n FROM chat_participants WHERE chat_id = '${EVCHAT}' AND user_id = '${EX}'`) === 0,
+  'a former member still on the lineup is not brought back into the gig chat');
+r = await as(EX, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${EX}') ON CONFLICT (chat_id, user_id) DO NOTHING`);
+ok(await count(`SELECT count(*)::int AS n FROM chat_participants WHERE chat_id = '${EVCHAT}' AND user_id = '${EX}'`) === 0,
+  'nor can they add themselves');
+r = await as(EX, `SELECT content FROM messages WHERE chat_id = '${EVCHAT}'`);
+ok(r.rows.length === 0, `so they read nothing in it (${r.rows.length})`);
+r = await as(ADMIN, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${BANDCHAT}','${EX}') ON CONFLICT (chat_id, user_id) DO NOTHING`);
+ok(await count(`SELECT count(*)::int AS n FROM chat_participants WHERE chat_id = '${BANDCHAT}' AND user_id = '${EX}'`) === 0,
+  'band chat: a former member is not restored either');
 
 // Claude review #291: an older build of someone who may not join (Eli left
 // the band) finds nothing and inserts: a clear refusal, not a raw 23505.

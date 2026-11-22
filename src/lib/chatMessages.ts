@@ -56,18 +56,47 @@ const pendingCopies = (prev: Message[], incoming: Message[]): { copies: Set<stri
  * the send completes), and an unchanged result returns `prev` itself so
  * nothing re-renders or scrolls.
  */
-export const mergeLatestPage = (prev: Message[], page: Message[]): Message[] => {
+/** Edited later than `b` (an edit the other copy does not have yet). */
+const editedLater = (a: Message, b: Message) => !!a.edited_at && (!b.edited_at || a.edited_at > b.edited_at);
+
+/**
+ * `known`: the ids on screen when the page was requested. A message not
+ * among them and not in the page came by Realtime meanwhile and stays
+ * (Codex review #291 r3: it disappeared). Without `known`, the page wins,
+ * as before (a message deleted since is gone from the page and the list).
+ */
+export const mergeLatestPage = (prev: Message[], page: Message[], known?: ReadonlySet<string>): Message[] => {
   const { copies, arrived } = pendingCopies(prev, page);
   const optimistic = prev.filter((m) => isTemp(m) && !arrived.has(m.id));
-  const fromServer = page.filter((d) => !copies.has(d.id));
   const pageIds = new Set(page.map((m) => m.id));
+  const mine = new Map(prev.map((m) => [m.id, m]));
+  // Same message in both: the newer row wins.
+  const fromServer = page
+    .filter((d) => !copies.has(d.id))
+    .map((d) => {
+      const had = mine.get(d.id);
+      return had && editedLater(had, d) ? had : d;
+    });
+  const meanwhile = known
+    ? prev.filter((m) => !isTemp(m) && !pageIds.has(m.id) && !known.has(m.id))
+    : [];
+  const meanwhileIds = new Set(meanwhile.map((m) => m.id));
   const oldest = page[0]?.created_at;
   const older = oldest
-    ? prev.filter((m) => !isTemp(m) && !pageIds.has(m.id) && m.created_at < oldest)
+    ? prev.filter((m) => !isTemp(m) && !pageIds.has(m.id) && !meanwhileIds.has(m.id) && m.created_at < oldest)
     : [];
-  const next = [...older, ...fromServer, ...optimistic];
+  const settled = [...fromServer, ...meanwhile].sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
+  const next = [...older, ...settled, ...optimistic];
   return sameList(prev, next) ? prev : next;
 };
+
+/**
+ * Too far behind to catch up: the latest page replaces the list ("Load
+ * earlier" from there), keeping pending bubbles and what Realtime brought
+ * while it was fetched (`known`: the ids on screen when it was requested).
+ */
+export const restartFromLatest = (prev: Message[], page: Message[], known: ReadonlySet<string>): Message[] =>
+  mergeLatestPage(prev.filter((m) => isTemp(m) || !known.has(m.id)), page, known);
 
 /** Puts an older page in front of the list, skipping messages already there. */
 export const prependOlder = (prev: Message[], olderPage: Message[]): Message[] => {
@@ -96,7 +125,7 @@ export const SWIPE_REPLY_PX = 56;
 export const isReplySwipe = (dx: number, dy: number) => dx >= SWIPE_REPLY_PX && Math.abs(dy) < dx;
 
 /** The quoted message a reply shows: its text and who wrote it. */
-export type ReplyTarget = Pick<Message, 'id' | 'content' | 'sender_id' | 'created_at'> & { sender?: Message['sender'] };
+export type ReplyTarget = Pick<Message, 'id' | 'content' | 'sender_id' | 'created_at'> & { sender?: Message['sender']; deleted?: boolean };
 
 /** Quoted messages still to load (rows that name one but don't carry it). */
 export const replyTargetIds = (rows: Message[]): string[] => [

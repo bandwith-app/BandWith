@@ -83,6 +83,23 @@ describe('bell: unread items it would not show', () => {
     expect(h.chains[0]).toContainEqual(['eq', 'user_id', 'u1']);
   });
 
+  // Codex review #291 r3: a second invite for the same gig is hidden from the
+  // list but still counted in the badge; opening the bell left it unread.
+  it('opening the bell marks the hidden duplicate invites read too', async () => {
+    const invite = (i: number, read: boolean) => ({ ...row(i, read, 'event_invite'), data: { event_id: 'gig-1' } });
+    h.pages.push([invite(0, false), invite(1, false), invite(2, true), row(3)]);
+    const { data } = await getNotifications({ limit: 20, excludeChat: true, withOlderUnread: 100 });
+    expect(data?.filter((n) => n.type === 'event_invite')).toHaveLength(1);
+    expect(unreadInboxIds(data || [])).toEqual(['n0', 'n1', 'n3']);
+  });
+
+  it('a read invite shown, an unread duplicate hidden: still marked', async () => {
+    const invite = (i: number, read: boolean) => ({ ...row(i, read, 'event_invite'), data: { event_id: 'gig-1' } });
+    h.pages.push([invite(0, true), invite(1, false)]);
+    const { data } = await getNotifications({ limit: 20, excludeChat: true, withOlderUnread: 100 });
+    expect(unreadInboxIds(data || [])).toEqual(['n1']);
+  });
+
   it('the app marks the shown ids, not every unread row', () => {
     const open = appSource.slice(appSource.indexOf('const handleOpenNotifications'), appSource.indexOf('// Computed values'));
     expect(open).toMatch(/markIdsAsRead\(shown\)/);

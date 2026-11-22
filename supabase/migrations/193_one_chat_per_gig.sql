@@ -16,6 +16,9 @@
 --     messages: the messages policies still need participation, 175/181).
 --     This alone fixes older app builds: their lookup finds the chat and
 --     they join it as before.
+--   * bw_chat_participant_joinable: a chat_participants row for someone who
+--     may not join a band or gig chat is skipped, whoever inserts it (the
+--     app's lineup restore re-added ex-members still on a lineup).
 --   * bw_open_group_chat(type, band, event, name): the app's get-or-join, in
 --     one transaction under a lock. It finds the chat (or creates it), adds
 --     the caller and returns the row plus "created".
@@ -148,6 +151,41 @@ CREATE TRIGGER bw_chats_one_group_chat
   FOR EACH ROW
   WHEN (NEW.type::text IN ('band', 'event'))
   EXECUTE FUNCTION public.bw_trg_chats_one_group_chat();
+
+-- ── Only people who may join end up in a band or gig chat ──────────────────
+-- Sending to a gig chat re-adds the whole lineup (the app's restore, older
+-- builds too, in one upsert); an ex-member still on the lineup came back
+-- that way and read the chat. Every insert path now has the same rule as
+-- bw_open_group_chat: a row for someone who may not join is skipped (not an
+-- error, so the rest of an older build's upsert still goes in). Chats
+-- without a band or gig key are left to the policies.
+CREATE OR REPLACE FUNCTION public.bw_trg_chat_participant_joinable()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_type text;
+  v_band uuid;
+  v_event uuid;
+BEGIN
+  SELECT c.type::text, c.band_id, c.event_id INTO v_type, v_band, v_event
+    FROM chats c WHERE c.id = NEW.chat_id;
+  IF (v_type = 'band' AND v_band IS NOT NULL) OR (v_type = 'event' AND v_event IS NOT NULL) THEN
+    IF NOT public.bw_chat_joinable(v_type, v_band, v_event, NEW.user_id) THEN
+      RETURN NULL;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_trg_chat_participant_joinable() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS bw_chat_participant_joinable ON public.chat_participants;
+CREATE TRIGGER bw_chat_participant_joinable
+  BEFORE INSERT ON public.chat_participants
+  FOR EACH ROW EXECUTE FUNCTION public.bw_trg_chat_participant_joinable();
 
 -- ── Get or join, atomically ────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.bw_open_group_chat(p_type text, p_band_id uuid DEFAULT NULL, p_event_id uuid DEFAULT NULL, p_name text DEFAULT NULL)

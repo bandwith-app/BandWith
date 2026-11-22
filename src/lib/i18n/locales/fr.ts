@@ -1743,6 +1743,7 @@ const dict: Dictionary = {
   "Delete chat": "Supprimer la discussion",
   "Start the conversation": "Lance la conversation",
   "Reply to message": "Répondre au message",
+  "Message deleted": "Message supprimé",
   "Messaging is restricted": "La messagerie est restreinte",
   "Replying to {name}": "Réponse à {name}",
   "Message": "Message",

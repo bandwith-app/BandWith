@@ -16,9 +16,13 @@
 --     also fills it for older app builds, by matching their preview). Rows
 --     written before that have no message_id: they are matched on chat,
 --     preview text and time (written within an hour after the message);
---   * notification previews of messages already deleted today are removed
---     (only where the message is gone or marked deleted: an older notice
---     next to an edited message in that chat is kept).
+--   * notification previews of messages already deleted today are removed;
+--     an older notice (no message_id) stays only if it matches a live
+--     message in its chat as that message reads now (an edited message's
+--     old notice goes: losing an old notice is harmless, showing text the
+--     chat no longer has is not);
+--   * a chat left with no live message (a deleted DM, a deleted chat)
+--     loses every chat notice, whatever its text.
 --
 -- Round 2 (Codex + Claude review #291):
 --   * a message marked deleted (messages.deleted = true, deleteMessage in
@@ -163,6 +167,20 @@ BEGIN
           AND public.bw_chat_notice_shows(n.body, n.data, m2.content)
           AND public.bw_chat_notice_closer(n.created_at, m2.created_at, m2.id, g.created_at, g.id)
      );
+
+  -- A chat left with no live message (a deleted DM: every message, for both
+  -- people; a deleted chat): every chat notice for it goes, whatever its
+  -- text (round 3: one edited since, or in another preview format, matched
+  -- nothing above and kept the deleted text).
+  DELETE FROM notifications n
+   USING (SELECT DISTINCT g.chat_id FROM jsonb_to_recordset(p_gone) AS g(chat_id uuid)) AS e
+   WHERE n.type IN ('chat_message', 'chat_mention')
+     AND coalesce(n.data ->> 'chat_id', n.data ->> 'chatId') = e.chat_id::text
+     AND NOT EXISTS (
+       SELECT 1 FROM messages m
+        WHERE m.chat_id = e.chat_id
+          AND NOT coalesce((to_jsonb(m) ->> 'deleted')::boolean, false)
+     );
 END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_purge_chat_notices(jsonb) FROM PUBLIC, anon, authenticated;
@@ -238,11 +256,10 @@ DELETE FROM public.notifications n
         AND m.created_at <= n.created_at + interval '1 minute'
         AND m.created_at > n.created_at - interval '1 hour'
         AND NOT coalesce((to_jsonb(m) ->> 'deleted')::boolean, false)
-        -- Same text, or edited since (no longer matches, but it isn't gone:
-        -- only notices of gone or deleted messages are purged).
-        AND (public.bw_chat_notice_shows(n.body, n.data, m.content)
-             OR coalesce((to_jsonb(m) ->> 'edited')::boolean, false)
-             OR to_jsonb(m) ->> 'edited_at' IS NOT NULL)
+        -- Only an exact match of a live message as it reads now keeps it
+        -- (round 3, main's rule: losing an old notice is harmless, showing
+        -- deleted or replaced text is not; an edited message's old notice goes).
+        AND public.bw_chat_notice_shows(n.body, n.data, m.content)
    );
 
 COMMIT;
