@@ -1497,16 +1497,17 @@ export const useChats = (bandId?: string) => {
     if (!isAuthenticated) { setLoading(false); return; }
     
     setLoading(true);
-    const { data, error } = await chatsService.getChats(bandId);
+    const { data, error, allChatIds } = await chatsService.getChats(bandId);
     if (bandRef.current !== bandId) return;
     // A failed refetch (offline, network blip) keeps the list on screen.
     if (data) {
       setChats(data);
       setOfflineItem(cacheKey, data).catch(() => {});
-      // Every chat of this account (no band filter): "Not sent" messages
-      // for a chat no longer in it go (Claude #291 r5; waiting ones stay).
-      if (!bandId && user?.id) void dropRefusedOutsideChats(user.id, data.map((c) => c.id));
     }
+    // "Not sent" messages for a chat this account can no longer use go
+    // (Claude #291 r5; waiting ones stay), only after a complete list
+    // (CR6 M3: every chat of the account, whatever band is shown).
+    if (data && allChatIds && user?.id) void dropRefusedOutsideChats(user.id, allChatIds);
     setError(error);
     setLoading(false);
   }, [isAuthenticated, bandId, cacheKey, user?.id]);

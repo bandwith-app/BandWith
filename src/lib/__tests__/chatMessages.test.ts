@@ -112,15 +112,16 @@ describe('appendIncoming (realtime)', () => {
     expect(ids(page)).toEqual(['m0', 'm2', 'temp-b']);
   });
 
-  // Claude r5: a database before 192 has no client ids; a bubble still
-  // being sent is matched by text there (never a failed or waiting one).
-  it('a row without a client id still stands in for a bubble being sent', () => {
+  // Claude #291 CR6 M4: only the client id proves arrival. A row without
+  // one (a database before 192) with the same sender and text is not proof:
+  // the bubble stays until its send answers.
+  it('a row without a client id stands in for no bubble, not even one being sent', () => {
     const sending = msg(99, { id: 'temp-1', content: 'hi', sender_id: 'me', client_id: 'cid-1' });
     const legacy = msg(1, { content: 'hi', sender_id: 'me' });
-    expect(ids(appendIncoming([msg(0), sending], legacy))).toEqual(['m0', 'm1']);
-    expect(ids(mergeLatestPage([msg(0), sending], [msg(0), legacy]))).toEqual(['m0', 'temp-1']);
-    // ...but not one with another client id.
+    expect(ids(appendIncoming([msg(0), sending], legacy))).toEqual(['m0', 'm1', 'temp-1']);
+    expect(ids(mergeLatestPage([msg(0), sending], [msg(0), legacy]))).toEqual(['m0', 'm1', 'temp-1']);
     expect(ids(appendIncoming([msg(0), sending], { ...legacy, client_id: 'cid-2' }))).toEqual(['m0', 'm1', 'temp-1']);
+    expect(ids(appendIncoming([msg(0), sending], { ...legacy, client_id: 'cid-1' }))).toEqual(['m0', 'm1']);
   });
 
   // Claude #291 r5: client ids are unique per sender; another account's row

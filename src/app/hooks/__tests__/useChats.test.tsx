@@ -59,20 +59,32 @@ describe('useChats', () => {
     const { putChatOutbox, listChatOutbox } = await import('@/lib/chatOutbox');
     await putChatOutbox('me', { chatId: 'gone', clientId: 'r1', body: 'Not sent one', createdAt: '2026-11-22T10:00:00.000Z', refused: '' });
     await putChatOutbox('me', { chatId: 'gone', clientId: 'w1', body: 'Waiting one', createdAt: '2026-11-22T10:01:00.000Z' });
-    getChats.mockResolvedValue({ data: [chat('c1')], error: null });
+    getChats.mockResolvedValue({ data: [chat('c1')], error: null, allChatIds: ['c1'] });
     const { result } = renderHook(() => useChats());
     await waitFor(() => expect(result.current.chats).toHaveLength(1));
     await waitFor(async () => expect((await listChatOutbox('me')).map((x) => x.clientId)).toEqual(['w1']));
   });
 
-  it('a band-filtered list never drops anything', async () => {
+  it("a band-filtered list keeps another band's chat (the account's whole list decides)", async () => {
     const { putChatOutbox, listChatOutbox } = await import('@/lib/chatOutbox');
     await putChatOutbox('me', { chatId: 'other-band-chat', clientId: 'r2', body: 'Not sent', createdAt: '2026-11-22T10:00:00.000Z', refused: '' });
-    getChats.mockResolvedValue({ data: [chat('c1')], error: null });
+    await putChatOutbox('me', { chatId: 'gone', clientId: 'r3', body: 'Not sent either', createdAt: '2026-11-22T10:01:00.000Z', refused: '' });
+    getChats.mockResolvedValue({ data: [chat('c1')], error: null, allChatIds: ['c1', 'other-band-chat'] });
     const { result } = renderHook(() => useChats('band-1'));
     await waitFor(() => expect(result.current.chats).toHaveLength(1));
+    await waitFor(async () => expect((await listChatOutbox('me')).map((x) => x.clientId)).toEqual(['r2']));
+  });
+
+  // Claude #291 CR6 M3: a list that isn't known to be complete (a lookup
+  // failed or was dropped) prunes nothing.
+  it('a list without the complete chat ids drops nothing', async () => {
+    const { putChatOutbox, listChatOutbox } = await import('@/lib/chatOutbox');
+    await putChatOutbox('me', { chatId: 'band-chat', clientId: 'r4', body: 'Not sent', createdAt: '2026-11-22T10:00:00.000Z', refused: '' });
+    getChats.mockResolvedValue({ data: [chat('c1')], error: null });
+    const { result } = renderHook(() => useChats());
+    await waitFor(() => expect(result.current.chats).toHaveLength(1));
     await act(async () => {});
-    expect((await listChatOutbox('me')).map((x) => x.clientId)).toEqual(['r2']);
+    expect((await listChatOutbox('me')).map((x) => x.clientId)).toEqual(['r4']);
   });
 
   // Audit 07 #8: Realtime down while HTTP works, a DM arrives. The list and

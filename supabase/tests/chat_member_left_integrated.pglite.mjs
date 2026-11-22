@@ -130,7 +130,7 @@ CREATE TABLE public.bands (id uuid PRIMARY KEY, name text);
 CREATE TABLE public.band_members (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_id uuid, user_id uuid, role text, is_active boolean DEFAULT true, UNIQUE (band_id, user_id));
 CREATE TABLE public.events (id uuid PRIMARY KEY, band_id uuid, title text, created_by uuid, status text, event_type text, quote_id uuid);
 CREATE TABLE public.event_members (event_id uuid, user_id uuid, status text);
-CREATE TABLE public.event_date_holds (event_id uuid, release_reason text, confirmed_once_at timestamptz, released_at timestamptz);
+CREATE TABLE public.event_date_holds (event_id uuid, release_reason text, confirmed_once_at timestamptz, released_at timestamptz, history_cutoff_at timestamptz);
 CREATE TABLE public.quotes (id uuid PRIMARY KEY, converted_to_event_id uuid, status text);
 CREATE TABLE public.chats (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), type varchar(20) NOT NULL, name text, band_id uuid,
   event_id uuid, created_by uuid, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now());

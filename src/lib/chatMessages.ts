@@ -16,21 +16,18 @@ export const normalizeChatType = (type: string | null | undefined): ChatKind | n
 const isTemp = (m: Message) => m.id.startsWith('temp-');
 
 /**
- * The server row of a bubble on this device. Both have a client id: the same
- * one (Codex #291 r4 B4: a second "OK" that answers something else is not
- * the first one delivered). A row without one (a database before 192) only
- * stands in for a bubble still being sent, by sender and text (Claude r5),
- * and never confirms a bubble that failed or waits (queued).
+ * The server row of a bubble on this device: the same client id, and the
+ * same sender. Nothing else proves arrival (Codex #291 r4 B4, Claude CR6
+ * M4): a second "OK" that answers something else is not the first one
+ * delivered. A row without a client id (a database before 192) stands in
+ * for no bubble; the send's own answer replaces a bubble being sent there.
  */
 const sameId = (a: string | null | undefined, b: string | null | undefined) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
-export const isServerCopyOf = (row: Message, bubble: Message): boolean => {
-  // Same sender too (Claude #291 r5): client ids are unique per sender only
-  // (192's (sender_id, client_id)), never across accounts.
-  if (row.client_id && bubble.client_id) return row.client_id === bubble.client_id && sameId(row.sender_id, bubble.sender_id);
-  if (row.client_id || bubble.failed || bubble.queued) return false;
-  return row.sender_id === bubble.sender_id && row.content === bubble.content;
-};
+export const isServerCopyOf = (row: Message, bubble: Message): boolean =>
+  // Client ids are unique per sender only (192's (sender_id, client_id)),
+  // never across accounts (Claude #291 r5).
+  !!row.client_id && !!bubble.client_id && row.client_id === bubble.client_id && sameId(row.sender_id, bubble.sender_id);
 
 const sameMessage = (a: Message, b: Message) =>
   a.id === b.id &&

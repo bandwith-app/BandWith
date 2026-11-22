@@ -246,6 +246,41 @@ describe('ChatDetailModal', () => {
     expect(svc.sendMessage.mock.calls[2][4]).not.toBe(calls[0][4]);
   });
 
+  // Claude #291 CR6 M4: the text is on the device before the first try,
+  // so a send that hangs and an app that is closed lose nothing; once saved
+  // it leaves.
+  it('a send that hangs: the message is already kept on the device', async () => {
+    openComposer();
+    let answer: (v: unknown) => void = () => {};
+    svc.sendMessage.mockImplementation(() => new Promise((r) => { answer = r; }));
+    render(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+    await settle();
+    const input = screen.getByRole('textbox', { name: 'Message' }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'gate code 4417' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await settle();
+    expect(svc.sendMessage).toHaveBeenCalledTimes(1);
+    const kept = JSON.parse(localStorage.getItem('bw:chat_outbox:me') ?? '[]');
+    expect(kept).toEqual([expect.objectContaining({ chatId: 'c1', body: 'gate code 4417', clientId: svc.sendMessage.mock.calls[0][4] })]);
+    expect(kept[0].refused).toBeUndefined();
+    // It answers at last: saved, gone from the device (and no send stays open).
+    await act(async () => { answer({ data: { ...msg(204, 'me'), content: 'gate code 4417', client_id: kept[0].clientId }, error: null }); });
+    await settle();
+    expect(localStorage.getItem('bw:chat_outbox:me')).toBeNull();
+  });
+
+  it('saved: it leaves the device', async () => {
+    openComposer();
+    svc.sendMessage.mockResolvedValue({ data: { ...msg(205, 'me'), content: 'on my way' }, error: null });
+    render(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+    await settle();
+    const input = screen.getByRole('textbox', { name: 'Message' }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'on my way' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await settle();
+    expect(localStorage.getItem('bw:chat_outbox:me')).toBeNull();
+  });
+
   // Codex review #291: a bubble not saved yet (sending, or "Not sent") had
   // Reply, and replying sent its temp id as reply_to_id (not a UUID).
   it('a message that is not saved cannot be replied to', async () => {

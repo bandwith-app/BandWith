@@ -56,7 +56,7 @@ vi.mock('@/lib/supabase', () => {
 });
 vi.mock('../notifications', () => ({ sendPushToUsers: vi.fn() }));
 
-import { createChat, getMessages, sendMessage, subscribeToChat, ChatRuleError, ChatSenderChangedError } from '../chats';
+import { createChat, getChats, getMessages, sendMessage, subscribeToChat, ChatRuleError, ChatSenderChangedError } from '../chats';
 import type { Message } from '../chats';
 
 const called = (table: string, method: string) =>
@@ -398,5 +398,71 @@ describe('a membership check that could not run is not a refusal', () => {
     };
     const { error } = await sendMessage('ev-chat', 'hi');
     expect(error).not.toBeInstanceOf(ChatRuleError);
+  });
+});
+
+// Claude #291 CR6 M3: a band membership with is_active NULL is active in the
+// chat list and in createChat too, and a failed lookup fails the list
+// instead of dropping chats (then "Not sent" texts were pruned for them).
+describe('the chat list and createChat: memberships', () => {
+  const activeOnlyByOr = (calls: Call[]) =>
+    calls.some(([m, v]) => m === 'or' && v === 'is_active.is.null,is_active.eq.true') &&
+    !calls.some(([m, col, v]) => m === 'eq' && col === 'is_active' && v === true);
+  const list = (members: (calls: Call[]) => { data: unknown; error: unknown }) => {
+    h.resolve = (table, calls) => {
+      const has = (m: string) => calls.some(([c]) => c === m);
+      if (table === 'chat_participants') {
+        return has('in') ? { data: [{ chat_id: 'bc', user_id: 'me' }], error: null } : { data: [{ chat_id: 'bc' }], error: null };
+      }
+      if (table === 'chats') return { data: [{ id: 'bc', type: 'band', band_id: 'band-1', name: 'Hudson Horns' }], error: null };
+      if (table === 'band_members') return members(calls);
+      if (table === 'event_members') return { data: [], error: null };
+      if (table === 'messages') return { data: [], error: null };
+      return { data: [], error: null };
+    };
+    return getChats();
+  };
+
+  it('a member whose is_active is NULL keeps the band chat, and the list says it is complete', async () => {
+    const { data, error, allChatIds } = await list((calls) =>
+      ({ data: activeOnlyByOr(calls) ? [{ band_id: 'band-1', role: 'member' }] : [], error: null }));
+    expect(error).toBeNull();
+    expect(data?.map((c) => c.id)).toEqual(['bc']);
+    expect(allChatIds).toEqual(['bc']);
+  });
+
+  it('a failed membership lookup fails the list (no chat is dropped, nothing is pruned)', async () => {
+    const { data, error, allChatIds } = await list(() => ({ data: null, error: new Error('Failed to fetch') }));
+    expect(data).toBeNull();
+    expect(error).toBeTruthy();
+    expect(allChatIds).toBeUndefined();
+  });
+
+  it('createChat: a band member with is_active NULL may open the band chat', async () => {
+    h.resolve = (table, calls) =>
+      table === 'band_members' ? { data: activeOnlyByOr(calls) ? { id: 'bm-1', role: 'member' } : null, error: null } : { data: null, error: null };
+    h.rpc.mockResolvedValue({ data: { id: 'bc', type: 'band', band_id: 'band-1', created: false }, error: null });
+    const { data, error } = await createChat({ type: 'band', name: 'Hudson Horns', band_id: 'band-1', participant_ids: [] });
+    expect(error).toBeNull();
+    expect(data?.id).toBe('bc');
+  });
+
+  it('createChat: a failed membership lookup is not a rule refusal', async () => {
+    h.resolve = (table) => (table === 'band_members' ? { data: null, error: new Error('Failed to fetch') } : { data: null, error: null });
+    const { data, error } = await createChat({ type: 'band', name: 'Hudson Horns', band_id: 'band-1', participant_ids: [] });
+    expect(data).toBeNull();
+    expect(error).toBeTruthy();
+    expect(error).not.toBeInstanceOf(ChatRuleError);
+    expect(h.rpc).not.toHaveBeenCalled();
+  });
+
+  it('createChat: a gig chat lookup that fails is not a rule refusal either', async () => {
+    h.resolve = (table) =>
+      table === 'band_members' ? { data: { role: 'member' }, error: null }
+        : table === 'event_members' ? { data: null, error: new Error('Failed to fetch') } : { data: null, error: null };
+    const { error } = await createChat({ type: 'event', name: 'Rooftop Session', band_id: 'band-1', event_id: 'gig-1', participant_ids: [] });
+    expect(error).toBeTruthy();
+    expect(error).not.toBeInstanceOf(ChatRuleError);
+    expect(h.rpc).not.toHaveBeenCalled();
   });
 });

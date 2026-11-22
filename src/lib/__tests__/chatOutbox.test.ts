@@ -104,10 +104,65 @@ describe('chat outbox', () => {
   it('a hiccup (not a refusal) keeps it waiting, oldest first', async () => {
     await putChatOutbox('u-a', item(2));
     await putChatOutbox('u-a', item(1));
-    h.send.mockResolvedValueOnce({ data: null, error: { code: '57014', message: 'timeout' } });
-    await flushChatOutbox('u-a');
+    h.send.mockResolvedValue({ data: null, error: { code: '57014', message: 'timeout' } });
+    await flushChatOutbox('u-a', { backoffMs: [0, 0] });
     expect(h.send.mock.calls[0][4]).toBe('cid-1');
     expect(await listChatOutbox('u-a')).toHaveLength(2);
+  });
+
+  // Claude #291 CR6 M4: one message that keeps failing (not a refusal, not
+  // the network) no longer holds every other chat back. It is tried 3 times
+  // with a pause; then its chat waits (order in a chat holds) and the others go.
+  it('a message that keeps failing: 3 tries, then the other chats still go', async () => {
+    await putChatOutbox('u-a', item(1, 'stuck'));
+    await putChatOutbox('u-a', item(2, 'stuck'));
+    await putChatOutbox('u-a', item(3, 'c2'));
+    h.send.mockImplementation(async (chatId: string) =>
+      chatId === 'stuck' ? { data: null, error: { code: '57014', message: 'timeout' } } : saved(3));
+    const r = await flushChatOutbox('u-a', { backoffMs: [0, 0] });
+    expect(h.send.mock.calls.map((c) => c[4])).toEqual(['cid-1', 'cid-1', 'cid-1', 'cid-3']);
+    expect(r.sent.map((x) => x.clientId)).toEqual(['cid-3']);
+    expect((await listChatOutbox('u-a')).map((x) => x.clientId)).toEqual(['cid-1', 'cid-2']);
+  });
+
+  it('the network goes: the flush stops at once (no retries)', async () => {
+    await putChatOutbox('u-a', item(1, 'c1'));
+    await putChatOutbox('u-a', item(2, 'c2'));
+    h.send.mockResolvedValue({ data: null, error: new Error('Failed to fetch') });
+    await flushChatOutbox('u-a', { backoffMs: [0, 0] });
+    expect(h.send).toHaveBeenCalledTimes(1);
+  });
+
+  // Claude #291 CR6 M5: another tab's change is never written over: every
+  // read-modify-write holds the Web Lock 'bw-chat-outbox' when there is one.
+  it("every outbox change holds the 'bw-chat-outbox' Web Lock", async () => {
+    const names: string[] = [];
+    let held = 0;
+    let overlap = false;
+    const request = vi.fn(async (name: string, cb: () => Promise<unknown>) => {
+      names.push(name);
+      if (held) overlap = true;
+      held += 1;
+      try { return await cb(); } finally { held -= 1; }
+    });
+    Object.defineProperty(navigator, 'locks', { value: { request }, configurable: true });
+    try {
+      await Promise.all([putChatOutbox('u-a', item(1)), putChatOutbox('u-a', item(2)), listChatOutbox('u-a')]);
+      await dropChatOutbox('u-a', 'cid-1');
+      await dropRefusedOutsideChats('u-a', ['c1']);
+      expect(names.length).toBe(5);
+      expect(new Set(names)).toEqual(new Set(['bw-chat-outbox']));
+      expect(overlap).toBe(false);
+      expect((await listChatOutbox('u-a')).map((x) => x.clientId)).toEqual(['cid-2']);
+    } finally {
+      delete (navigator as { locks?: unknown }).locks;
+    }
+  });
+
+  it('without Web Locks the outbox works as before', async () => {
+    expect((navigator as { locks?: unknown }).locks).toBeUndefined();
+    await putChatOutbox('u-a', item(1));
+    expect((await listChatOutbox('u-a')).map((x) => x.clientId)).toEqual(['cid-1']);
   });
   // Claude #291 r5: someone else signs in while A's outbox is going out.
   it("the account changes mid-flush: the rest of A's outbox stays, unsent", async () => {

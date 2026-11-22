@@ -16,7 +16,9 @@
  * Sent with the same client id (the (sender_id, client_id) upsert, 192), so
  * a retry after a lost reply never saves a second copy. Only the account
  * that wrote it sends it: before each send the signed-in user must be <uid>.
- * One flush at a time on this device.
+ * One flush at a time on this device. A message goes in before its first
+ * send from the chat on screen and leaves once saved (Claude #291 CR6 M4):
+ * a send that hangs and an app that is closed lose nothing.
  */
 import { getSafeUser } from './supabase';
 import { sendMessage, chatErrorMessage, type Message } from './services/chats';
@@ -45,9 +47,25 @@ const removeStored = async (userId: string, clientIds: string[]): Promise<void> 
 
 // Every read and change waits for the ones before it (the store is async):
 // a Delete tapped while a flush runs is seen by the flush's next re-read.
+// Across tabs too (Claude #291 CR6 M5): each read-modify-write holds the
+// Web Lock `bw-chat-outbox` where the browser has Web Locks, so two tabs
+// never write over each other's change; without it, as before.
+export const CHAT_OUTBOX_LOCK = 'bw-chat-outbox';
+type LockManagerLike = { request: <T>(name: string, cb: () => Promise<T>) => Promise<T> };
+const webLocks = (): LockManagerLike | null => {
+  try {
+    const locks = typeof navigator !== 'undefined' ? (navigator as { locks?: LockManagerLike }).locks : undefined;
+    return locks && typeof locks.request === 'function' ? locks : null;
+  } catch {
+    return null;
+  }
+};
 let storeQueue: Promise<unknown> = Promise.resolve();
 function inOrder<T>(job: () => Promise<T>): Promise<T> {
-  const run = storeQueue.then(job);
+  const run = storeQueue.then(() => {
+    const locks = webLocks();
+    return locks ? locks.request(CHAT_OUTBOX_LOCK, job) : job();
+  });
   storeQueue = run.catch(() => {});
   return run;
 }
@@ -165,15 +183,23 @@ const sendsDone = (): Promise<void> => {
   });
 };
 
+/** Tries per message in one flush before it waits for the next one (CR6 M4). */
+export const CHAT_FLUSH_TRIES = 3;
+/** Waits between those tries. */
+export const CHAT_FLUSH_BACKOFF_MS: readonly number[] = [1_000, 3_000];
+const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 /**
  * Sends <uid>'s waiting messages, oldest first. Stops at the first lost
  * connection (the rest wait), or when someone else is signed in. A refusal
- * marks the message `refused` (kept, shown as "Not sent"); another error
- * leaves it waiting for the next flush.
+ * marks the message `refused` (kept, shown as "Not sent"). Another error is
+ * tried again, CHAT_FLUSH_TRIES times with a pause; then that message and
+ * the later ones of its chat (order in a chat holds) wait for the next
+ * flush, and other chats still go (Claude #291 CR6 M4).
  */
 export function flushChatOutbox(
   userId: string | null | undefined,
-  opts: { chatId?: string; currentUserId?: () => Promise<string | null> } = {},
+  opts: { chatId?: string; currentUserId?: () => Promise<string | null>; backoffMs?: readonly number[] } = {},
 ): Promise<ChatOutboxResult> {
   const uid = userId ?? '';
   const empty: ChatOutboxResult = { userId: uid, sent: [], refused: [] };
@@ -184,25 +210,40 @@ export function flushChatOutbox(
     const waiting = (await listChatOutbox(uid))
       .filter((x) => x.refused === undefined && (!opts.chatId || x.chatId === opts.chatId))
       .sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
+    const backoff = opts.backoffMs ?? CHAT_FLUSH_BACKOFF_MS;
+    // Chats with a message that kept failing in this flush: the rest of the
+    // chat waits too (never sent ahead of it).
+    const held = new Set<string>();
+    let stop = false;
     for (const item of waiting) {
-      await sendsDone();
-      if (typeof navigator !== 'undefined' && !navigator.onLine) break;
-      // Never as someone else (another account signed in on this device).
-      if (!sameUser(await current(), uid)) break;
-      // Still waiting? (Try again or Delete may have handled it meanwhile.)
-      const now = (await listChatOutbox(uid)).find((x) => x.clientId === item.clientId);
-      if (!now || now.refused !== undefined) continue;
-      // The writer is passed on too: sendMessage refuses to send as anyone else.
-      const { data, error } = await sendMessage(item.chatId, item.body, 'text', item.replyToId ?? undefined, item.clientId, uid);
-      if (!error && data) {
-        await dropChatOutbox(uid, item.clientId);
-        result.sent.push({ chatId: item.chatId, clientId: item.clientId, message: data });
-      } else if (isRefusal(error)) {
-        const reason = chatErrorMessage(error, '');
-        await putChatOutbox(uid, { ...item, refused: reason });
-        result.refused.push({ chatId: item.chatId, clientId: item.clientId, reason, denied: isDenied(error) });
-      } else {
-        break;
+      if (stop) break;
+      if (held.has(item.chatId)) continue;
+      for (let tries = 1; ; tries++) {
+        await sendsDone();
+        if (typeof navigator !== 'undefined' && !navigator.onLine) { stop = true; break; }
+        // Never as someone else (another account signed in on this device).
+        if (!sameUser(await current(), uid)) { stop = true; break; }
+        // Still waiting, as it reads now? (Try again or Delete may have
+        // handled it meanwhile: Codex r-old B3.)
+        const now = (await listChatOutbox(uid)).find((x) => x.clientId === item.clientId);
+        if (!now || now.refused !== undefined) break;
+        // The writer is passed on too: sendMessage refuses to send as anyone else.
+        const { data, error } = await sendMessage(now.chatId, now.body, 'text', now.replyToId ?? undefined, now.clientId, uid);
+        if (!error && data) {
+          await dropChatOutbox(uid, now.clientId);
+          result.sent.push({ chatId: now.chatId, clientId: now.clientId, message: data });
+          break;
+        }
+        if (isRefusal(error)) {
+          const reason = chatErrorMessage(error, '');
+          await putChatOutbox(uid, { ...now, refused: reason });
+          result.refused.push({ chatId: now.chatId, clientId: now.clientId, reason, denied: isDenied(error) });
+          break;
+        }
+        // No connection: everything waits for the network.
+        if (isOfflineError(error)) { stop = true; break; }
+        if (tries >= CHAT_FLUSH_TRIES) { held.add(item.chatId); break; }
+        await pause(backoff[Math.min(tries - 1, backoff.length - 1)] ?? 0);
       }
     }
     if ((result.sent.length || result.refused.length) && typeof window !== 'undefined') {

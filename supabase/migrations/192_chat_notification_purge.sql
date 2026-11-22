@@ -46,6 +46,10 @@
 -- Round 4: messages.client_id (nullable) + unique (sender_id, client_id):
 -- Try again after a timeout never saves a second copy.
 --
+-- CR6 (Claude #291 M6): an edited message's notices take its new preview
+-- (older ones that match nothing go); purge and edit lock the chat first,
+-- chats in id order.
+--
 -- Older app builds: nothing they call changes. Idempotent; one transaction.
 -- Independent of 175/181 (uses no function they redefine).
 -- ============================================================================
@@ -150,10 +154,22 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
+DECLARE
+  v_chat uuid;
 BEGIN
   IF p_gone IS NULL OR jsonb_array_length(p_gone) = 0 THEN
     RETURN;
   END IF;
+
+  -- Lock order (Claude #291 CR6 M6): this purge and the edit rewrite below
+  -- take a lock per chat, chats in id order, before touching a notice, so
+  -- the two never wait on each other's notices.
+  FOR v_chat IN
+    SELECT DISTINCT g.chat_id FROM jsonb_to_recordset(p_gone) AS g(chat_id uuid)
+     WHERE g.chat_id IS NOT NULL ORDER BY 1
+  LOOP
+    PERFORM pg_advisory_xact_lock(hashtextextended('bw_chat_notices:' || v_chat::text, 0));
+  END LOOP;
 
   -- Notifications that name the message.
   DELETE FROM notifications n
@@ -267,6 +283,56 @@ BEGIN
   END IF;
 END;
 $$;
+
+-- Edited (Claude #291 CR6 M6, privacy): a message's notices showed its
+-- first text after an edit. Its notices (data.message_id) now read its new
+-- preview in body and data.content, as send-push writes them; older notices
+-- (no message_id) in its chat that match no live message as it reads now go,
+-- the backfill rule above. Same per-chat lock as the purge first (one chat
+-- per edited row), so an edit and a delete in that chat take turns.
+CREATE OR REPLACE FUNCTION public.bw_trg_messages_edit_notices()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF NEW.chat_id IS NULL OR coalesce((to_jsonb(NEW) ->> 'deleted')::boolean, false) THEN
+    RETURN NULL; -- marked deleted: the soft-delete purge takes its notices
+  END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended('bw_chat_notices:' || NEW.chat_id::text, 0));
+
+  UPDATE notifications n
+     SET body = public.bw_chat_preview(NEW.content),
+         data = CASE WHEN n.data ? 'content'
+                     THEN jsonb_set(n.data, '{content}', to_jsonb(public.bw_chat_preview(NEW.content)))
+                     ELSE n.data END
+   WHERE n.type IN ('chat_message', 'chat_mention')
+     AND n.data ->> 'message_id' = NEW.id::text;
+
+  DELETE FROM notifications n
+   WHERE n.type IN ('chat_message', 'chat_mention')
+     AND n.data ->> 'message_id' IS NULL
+     AND coalesce(n.data ->> 'chat_id', n.data ->> 'chatId') = NEW.chat_id::text
+     AND NOT EXISTS (
+       SELECT 1 FROM messages m
+        WHERE m.chat_id = NEW.chat_id
+          AND m.created_at <= n.created_at + interval '1 minute'
+          AND m.created_at > n.created_at - interval '1 hour'
+          AND NOT coalesce((to_jsonb(m) ->> 'deleted')::boolean, false)
+          AND public.bw_chat_notice_shows(n.body, n.data, m.content)
+     );
+  RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_trg_messages_edit_notices() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS bw_messages_edit_notices ON public.messages;
+CREATE TRIGGER bw_messages_edit_notices
+  AFTER UPDATE OF content ON public.messages
+  FOR EACH ROW
+  WHEN (NEW.content IS DISTINCT FROM OLD.content)
+  EXECUTE FUNCTION public.bw_trg_messages_edit_notices();
 
 -- Round 2 wrote this guard as a trigger here; 194's bw_write_chat_notices
 -- does it now.

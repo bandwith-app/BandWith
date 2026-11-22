@@ -40,7 +40,7 @@ import { ChatEventContextPane } from '@/app/components/chat/ChatEventContextPane
 import { CHAT_PAGE_SIZE, mergeLatestPage, restartFromLatest, prependOlder, appendIncoming, normalizeChatType, isReplySwipe, catchUpPage, markSendFailed, canReplyTo, firstWords, newClientId, type ChatKind } from '@/lib/chatMessages';
 import { isOfflineError } from '@/lib/offline/networkErrors';
 import { offlinePermission, readChatPermission, saveChatPermission, type ChatPermission } from '@/lib/chatPermission';
-import { CHAT_OUTBOX_EVENT, beginChatSend, dropChatOutbox, flushChatOutbox, isDenied, isSignedInAs, listChatOutbox, putChatOutbox, type ChatOutboxItem, type ChatOutboxResult } from '@/lib/chatOutbox';
+import { CHAT_OUTBOX_EVENT, beginChatSend, dropChatOutbox, flushChatOutbox, isDenied, isRefusal, isSignedInAs, listChatOutbox, putChatOutbox, type ChatOutboxItem, type ChatOutboxResult } from '@/lib/chatOutbox';
 import { haptic } from '@/lib/haptics';
 
 /**
@@ -724,19 +724,25 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
     const release = beginChatSend();
     setSending(true);
     setSendError('');
-    try {
-      // Only as the account that wrote it (Claude #291 r5): another account
-      // signed in meanwhile, or no answer, and it waits in the writer's outbox.
-      if (!(await isSignedInAs(author))) {
-        if (pending.client_id && author) {
-          await putChatOutbox(author, {
+    // Kept on this device (the outbox) before the first try, until saved
+    // (Claude #291 CR6 M4): a send that hangs, then the app closed, loses
+    // nothing; the next flush sends it with the same client id.
+    const keep = (refusedReason?: string) =>
+      pending.client_id && author
+        ? putChatOutbox(author, {
             chatId: sentFrom,
             clientId: pending.client_id,
             body: pending.content,
             createdAt: pending.created_at,
             replyToId: pending.reply_to_id ?? null,
-          });
-        }
+            refused: refusedReason,
+          })
+        : Promise.resolve();
+    try {
+      await keep();
+      // Only as the account that wrote it (Claude #291 r5): another account
+      // signed in meanwhile, or no answer, and it waits in the writer's outbox.
+      if (!(await isSignedInAs(author))) {
         if (chatIdRef.current === sentFrom) {
           setMessages(prev => markSendFailed(prev, pending.id, { queued: true }));
           if (typeof navigator !== 'undefined' && !navigator.onLine) setSendError(t('No connection. It’s sent when you’re back online.'));
@@ -747,21 +753,15 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
       // Someone else signed in between the check above and the send: it was
       // not sent; it waits in its writer's outbox.
       if (error instanceof ChatSenderChangedError) {
-        if (pending.client_id && author) {
-          await putChatOutbox(author, {
-            chatId: sentFrom,
-            clientId: pending.client_id,
-            body: pending.content,
-            createdAt: pending.created_at,
-            replyToId: pending.reply_to_id ?? null,
-          });
-        }
         if (chatIdRef.current === sentFrom) setMessages(prev => markSendFailed(prev, pending.id, { queued: true }));
         return 'queued';
       }
       if (isDenied(error)) lockChat(sentFrom, chatErrorMessage(error, ''));
-      // Another chat is on screen now: its composer is not this one.
+      if (!error && data) void dropChatOutbox(author, pending.client_id);
+      // Another chat is on screen now: its composer is not this one. A
+      // refusal is kept as "Not sent"; anything else keeps waiting.
       if (chatIdRef.current !== sentFrom) {
+        if (error && isRefusal(error)) await keep(chatErrorMessage(error, ''));
         return error ? 'failed' : 'sent';
       }
 
@@ -769,28 +769,18 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
       if (error) {
         const offline = (typeof navigator !== 'undefined' && !navigator.onLine) || isOfflineError(error);
         const refused = chatErrorMessage(error, '');
-        const keep = (refusedReason?: string) =>
-          putChatOutbox(author, {
-            chatId: sentFrom,
-            clientId: pending.client_id ?? '',
-            body: pending.content,
-            createdAt: pending.created_at,
-            replyToId: pending.reply_to_id ?? null,
-            refused: refusedReason,
-          });
         if (offline) {
           // No connection: the bubble waits, kept on this device (chatOutbox:
           // closing the chat or the app loses nothing), and goes out by itself
           // when the network is back, with the same client id (main, #291 r4).
           outcome = 'queued';
-          if (pending.client_id) await keep();
           setSendError(t('No connection. It’s sent when you’re back online.'));
           setMessages(prev => markSendFailed(prev, pending.id, { queued: true }));
         } else if (opts.fromQueue) {
           // A bubble already on screen (Try again) and the server said no, or
           // a hiccup: "Not sent" with the reason; the text stays, kept too.
           outcome = 'failed';
-          if (pending.client_id) await keep(refused);
+          await keep(refused);
           setSendError(refused || t('Message not sent. Try again.'));
           setMessages(prev => markSendFailed(prev, pending.id, { reason: refused }));
         } else {
@@ -808,12 +798,11 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
         } else {
           // A new draft is in the composer: never overwrite it (07 #5). The
           // message stays as a "Not sent" bubble with Try again (kept).
-          if (pending.client_id) await keep(refused);
+          await keep(refused);
           setMessages(prev => markSendFailed(prev, pending.id, { reason: refused }));
         }
         }
       } else if (data) {
-        void dropChatOutbox(author, pending.client_id);
         // Keep the quote on screen if the saved row came back without it.
         const saved = data.reply_to_id && !data.reply_to?.content && pending.reply_to ? { ...data, reply_to: pending.reply_to } : data;
         // Realtime may have brought it first (a database without client_id:

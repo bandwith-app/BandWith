@@ -38,9 +38,11 @@
 -- duplicate insert (only in a race) is refused instead of splitting the gig.
 --
 -- Joining a gig chat needs an active membership of the gig's band: an
--- ex-member still on a lineup is refused. Their older build finds no chat
--- and inserts one: instead of a raw unique-index error they get a clear
--- message in their language ("This gig already has a chat...", still 23505).
+-- ex-member still on a lineup is refused, and only someone who may join a
+-- chat may create it. A band member's older build that finds no chat (not
+-- on the lineup) and inserts one gets a clear message in their language
+-- ("This gig already has a chat...", still 23505); anyone else, a former
+-- member too, gets the unique index's plain 23505 (or RLS's refusal).
 --
 -- Needs 175 first (175_security_audit_access.sql, #281; Codex #291 r4 B1/B2,
 -- main's decision): removing someone from the band takes them out of these
@@ -71,9 +73,10 @@ $$;
 -- The rule itself, about anyone: for 193's own trigger and get-or-join
 -- (security definer), never callable by the app.
 -- Off the gig is 175's set (bw_chat_scope_ok, Claude #291 r5): declined,
--- dropped_out or removed, trimmed and in any case (178's
--- bw_is_event_participant compares 'declined' exactly, so 'Dropped_Out' or
--- ' Declined' passed it). The gig's creator and the band's admins stay in,
+-- dropped_out or removed, trimmed and in any case. 178's
+-- bw_is_event_participant uses lower(btrim()) too; the participant check
+-- before 178 (prod today) compares 'declined' exactly, so 'Dropped_Out' or
+-- ' Declined' passed it. The gig's creator and the band's admins stay in,
 -- as in 175.
 CREATE OR REPLACE FUNCTION public.bw_chat_joinable_rule(p_type text, p_band_id uuid, p_event_id uuid, p_user_id uuid)
 RETURNS boolean
@@ -163,13 +166,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS chats_one_per_event
 CREATE UNIQUE INDEX IF NOT EXISTS chats_one_per_band
   ON public.chats (band_id) WHERE type = 'band' AND band_id IS NOT NULL;
 
--- ── Older builds: a clear refusal ──────────────────────────────────────────
--- An older build of someone who may not join finds no chat and inserts one:
--- the unique index refused it with a raw error. Same refusal (23505, so
--- bw_open_group_chat's retry still works), in words, in their language.
--- Only for someone in the band (or, for a gig with no band, on the gig):
--- anyone else learns nothing about the chat; RLS and the index refuse them
--- as before (Claude #291 r5).
+-- ── Who may create a band or gig chat; older builds: a clear refusal ──────
+-- Only someone who may join a chat may create it (Claude #291 CR6 M1): a
+-- former member still on a lineup created a gig's first chat (and owned its
+-- name), and someone in two bands made band A's gig chat with band B on it.
+-- A gig chat always carries its gig's band. The server's own inserts (no
+-- auth.uid()) are left as they were.
+-- A second chat for the same band or gig: an older build that found none
+-- inserts one. Same refusal as the unique index (23505, so
+-- bw_open_group_chat's retry still works), in words, in their language, but
+-- only for someone in the band (or, for a gig with no band, on the gig):
+-- anyone else, a former member too, learns nothing about the chat and gets
+-- the index's plain 23505 (or RLS's refusal) as before (Claude #291 r5).
 CREATE OR REPLACE FUNCTION public.bw_trg_chats_one_group_chat()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -179,14 +187,25 @@ AS $$
 DECLARE
   v_lang text;
   v_msg text;
+  v_gig_band uuid;
+  v_rule_band uuid := NEW.band_id;
 BEGIN
+  IF NEW.type::text = 'event' THEN
+    SELECT e.band_id INTO v_gig_band FROM events e WHERE e.id = NEW.event_id;
+    v_rule_band := coalesce(v_gig_band, NEW.band_id);
+    NEW.band_id := v_gig_band;
+  END IF;
   IF NOT EXISTS (
     SELECT 1 FROM chats c
      WHERE c.type::text = NEW.type::text
        AND ((NEW.type::text = 'event' AND c.event_id = NEW.event_id)
          OR (NEW.type::text = 'band' AND c.band_id = NEW.band_id))
   ) THEN
-    RETURN NEW;
+    IF auth.uid() IS NULL
+       OR public.bw_chat_joinable_rule(NEW.type::text, v_rule_band, NEW.event_id, auth.uid()) THEN
+      RETURN NEW;
+    END IF;
+    RAISE EXCEPTION 'Not allowed to open this chat' USING ERRCODE = '42501';
   END IF;
   IF NOT coalesce(CASE
        WHEN NEW.type::text = 'band' THEN

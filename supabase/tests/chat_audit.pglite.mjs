@@ -354,6 +354,32 @@ ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'chat_
 r = await db.query(`SELECT data->>'tag' AS tag FROM notifications WHERE data->>'chat_id' = '${TWINCHAT}' AND body = 'Yes'`);
 ok(r.rows.length === 1 && r.rows[0].tag === 'yes-1', `the other "Yes" keeps its notice (${JSON.stringify(r.rows)})`);
 // (A notice for a message deleted before it is written: 194's bw_write_chat_notices, tested with 194.)
+// Claude review #291 CR6 M6 (privacy): an edit leaves no copy of the first
+// text in notices. With message_id: body and data.content take the new
+// preview (a mention too). Without: the older notice goes.
+const [M_ED3, M_ED4] = [id(57), id(58)];
+await db.exec(`INSERT INTO messages (id, chat_id, sender_id, content, created_at) VALUES
+    ('${M_ED3}','${TWINCHAT}','${MEM}','gate code is 4417', now() - interval '90 seconds'),
+    ('${M_ED4}','${TWINCHAT}','${MEM}','old address 12 Pier St', now() - interval '80 seconds');
+  INSERT INTO notifications (user_id, type, title, body, data, action_url, created_at) VALUES
+  ('${ADMIN}','chat_message','Mia Member','gate code is 4417', jsonb_build_object('chat_id','${TWINCHAT}','message_id','${M_ED3}','content','gate code is 4417','tag','ed3'), '/chat/${TWINCHAT}', now() - interval '89 seconds'),
+  ('${OUT}','chat_mention','Mia Member mentioned you','gate code is 4417', jsonb_build_object('chat_id','${TWINCHAT}','message_id','${M_ED3}','content','gate code is 4417'), '/chat/${TWINCHAT}', now() - interval '89 seconds'),
+  ('${ADMIN}','chat_message','Mia Member','old address 12 Pier St', jsonb_build_object('chat_id','${TWINCHAT}','content','old address 12 Pier St'), '/chat/${TWINCHAT}', now() - interval '79 seconds');`);
+const othersEd = await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'chat_id' = '${TWINCHAT}' AND body NOT LIKE '%4417%' AND body NOT LIKE '%Pier St%'`);
+await db.exec(`UPDATE messages SET content = 'ask me for the gate code', edited = true WHERE id = '${M_ED3}'`);
+await db.exec(`UPDATE messages SET content = 'new address soon', edited = true WHERE id = '${M_ED4}'`);
+ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE body LIKE '%4417%' OR data::text LIKE '%4417%' OR body LIKE '%Pier St%' OR data::text LIKE '%Pier St%'`) === 0,
+  'edited: no notice keeps the first text (body or data)');
+r = await db.query(`SELECT type, body, data->>'content' AS c, data->>'tag' AS tag FROM notifications WHERE data->>'message_id' = '${M_ED3}' ORDER BY type`);
+ok(r.rows.length === 2 && r.rows.every((x) => x.body === 'ask me for the gate code' && x.c === 'ask me for the gate code') && r.rows.find((x) => x.type === 'chat_message')?.tag === 'ed3',
+  `its notices (message and mention) read the new preview, nothing else changes (${JSON.stringify(r.rows)})`);
+ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'chat_id' = '${TWINCHAT}' AND body NOT LIKE '%4417%' AND body NOT LIKE '%Pier St%' AND data->>'message_id' IS DISTINCT FROM '${M_ED3}'`) === othersEd,
+  `the chat's other notices stay (${othersEd})`);
+await db.exec(`UPDATE messages SET edited = true WHERE id = '${M_ED3}'`);
+ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'message_id' = '${M_ED3}'`) === 2, 'an update that keeps the text changes nothing');
+await db.exec(`DELETE FROM messages WHERE id IN ('${M_ED3}','${M_ED4}')`);
+ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'message_id' = '${M_ED3}'`) === 0, 'and they still go with the message');
+
 
 // ── 193 · a band admin outside the lineup finds the gig chat
 r = await as(LINE, `INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES ('${EVCHAT}','event','Rooftop Session','${BAND}','${GIG}','${LINE}')`);
@@ -471,6 +497,23 @@ const created = r.rows[0]?.c;
 ok(!r.error && created?.created === true && created?.band_id === BAND, `first open creates the gig chat with the gig's band (${r.error ?? JSON.stringify(created)})`);
 r = await as(ADMIN, `SELECT public.bw_open_group_chat('event', '${BAND}', '${GIG2}', 'Jazz Brunch') AS c`);
 ok(!r.error && r.rows[0].c.id === created?.id && r.rows[0].c.created === false, 'the next open joins it');
+
+// Claude review #291 CR6 M1: only someone who may join a chat may create
+// it. Eli left the band but is still on a new gig's lineup: before anyone
+// opens it, he could create its only chat (band_id NULL, his name on it).
+// Leo is in both bands: band A's gig chat could carry band B.
+const GIG4 = id(33);
+await db.exec(`INSERT INTO events (id, band_id, title, created_by) VALUES ('${GIG4}','${BAND}','Harbor Night','${ADMIN}');
+  INSERT INTO event_members VALUES ('${GIG4}','${LINE}','confirmed'),('${GIG4}','${EX}','confirmed');`);
+r = await as(EX, `INSERT INTO chats (type, name, band_id, event_id, created_by) VALUES ('event','Eli was here',NULL,'${GIG4}','${EX}')`);
+ok(!!r.error, `a former member on the lineup cannot create the gig's first chat (${r.error ?? 'inserted'})`);
+ok(await count(`SELECT count(*)::int AS n FROM chats WHERE event_id = '${GIG4}'`) === 0, 'no chat for that gig yet');
+r = await as(LINE, `INSERT INTO chats (type, name, band_id, event_id, created_by) VALUES ('event','Harbor Night','${OTHERBAND}','${GIG4}','${LINE}') RETURNING band_id`);
+ok(!r.error && r.rows[0]?.band_id === BAND, `a gig chat always carries its gig's band, not another band of the creator (${r.error ?? r.rows[0]?.band_id})`);
+ok(await count(`SELECT count(*)::int AS n FROM chats WHERE event_id = '${GIG4}' AND band_id = '${BAND}'`) === 1, 'stored with band A');
+r = await as(FAN, `INSERT INTO chats (type, name, band_id, event_id, created_by) VALUES ('band','Fan club','${OTHERBAND}',NULL,'${FAN}')`);
+ok(!!r.error, `someone outside a band cannot create its band chat (${r.error ? 'refused' : 'inserted'})`);
+await db.exec(`DELETE FROM chats WHERE event_id = '${GIG4}'; DELETE FROM event_members WHERE event_id = '${GIG4}'; DELETE FROM events WHERE id = '${GIG4}';`);
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

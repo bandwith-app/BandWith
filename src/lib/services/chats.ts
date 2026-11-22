@@ -170,7 +170,16 @@ export const markChatsDelivered = async (force = false): Promise<void> => {
 
 export const getChats = async (
   bandId?: string
-): Promise<{ data: ChatWithDetails[] | null; error: Error | null }> => {
+): Promise<{
+  data: ChatWithDetails[] | null;
+  error: Error | null;
+  /**
+   * Every chat this account may still use (before the band filter and the
+   * cleared-history hiding). Only set when every lookup that decides it
+   * succeeded (Claude #291 CR6 M3): "Not sent" texts outside it are pruned.
+   */
+  allChatIds?: string[];
+}> => {
   try {
     const { data: { user } } = await getSafeUser();
     if (!user) throw new Error('Not authenticated');
@@ -183,7 +192,7 @@ export const getChats = async (
 
     if (partError) throw partError;
     if (!participations || participations.length === 0) {
-      return { data: [], error: null };
+      return { data: [], error: null, allChatIds: [] };
     }
 
     const chatIds = participations.map(p => p.chat_id);
@@ -253,20 +262,24 @@ export const getChats = async (
 
     // Enforce business rules:
     // Members should only be allowed to text admins or band/event they're in.
-    const { data: myBandMemberships } = await supabase
+    // A membership with is_active NULL is active; a failed lookup fails the
+    // list (it must not drop band chats, Claude #291 CR6 M3).
+    const { data: myBandMemberships, error: myBandsError } = await supabase
       .from('band_members')
       .select('band_id, role')
       .eq('user_id', user.id)
-      .eq('is_active', true);
+      .or(ACTIVE_MEMBER);
+    if (myBandsError) throw myBandsError;
 
     const myBandIds = (myBandMemberships || []).map((b: any) => b.band_id);
     const myAdminBandIds = new Set((myBandMemberships || []).filter((b: any) => b.role === 'admin').map((b: any) => b.band_id));
     const allMyBandIds = new Set(myBandIds);
 
-    const { data: myEventMemberships } = await supabase
+    const { data: myEventMemberships, error: myEventsError } = await supabase
       .from('event_members')
       .select('event_id, status')
       .eq('user_id', user.id);
+    if (myEventsError) throw myEventsError;
     const myEventIds = new Set(
       (myEventMemberships || [])
         .filter((m: any) => !isOffTheGig(m.status))
@@ -281,13 +294,14 @@ export const getChats = async (
 
     let otherAdminUserIdsInSharedBands = new Set<string>();
     if (directOtherUserIds.length > 0 && myBandIds.length > 0) {
-      const { data: otherAdmins } = await supabase
+      const { data: otherAdmins, error: otherAdminsError } = await supabase
         .from('band_members')
         .select('user_id, band_id')
         .in('user_id', directOtherUserIds)
         .in('band_id', myBandIds)
         .eq('role', 'admin')
-        .eq('is_active', true);
+        .or(ACTIVE_MEMBER);
+      if (otherAdminsError) throw otherAdminsError;
       otherAdminUserIdsInSharedBands = new Set((otherAdmins || []).map((o: any) => o.user_id));
     }
 
@@ -394,7 +408,7 @@ export const getChats = async (
     const validChats = chatsWithDetails.filter(Boolean) as ChatWithDetails[];
     // This device now has these messages: let the senders see ✓✓.
     void markChatsDelivered();
-    return { data: validChats, error: null };
+    return { data: validChats, error: null, allChatIds: allowedChats.map((c) => c.id) };
   } catch (error: any) {
     return { data: null, error };
   }
@@ -567,7 +581,7 @@ export const createChat = async (
         .from('band_members')
         .select('band_id, role, user_id')
         .in('user_id', [user.id, targetUserId])
-        .eq('is_active', true);
+        .or(ACTIVE_MEMBER);
 
       if (memErr) throw memErr;
 
@@ -591,13 +605,14 @@ export const createChat = async (
         return { data: null, error: new ChatRuleError(t('Direct messaging is only available with band admins.')) };
       }
     } else if (data.type === 'band' && data.band_id) {
-      const { data: bm } = await supabase
+      const { data: bm, error: bmError } = await supabase
         .from('band_members')
         .select('id')
         .eq('band_id', data.band_id)
         .eq('user_id', user.id)
-        .eq('is_active', true)
+        .or(ACTIVE_MEMBER)
         .maybeSingle();
+      if (bmError) throw bmError;
 
       if (!bm) {
         return { data: null, error: new ChatRuleError(t('You can only message in bands you are an active member of.')) };
@@ -605,22 +620,24 @@ export const createChat = async (
     } else if (data.type === 'event' && data.event_id) {
       let allowed = false;
       if (data.band_id) {
-        const { data: bm } = await supabase
+        const { data: bm, error: bmError } = await supabase
           .from('band_members')
           .select('role')
           .eq('band_id', data.band_id)
           .eq('user_id', user.id)
-          .eq('is_active', true)
+          .or(ACTIVE_MEMBER)
           .maybeSingle();
+        if (bmError) throw bmError;
         if (bm?.role === 'admin') allowed = true;
       }
       if (!allowed) {
-        const { data: em } = await supabase
+        const { data: em, error: emError } = await supabase
           .from('event_members')
           .select('id, status')
           .eq('event_id', data.event_id)
           .eq('user_id', user.id)
           .maybeSingle();
+        if (emError) throw emError;
         if (em && !isOffTheGig(em.status)) allowed = true;
       }
       if (!allowed) {
