@@ -3,6 +3,7 @@ import { onAppResume } from '@/lib/appResume';
 import { startSafetyNetPoll } from '@/lib/safetyNetPoll';
 import { createChatSync, CHAT_LIST_FALLBACK_POLL_MS } from '@/lib/chatSync';
 import { useAuth } from '@/lib/AuthContext';
+import { dropRefusedOutsideChats } from '@/lib/chatOutbox';
 import * as bandsService from '@/lib/services/bands';
 import * as eventsService from '@/lib/services/events';
 import * as quotesService from '@/lib/services/quotes';
@@ -15,7 +16,6 @@ import { supabase, getSafeUser } from '@/lib/supabase';
 import { getOfflineItem, setOfflineItem, getCacheKey, onCachedRolesChanged } from '@/lib/offline/storage';
 import { getPendingMutations } from '@/lib/offline/syncQueue';
 import { getIsNetworkOnline } from '@/lib/offline/useNetworkStatus';
-import { dropRefusedOutsideChats } from '@/lib/chatOutbox';
 
 // ============================================
 // CACHE RULES
