@@ -1,8 +1,8 @@
 // Supabase Edge Function: Send Push Notification (Zero External Dependencies)
+import { accountTagged, fcmAccountGates, gatedFcmMessage } from '../_shared/fcm-account-gate.ts';
 import { adminClient, chatRecipients, HttpError, requireCaller } from '../_shared/auth.ts';
 import { localizePushLabel, pushCollapseId, pushLanguage, pushThreadId } from '../_shared/push-labels.ts';
 import { isSilentRequest, silentApns, silentFcmMessage } from '../_shared/push-silent.ts';
-import { accountTagged, fcmAccountGates, gatedFcmMessage } from '../_shared/fcm-account-gate.ts';
 
 const APNS_KEY_ID = Deno.env.get('APNS_KEY_ID');
 const APNS_TEAM_ID = Deno.env.get('APNS_TEAM_ID');
