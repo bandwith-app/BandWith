@@ -1722,6 +1722,7 @@ const dict: Dictionary = {
   "now": "ahora",
   "No messages yet": "Aún no hay mensajes",
   "Load earlier messages": "Cargar mensajes anteriores",
+  "Not sent": "No enviado",
   "Someone": "Alguien",
   "{count}m": "{count} min",
   "Band Chat": "Chat de la banda",
@@ -4638,7 +4639,6 @@ const dict: Dictionary = {
   "{n} lines have a voice part. They stay on their lines when you edit the words.": "{n} líneas tienen una parte vocal. Se quedan en sus líneas cuando editas la letra.",
   "Tap a word to add a chord or mark who sings it. Drag a chord to move it to another word.": "Toca una palabra para añadir un acorde o marcar quién la canta. Arrastra un acorde para moverlo a otra palabra.",
   "Filled in from each member’s instrument. Change it and save.": "Rellenado según el instrumento de cada miembro. Cámbialo y guarda.",
-  "Not sent": "No enviado",
 };
 
 export default dict;
