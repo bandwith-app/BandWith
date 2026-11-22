@@ -11,7 +11,10 @@
 //   4. an acceptance or a message never lands on a link turned off while
 //      it waited for the lock (public pages #8);
 //   5. "Mark all as paid" pays only who is owed: confirmed, fee above 0
-//      (events #9, money #11).
+//      (events #9, money #11);
+//   review of #293: a changed balance after "Mark as paid" (link and gig
+//   agree, Undo still works, the send reopens both), the preview of a quote
+//   accepted by phone, and the one-time copy of the balance sent.
 //
 //   mkdir -p /tmp/pgM && cd /tmp/pgM && npm init -y >/dev/null && npm i @electric-sql/pglite@0.5.15
 //   cp <repo>/supabase/tests/money_fixes.pglite.mjs . && node money_fixes.pglite.mjs <repo>
@@ -63,6 +66,8 @@ CREATE FUNCTION public.bw_can_manage_event(p_event_id uuid) RETURNS boolean
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $f$
   SELECT EXISTS (SELECT 1 FROM events e WHERE e.id = p_event_id AND public.bw_is_band_admin(e.band_id)); $f$;
 
+-- 161's plan guard (plans off): never blocks.
+CREATE FUNCTION public.bw_plan_guard(p_band_id uuid, p_key text, p_add integer DEFAULT 1) RETURNS void LANGUAGE sql AS $f$ SELECT $f$;
 -- 163's mark, here also the stand-in for "the admin, at the same moment": when
 -- a race is armed and the link row is not locked or written by this
 -- transaction, the admin's revoke commits first (as it would while the
@@ -184,6 +189,65 @@ const gig = (E) => q(`SELECT deposit_paid, payment_status FROM events WHERE id =
   await asAdmin(() => q(`SELECT public.bw_quote_balance_mark_paid($1, false)`, [Q]));
   const g = await gig(E);
   ok(g.deposit_paid === true && g.payment_status === 'partial', `undo: a deposit that was received stays received (${g.deposit_paid}, ${g.payment_status})`);
+}
+
+// ---------------------------------------------------------------- 2c. a changed balance after "Mark as paid" (review of #293)
+{
+  const { Q, E, T } = await quote({ accepted: true });
+  await asAdmin(() => q(`SELECT public.bw_quote_balance_publish($1, $2::jsonb)`, [Q, balance(1000)]));
+  await asAdmin(() => q(`SELECT public.bw_quote_balance_mark_sent($1, 'sent', 'email')`, [Q]));
+  await asAdmin(() => q(`SELECT public.bw_quote_balance_mark_paid($1, true)`, [Q]));
+  // A changed balance published (an older build's Preview, or before the send).
+  await asAdmin(() => q(`SELECT public.bw_quote_balance_publish($1, $2::jsonb)`, [Q, balance(1200, 'Overtime')]));
+  let l = await link(Q);
+  let g = await gig(E);
+  ok((l.balance_paid_at !== null) === (g.payment_status === 'paid'),
+    `paid, then a changed balance published: the link and the gig agree (link paid ${l.balance_paid_at !== null}, gig ${g.payment_status})`);
+  await asAdmin(() => q(`SELECT public.bw_quote_balance_mark_paid($1, false)`, [Q]));
+  g = await gig(E);
+  ok(g.deposit_paid === false && g.payment_status === 'pending', `…and Undo still gives back the deposit as it was (${g.deposit_paid}, ${g.payment_status})`);
+  // Paid again, then the changed balance is sent: a new request, not paid on either side.
+  await asAdmin(() => q(`SELECT public.bw_quote_balance_mark_paid($1, true)`, [Q]));
+  await asAdmin(() => q(`SELECT public.bw_quote_balance_publish($1, $2::jsonb)`, [Q, balance(1300, 'Overtime')]));
+  await asAdmin(() => q(`SELECT public.bw_quote_balance_mark_sent($1, 'sent', 'email')`, [Q]));
+  l = await link(Q);
+  g = await gig(E);
+  const v = await view(T);
+  ok(l.balance_paid_at === null && g.payment_status !== 'paid' && g.deposit_paid === false && v.balance_paid === false && v.balance?.amount === 1300,
+    `a changed balance sent after paid reopens the link and the gig together (link ${l.balance_paid_at}, gig ${g.payment_status}, page paid ${v.balance_paid})`);
+}
+{
+  // Accepted by phone (the quote, not the link); the balance sheet makes the link (a draft) and previews.
+  const Q = id(n++);
+  const E = id(n++);
+  await db.exec(`INSERT INTO quotes (id, band_id, client_name, client_email, status, response_type, converted_to_event_id) VALUES ('${Q}', '${BAND}', 'Emma Carter', 'emma.carter@example.com', 'accepted', 'accepted', '${E}')`);
+  await db.exec(`INSERT INTO events (id, band_id, quote_id, status, payment_status) VALUES ('${E}', '${BAND}', '${Q}', 'confirmed', 'pending')`);
+  await asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish($1, $2::jsonb, 'en', NULL)`, [Q, snap(1000)]));
+  const T = (await link(Q)).token;
+  const key = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_balance_preview($1, $2::jsonb) k`, [Q, balance(600)]).then((r) => r.rows[0].k)));
+  const pv = key.r ? await asAnon(() => q(`SELECT public.bw_quote_link_preview($1, $2) v`, [T, key.r]).then((r) => r.rows[0].v)) : null;
+  ok(pv && pv.status === 'accepted' && pv.balance?.amount === 600,
+    `preview of a quote accepted by phone: the balance page, not the draft quote (${pv && pv.status}, ${pv && pv.balance && pv.balance.amount})`);
+  ok((await link(Q)).status === 'draft' && (await view(T)).balance == null, '…and nothing is recorded or shown to the client');
+}
+
+// ---------------------------------------------------------------- 2b. the backfill of balance_sent (review of #293)
+{
+  // Sent $500, then previewed $900 the old way (a publish) before 185: the client was sent $500.
+  const { Q, T } = await quote({ accepted: true });
+  await asAdmin(() => q(`SELECT public.bw_quote_balance_publish($1, $2::jsonb)`, [Q, balance(500)]));
+  await asAdmin(() => q(`SELECT public.bw_quote_balance_mark_sent($1, 'sent', 'email')`, [Q]));
+  await asAdmin(() => q(`SELECT public.bw_quote_balance_publish($1, $2::jsonb)`, [Q, balance(900, 'Trial')]));
+  // Sent $700 and nothing since.
+  const B = await quote({ accepted: true });
+  await asAdmin(() => q(`SELECT public.bw_quote_balance_publish($1, $2::jsonb)`, [B.Q, balance(700)]));
+  await asAdmin(() => q(`SELECT public.bw_quote_balance_mark_sent($1, 'sent', 'email')`, [B.Q]));
+  // As before 185 (no balance_sent yet), then 185 again: its backfill.
+  await db.exec(`UPDATE quote_links SET balance_sent = NULL WHERE quote_id IN ('${Q}', '${B.Q}')`);
+  if (!ONLY) await db.exec(readFileSync(`${REPO}/supabase/migrations/185_quote_money_fixes.sql`, 'utf8'));
+  const v = await view(T);
+  ok(!v.balance || v.balance.amount !== 900, `backfill: a balance only previewed after the send is not published as sent (${v.balance && v.balance.amount})`);
+  ok((await view(B.T)).balance?.amount === 700, 'backfill: the balance that was sent is copied');
 }
 
 // ---------------------------------------------------------------- 3. preview, published, sent

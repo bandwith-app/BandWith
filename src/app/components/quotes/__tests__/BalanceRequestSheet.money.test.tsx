@@ -110,4 +110,20 @@ describe('BalanceRequestSheet: other payments and preview', () => {
     expect(mocks.publish).not.toHaveBeenCalled();
     expect(String(mocks.open.mock.calls[0][0])).toContain(`&k=${'b'.repeat(64)}`);
   });
+
+  // Review of #293: the email has the new amount; the page shows only what the send record puts there.
+  it('Send by email: a send that could not be recorded says the page still shows the earlier balance', async () => {
+    mocks.markSent.mockResolvedValue({ data: null, error: new Error('Failed to fetch') });
+    render(<BalanceRequestSheet open onClose={() => {}} quote={quote} bandId="band-1" bandName="The Night Shift" />);
+    fireEvent.change(await otherField(), { target: { value: '100' } });
+    const send = await waitFor(() => {
+      const b = screen.getAllByRole('button').find((x) => /send by email/i.test(x.textContent || ''));
+      expect(b && !b.hasAttribute('disabled')).toBe(true);
+      return b!;
+    });
+    fireEvent.click(send);
+    await waitFor(() => expect(mocks.email).toHaveBeenCalled());
+    expect(await screen.findByText(/still shows the earlier balance/)).toBeTruthy();
+    expect(screen.queryByText(/Balance request sent to/)).toBeNull();
+  });
 });

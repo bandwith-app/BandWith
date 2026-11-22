@@ -269,15 +269,33 @@ export function buildClientBalance(
  * them as `other`; older ones only have the "Already paid" line, in the
  * page's language. The deposit received since then is not one of them.
  */
-export function previousOtherReceived(prev: ClientBalance | null | undefined, lang: Locale): number {
+export function previousOtherReceived(prev: ClientBalance | null | undefined, _lang?: Locale): number {
   if (!prev) return 0;
   if (typeof prev.other === 'number' && Number.isFinite(prev.other)) return roundCents(Math.max(0, prev.other));
-  const label = translate(lang, 'Already paid');
-  const deposit = translate(lang, 'Deposit received');
   const lines = Array.isArray(prev.received) ? prev.received : [];
-  const line = lines.find((r) => r?.label === label) ?? (lines.length === 2 ? lines[1] : lines.length === 1 && lines[0]?.label !== deposit ? lines[0] : null);
+  // Read in every language, not through the dictionary: reopened before the
+  // page's language has loaded, "Acconto ricevuto" was not the deposit and
+  // was counted again as another payment (review of #293).
+  const line =
+    lines.find((r) => LEGACY_ALREADY_PAID.has(String(r?.label ?? ''))) ??
+    (lines.length === 2 ? lines[1] : lines.length === 1 && !LEGACY_DEPOSIT_RECEIVED.has(String(lines[0]?.label ?? '')) ? lines[0] : null);
   return line ? roundCents(Math.max(0, num(line.amount))) : 0;
 }
+
+/**
+ * The two lines balances before 185 wrote, in each of the page's languages
+ * (frozen: those balances don't change; the i18n test checks them against
+ * the dictionaries).
+ */
+export const LEGACY_DEPOSIT_RECEIVED = new Set([
+  'Deposit received',
+  'Acconto ricevuto',
+  'Anticipo recibido',
+  'Acompte reçu',
+  'Anzahlung erhalten',
+  'Sinal recebido',
+]);
+export const LEGACY_ALREADY_PAID = new Set(['Already paid', 'Già pagato', 'Ya pagado', 'Déjà payé', 'Bereits bezahlt', 'Já pago']);
 
 /** The text that goes with the link (WhatsApp, SMS, copy), in the client's language. */
 export function balanceMessage(o: {

@@ -11,14 +11,17 @@
 --    the gig's deposit_paid, and Undo kept it: a deposit nobody received
 --    was then taken off the next balance. Marking paid now remembers the
 --    deposit as it was (quote_links.balance_paid_deposit_was) and Undo
---    puts it back. Same signature: old builds get the fix too.
+--    puts it back. Same signature: old builds get the fix too. A changed
+--    balance keeps "paid" (link and gig) until it is sent; the send
+--    reopens both together.
 -- 3. Preview does not reach the client (#8). Preview called the publish
 --    RPC, and the page showed whatever was published, sent or not.
 --    - quote_links.balance_sent: the balance the client was sent. It is
 --      set when a send or reminder is recorded (bw_quote_balance_mark_sent,
 --      which every build calls after it publishes and sends). Migration
 --      187 makes the page read it instead of balance. Existing balances
---      already sent are copied once.
+--      are copied once when that version was sent (its send is on the
+--      timeline); a later version only previewed is not.
 --    - "The balance changed" goes on the timeline when the changed
 --      balance is sent, not when it is published (a preview is not news).
 --    - bw_quote_balance_preview (admin): keeps a draft balance for 30
@@ -150,9 +153,17 @@ ALTER TABLE public.quote_links
   ADD COLUMN IF NOT EXISTS balance_preview_key text,
   ADD COLUMN IF NOT EXISTS balance_preview_at timestamptz;
 
--- Once: a balance already sent is what the client has.
+-- Once: a balance already sent is what the client has. Only when that very
+-- version was sent (168 records each send with the balance_version): a
+-- balance_sent_at says only that some earlier version went out, and a
+-- trial amount previewed (published) after it was never sent. What that
+-- earlier version said is not kept anywhere, so such a link shows no
+-- balance until the band sends one again.
 UPDATE public.quote_links l SET balance_sent = l.balance
- WHERE l.balance IS NOT NULL AND l.balance_sent_at IS NOT NULL AND l.balance_sent IS NULL;
+ WHERE l.balance IS NOT NULL AND l.balance_sent_at IS NOT NULL AND l.balance_sent IS NULL
+   AND EXISTS (SELECT 1 FROM public.quote_activity a
+                WHERE a.quote_id = l.quote_id AND a.kind IN ('balance_requested', 'balance_reminded')
+                  AND a.version = l.balance_version);
 
 -- The checks every balance the client may see goes through (168's publish).
 CREATE OR REPLACE FUNCTION public.bw_quote_balance_check(p_band uuid, p_balance jsonb)
@@ -248,9 +259,11 @@ BEGIN
 
   v_changed := v_link.balance IS DISTINCT FROM p_balance;
   IF v_changed THEN
+    -- "Paid" stays as it is until the changed balance is sent (mark sent
+    -- reopens it, with the gig): a publish may be an older build's preview,
+    -- and clearing it here left the gig paid with nothing for Undo to restore.
     UPDATE public.quote_links l
-       SET balance = p_balance, balance_version = l.balance_version + 1, balance_at = now(),
-           balance_paid_at = NULL, balance_paid_deposit_was = NULL, updated_at = now()
+       SET balance = p_balance, balance_version = l.balance_version + 1, balance_at = now(), updated_at = now()
      WHERE l.id = v_link.id
     RETURNING * INTO v_link;
   END IF;
@@ -284,6 +297,12 @@ BEGIN
     RAISE EXCEPTION 'The client link is turned off' USING ERRCODE = '22023';
   END IF;
   IF v_channel IS NOT NULL AND v_channel NOT IN ('whatsapp', 'sms', 'email', 'copy', 'share') THEN v_channel := NULL; END IF;
+  -- A changed balance sent after "Mark as paid": a new request, so not paid
+  -- any more, on the link and on the gig together (as Undo: the deposit as
+  -- it was before "Mark as paid").
+  IF v_link.balance_paid_at IS NOT NULL AND v_link.balance_sent IS DISTINCT FROM v_link.balance THEN
+    PERFORM public.bw_quote_balance_mark_paid(p_quote_id, false);
+  END IF;
   IF v_link.balance_sent_at IS NOT NULL AND v_link.balance_sent IS DISTINCT FROM v_link.balance THEN
     INSERT INTO public.quote_activity (quote_id, band_id, kind, body, version, actor_id)
     VALUES (p_quote_id, v_band, 'balance_updated', left(v_link.balance ->> 'amountLabel', 60), v_link.balance_version, auth.uid());
@@ -340,9 +359,18 @@ BEGIN
   IF v_view IS NULL OR p_key IS NULL OR p_key !~ '^[0-9a-f]{64}$' THEN RETURN v_view; END IF;
   SELECT * INTO v_link FROM public.quote_links l WHERE l.token = p_token;
   IF v_link.balance_preview_key IS DISTINCT FROM p_key OR v_link.balance_preview IS NULL
-     OR v_link.balance_preview_at < now() - interval '30 minutes'
-     OR v_view ->> 'status' <> 'accepted' THEN
+     OR v_link.balance_preview_at < now() - interval '30 minutes' THEN
     RETURN v_view;
+  END IF;
+  IF v_view ->> 'status' <> 'accepted' THEN
+    -- Accepted by phone or in person, the link not marked yet (a link made
+    -- for the balance is a draft; the first publish of the balance marks it,
+    -- as 105): the preview shows the page as it will be then.
+    IF NOT EXISTS (SELECT 1 FROM public.quotes q WHERE q.id = v_link.quote_id AND lower(coalesce(q.status, '')) = 'accepted') THEN
+      RETURN v_view;
+    END IF;
+    v_view := v_view || jsonb_build_object('status', 'accepted', 'accepted_at', coalesce(v_link.responded_at, now()),
+                                           'expired', false, 'declined_at', NULL, 'decline_reason', NULL);
   END IF;
   RETURN v_view || jsonb_build_object(
     'balance', v_link.balance_preview,

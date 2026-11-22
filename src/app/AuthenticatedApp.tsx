@@ -2781,6 +2781,8 @@ export default function AuthenticatedApp() {
           venue_address: q.venueAddress || null,
           indoor_outdoor: q.indoorOutdoor || null,
           fee: q.total || 0,
+          // The fee is in the quote's currency (the gig defaults to EUR).
+          ...(/^[A-Za-z]{3}$/.test(String(q.currency || '')) ? { currency: String(q.currency).toUpperCase() } : {}),
           client_name: q.clientName || null,
         };
         const memberRows = Array.isArray(q.musicians)

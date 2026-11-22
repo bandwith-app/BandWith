@@ -19,7 +19,7 @@
 --
 -- Bodies: bw_quote_link_view and bw_quote_link_respond are 183's (open
 -- PR #286, fix/quote-page) with the changes above; bw_quote_link_message
--- is 099's. Same signatures and grants (anon keeps EXECUTE on the page
+-- is 183's (099's plus the quote locked first). Same signatures and grants (anon keeps EXECUTE on the page
 -- RPCs it had). Apply after 183 and 185. Safe to run more than once.
 -- ====================================================================
 
@@ -48,6 +48,7 @@ DECLARE
   v_gig_deposit_amount numeric;
   v_show_balance boolean;
   v_show_deposit boolean;
+  v_signer boolean;
 BEGIN
   IF p_token IS NULL OR p_token !~ '^[0-9a-f]{64}$' THEN RETURN NULL; END IF;
   SELECT * INTO v_link FROM public.quote_links l WHERE l.token = p_token;
@@ -66,6 +67,9 @@ BEGIN
       INTO v_gig_status, v_gig_paid, v_gig_deposit, v_gig_deposit_amount
       FROM public.events e WHERE e.id = public.bw_quote_gig_id(v_link.quote_id);
   END IF;
+  -- 183: the link is the signer's (not given to another client since the acceptance).
+  v_signer := v_link.status = 'accepted'
+              AND (v_link.recipient_changed_at IS NULL OR v_link.recipient_changed_at <= v_link.responded_at);
   -- 187: only a balance that was sent (185 balance_sent); a published or previewed one is not.
   v_show_balance := v_link.status = 'accepted' AND v_link.balance_sent IS NOT NULL AND coalesce(v_gig_status, '') <> 'cancelled';
   v_show_deposit := v_link.status = 'accepted' AND coalesce(v_gig_deposit, false)
@@ -75,8 +79,9 @@ BEGIN
     'status', v_link.status,
     'lang', v_link.lang,
     'band_name', v_band,
-    -- 183: an accepted link keeps the name it was accepted under.
-    'client_name', CASE WHEN v_link.status = 'accepted' THEN coalesce(v_link.accepted_client_name, v_client) ELSE v_client END,
+    -- 183: an accepted link keeps the name it was accepted under; given to
+    -- another client since, it shows theirs.
+    'client_name', CASE WHEN v_signer THEN coalesce(v_link.accepted_client_name, v_client) ELSE v_client END,
     -- 168: how to pay the deposit, only once accepted.
     'quote', CASE WHEN v_link.status = 'accepted' AND coalesce(v_gig_status, '') <> 'cancelled' THEN v_snap ELSE v_snap - 'pay' END,
     'version', CASE WHEN v_link.status = 'accepted' THEN coalesce(v_link.accepted_version, v_link.version) ELSE v_link.version END,
@@ -87,7 +92,8 @@ BEGIN
                        THEN v_link.version_at END,
     'pdf_url', CASE WHEN v_link.status = 'accepted' THEN v_link.accepted_pdf_url
                     WHEN v_link.pdf_version = v_link.version THEN v_link.pdf_url END,
-    'accepted_name', v_link.accepted_name,
+    -- 183: the signature only on the signer's link.
+    'accepted_name', CASE WHEN v_link.status <> 'accepted' OR v_signer THEN v_link.accepted_name END,
     'accepted_at', CASE WHEN v_link.status = 'accepted' THEN v_link.responded_at END,
     'declined_at', CASE WHEN v_link.status = 'declined' THEN v_link.responded_at END,
     'decline_reason', CASE WHEN v_link.status = 'declined' THEN v_link.decline_reason END,
@@ -159,6 +165,8 @@ BEGIN
   -- 187: the link row first, locked, then the checks: a revoke or a new
   -- link that commits while this waits is seen here, and nothing is written.
   IF p_token IS NULL OR p_token !~ '^[0-9a-f]{64}$' THEN RETURN NULL; END IF;
+  -- 183: the quote first, then the link (the order of a save of the quote: no deadlock).
+  PERFORM public.bw_quote_lock_for_token(p_token);
   SELECT * INTO v_link FROM public.quote_links l WHERE l.token = p_token FOR UPDATE;
   IF v_link.id IS NULL OR v_link.revoked_at IS NOT NULL OR v_link.snapshot IS NULL THEN RETURN NULL; END IF;
   v_view := public.bw_quote_link_view(p_token);
@@ -239,6 +247,8 @@ BEGIN
   IF v_body IS NULL THEN RAISE EXCEPTION 'Empty message' USING ERRCODE = '22023'; END IF;
   -- 187: the link row first, locked, then the checks (as respond).
   IF p_token IS NULL OR p_token !~ '^[0-9a-f]{64}$' THEN RETURN NULL; END IF;
+  -- 183: the quote first, then the link (the order of a save of the quote: no deadlock).
+  PERFORM public.bw_quote_lock_for_token(p_token);
   SELECT * INTO v_link FROM public.quote_links l WHERE l.token = p_token FOR UPDATE;
   IF v_link.id IS NULL OR v_link.revoked_at IS NOT NULL OR v_link.snapshot IS NULL THEN RETURN NULL; END IF;
   IF public.bw_quote_link_view(p_token) IS NULL THEN RETURN NULL; END IF;

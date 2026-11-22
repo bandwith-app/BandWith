@@ -4504,6 +4504,7 @@ const dict: Dictionary = {
   "The email could not be sent. Share the link instead.": "Impossibile inviare l’email. Condividi il link.",
   "Reminder sent to {email}": "Promemoria inviato a {email}",
   "Balance request sent to {email}": "Richiesta di saldo inviata a {email}",
+  "The email went out, but the client’s page still shows the earlier balance. Use Copy link to update it.": "L’email è partita, ma la pagina del cliente mostra ancora il saldo precedente. Usa Copia link per aggiornarla.",
   "Balance link copied": "Link del saldo copiato",
   "Balance request shared": "Richiesta di saldo condivisa",
   "Balance marked as received": "Saldo segnato come ricevuto",

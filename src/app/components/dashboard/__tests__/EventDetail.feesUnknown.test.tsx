@@ -129,4 +129,39 @@ describe('EventDetail: fees not loaded', () => {
     });
     expect(mocks.saveEventLineup).not.toHaveBeenCalled();
   });
+
+  // Round 2 (#293): the fees load while the sheet is open (back online).
+  const unknown = mocks.members;
+  const known = [
+    { userId: 'u-1', name: 'Maya Brooks', initials: 'MB', role: 'Guitar', fee: 300, status: 'confirmed' },
+    { userId: 'u-2', name: 'Sam Ortiz', initials: 'SO', role: 'Bass', fee: 250, status: 'confirmed' },
+  ];
+  afterEach(() => {
+    mocks.members = unknown;
+  });
+
+  it('Edit fee: fees that load while it is open replace the zeros it showed', async () => {
+    const view = render(<EventDetail event={gig} onClose={vi.fn()} isAdmin currentUserId="u-1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit fee' }));
+    await sheet('Edit fee');
+    mocks.members = known as typeof unknown;
+    view.rerender(<EventDetail event={gig} onClose={vi.fn()} isAdmin currentUserId="u-1" />);
+    const dialog = await sheet('Edit fee');
+    await waitFor(() => expect(within(dialog).getByDisplayValue('300')).toBeTruthy());
+    expect(within(dialog).getByDisplayValue('250')).toBeTruthy();
+    expect(within(dialog).queryByDisplayValue('0')).toBeNull();
+  });
+
+  it('Lineup: fees that load while it is open replace the zeros it showed', async () => {
+    const view = render(<EventDetail event={gig} onClose={vi.fn()} isAdmin currentUserId="u-1" />);
+    await waitFor(() => expect(screen.getAllByText('Sam Ortiz').length).toBeGreaterThan(0));
+    const edit = screen.getAllByRole('button', { name: /^EDIT: / }).find((b) => /LINEUP/.test(b.getAttribute('aria-label') || ''));
+    fireEvent.click(edit!);
+    await sheet('Lineup');
+    mocks.members = known as typeof unknown;
+    view.rerender(<EventDetail event={gig} onClose={vi.fn()} isAdmin currentUserId="u-1" />);
+    const dialog = await sheet('Lineup');
+    await waitFor(() => expect(within(dialog).getByDisplayValue('300')).toBeTruthy());
+    expect(within(dialog).getByDisplayValue('250')).toBeTruthy();
+  });
 });

@@ -324,9 +324,17 @@ export const BalanceRequestSheet: React.FC<BalanceRequestSheetProps> = ({
         );
         return;
       }
-      await markQuoteBalanceSent(quoteId, plan.mode === 'remind' ? 'reminded' : 'sent', 'email');
+      // The send record is what puts this balance on the client's page (185):
+      // the email has the new amount, so the page must not keep the old one.
+      const kindSent = plan.mode === 'remind' ? 'reminded' : 'sent';
+      let recorded = await markQuoteBalanceSent(quoteId, kindSent, 'email');
+      if (recorded.error) recorded = await markQuoteBalanceSent(quoteId, kindSent, 'email');
       const state = await getQuoteLinkState(quoteId);
       if (state.data?.link) setLink(state.data.link);
+      if (recorded.error) {
+        say(t('The email went out, but the client’s page still shows the earlier balance. Use Copy link to update it.'), 'error');
+        return;
+      }
       say(
         plan.mode === 'remind'
           ? t('Reminder sent to {email}', { email: quote.clientEmail })

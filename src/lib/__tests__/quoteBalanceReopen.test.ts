@@ -8,8 +8,19 @@
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('@/lib/supabase', () => ({ supabase: { rpc: vi.fn(), from: vi.fn(), functions: { invoke: vi.fn() } } }));
+// The sheet can open before the page's language has loaded: translate() then gives English.
+vi.mock('@/lib/i18n', async (orig) => ({
+  ...(await orig<typeof import('@/lib/i18n')>()),
+  translate: (_lang: string, s: string, vars?: Record<string, unknown>) =>
+    s.replace(/\{(\w+)\}/g, (m, k) => (vars && k in vars ? String(vars[k]) : m)),
+}));
 
-import { buildClientBalance, planBalance, previousOtherReceived, type BalanceFacts } from '../quoteBalance';
+import { buildClientBalance, planBalance, previousOtherReceived, LEGACY_ALREADY_PAID, LEGACY_DEPOSIT_RECEIVED, type BalanceFacts } from '../quoteBalance';
+import itDict from '@/lib/i18n/locales/it';
+import esDict from '@/lib/i18n/locales/es';
+import frDict from '@/lib/i18n/locales/fr';
+import deDict from '@/lib/i18n/locales/de';
+import ptDict from '@/lib/i18n/locales/pt';
 import type { ClientBalance } from '@/quote/types';
 
 const facts = (over: Partial<BalanceFacts> = {}): BalanceFacts => ({
@@ -50,5 +61,21 @@ describe('reopening a balance keeps the other payments', () => {
     expect(previousOtherReceived(old([{ label: 'Deposit received', amount: 300 }, { label: 'Already paid', amount: 150 }]), 'en')).toBe(150);
     expect(previousOtherReceived(old([{ label: 'Deposit received', amount: 300 }]), 'en')).toBe(0);
     expect(previousOtherReceived(null, 'en')).toBe(0);
+  });
+
+  // Review of #293: the sheet can open before the page's language is loaded.
+  it('an Italian balance read before the Italian dictionary loads: the deposit is not another payment', () => {
+    const old = (received: ClientBalance['received']): ClientBalance =>
+      ({ v: 1, currency: 'EUR', total: 1000, received, amount: 0, amountLabel: '', dueDate: null, reference: '', bank: null, stripeUrl: null, cash: null, note: null });
+    expect(previousOtherReceived(old([{ label: 'Acconto ricevuto', amount: 300 }]), 'it')).toBe(0);
+    expect(previousOtherReceived(old([{ label: 'Già pagato', amount: 120 }]), 'it')).toBe(120);
+    expect(previousOtherReceived(old([{ label: 'Anzahlung erhalten', amount: 300 }]), 'de')).toBe(0);
+  });
+
+  it('the frozen labels are the dictionaries\' words', () => {
+    for (const d of [itDict, esDict, frDict, deDict, ptDict]) {
+      expect(LEGACY_DEPOSIT_RECEIVED.has(d['Deposit received'])).toBe(true);
+      expect(LEGACY_ALREADY_PAID.has(d['Already paid'])).toBe(true);
+    }
   });
 });

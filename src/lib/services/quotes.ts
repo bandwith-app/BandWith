@@ -357,12 +357,27 @@ export const saveQuoteMusicians = async (
   }));
   const { data, error } = await supabase.rpc('bw_quote_save_musicians', { p_quote_id: quoteId, p_musicians: payload });
   if (error && isMissingRpc(error)) {
-    // Database before 185: the same rows, written directly (admins only by RLS).
-    const del = await supabase.from('quote_musicians').delete().eq('quote_id', quoteId);
-    if (del.error) return { data: null, error: new Error(del.error.message) };
-    if (payload.length === 0) return { data: [], error: null };
-    const ins = await supabase.from('quote_musicians').insert(payload.map((m) => ({ ...m, quote_id: quoteId }))).select();
-    return ins.error ? { data: null, error: new Error(ins.error.message) } : { data: (ins.data || []) as QuoteMusician[], error: null };
+    // Database before 185: the same rows, written directly (admins only by
+    // RLS). The new rows go in first and the old ones go after, by id: a
+    // connection lost in between leaves the old lineup (or both), never none.
+    const old = await supabase.from('quote_musicians').select('id').eq('quote_id', quoteId);
+    if (old.error) return { data: null, error: new Error(old.error.message) };
+    const oldIds = ((old.data || []) as { id: string }[]).map((r) => r.id);
+    let saved: QuoteMusician[] = [];
+    if (payload.length > 0) {
+      const ins = await supabase.from('quote_musicians').insert(payload.map((m) => ({ ...m, quote_id: quoteId }))).select();
+      if (ins.error) return { data: null, error: new Error(ins.error.message) };
+      saved = (ins.data || []) as QuoteMusician[];
+    }
+    if (oldIds.length > 0) {
+      const del = await supabase.from('quote_musicians').delete().eq('quote_id', quoteId).in('id', oldIds);
+      if (del.error) {
+        // Take the new rows back (best effort): the quote keeps its old lineup.
+        if (saved.length > 0) await supabase.from('quote_musicians').delete().in('id', saved.map((r) => r.id));
+        return { data: null, error: new Error(del.error.message) };
+      }
+    }
+    return { data: saved, error: null };
   }
   if (error) return { data: null, error: new Error(error.message) };
   return { data: (Array.isArray(data) ? data : []) as QuoteMusician[], error: null };

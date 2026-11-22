@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Folder, MapPin, Plus, X } from '@/app/components/icons';
 import { BwSheet, IconButton } from '@/app/components/bw/Screen';
 import { FormError, PillButton, PillField, Selector } from '@/app/components/bw/Form';
@@ -546,6 +546,19 @@ const LineupSheet: React.FC<SheetBase & { lineup: ResolvedMember[]; currentUserI
 
   const known = new Set(initial.ids);
   const feesUnknown = lineup.some((m) => m.feeUnknown);
+  // 05 #5: the real fees came in while the sheet was open (back online):
+  // the musicians already on the lineup start from them, not the zeros shown.
+  const feesWereUnknown = useRef(feesUnknown);
+  useEffect(() => {
+    if (open && feesWereUnknown.current && !feesUnknown) {
+      setFees((prev) => {
+        const next = { ...prev };
+        for (const id of Object.keys(initial.fees)) if (id in next) next[id] = initial.fees[id];
+        return next;
+      });
+    }
+    feesWereUnknown.current = feesUnknown;
+  }, [open, feesUnknown, initial]);
   const feeOf = (id: string) => (kind === 'gig' && tbd ? 0 : amountOf(fees[id]));
   const wanted: LineupRow[] = selected.map((id) => ({
     user_id: id,
@@ -681,6 +694,17 @@ const FeeSheet: React.FC<SheetBase & { lineup: ResolvedMember[] }> = ({ open, on
     setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  // 05 #5: the real fees came in while the sheet was open: start from them
+  // (and the extra band fee they give), not from the zeros shown before.
+  const feesWereUnknown = useRef(feesUnknown);
+  useEffect(() => {
+    if (open && feesWereUnknown.current && !feesUnknown) {
+      setFees(initial.fees);
+      setExtra(initial.extra);
+    }
+    feesWereUnknown.current = feesUnknown;
+  }, [open, feesUnknown, initial]);
 
   const memberFee = (id: string) => (tbd ? 0 : amountOf(fees[id]));
   const feesChanged = members.some((m) => memberFee(m.userId) !== amountOf(initial.fees[m.userId]));
