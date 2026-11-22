@@ -89,6 +89,8 @@ interface Options<T extends LiveSongRef> {
 
 /** `waiting`: no signal, the order is kept on this phone and saved when back online. */
 export type StageSaveState = 'idle' | 'saving' | 'saved' | 'error' | 'waiting';
+/** A setlist_songs row as stored (row id, song, set). */
+type StoredRow = { id: string; songId: string; setNumber: number };
 
 /** Window event after Stage mode saved a new song order: detail `{ setlistId }`. */
 export const SETLIST_ORDER_SAVED = 'bw:setlist-order-saved';
@@ -163,10 +165,13 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   /** Order waiting for its save (several moves, one save); flushed on close. */
   const pendingOrder = useRef<string[] | null>(null);
   /**
-   * The stored rows the pending order applies to, when they aren't the
-   * `songs` loaded yet (a song just added on stage, its reload on the way).
+   * The setlist as stored after a song added on stage (`rows`), and that
+   * song's row (`added`), while the reload with it is on the way: orders
+   * are made and saved against these rows until `songs` has the new row.
    */
-  const pendingBase = useRef<{ id: string; songId: string; setNumber: number }[] | null>(null);
+  const addedBase = useRef<{ rows: StoredRow[]; added: Set<string> } | null>(null);
+  /** Songs being added on stage (useStageRegia): order saves wait meanwhile. */
+  const addsInFlight = useRef(0);
   const saveCtx = useRef({ songs, setlistId, eventId });
   saveCtx.current = { songs, setlistId, eventId };
 
@@ -355,6 +360,21 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     };
   }, [live, eventId, clientId, isLeader, receive, receiveClick]);
 
+  /** The rows after a song added on stage, while `current` (the songs loaded) doesn't have its row yet. */
+  const baseRows = useCallback((current: readonly { id?: string }[]): StoredRow[] | null => {
+    const base = addedBase.current;
+    if (!base) return null;
+    const have = new Set(current.map((s) => s.id));
+    if ([...base.added].some((id) => !have.has(id))) return base.rows;
+    addedBase.current = null; // reloaded (or fresher): the songs loaded are the setlist now
+    return null;
+  }, []);
+  const rememberAdded = useCallback((rows: StoredRow[]) => {
+    const have = new Set(saveCtx.current.songs.map((s) => s.id));
+    const added = new Set(rows.map((r) => r.id).filter((id) => !have.has(id)));
+    addedBase.current = added.size ? { rows, added } : null;
+  }, []);
+
   /**
    * Save the pending order now. `closing`: Stage mode is closing, so only the
    * save itself runs (no status, nothing sent).
@@ -362,12 +382,17 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   const flushSave = useCallback(
     async (closing: boolean) => {
       clearTimeout(saveTimer.current);
+      // A song being added on stage: its save changes the rows this order is
+      // checked against, so the order is saved once that answer is in.
+      if (!closing && addsInFlight.current > 0 && pendingOrder.current) {
+        saveTimer.current = setTimeout(() => void flushRef.current(false), SAVE_DELAY_MS);
+        return;
+      }
       const ids = pendingOrder.current;
-      const base = pendingBase.current;
       pendingOrder.current = null;
-      pendingBase.current = null;
       const { songs: current, setlistId: list } = saveCtx.current;
       if (!ids || !list) return;
+      const base = baseRows(current);
       const saved = base ?? current.filter((s) => s.id && s.songId).map((s) => ({ id: s.id!, songId: s.songId!, setNumber: s.setNumber }));
       const byId = new Map(saved.map((s) => [s.id, s]));
       const inOrder = ids.map((id) => byId.get(id)).filter((s): s is NonNullable<typeof s> => !!s);
@@ -416,7 +441,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       }
       setSaveState('saved');
     },
-    [send],
+    [send, baseRows],
   );
   const flushRef = useRef(flushSave);
   flushRef.current = flushSave;
@@ -538,15 +563,25 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       if (next === ordered) return;
       const ids = next.map((s) => s.id).filter((id): id is string => !!id);
       if (ids.length !== next.length) return;
+      // A song just added on stage isn't shown until the reload: it keeps its
+      // place (after the song before it in the live order) in what is sent and saved.
+      if (baseRows(saveCtx.current.songs) && order) {
+        const shown = new Set(ids);
+        order.forEach((id, i) => {
+          if (shown.has(id) || !addedBase.current?.added.has(id)) return;
+          const before = order.slice(0, i).reverse().find((x) => shown.has(x));
+          ids.splice(before ? ids.indexOf(before) + 1 : 0, 0, id);
+          shown.add(id);
+        });
+      }
       setOrder(ids);
       send({ songId: songId ?? ordered[index]?.id ?? null, order: ids });
       setSaveState('saving');
       pendingOrder.current = ids;
-      pendingBase.current = null;
       clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => void flushSave(false), SAVE_DELAY_MS);
     },
-    [isLeader, setlistId, ordered, send, songId, index, flushSave],
+    [isLeader, setlistId, ordered, order, send, songId, index, flushSave, baseRows],
   );
 
   /**
@@ -554,14 +589,26 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
    * just added on stage, whose row the others are still loading).
    */
   const jumpTo = useCallback(
-    (id: string, nextOrder: string[]) => {
+    (id: string, nextOrder: string[], rows?: StoredRow[]) => {
       if (!isLeader) return;
+      if (rows) rememberAdded(rows);
       setOrder(nextOrder);
       setSongId(id);
       send({ songId: id, order: nextOrder });
     },
-    [isLeader, send],
+    [isLeader, send, rememberAdded],
   );
+
+  /** A song is being added on stage: order saves wait until the returned release is called. */
+  const holdOrderSaves = useCallback(() => {
+    addsInFlight.current += 1;
+    let held = true;
+    return () => {
+      if (!held) return;
+      held = false;
+      addsInFlight.current = Math.max(0, addsInFlight.current - 1);
+    };
+  }, []);
 
   /** The last move's order not saved yet (null: none). */
   const pendingOrderNow = useCallback(() => pendingOrder.current, []);
@@ -574,7 +621,6 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     if (!ids || pendingOrder.current !== ids) return;
     clearTimeout(saveTimer.current);
     pendingOrder.current = null;
-    pendingBase.current = null;
     setSaveState((s) => (s === 'saving' ? 'saved' : s));
   }, []);
   /**
@@ -583,15 +629,15 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
    * add, not the songs loaded before it.
    */
   const rebasePendingOrder = useCallback(
-    (ids: string[], rows: { id: string; songId: string; setNumber: number }[]) => {
+    (ids: string[], rows: StoredRow[]) => {
       if (!isLeader) return;
+      rememberAdded(rows);
       pendingOrder.current = ids;
-      pendingBase.current = rows;
       setSaveState('saving');
       clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => void flushSave(false), SAVE_DELAY_MS);
     },
-    [isLeader, flushSave],
+    [isLeader, flushSave, rememberAdded],
   );
 
   /** Send the Regia's state to everyone in Stage mode. */
@@ -617,6 +663,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     pendingOrder: pendingOrderNow,
     dropPendingOrder,
     rebasePendingOrder,
+    holdOrderSaves,
     sendSession,
     /** This app's id on the channel (one per Stage mode session). */
     clientId,

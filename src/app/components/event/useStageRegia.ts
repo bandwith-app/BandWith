@@ -90,12 +90,14 @@ interface Options {
   clearPendingOrder?: (ids: string[] | null) => void;
   /** useStageLive: a move made while the add was saving, saved against the rows after the add. */
   rebasePendingOrder?: (ids: string[], rows: { id: string; songId: string; setNumber: number }[]) => void;
+  /** useStageLive: order saves wait while a song is being added; returns the release. */
+  holdOrderSaves?: () => () => void;
   currentId: string | null;
   skipped?: ReadonlySet<string>;
   /** useStageLive: make song `i` current (everyone follows). */
   select: (i: number) => void;
-  /** useStageLive: make a new row current with this live order. */
-  jumpTo: (id: string, order: string[]) => void;
+  /** useStageLive: make a new row current with this live order (`rows`: the setlist as stored after a song added on stage). */
+  jumpTo: (id: string, order: string[], rows?: { id: string; songId: string; setNumber: number }[]) => void;
   /** Tests: a fake player. */
   createPlayer?: () => RegiaPlayer;
 }
@@ -141,6 +143,7 @@ export function useStageRegia({
   pendingOrder,
   clearPendingOrder,
   rebasePendingOrder,
+  holdOrderSaves,
   currentId,
   skipped,
   select,
@@ -166,8 +169,17 @@ export function useStageRegia({
   const [error, setError] = useState<RegiaError | null>(null);
 
   const stored = savedSongs ?? songs;
-  const ctx = useRef({ songs, stored, pendingOrder, clearPendingOrder, rebasePendingOrder, currentId, setlistId, myName, select, jumpTo, send, clientId, skipped });
-  ctx.current = { songs, stored, pendingOrder, clearPendingOrder, rebasePendingOrder, currentId, setlistId, myName, select, jumpTo, send, clientId, skipped };
+  const ctx = useRef({ songs, stored, pendingOrder, clearPendingOrder, rebasePendingOrder, holdOrderSaves, currentId, setlistId, myName, select, jumpTo, send, clientId, skipped });
+  ctx.current = { songs, stored, pendingOrder, clearPendingOrder, rebasePendingOrder, holdOrderSaves, currentId, setlistId, myName, select, jumpTo, send, clientId, skipped };
+  /** Order-save holds of songs being added; released on unmount too. */
+  const holds = useRef(new Set<() => void>());
+  useEffect(
+    () => () => {
+      for (const release of holds.current) release();
+      holds.current.clear();
+    },
+    [],
+  );
 
   // ── Sending ──────────────────────────────────────────────────────────
   const publish = useCallback((next: Partial<RegiaState> & { on: boolean }) => {
@@ -448,12 +460,28 @@ export function useStageRegia({
           /* no window */
         }
       };
-      const res = await replaceSetlistSongs(list, entries, { expected: { songs: asStored } });
+      // Order saves wait until this one's answer is in (useStageLive): checked
+      // against the rows before it, they'd be refused (and roll back) meanwhile.
+      const release = ctx.current.holdOrderSaves?.() ?? (() => {});
+      holds.current.add(release);
+      const done = () => {
+        holds.current.delete(release);
+        release();
+      };
+      let res: Awaited<ReturnType<typeof replaceSetlistSongs>>;
+      try {
+        res = await replaceSetlistSongs(list, entries, { expected: { songs: asStored } });
+      } catch (e) {
+        done();
+        throw e;
+      }
       if (res.error) {
+        done();
         setError({ kind: 'insert' });
         return false;
       }
       if (res.conflict) {
+        done();
         setError({ kind: 'changed' });
         reload();
         return 'changed';
@@ -469,22 +497,25 @@ export function useStageRegia({
       if (!moved) dropPending?.(pendingAtStart);
       reload();
       // Saved, but the new row's id didn't come back (a database without 188): it shows after the reload.
-      if (!added || !res.rows) return false;
+      if (!added || !res.rows) {
+        done();
+        return false;
+      }
+      const rowsAfter = res.rows.map((r) => ({ id: r.id, songId: r.song_id, setNumber: r.set_number ?? 1 }));
       let order = res.rows.map((r) => r.id);
       if (moved) {
+        // The moved order (the server wrote the live order plus the new row,
+        // so it has every other row), with the new row where the server put
+        // it: right after the song current when it was picked, else last.
         const ids = new Set(order);
         const kept = pendingAfter!.filter((id) => ids.has(id) && id !== added.id);
-        // After the song it was added after (the current one when picked), as saved.
-        const after = cur ?? ctx.current.currentId;
-        const at = after ? kept.indexOf(after) : -1;
-        const rest = order.filter((id) => id !== added.id && !kept.includes(id));
-        order = [...kept.slice(0, at + 1 || kept.length), added.id, ...kept.slice(at + 1 || kept.length), ...rest];
-        ctx.current.rebasePendingOrder!(
-          order,
-          res.rows.map((r) => ({ id: r.id, songId: r.song_id, setNumber: r.set_number ?? 1 })),
-        );
+        const afterCur = cur ? kept.indexOf(cur) : -1;
+        const insertAt = afterCur >= 0 ? afterCur + 1 : kept.length;
+        order = [...kept.slice(0, insertAt), added.id, ...kept.slice(insertAt)];
       }
-      jump(added.id, order);
+      jump(added.id, order, rowsAfter);
+      if (moved) ctx.current.rebasePendingOrder!(order, rowsAfter);
+      done();
       return start({ id: added.id, title: song.title, audio: song.audio });
     },
     [on, start],

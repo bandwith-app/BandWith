@@ -344,7 +344,7 @@ describe('useStageRegia (stage manager mode)', () => {
       },
     });
     // The new row's id comes back from the save, then everyone jumps.
-    expect(jumpTo).toHaveBeenCalledWith('r9', ['r1', 'r9', 'r2', 'r3']);
+    expect(jumpTo).toHaveBeenCalledWith('r9', ['r1', 'r9', 'r2', 'r3'], expect.any(Array));
     expect(players[0].loaded).toEqual(['local:sb://song-files/b/audio/9.mp3']);
   });
 

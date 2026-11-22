@@ -151,7 +151,7 @@ describe('Regia: a song off the setlist added on stage', () => {
     });
     expect(db.rows.map((r) => r.id)).toEqual(['r1', 'new-1', 'r2', 'r3']);
     expect(db.upserts + db.inserts).toBe(0);
-    expect(jumpTo).toHaveBeenCalledWith('new-1', ['r1', 'new-1', 'r2', 'r3']);
+    expect(jumpTo).toHaveBeenCalledWith('new-1', ['r1', 'new-1', 'r2', 'r3'], expect.any(Array));
   });
 
   it('the same song twice, swapped meanwhile by another admin, is a change (row ids are checked)', async () => {
@@ -185,7 +185,7 @@ describe('Regia: a song off the setlist added on stage', () => {
     expect(out).not.toBe('changed');
     expect(result.current.error).toBeNull();
     expect(db.rows.map((r) => r.id)).toEqual(['r2', 'r1', 'new-1', 'r3']);
-    expect(jumpTo).toHaveBeenCalledWith('new-1', ['r2', 'r1', 'new-1', 'r3']);
+    expect(jumpTo).toHaveBeenCalledWith('new-1', ['r2', 'r1', 'new-1', 'r3'], expect.any(Array));
     expect(clearPendingOrder).toHaveBeenCalledTimes(1);
   });
 
