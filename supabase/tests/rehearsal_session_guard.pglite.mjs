@@ -132,6 +132,26 @@ const dup = await as(ADMIN_B, () => db.query(
 )).then(() => 'written', (e) => e.message);
 ok(/duplicate key|rehearsal_sessions_occurrence_key/.test(dup), 'a first save over an existing one is refused (23505)');
 
+// #296 round 3: this build's merge keeps the EARLIER start (two copies started unread). It writes
+// summary.pauses; an old build never does, so an old build's earlier start is still skipped.
+{
+  await upsert(ADMIN_A, { started_at: A_START, ended_at: null, summary: summary(PLAYED) });
+  const EARLIER = '2026-11-19T18:55:00.000Z';
+  const oldEarlier = await as(ADMIN_B, () => db.query(
+    `UPDATE rehearsal_sessions SET started_at = $1 WHERE event_id = $2 RETURNING id`, [EARLIER, EVENT]));
+  ok(oldEarlier.rows.length === 0, 'an earlier start without summary.pauses (an old build) writes nothing');
+  const merged = JSON.stringify({ v: 1, durationS: 1800, played: PLAYED, total: 3, pauses: [] });
+  const laterNew = await as(ADMIN_B, () => db.query(
+    `UPDATE rehearsal_sessions SET started_at = $1, summary = $2::jsonb WHERE event_id = $3 RETURNING id`, [B_START, merged, EVENT]));
+  ok(laterNew.rows.length === 0, 'a later start writes nothing, summary.pauses or not');
+  const rev0 = (await saved()).updated_at;
+  const earlierNew = await as(ADMIN_B, () => db.query(
+    `UPDATE rehearsal_sessions SET started_at = $1, summary = $2::jsonb WHERE event_id = $3 AND occurrence_date = $4 AND updated_at = $5 RETURNING updated_at`,
+    [EARLIER, merged, EVENT, DAY, rev0]));
+  const now = await saved();
+  ok(earlierNew.rows.length === 1 && new Date(now.started_at).toISOString() === EARLIER, "this build's merge moves the start earlier (on the revision it read)");
+}
+
 // Members still cannot write.
 const m = await upsert(MEMBER, { started_at: A_START });
 ok(!!m.error, 'a member cannot write');

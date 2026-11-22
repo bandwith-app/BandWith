@@ -6,6 +6,7 @@ const downloadMock = vi.fn();
 const playableMock = vi.fn();
 vi.mock('@/lib/regiaAudio', async () => ({
   audioFailureFor: (await vi.importActual<typeof import('@/lib/regiaAudio')>('@/lib/regiaAudio')).audioFailureFor,
+  audioSession: () => () => true,
   cachedAudio: (...a: unknown[]) => cachedMock(...a),
   downloadAudio: (...a: unknown[]) => downloadMock(...a),
   playableUrl: (...a: unknown[]) => playableMock(...a),
@@ -37,6 +38,7 @@ vi.mock('@/lib/audioOutput', async () => {
   };
 });
 const stopPlayerMock = vi.fn();
+vi.mock('@/lib/sessionUser', () => ({ sessionUserId: async () => 'admin-1' }));
 vi.mock('@/lib/audioPlayer', () => ({ stopPlayer: () => stopPlayerMock() }));
 
 import { useStageRegia, type RegiaSong } from '../useStageRegia';
@@ -425,6 +427,62 @@ describe('useStageRegia (stage manager mode)', () => {
     expect(result.current.status).not.toBe('playing');
     expect(result.current.durationMs).toBeNull();
     expect(result.current.error).toEqual({ kind: 'no-audio', title: 'Senza audio' });
+  });
+
+  it('#296 round 3: A playing, B tapped twice before its file is there: B loads, A never plays under B’s title', async () => {
+    const waiting: ((v: { url: string; local: boolean }) => void)[] = [];
+    playableMock.mockImplementation(async (ref: string) =>
+      ref.endsWith('/1.mp3') ? { url: 'https://signed/1.mp3', local: true } : new Promise((r) => waiting.push(r)),
+    );
+    const { result, players } = setup();
+    act(() => result.current.turnOn());
+    await act(async () => {
+      await result.current.play(0);
+    });
+    expect(players[0].play).toHaveBeenCalledTimes(1);
+    act(() => players[0].pause());
+    let first!: Promise<unknown>;
+    let second!: Promise<unknown>;
+    act(() => {
+      first = result.current.play(1);
+    });
+    act(() => {
+      second = result.current.play(1);
+    });
+    // The second tap does not take A's file for B's.
+    expect(players[0].play).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      waiting.forEach((r) => r({ url: 'https://signed/2.mp3', local: true }));
+      await first;
+      await second;
+    });
+    expect(players[0].loaded.slice(-1)[0]).toBe('https://signed/2.mp3');
+    expect(players[0].play).toHaveBeenCalledTimes(2);
+  });
+
+  it('#296 round 3: B tapped, then Play before B’s file is there: A does not start under B’s title', async () => {
+    const waiting: ((v: { url: string; local: boolean }) => void)[] = [];
+    playableMock.mockImplementation(async (ref: string) =>
+      ref.endsWith('/1.mp3') ? { url: 'https://signed/1.mp3', local: true } : new Promise((r) => waiting.push(r)),
+    );
+    const { result, rerender, players } = setup();
+    act(() => result.current.turnOn());
+    await act(async () => {
+      await result.current.play(0);
+    });
+    act(() => players[0].pause());
+    act(() => {
+      void result.current.play(1);
+    });
+    rerender({ currentId: 'r2' });
+    act(() => {
+      void result.current.toggle();
+    });
+    expect(players[0].play).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      waiting.forEach((r) => r({ url: 'https://signed/2.mp3', local: true }));
+    });
+    expect(players[0].loaded.slice(-1)[0]).toBe('https://signed/2.mp3');
   });
 
   it('comes back as Regia after a restart, not playing', () => {

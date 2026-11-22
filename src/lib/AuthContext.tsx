@@ -246,6 +246,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
 
     initializeAuth();
+    // A sign-out whose recordings deletion didn't finish (app closed, 3 s budget): finished now.
+    void import('./regiaAudio').then((m) => m.finishPendingAudioCleanup()).catch(() => {});
 
     const {
       data: { subscription },
@@ -277,6 +279,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }, 0);
       } else if (event === 'SIGNED_OUT') {
         setProfile(null);
+        // Any sign-out (an expired or revoked session too): the Stage recordings go (#296 round 3).
+        void import('./regiaAudio').then((m) => m.clearDownloadedAudio()).catch(() => {});
       }
     });
 

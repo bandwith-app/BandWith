@@ -204,8 +204,35 @@ describe('Live mode on a rehearsal: notes (A2)', () => {
     const list = sheet(/Notes · 0/);
     expect(within(list).getByText("These notes weren't saved. Copy what you need, then remove them.")).toBeInTheDocument();
     expect(within(list).getByText('Paper Boats · Tempo · Count the outro in four')).toBeInTheDocument();
-    fireEvent.click(within(list).getByRole('button', { name: 'Remove' }));
+    fireEvent.click(within(list).getByRole('button', { name: 'Remove note: Paper Boats · Tempo · Count the outro in four' }));
     expect(dismissRejected).toHaveBeenCalledWith('n9');
+  });
+
+  it('#296 round 3: the refused notes read as a status (not an alert), each button names its note', () => {
+    const refused = note({ id: 'n9', status: 'open', preset: 'tempo', body: 'Count the outro in four', markedAtS: null });
+    renderLive(controls([], { rejected: [refused], dismissRejected: vi.fn() }), session(startSession(T0)));
+    fireEvent.click(screen.getByRole('button', { name: 'Notes · 0' }));
+    const list = sheet(/Notes · 0/);
+    expect(within(list).queryByRole('alert')).toBeNull();
+    expect(within(list).getByRole('status')).toHaveTextContent("These notes weren't saved. Copy what you need, then remove them.");
+    expect(within(list).getByRole('button', { name: 'Copy note: Paper Boats · Tempo · Count the outro in four' })).toBeInTheDocument();
+    expect(within(list).getByRole('button', { name: 'Remove note: Paper Boats · Tempo · Count the outro in four' })).toBeInTheDocument();
+  });
+
+  it('#296 round 3: no clipboard (or it refuses): the screen says so, the text stays to select', async () => {
+    const refused = note({ id: 'n9', status: 'open', preset: 'tempo', body: 'Count the outro in four', markedAtS: null });
+    const had = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    for (const clipboard of [undefined, { writeText: vi.fn(async () => Promise.reject(new Error('NotAllowedError'))) }]) {
+      Object.defineProperty(navigator, 'clipboard', { value: clipboard, configurable: true });
+      const view = renderLive(controls([], { rejected: [refused], dismissRejected: vi.fn() }), session(startSession(T0)));
+      fireEvent.click(screen.getByRole('button', { name: 'Notes · 0' }));
+      const list = sheet(/Notes · 0/);
+      fireEvent.click(within(list).getByRole('button', { name: /^Copy note:/ }));
+      expect(await within(list).findByText('Couldn’t copy. Select the text and copy it yourself.')).toBeInTheDocument();
+      view.unmount();
+    }
+    if (had) Object.defineProperty(navigator, 'clipboard', had);
+    else delete (navigator as { clipboard?: unknown }).clipboard;
   });
 
   it('gigs have no notes', () => {

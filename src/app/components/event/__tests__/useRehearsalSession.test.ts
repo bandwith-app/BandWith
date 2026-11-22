@@ -51,7 +51,7 @@ describe('useRehearsalSession (A1b)', () => {
     await waitFor(() => expect(saveMock).toHaveBeenCalled());
     const row = saveMock.mock.calls[0][0];
     expect(row).toMatchObject({ band_id: 'band-1', event_id: 'event-1', occurrence_date: '2026-11-19', ended_at: null });
-    await waitFor(() => expect(result.current.state?.played).toEqual([{ id: 's1', title: 'Paper Boats' }]));
+    await waitFor(() => expect(result.current.state?.played).toEqual([{ id: 's1', title: 'Paper Boats', at: expect.any(Number) }]));
   });
 
   it('offline: kept on the device, saved when the network is back', async () => {
@@ -131,22 +131,27 @@ describe('audit 06 #3/#4: a saved rehearsal is never written over', () => {
     expect(saveMock).not.toHaveBeenCalled();
   });
 
-  it('#4: never read (no signal) and a session is already saved: the first save only creates, and the saved one wins', async () => {
+  it('#4: never read (no signal) and a session is already saved: the first save only creates, then both merge (the earlier start, the saved songs)', async () => {
     fetchMock.mockResolvedValue(undefined);
-    saveMock.mockResolvedValue({ error: null, conflict: true });
+    saveMock.mockResolvedValueOnce({ error: null, conflict: true }).mockResolvedValue({ error: null, rev: 'r3' });
     const { result, send } = setup({ currentSong: null });
     await waitFor(() => expect(result.current.ready).toBe(true));
     fetchMock.mockResolvedValue({ state: ended, summary: null, rev: 'r2' });
     act(() => result.current.start());
-    await waitFor(() => expect(saveMock).toHaveBeenCalled());
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(2));
     // Create only: no revision to overwrite.
     expect(saveMock.mock.calls[0][1] ?? null).toBeNull();
-    await waitFor(() => expect(result.current.status).toBe('ended'));
+    // Then on top of the saved one: its start and songs kept, running here (#296 round 3: never closed by
+    // the saved End), the time between that End and this Start is a pause.
+    expect(saveMock.mock.calls[1][1]).toBe('r2');
+    const row = saveMock.mock.calls[1][0] as SessionRow;
+    expect(row.started_at).toBe(new Date(T0).toISOString());
+    expect(row.ended_at).toBeNull();
+    expect(row.paused_ms).toBeGreaterThanOrEqual(5 * 60_000 - 1000);
+    await waitFor(() => expect(result.current.unsaved).toBe(false));
+    expect(result.current.status).toBe('live');
     expect(result.current.state?.played).toHaveLength(2);
-    expect(result.current.unsaved).toBe(false);
-    expect(saveMock).toHaveBeenCalledTimes(1);
-    // The band is told the saved session, not the one that lost.
-    expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ row: expect.objectContaining({ ended_at: expect.any(String) }) }));
+    expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ row: expect.objectContaining({ started_at: new Date(T0).toISOString() }) }));
   });
 
   it('#3: a second admin follows the first one on the channel (no Start rehearsal over an ended one)', async () => {
@@ -278,6 +283,53 @@ describe('#296 round 2: offline, upgrades and lost answers never drop a session 
       expect(result.current.status).toBe('live');
       await waitFor(() => expect(saveMock).toHaveBeenCalled());
       expect(saveMock.mock.calls[0][1] ?? null).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('#296 round 3: a change kept on this device is never overwritten', () => {
+  const KEY = 'bw-rehearsal-session:event-1|2026-11-19';
+  const T0 = Date.now() - 30 * 60_000;
+  const live = startSession(T0);
+
+  it('Codex B2: reopened offline with an End not saved yet; another admin’s message arrives first: the End stays, still unsaved', async () => {
+    const mine = endSession(live, T0 + 25 * 60_000);
+    localStorage.setItem(KEY, JSON.stringify({ row: toRow(mine, CTX, 3, Date.now()), dirty: true, rev: 'r1' }));
+    fetchMock.mockResolvedValue(undefined);
+    saveMock.mockResolvedValue({ error: { message: 'Failed to fetch' } });
+    const { result, bridge } = setup({ currentSong: null });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.status).toBe('ended');
+    expect(result.current.unsaved).toBe(true);
+    // Reconnect: the other admin's (older) running copy, with a song this device didn't have.
+    const theirs = { ...live, played: [{ id: 's2', title: 'Superstition', at: T0 + 5 * 60_000 }] };
+    act(() => bridge.current.receive?.({ v: 1, eventId: 'event-1', date: '2026-11-19', row: toRow(theirs, CTX, 3, Date.now()) }));
+    expect(result.current.status).toBe('ended');
+    expect(result.current.state?.played.map((p) => p.id)).toEqual(['s2']);
+    expect(result.current.unsaved).toBe(true);
+    const kept = JSON.parse(localStorage.getItem(KEY)!);
+    expect(kept.dirty).toBe(true);
+    expect(kept.row.ended_at).not.toBeNull();
+  });
+
+  it('Codex/Claude minor: a slow first read comes back empty after Start (4 s) was saved: the session stays, and so does the copy here', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      let answer!: (v: unknown) => void;
+      fetchMock.mockImplementation(() => new Promise((r) => (answer = r)));
+      saveMock.mockResolvedValue({ error: null, rev: 'r1' });
+      const { result } = setup({ currentSong: null });
+      await act(async () => {
+        vi.advanceTimersByTime(4100);
+      });
+      act(() => result.current.start());
+      await waitFor(() => expect(result.current.unsaved).toBe(false));
+      // The read sent before Start: nothing was saved then.
+      await act(async () => answer(null));
+      expect(result.current.status).toBe('live');
+      expect(JSON.parse(localStorage.getItem(KEY)!).row.started_at).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }

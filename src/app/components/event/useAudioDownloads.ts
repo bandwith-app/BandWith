@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { cachedAudio, downloadAudio, type AudioFailure } from '@/lib/regiaAudio';
+import { audioSession, cachedAudio, downloadAudio, type AudioFailure } from '@/lib/regiaAudio';
+import { sessionUserId } from '@/lib/sessionUser';
 
 /** A song file on this device: waiting, coming down (0–1, null = size unknown), there, or not possible. */
 export type SongAudio =
@@ -60,6 +61,12 @@ export function useAudioDownloads(refs: string[]) {
     }
     preparing.current = true;
     try {
+      // Sign-out (here or in another tab) or another account: the batch stops
+      // before the next song, it never fills the device again (#296 round 3).
+      const current = audioSession();
+      const user = await sessionUserId();
+      const stillHere = async () => current() && !!user && (await sessionUserId()) === user;
+      if (!user) return;
       const refs = refsRef.current;
       const have = await cachedAudio(refs);
       setCached(have);
@@ -72,6 +79,7 @@ export function useAudioDownloads(refs: string[]) {
       setDownloading({ done: 0, total, progress: 0 });
       let done = 0;
       for (const ref of todo) {
+        if (!(await stillHere())) break;
         const show = (p: number | null) => {
           // A few updates per percent at most (the bar moves; React isn't flooded).
           const progress = p == null ? null : Math.round(p * 100) / 100;

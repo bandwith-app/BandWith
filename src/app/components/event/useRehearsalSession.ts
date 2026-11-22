@@ -250,7 +250,11 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
       setState(local.state);
       // Changes made here (offline too) are saved on top of the revision this copy was read at.
       if (revRef.current === undefined) revRef.current = local.rev;
+      // A change made here not saved yet: unsaved from now (a message from the band merges into it, #296 round 3).
+      if (local.dirty) markUnsaved(true);
     }
+    // A change made here while this read is on its way is newer than what it brings back (#296 round 3).
+    const version = versionRef.current;
     const slow = setTimeout(() => {
       if (ctxRef.current.key !== c.key || readyRef.current) return;
       readyRef.current = true;
@@ -262,6 +266,11 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
     readyRef.current = true;
     setReady(true);
     if (saved === undefined) return; // offline: keep what we have
+    if (versionRef.current !== version) {
+      // Started (or changed) here meanwhile, after the 4 s: that change's own save decides; this answer is old.
+      if (unsavedRef.current) void flush();
+      return;
+    }
     // A change made here meanwhile is newer than what was just read.
     const inMemory = c.isLeader && !!stateRef.current && unsavedRef.current;
     const mine = inMemory ? { state: stateRef.current!, dirty: true } : local;
@@ -272,7 +281,7 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
       revRef.current = saved?.rev ?? null;
       if (c.isLeader) writeLocal(c.key, rowOf(picked), false, revRef.current);
     }
-  }, [setState, flush, rowOf]);
+  }, [setState, flush, rowOf, markUnsaved]);
 
   const loadRef = useRef(load);
   loadRef.current = load;
@@ -341,7 +350,7 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
   useEffect(() => {
     const s = stateRef.current;
     if (!isLeader || !open || !s || !songId) return;
-    const next = markPlayed(s, { id: songId, title: songTitle ?? '' });
+    const next = markPlayed(s, { id: songId, title: songTitle ?? '' }, Date.now());
     if (next !== s) commit(next, SONG_SAVE_DELAY_MS);
   }, [isLeader, open, songId, songTitle, state, commit]);
 
@@ -356,9 +365,20 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
       setState(msg.row ? fromRow(msg.row) : null);
       return;
     }
-    // A change of ours is on its way: its save decides (the saved one wins).
-    if (unsavedRef.current) return;
     const next = msg.row ? fromRow(msg.row) : null;
+    if (unsavedRef.current) {
+      // A change of ours not saved yet (offline, on its way): never overwritten, the other
+      // admin's change merges into it (#296 round 3) and both are saved together.
+      const mine = stateRef.current;
+      if (!next || !mine) return;
+      const merged = mergeSessions(mine, next);
+      if (sameSession(merged, mine)) return;
+      versionRef.current += 1;
+      setState(merged);
+      writeLocal(c.key, rowOf(merged), true, revRef.current);
+      void flush();
+      return;
+    }
     setState(next);
     writeLocal(c.key, msg.row ? rowOf(next) : null, false, revRef.current);
     // The other admin saves it a moment later: then read its revision.

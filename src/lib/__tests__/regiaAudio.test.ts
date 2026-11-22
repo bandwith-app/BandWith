@@ -15,10 +15,11 @@ if (!globalThis.crypto?.subtle) {
  * the check afterwards never found it.
  */
 
-const native = { on: true };
+const native = { on: true, platform: 'android' };
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
     isNativePlatform: () => native.on,
+    getPlatform: () => (native.on ? native.platform : 'web'),
     convertFileSrc: (u: string) => `capacitor://localhost/_capacitor_file_${u.replace('file://', '')}`,
   },
 }));
@@ -110,7 +111,7 @@ vi.mock('../services/songFiles', () => ({
 }));
 
 import authContext from '../AuthContext.tsx?raw';
-import { audioFailureFor, cachedAudio, clearDownloadedAudio, downloadAudio, looksLikeAudio, playableUrl } from '../regiaAudio';
+import { audioFailureFor, cachedAudio, clearDownloadedAudio, downloadAudio, finishPendingAudioCleanup, looksLikeAudio, playableUrl } from '../regiaAudio';
 
 /** A tiny in-memory IndexedDB (jsdom has none): one database, one store, the calls regiaAudio makes. */
 const idbData = new Map<string, Map<IDBValidKey, unknown>>();
@@ -163,6 +164,7 @@ const mp3 = () => {
 
 beforeEach(() => {
   native.on = true;
+  native.platform = 'android';
   files.clear();
   dirs.clear();
   android.on = false;
@@ -320,6 +322,48 @@ describe('audit 06 #2: sign-out leaves no private recording on this device', () 
     land();
     expect((await run).ok).toBe(false);
     expect(await cachedAudio([DRIVE])).toEqual(new Set());
+  });
+});
+
+describe('#296 round 3: nothing of the recordings is left behind', () => {
+  const legacy = (directory: string) => files.set(`${directory}:regia-audio/old-song`, mp3());
+
+  it('iPhone: sign-out right after the update also deletes the folders of older builds (Documents, Library)', async () => {
+    native.platform = 'ios';
+    legacy('DOCUMENTS');
+    legacy('LIBRARY');
+    await clearDownloadedAudio();
+    expect([...files.keys()].filter((k) => k.includes('regia-audio'))).toEqual([]);
+  });
+
+  it('a deletion that did not finish (the app closed, the 3 s ran out) is finished at the next launch', async () => {
+    localStorage.clear();
+    let done!: () => void;
+    rmdir.mockImplementationOnce(() => new Promise<void>((r) => (done = r)));
+    void clearDownloadedAudio();
+    await vi.waitFor(() => expect(rmdir).toHaveBeenCalled());
+    // The app is closed here: its files still there, the deletion marked.
+    expect(localStorage.getItem('bw-regia-audio:cleanup-pending')).toBe('1');
+    files.set('LIBRARY_NO_CLOUD:regia-audio/song', mp3());
+    // Next launch.
+    await finishPendingAudioCleanup();
+    expect([...files.keys()].filter((k) => k.includes('regia-audio'))).toEqual([]);
+    expect(localStorage.getItem('bw-regia-audio:cleanup-pending')).toBeNull();
+    done();
+  });
+
+  it('nothing pending: the launch deletes nothing', async () => {
+    localStorage.clear();
+    files.set('LIBRARY_NO_CLOUD:regia-audio/song', mp3());
+    await finishPendingAudioCleanup();
+    expect(files.has('LIBRARY_NO_CLOUD:regia-audio/song')).toBe(true);
+  });
+
+  it('every sign-out deletes them (an expired or revoked session too), and the launch finishes a pending one', () => {
+    const listener = authContext.slice(authContext.indexOf('onAuthStateChange'), authContext.indexOf('Native OAuth'));
+    expect(listener).toMatch(/event === 'SIGNED_OUT'\) \{[^}]*import\('\.\/regiaAudio'\)\.then\(\(m\) => m\.clearDownloadedAudio\(\)\)/);
+    const mount = authContext.slice(authContext.indexOf('initializeAuth();'), authContext.indexOf('onAuthStateChange'));
+    expect(mount).toMatch(/import\('\.\/regiaAudio'\)\.then\(\(m\) => m\.finishPendingAudioCleanup\(\)\)/);
   });
 });
 

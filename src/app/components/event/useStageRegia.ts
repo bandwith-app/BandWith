@@ -146,6 +146,14 @@ export function useStageRegia({
   /** Row id of the song in the player. */
   const [loadedId, setLoadedId] = useState<string | null>(null);
   const loadedRef = useRef<{ id: string; title: string } | null>(null);
+  /**
+   * Row id of the song whose file the player really holds: set only once its
+   * load finished and still counted. The card (loadedRef) moves to a song at
+   * the tap, before its file is there; a load given up (a second tap) leaves
+   * this empty, so the next tap loads again instead of playing the previous
+   * song's file under the new title (#296 round 3).
+   */
+  const fileRef = useRef<string | null>(null);
   const [error, setError] = useState<RegiaError | null>(null);
 
   const ctx = useRef({ songs, currentId, setlistId, myName, select, jumpTo, send, clientId, skipped });
@@ -186,6 +194,7 @@ export function useStageRegia({
     playerRef.current?.dispose();
     playerRef.current = null;
     loadedRef.current = null;
+    fileRef.current = null;
     setLoadedId(null);
     setSnap(IDLE);
   }, []);
@@ -330,9 +339,10 @@ export function useStageRegia({
       const op = ++playOp.current;
       const current = () => playOp.current === op && playerRef.current === player;
       setError(null);
-      if (loadedRef.current?.id !== song.id || ['idle', 'error'].includes(player.snapshot().status)) {
+      if (fileRef.current !== song.id || ['idle', 'error'].includes(player.snapshot().status)) {
         // The card shows this song from now on (also when it can't play: the message is about it).
         loadedRef.current = { id: song.id, title: song.title };
+        fileRef.current = null;
         setLoadedId(song.id);
         if (!song.audio) {
           // No audio: the band still moves to it; nothing plays, and the card says so.
@@ -352,6 +362,7 @@ export function useStageRegia({
         }
         const ok = !!src && (await player.load(src.url));
         if (!current()) return false;
+        if (ok) fileRef.current = song.id;
         if (!ok) {
           const known = audioRef.current[song.audio];
           // Not on the device yet and the link can't stream (Drive on iOS): it's coming, wait.
@@ -394,7 +405,7 @@ export function useStageRegia({
     }
     const { songs: list, currentId: cur } = ctx.current;
     // A song is loaded but the band moved on: play the current song instead.
-    if (loadedRef.current && loadedRef.current.id === cur && s !== 'idle' && s !== 'error') {
+    if (fileRef.current && fileRef.current === cur && s !== 'idle' && s !== 'error') {
       await player.play();
       return;
     }

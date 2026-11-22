@@ -70,7 +70,7 @@ describe('Settings › Offline & live', () => {
     );
     render(<OfflineLiveSection userId="u-1" />);
     expect(screen.getByText('Empire State of Mind · Tempo · Count the outro in four')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Remove note: Empire State of Mind/ }));
     await waitFor(() => expect(screen.queryByText('Empire State of Mind · Tempo · Count the outro in four')).toBeNull());
     expect(localStorage.getItem('bw:rehearsal_notes_rejected:u-1')).toBeNull();
   });

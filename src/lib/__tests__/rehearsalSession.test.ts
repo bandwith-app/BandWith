@@ -118,6 +118,7 @@ describe('rehearsal session: summary', () => {
       durationS: 90 * 60,
       played: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }],
       total: 5,
+      pauses: [[T0 + 30 * MIN, T0 + 40 * MIN]],
     });
   });
 
@@ -175,7 +176,7 @@ describe('rehearsal session: saved row', () => {
       paused_at: new Date(T0 + 10 * MIN).toISOString(),
       ended_at: null,
     });
-    expect(row.summary).toEqual({ v: 1, durationS: 600, played: [{ id: 'a', title: 'A' }], total: 4 });
+    expect(row.summary).toEqual({ v: 1, durationS: 600, played: [{ id: 'a', title: 'A' }], total: 4, pauses: [] });
     expect(fromRow(row)).toEqual(s);
   });
 
@@ -212,13 +213,14 @@ describe('rehearsal session: two copies of one rehearsal merge, nothing is lost 
     expect(m.played.map((p) => p.id)).toEqual(['s1', 's3', 's2']);
   });
 
-  it('an end saved elsewhere stays, a stale pause does not undo it', () => {
+  it('an end saved elsewhere stays, a stale pause does not undo it (the pause lasted until the end)', () => {
     const saved = endSession(live, T0 + 30 * MIN);
     const mine = pauseSession(live, T0 + 20 * MIN);
     const m = mergeSessions(mine, saved);
     expect(m.endedAt).toBe(T0 + 30 * MIN);
     expect(m.pausedAt).toBeNull();
-    expect(m).toEqual(saved);
+    expect(m.pauses).toEqual([[T0 + 20 * MIN, T0 + 30 * MIN]]);
+    expect(elapsedSeconds(m, T0 + 90 * MIN)).toBe(20 * 60);
   });
 
   it('both ended: the later end', () => {
@@ -226,18 +228,92 @@ describe('rehearsal session: two copies of one rehearsal merge, nothing is lost 
     expect(mergeSessions(endSession(live, T0 + 30 * MIN), endSession(live, T0 + 50 * MIN)).endedAt).toBe(T0 + 50 * MIN);
   });
 
-  it('a different start (started unread on another device): the saved times stay, its songs are added', () => {
+  it('a different start (started unread on another device): the earlier start, its songs are added, ended only when both are', () => {
     const mine = endSession({ ...startSession(T0 + 5 * MIN), played: [B] }, T0 + 45 * MIN);
     const m = mergeSessions(mine, live);
     expect(m.startedAt).toBe(T0);
     expect(m.played.map((p) => p.id)).toEqual(['s1', 's2']);
     expect(m.endedAt).toBeNull();
     const savedEnd = endSession(live, T0 + 30 * MIN);
-    expect(mergeSessions(mine, savedEnd).endedAt).toBe(T0 + 30 * MIN);
+    expect(mergeSessions(mine, savedEnd).endedAt).toBe(T0 + 45 * MIN);
   });
 
   it('nothing new on this device: the saved one as it is', () => {
     const saved = endSession({ ...live, played: [A, B] }, T0 + 30 * MIN);
     expect(mergeSessions(live, saved)).toEqual(saved);
+  });
+});
+
+describe('#296 round 3: the merge rule (pauses by union, End only when it is the newest, the earlier start)', () => {
+  const A = { id: 's1', title: 'Paper Boats' };
+  const B = { id: 's2', title: 'Superstition' };
+  const C = { id: 's3', title: 'Harbor Lights' };
+
+  it('Codex B1: End saved but its answer lost, then Resume here: still running, no minute lost', () => {
+    const live = startSession(T0);
+    const savedEnd = endSession(live, T0 + 60 * MIN);
+    // This device: the same End, then Resume 10 minutes later.
+    const mine = resumeSession(endSession(live, T0 + 60 * MIN), T0 + 70 * MIN);
+    const m = mergeSessions(mine, savedEnd);
+    expect(sessionStatus(m)).toBe('live');
+    expect(m.endedAt).toBeNull();
+    // 80 minutes in: 60 before the end, 10 after the resume; the gap is a pause.
+    expect(elapsedSeconds(m, T0 + 80 * MIN)).toBe(70 * 60);
+    expect(m).toEqual(mergeSessions(savedEnd, mine));
+  });
+
+  it('a Resume older than the other copy’s End: ended', () => {
+    const live = startSession(T0);
+    const mine = resumeSession(pauseSession(live, T0 + 10 * MIN), T0 + 15 * MIN);
+    const m = mergeSessions(mine, endSession(live, T0 + 60 * MIN));
+    expect(sessionStatus(m)).toBe('ended');
+    expect(elapsedSeconds(m, T0 + 90 * MIN)).toBe(55 * 60);
+  });
+
+  it('two separate pauses, one on each copy: both count (not the longer one only)', () => {
+    const live = startSession(T0);
+    const mine = resumeSession(pauseSession(live, T0 + 10 * MIN), T0 + 15 * MIN);
+    const saved = resumeSession(pauseSession(live, T0 + 30 * MIN), T0 + 38 * MIN);
+    const m = mergeSessions(mine, saved);
+    expect(m.pauses).toEqual([
+      [T0 + 10 * MIN, T0 + 15 * MIN],
+      [T0 + 30 * MIN, T0 + 38 * MIN],
+    ]);
+    expect(m.pausedMs).toBe(13 * MIN);
+    // The same pause on both (one copy sent to the other): counted once.
+    expect(mergeSessions(saved, saved).pausedMs).toBe(8 * MIN);
+  });
+
+  it('a different start: never closed while it runs here; the time between the saved End and this Start is a pause', () => {
+    const saved = endSession(startSession(T0), T0 + 30 * MIN);
+    const mine = startSession(T0 + 40 * MIN);
+    const m = mergeSessions(mine, saved);
+    expect(m.startedAt).toBe(T0);
+    expect(sessionStatus(m)).toBe('live');
+    expect(elapsedSeconds(m, T0 + 50 * MIN)).toBe(40 * 60);
+  });
+
+  it('a different start, this one earlier (started offline first): the earlier start is kept', () => {
+    const m = mergeSessions(startSession(T0), startSession(T0 + 5 * MIN));
+    expect(m.startedAt).toBe(T0);
+  });
+
+  it('songs in the order they were played, on whichever copy', () => {
+    let mine = startSession(T0);
+    mine = markPlayed(mine, A, T0 + 1 * MIN);
+    mine = markPlayed(mine, C, T0 + 30 * MIN);
+    let saved = startSession(T0);
+    saved = markPlayed(saved, A, T0 + 1 * MIN);
+    saved = markPlayed(saved, B, T0 + 12 * MIN);
+    expect(mergeSessions(mine, saved).played.map((p) => p.id)).toEqual(['s1', 's2', 's3']);
+    expect(mergeSessions(saved, mine).played.map((p) => p.id)).toEqual(['s1', 's2', 's3']);
+  });
+
+  it('a row an older version saved (paused time, no pause times) keeps its paused time', () => {
+    const old = { ...startSession(T0), pausedMs: 7 * MIN, pauses: undefined };
+    const mine = resumeSession(pauseSession(startSession(T0), T0 + 40 * MIN), T0 + 45 * MIN);
+    expect(mergeSessions(mine, old).pausedMs).toBe(12 * MIN);
+    const row = toRow(mergeSessions(mine, old), { bandId: 'b', eventId: 'e', date: '2026-11-19' }, 3, T0 + 50 * MIN);
+    expect(fromRow(row)?.pausedMs).toBe(12 * MIN);
   });
 });

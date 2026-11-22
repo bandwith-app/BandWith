@@ -222,12 +222,40 @@ function stopDownloads() {
 }
 
 /**
+ * A batch of downloads (the setlist's songs, one after the other) holds on
+ * to this: false once anyone signed out, here or in another tab, so the
+ * batch stops instead of starting the next song (#296 round 3).
+ */
+export function audioSession(): () => boolean {
+  otherTabs();
+  const started = generation;
+  const mark = clearedMark();
+  return () => generation === started && clearedMark() === mark;
+}
+
+/**
+ * Sign-out whose deletion didn't finish (the 3 s budget ran out, the app was
+ * closed): marked, and finished at the next launch (finishPendingAudioCleanup).
+ */
+const PENDING_KEY = 'bw-regia-audio:cleanup-pending';
+const setPending = (on: boolean) => {
+  try {
+    if (on) localStorage.setItem(PENDING_KEY, '1');
+    else localStorage.removeItem(PENDING_KEY);
+  } catch {
+    /* storage blocked */
+  }
+};
+
+/**
  * Sign-out: every song file this device downloaded goes (the band's private
  * recordings), and downloads still on their way keep nothing, in other tabs
- * of this browser too.
+ * of this browser too. On iOS the folders of older builds too (Documents,
+ * Library): they were only cleared when a download started.
  */
 export async function clearDownloadedAudio(): Promise<void> {
   stopDownloads();
+  setPending(true);
   try {
     localStorage.setItem(CLEARED_KEY, `${Date.now()}-${Math.random().toString(36).slice(2)}`);
   } catch {
@@ -239,21 +267,39 @@ export async function clearDownloadedAudio(): Promise<void> {
     /* no other tabs to tell */
   }
   if (Capacitor.isNativePlatform()) {
-    const { Filesystem } = await fs();
+    const { Filesystem, Directory } = await fs();
     const { directory } = await nativeLoc('');
-    await Filesystem.rmdir({ path: DIR, directory, recursive: true }).catch(() => undefined);
+    const folders = Capacitor.getPlatform?.() === 'ios' ? [directory, Directory.Documents, Directory.Library] : [directory];
+    await Promise.all(folders.map((d) => Filesystem.rmdir({ path: DIR, directory: d, recursive: true }).catch(() => undefined)));
+    setPending(false);
     return;
   }
-  if (typeof indexedDB === 'undefined') return;
+  if (typeof indexedDB === 'undefined') return setPending(false);
   // The whole database (never opened here: a device that never was the Regia gets none).
   await new Promise<void>((resolve) => {
     try {
       const req = indexedDB.deleteDatabase(DB);
-      req.onsuccess = req.onerror = req.onblocked = () => resolve();
+      req.onsuccess = req.onerror = () => {
+        setPending(false);
+        resolve();
+      };
+      // Another tab still has it open: deleted once that tab lets go; marked until then.
+      req.onblocked = () => resolve();
     } catch {
       resolve();
     }
   });
+}
+
+/** At launch: a sign-out's deletion that didn't finish is finished now. */
+export async function finishPendingAudioCleanup(): Promise<void> {
+  let pending = false;
+  try {
+    pending = localStorage.getItem(PENDING_KEY) === '1';
+  } catch {
+    pending = false;
+  }
+  if (pending) await clearDownloadedAudio();
 }
 
 async function downloadOnce(ref: string, onProgress: (fraction: number | null) => void): Promise<DownloadResult> {

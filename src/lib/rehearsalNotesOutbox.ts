@@ -81,10 +81,10 @@ export function queueNoteOp(userId: string, op: NoteOp) {
 
 /**
  * Notes the server refused for good (audit 06 #5): kept with their text so
- * the screen can say so and the words aren't lost. The newest few only.
+ * the screen can say so and the words aren't lost. All of them, until the
+ * person removes each one (their outbox entry is already gone, #296 round 3).
  */
 const REJECTED_PREFIX = 'bw:rehearsal_notes_rejected:';
-const MAX_REJECTED = 20;
 
 export function readRejected(userId: string | null | undefined): RehearsalNote[] {
   if (!userId) return [];
@@ -98,7 +98,7 @@ export function readRejected(userId: string | null | undefined): RehearsalNote[]
 
 function writeRejected(userId: string, notes: RehearsalNote[]) {
   try {
-    if (notes.length) localStorage.setItem(`${REJECTED_PREFIX}${userId}`, JSON.stringify(notes.slice(-MAX_REJECTED)));
+    if (notes.length) localStorage.setItem(`${REJECTED_PREFIX}${userId}`, JSON.stringify(notes));
     else localStorage.removeItem(`${REJECTED_PREFIX}${userId}`);
   } catch {
     /* storage blocked */

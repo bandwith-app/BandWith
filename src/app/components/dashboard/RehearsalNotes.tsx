@@ -463,42 +463,51 @@ export const RejectedNotesForUser: React.FC<{ userId?: string | null }> = ({ use
 const RejectedNotesList: React.FC<{ notes: RehearsalNote[]; onRemove: (id: string) => void; dark?: boolean }> = ({ notes: list, onRemove, dark }) => {
   const t = useT();
   const [copied, setCopied] = useState<string | null>(null);
+  /** A note the clipboard refused (none in this browser, or blocked): say so, the text stays selectable. */
+  const [copyFailed, setCopyFailed] = useState<string | null>(null);
   if (!list.length) return null;
   const pill = cn(
     'flex items-center gap-1.5 min-h-11 px-3 rounded-full bw-label-sm whitespace-nowrap border',
     dark ? 'border-white/40 text-white' : 'border-border text-foreground',
   );
+  const copy = async (id: string, text: string) => {
+    haptic.tap();
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('no clipboard');
+      await navigator.clipboard.writeText(text);
+      setCopyFailed(null);
+      setCopied(id);
+    } catch {
+      setCopied(null);
+      setCopyFailed(id);
+    }
+  };
   return (
     <section
       aria-label={t('Not saved')}
       className={cn('flex flex-col gap-2 rounded-[12px] border p-3 min-w-0', dark ? 'border-white/30 text-white' : 'border-border')}
     >
-      <span className="bw-label-sm" role="alert">
+      {/* Static text: read once as a status, not an alert (#296 round 3). */}
+      <span className="bw-label-sm" role="status">
         {t("These notes weren't saved. Copy what you need, then remove them.")}
       </span>
       <ul className="flex flex-col">
         {list.map((n) => {
           const text = rejectedText(n, t);
+          const short = text.length > 60 ? `${text.slice(0, 59)}…` : text;
           return (
             <li key={n.id} className={cn('flex flex-col gap-2 py-2 border-b last:border-b-0 min-w-0', dark ? 'border-white/15' : 'border-border')}>
               <span className="bw-body-sm whitespace-pre-wrap break-words select-text">{text}</span>
               <span className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className={pill}
-                  onClick={() => {
-                    haptic.tap();
-                    void navigator.clipboard
-                      ?.writeText(text)
-                      .then(() => setCopied(n.id))
-                      .catch(() => {});
-                  }}
-                >
+                <button type="button" className={pill} aria-label={t('Copy note: {note}', { note: short })} onClick={() => void copy(n.id, text)}>
                   {copied === n.id ? t('Copied') : t('Copy')}
                 </button>
-                <button type="button" className={pill} onClick={() => onRemove(n.id)}>
+                <button type="button" className={pill} aria-label={t('Remove note: {note}', { note: short })} onClick={() => onRemove(n.id)}>
                   {t('Remove')}
                 </button>
+              </span>
+              <span className={cn('bw-body-sm', dark ? 'text-white' : 'text-destructive')} aria-live="polite">
+                {copyFailed === n.id ? t('Couldn’t copy. Select the text and copy it yourself.') : null}
               </span>
             </li>
           );

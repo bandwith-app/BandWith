@@ -15,6 +15,14 @@
 -- started_at, so they are unaffected. To really start an occurrence again,
 -- delete its row first.
 --
+-- One move of started_at is allowed (#296 round 3): EARLIER, by this build's
+-- merge of two copies started unread on two devices (it keeps the earlier
+-- start). This build always writes summary.pauses (an array); the builds in
+-- the field never do, so their Start over a saved session stays skipped.
+-- Known limit for those builds: with a session already saved, their Start
+-- there is skipped quietly (their device shows the saved one at the next
+-- open). Rehearsal notes are not affected.
+--
 -- Same function as 131 plus that one check. No new columns, grants or
 -- policies. Idempotent.
 
@@ -30,7 +38,8 @@ BEGIN
     NEW.started_by := auth.uid();
     NEW.created_at := now();
   ELSE
-    IF NEW.started_at IS DISTINCT FROM OLD.started_at THEN
+    IF NEW.started_at IS DISTINCT FROM OLD.started_at
+       AND NOT (NEW.started_at < OLD.started_at AND COALESCE(jsonb_typeof(NEW.summary -> 'pauses') = 'array', false)) THEN
       -- Another start over a saved session: skipped, the saved one stays.
       RETURN NULL;
     END IF;

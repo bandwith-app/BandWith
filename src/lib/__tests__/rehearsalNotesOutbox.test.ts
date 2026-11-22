@@ -165,6 +165,14 @@ describe('audit 06 #5: a server error never throws a note away', () => {
     expect(readRejected(ME)).toEqual([]);
   });
 
+  it('#296 round 3: 25 notes refused together: every one is kept to copy (none pushed out)', async () => {
+    const ids = Array.from({ length: 25 }, (_, i) => `n${i}`);
+    writeOutbox(ME, ids.map((id) => ({ kind: 'save' as const, note: note(id, { body: `Note ${id}` }), before: [] })));
+    const api = apiWith(async () => ({ error: { code: '42501', message: 'denied' }, status: 403 }));
+    expect(await flushOutbox(ME, api)).toEqual({ sent: 0, dropped: 25, left: 0 });
+    expect(readRejected(ME).map((n) => n.id)).toEqual(ids);
+  });
+
   it('Claude minor: one note that keeps failing (5xx) waits on its own; the others still go, and it is tried again later', async () => {
     const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
     writeOutbox(ME, [
