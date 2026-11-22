@@ -127,6 +127,8 @@ const renderAdminGig = () =>
   render(<EventDetail event={gig} onClose={vi.fn()} onEventUpdated={vi.fn()} onToast={vi.fn()} isAdmin currentUserId="u-1" />);
 
 describe('Overview edit sheets keep unsaved changes until the admin decides', () => {
+  // The first test here renders the whole gig detail cold: under a full-suite
+  // run it can pass 5 s (seen at 5.4 s), so it gets 10 s (a known flake).
   it('edit sheet asks before discarding changes (Cancel)', async () => {
     renderAdminGig();
     const dialog = await editTitle();
@@ -137,7 +139,7 @@ describe('Overview edit sheets keep unsaved changes until the admin decides', ()
     await waitFor(() => expect(screen.queryByText('Save your changes?')).toBeNull());
     expect((within(dialog).getByLabelText('Event title') as HTMLInputElement).value).toBe('Wedding Rossi & Bianchi');
     expect(mocks.updateEvent).not.toHaveBeenCalled();
-  });
+  }, 10_000);
 
   it('edit sheet asks before discarding changes (Escape / system Back)', async () => {
     renderAdminGig();
