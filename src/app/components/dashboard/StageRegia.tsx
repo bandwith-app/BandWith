@@ -213,6 +213,8 @@ export const RegiaBar: React.FC<BarProps> = ({ regia, songs, currentIndex, canAd
   const notice =
     regia.error?.kind === 'insert'
       ? t('The song couldn’t be added to the setlist.')
+      : regia.error?.kind === 'changed'
+        ? t('The setlist changed meanwhile. Pick the song again.')
       : regia.error?.kind === 'load'
         ? `${t('“{title}” can’t be played.', { title: regia.error.title })} ${audioReasonText(regia.error.reason, t)}`
         : regia.error?.kind === 'no-audio' || (cantPlay && !shown?.audio && !nextOk)

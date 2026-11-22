@@ -33,7 +33,7 @@ vi.mock('@/lib/supabase', () => ({
   getSafeUser: async () => ({ data: { user: { id: 'user-1' } } }),
 }));
 
-import { createSetlist, replaceSetlistSongs, addSongToSetlist, saveSongLyricsIfUnchanged } from '../songs';
+import { createSetlist, replaceSetlistSongs, addSongToSetlist, saveSongLyricsIfUnchanged, setlistMatches } from '../songs';
 import { supabase } from '@/lib/supabase';
 
 const rpc = supabase.rpc as unknown as ReturnType<typeof vi.fn>;
@@ -121,8 +121,33 @@ describe('replaceSetlistSongs: only over the setlist as loaded', () => {
       return {};
     };
     const res = await replaceSetlistSongs('sl', ['b'], { name: 'Gig', expected });
-    expect(res.conflict).toEqual({ name: 'Rooftop Session', songs: [{ song_id: 'a', set_number: 1 }, { song_id: 'z', set_number: 1 }] });
+    // What is stored now, row by row (Codex r6 B6), as 188 returns it.
+    expect(res.conflict).toEqual({
+      name: 'Rooftop Session',
+      songs: [
+        { id: 'r1', song_id: 'a', set_number: 1, vocal_parts: null },
+        { id: 'r9', song_id: 'z', set_number: 1, vocal_parts: null },
+      ],
+    });
     expect(calls.filter((c) => c.op !== 'select')).toEqual([]);
+  });
+
+  // Round 7 (Codex r6 B6): like 188, an expected row id or singer that changed is a conflict.
+  it('setlistMatches: row ids and singers count when expected has them', () => {
+    const stored = { name: 'N', songs: [{ id: 'r1', song_id: 'a', set_number: 1, vocal_parts: { lead: ['u1'] } }] };
+    expect(setlistMatches(stored, { name: 'N', songs: [{ song_id: 'a', set_number: 1 }] })).toBe(true);
+    expect(setlistMatches(stored, { name: 'N', songs: [{ id: 'r1', song_id: 'a', set_number: 1 }] })).toBe(true);
+    expect(setlistMatches(stored, { name: 'N', songs: [{ id: 'r2', song_id: 'a', set_number: 1 }] })).toBe(false);
+    expect(setlistMatches(stored, { name: 'N', songs: [{ song_id: 'a', set_number: 1, vocal_parts: { lead: ['u2'] } }] })).toBe(false);
+    expect(setlistMatches(stored, { name: 'N', songs: [{ song_id: 'a', set_number: 1, vocal_parts: { lead: ['u1'] } }] })).toBe(true);
+    expect(setlistMatches({ name: 'N', songs: [{ song_id: 'a', set_number: 1, vocal_parts: {} }] }, { name: 'N', songs: [{ song_id: 'a', set_number: 1, vocal_parts: null }] })).toBe(true);
+  });
+
+  it('a save hands back the rows as saved, with the new row’s id', async () => {
+    const rows = [{ id: 'r1', song_id: 'a', set_number: 1, position: 1 }, { id: 'n1', song_id: 'b', set_number: 1, position: 2 }];
+    rpc.mockImplementation(() => Promise.resolve({ data: { saved: true, previous: [], song_count: 2, rows }, error: null }));
+    const res = await replaceSetlistSongs('sl', [{ id: 'r1', song_id: 'a' }, 'b']);
+    expect(res.rows).toEqual(rows);
   });
 });
 

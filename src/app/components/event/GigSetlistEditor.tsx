@@ -64,9 +64,11 @@ const snapshot = (sets: DraftSet[]) =>
   JSON.stringify(sets.filter((s) => s.songs.length > 0).map((s) => s.songs.map((sg) => sg.songId)));
 
 /** The setlist as stored (its own set numbers), in play order: what a save expects to find (188). */
-const loadedOrder = (songs: GigSetlistSong[]) =>
+// With each row's id: saved only over exactly these rows (188, Codex r6 B6).
+const loadedOrder = (songs: GigSetlistSong[]): { song_id: string; set_number: number; id?: string }[] =>
   setsFromGigSongs(songs).flatMap((s) =>
     s.songs.map((sg) => ({
+      ...(typeof sg.source?.id === 'string' && sg.source.id ? { id: sg.source.id } : {}),
       song_id: sg.songId,
       set_number: typeof sg.source?.setNumber === 'number' && sg.source.setNumber >= 1 ? Math.floor(sg.source.setNumber) : 1,
     }))
@@ -116,7 +118,7 @@ export function useGigSetlistDraft(opts: {
   // while the setlist is still that, never over someone else's newer one.
   const draftRef = useRef<DraftSet[] | null>(null);
   draftRef.current = draft;
-  const baseRef = useRef<{ song_id: string; set_number: number }[] | null>(null);
+  const baseRef = useRef<{ song_id: string; set_number: number; id?: string }[] | null>(null);
 
   const update = useCallback(
     (fn: (prev: DraftSet[]) => DraftSet[]) => {

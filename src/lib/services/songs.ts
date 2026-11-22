@@ -653,22 +653,59 @@ type PreviousSetlistRow = { song_id: string; set_number: number | null; position
 /**
  * A setlist as an editor loaded it: its name and its songs in play order.
  * A save that carries it is written only while the setlist is still that
- * (188); otherwise it returns what is stored now as `conflict`.
+ * (188); otherwise it returns what is stored now as `conflict`. A song with
+ * `id` checks that row is still in that place (the same song twice swapped
+ * is a change); with `vocal_parts`, that who sings it is unchanged.
  */
-export type SetlistState = { name: string; songs: { song_id: string; set_number: number }[] };
+export type SetlistStateSong = { song_id: string; set_number: number; id?: string; vocal_parts?: unknown };
+export type SetlistState = { name: string; songs: SetlistStateSong[] };
 
-/** Stored rows → their running order, as SetlistState has it. */
-export const setlistOrder = (rows: { id?: string; song_id: string; position: number; set_number?: number | null }[]) =>
+/** A setlist's rows as a save left them, in play order (188 `rows`). */
+export type SavedSetlistRow = { id: string; song_id: string; set_number: number; position: number };
+
+/**
+ * Stored rows → their running order, as SetlistState has it: each with its
+ * row id, and who sings it when `withVoices` (rows read with vocal_parts).
+ */
+export const setlistOrder = (
+  rows: { id?: string; song_id: string; position: number; set_number?: number | null; vocal_parts?: unknown }[],
+  opts?: { withVoices?: boolean }
+): SetlistStateSong[] =>
   [...rows]
     .sort((a, b) => (a.set_number ?? 1) - (b.set_number ?? 1) || a.position - b.position || String(a.id ?? '').localeCompare(String(b.id ?? '')))
-    .map((r) => ({ song_id: r.song_id, set_number: r.set_number ?? 1 }));
+    .map((r) => ({
+      ...(r.id ? { id: r.id } : {}),
+      song_id: r.song_id,
+      set_number: r.set_number ?? 1,
+      ...(opts?.withVoices ? { vocal_parts: r.vocal_parts ?? null } : {}),
+    }));
 
 type SetlistExpected = SetlistState | Pick<SetlistState, 'songs'>;
 
-const sameSetlist = (a: SetlistState, b: SetlistState) =>
-  a.name === b.name &&
-  a.songs.length === b.songs.length &&
-  a.songs.every((x, i) => x.song_id === b.songs[i].song_id && (x.set_number ?? 1) === (b.songs[i].set_number ?? 1));
+// Who sings what, compared like 188: {} and null are the same, key order doesn't count.
+const voicesKey = (v: unknown): string => {
+  if (v == null || (typeof v === 'object' && !Array.isArray(v) && Object.keys(v as object).length === 0)) return 'null';
+  if (Array.isArray(v)) return `[${v.map(voicesKey).join(',')}]`;
+  if (typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${voicesKey(o[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(v);
+};
+
+/** `stored` is still what `expected` was, checked like 188 (ids and singers when expected has them). */
+export const setlistMatches = (stored: SetlistState, expected: SetlistState) =>
+  stored.name === expected.name &&
+  stored.songs.length === expected.songs.length &&
+  expected.songs.every((x, i) => {
+    const s = stored.songs[i];
+    return (
+      x.song_id === s.song_id &&
+      (x.set_number ?? 1) === (s.set_number ?? 1) &&
+      (!x.id || x.id === s.id) &&
+      (!('vocal_parts' in x) || voicesKey(x.vocal_parts) === voicesKey(s.vocal_parts))
+    );
+  });
 
 /** The function from 188 isn't on the server yet (older database). */
 const isMissingFunction = (e: unknown) => {
@@ -707,7 +744,7 @@ export const replaceSetlistSongs = async (
   songs: SetlistSongInput[],
   /** expected without a name: only the songs are checked (a Stage order). */
   opts?: { name?: string; expected?: SetlistExpected }
-): Promise<{ error: Error | null; previous?: PreviousSetlistRow[]; conflict?: SetlistState }> => {
+): Promise<{ error: Error | null; previous?: PreviousSetlistRow[]; conflict?: SetlistState; rows?: SavedSetlistRow[] }> => {
   const entries = songs.map(setlistEntry);
   const name = opts?.name?.trim() || null;
   const expected = opts?.expected;
@@ -719,9 +756,13 @@ export const replaceSetlistSongs = async (
       ...(expected ? { p_expected: expected } : {}),
     });
     if (!res?.error) {
-      const out = (res?.data ?? {}) as { previous?: PreviousSetlistRow[]; conflict?: boolean; current?: SetlistState };
+      const out = (res?.data ?? {}) as { previous?: PreviousSetlistRow[]; conflict?: boolean; current?: SetlistState; rows?: SavedSetlistRow[] };
       if (out.conflict && out.current) return { error: null, conflict: out.current };
-      return { error: null, previous: Array.isArray(out.previous) ? out.previous : [] };
+      return {
+        error: null,
+        previous: Array.isArray(out.previous) ? out.previous : [],
+        ...(Array.isArray(out.rows) ? { rows: out.rows } : {}),
+      };
     }
     if (!isMissingFunction(res.error)) return { error: res.error as unknown as Error };
   } catch (error: any) {
@@ -743,7 +784,7 @@ const replaceSetlistSongsStepwise = async (
   entries: ReturnType<typeof setlistEntry>[],
   name: string | null = null,
   expected?: SetlistExpected
-): Promise<{ error: Error | null; previous?: PreviousSetlistRow[]; conflict?: SetlistState }> => {
+): Promise<{ error: Error | null; previous?: PreviousSetlistRow[]; conflict?: SetlistState; rows?: SavedSetlistRow[] }> => {
   try {
     // Read the current rows first so a failed insert can be undone. Every
     // column, so a database with 172 hands back vocal_parts and one without
@@ -772,8 +813,8 @@ const replaceSetlistSongsStepwise = async (
     if (expected) {
       const { data: head, error: headError } = await supabase.from('setlists').select('name').eq('id', setlistId).single();
       if (headError) throw headError;
-      const current: SetlistState = { name: (head as { name?: string } | null)?.name ?? '', songs: setlistOrder(previousRows) };
-      if (!sameSetlist(current, { name: current.name, ...expected })) return { error: null, conflict: current };
+      const current: SetlistState = { name: (head as { name?: string } | null)?.name ?? '', songs: setlistOrder(previousRows, { withVoices: true }) };
+      if (!setlistMatches(current, { name: current.name, ...expected })) return { error: null, conflict: current };
     }
     const hasVoices = previousRows.some((r) => 'vocal_parts' in r);
     // An entry naming its row keeps it (like 188); the rest match by song.
@@ -807,6 +848,7 @@ const replaceSetlistSongsStepwise = async (
         return r.id === o.id && r.position === o.position && r.set_number === (o.set_number ?? 1) && r.notes === (o.notes ?? null);
       });
 
+    let inserted: { id?: string }[] | null = null;
     if (!unchanged) {
       const { error: deleteError } = await supabase
         .from('setlist_songs')
@@ -817,9 +859,11 @@ const replaceSetlistSongsStepwise = async (
 
       if (rows.length > 0) {
         // New rows (no id) take the column defaults, not null.
-        const { error: insertError } = await supabase
+        const { data: added, error: insertError } = await supabase
           .from('setlist_songs')
-          .insert(rows, { defaultToNull: false });
+          .insert(rows, { defaultToNull: false })
+          .select('id');
+        inserted = Array.isArray(added) ? (added as { id?: string }[]) : null;
 
         if (insertError) {
           if (previousRows.length > 0) {
@@ -845,7 +889,14 @@ const replaceSetlistSongsStepwise = async (
     // What was there before, in play order: callers sum up the change (setlistChanges.ts).
     const before = ordered
       .map(({ song_id, set_number, position }) => ({ song_id, set_number, position }));
-    return { error: null, previous: before };
+    // The rows as saved, new ones with their new ids (inserted in this order).
+    const saved = rows.map((r, i) => ({
+      id: (r as { id?: string }).id ?? (inserted?.[i]?.id as string),
+      song_id: r.song_id,
+      set_number: r.set_number,
+      position: r.position,
+    }));
+    return { error: null, previous: before, ...(saved.every((r) => !!r.id) ? { rows: saved } : {}) };
   } catch (error: any) {
     return { error };
   }
@@ -885,18 +936,23 @@ export const saveSetlistOrder = async (
 export const saveStageOrder = async (
   setlistId: string,
   rows: { id: string; song_id: string; set_number: number }[],
-  saved: { songId: string; setNumber?: number }[]
+  /** With `id`: that row must still be in that place (188 checks row ids). */
+  saved: { songId: string; setNumber?: number; id?: string }[]
 ): Promise<{ error: Error | null }> => {
   const res = await replaceSetlistSongs(
     setlistId,
     rows.map((r) => ({ id: r.id, song_id: r.song_id, set_number: r.set_number })),
-    { expected: { songs: saved.map((s) => ({ song_id: s.songId, set_number: s.setNumber ?? 1 })) } }
+    { expected: { songs: saved.map((s) => ({ ...(s.id ? { id: s.id } : {}), song_id: s.songId, set_number: s.setNumber ?? 1 })) } }
   );
   if (res.error) return { error: res.error };
   if (!res.conflict) return { error: null };
   // Changed meanwhile into exactly this order (sent before, its answer lost): saved.
-  const key = (x: { song_id: string; set_number?: number | null }) => `${x.song_id}:${x.set_number ?? 1}`;
-  if (res.conflict.songs.map(key).join(',') === rows.map(key).join(',')) return { error: null };
+  const now = res.conflict.songs;
+  if (
+    now.length === rows.length &&
+    rows.every((r, i) => r.song_id === now[i].song_id && r.set_number === (now[i].set_number ?? 1) && (!now[i].id || now[i].id === r.id))
+  )
+    return { error: null };
   return { error: Object.assign(new Error('The setlist changed meanwhile.'), { code: 'BW_SETLIST_CONFLICT' }) };
 };
 

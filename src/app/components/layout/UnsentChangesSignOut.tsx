@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { BwSheet } from '@/app/components/bw/Screen';
 import { FormError, PillButton } from '@/app/components/bw/Form';
 import {
-  discardRefusedChanges,
   LIVE_REFUSED_EVENT,
   refusedChanges,
   readRefusedLiveOps,
@@ -131,9 +130,9 @@ export const UnsentChangesSignOut: React.FC = () => {
     const chat = await readChatOutboxCount(ask.userId);
     setMessages(chat);
     const left = waitingChanges(ask.userId);
-    // Nothing left to ask about: the sign-out goes on.
-    if (left + chat + refusedChanges(ask.userId) === 0) done('signout');
-    else if (left + chat === 0) setRefusedOnly(true);
+    // Back to the sheet, never signed out unseen: "Sign out" is the person's tap.
+    setCount(left);
+    if (left + chat === 0) setRefusedOnly(true);
   };
   const refusedTextRef = useRef(refusedText);
   refusedTextRef.current = refusedText;
@@ -147,12 +146,18 @@ export const UnsentChangesSignOut: React.FC = () => {
     if (!ask) return;
     let live = true;
     const update = async () => {
-      if (sendingRef.current || refusedOnlyRef.current) return;
+      if (sendingRef.current) return;
       const chat = await readChatOutboxCount(ask.userId);
       if (!live || sendingRef.current) return;
       const left = waitingChanges(ask.userId);
       setCount(left);
       setMessages(chat);
+      // Only refused ones when it opened: a change queued meanwhile (another
+      // tab) shows, with "Send now"; nothing signs out on its own from here.
+      if (refusedOnlyRef.current) {
+        if (left > 0 || chat > 0) setRefusedOnly(false);
+        return;
+      }
       if (left > 0 || chat > 0) return;
       const refused = refusedChanges(ask.userId) - refusedAtAsk.current;
       const notes = refusedRehearsalNotes(ask.userId) - notesAtAsk.current;
@@ -222,7 +227,9 @@ export const UnsentChangesSignOut: React.FC = () => {
               ? t('You have 1 unsent message')
               : messages > 1
                 ? t('You have {n} unsent messages', { n: messages })
-                : t('Some changes were refused')
+                : refusedNow > 0
+                  ? t('Some changes were refused')
+                  : t('Nothing is waiting any more')
       }
       tone="light"
       // Above every screen, the "Update BandWith" one (z 1000) included: it signs out too.
@@ -233,12 +240,12 @@ export const UnsentChangesSignOut: React.FC = () => {
           <div className="flex flex-col gap-2">
             <PillButton onClick={() => done('signout')}>{t('Sign out')}</PillButton>
             {/* Not from the lock screen: whoever holds the phone can't erase them. */}
-            {!locked && (
+            {!locked && refusedNow > 0 && (
               <PillButton
                 variant="outline"
                 onClick={() => {
-                  if (ask) discardRefusedChanges(ask.userId);
-                  done('signout');
+                  // Erased by AuthContext once the session check passed.
+                  done('erase');
                 }}
               >
                 {t('Erase them and sign out')}
@@ -248,7 +255,8 @@ export const UnsentChangesSignOut: React.FC = () => {
         ) : locked ? (
           <div className="flex flex-col gap-2">
             <PillButton onClick={() => done('cancel')}>{t('Unlock to send')}</PillButton>
-            <PillButton variant="outline" onClick={() => done('signout')}>
+            {/* The wipe would delete what waits: kept as refused instead (AuthContext). */}
+            <PillButton variant="outline" onClick={() => done(copy?.queued === QUEUED_KEPT ? 'signout' : 'keep-queued')}>
               {t('Sign out')}
             </PillButton>
           </div>
@@ -270,7 +278,9 @@ export const UnsentChangesSignOut: React.FC = () => {
         <p className="bw-body-md text-muted-foreground">
           {copy?.queued === QUEUED_KEPT
             ? t('Notes, suggestions or a setlist order made on this phone haven’t reached the band yet. “Sign out anyway” keeps them on this phone, and they’re sent when you sign in again.')
-            : t('Notes, suggestions or a setlist order made on this phone haven’t reached the band yet. Send them before you sign out: “Sign out anyway” deletes them from this phone.')}
+            : locked
+              ? t('Notes, suggestions or a setlist order made on this phone haven’t reached the band yet. “Sign out” keeps them on this phone for your account, with the refused changes.')
+              : t('Notes, suggestions or a setlist order made on this phone haven’t reached the band yet. Send them before you sign out: “Sign out anyway” deletes them from this phone.')}
         </p>
       )}
       {messages > 0 && (
@@ -285,8 +295,11 @@ export const UnsentChangesSignOut: React.FC = () => {
           {orphans.map(({ entry, gone }) => (
             <li key={entry.clientId} className="flex items-start gap-3 rounded-xl border border-border p-3">
               <div className="min-w-0 flex-1">
-                <p className="bw-body-md line-clamp-2 break-words">{entry.body}</p>
-                <p className="bw-body-sm text-muted-foreground">{gone ? t('Not sent: this chat is no longer available.') : t('Message not sent')}</p>
+                {/* Locked: whoever holds the phone sees no message text, only what it is. */}
+                {!locked && <p className="bw-body-md line-clamp-2 break-words">{entry.body}</p>}
+                <p className={locked ? 'bw-body-md' : 'bw-body-sm text-muted-foreground'}>
+                  {gone ? t('Not sent: this chat is no longer available.') : t('Message not sent')}
+                </p>
               </div>
               {!locked && (
                 <PillButton

@@ -23,10 +23,12 @@ vi.mock('@/lib/supabase', () => {
         return b;
       },
       // bw_save_setlist_songs (188): written only while the setlist is still `p_expected`.
-      rpc: vi.fn(async (_fn: string, args: { p_songs: { id?: string; song_id: string; set_number: number }[]; p_expected?: { songs: { song_id: string; set_number: number }[] } }) => {
+      // Per place: song and set, and the row when the entry names it (188).
+      rpc: vi.fn(async (_fn: string, args: { p_songs: { id?: string; song_id: string; set_number: number }[]; p_expected?: { songs: { id?: string; song_id: string; set_number: number }[] } }) => {
         db.rpcs.push(args);
-        const now = order(db.rows).map((r) => ({ song_id: r.song_id, set_number: r.set_number }));
-        if (args.p_expected && JSON.stringify(args.p_expected.songs) !== JSON.stringify(now)) {
+        const now = order(db.rows).map((r) => ({ id: r.id, song_id: r.song_id, set_number: r.set_number }));
+        const want = args.p_expected?.songs;
+        if (want && (want.length !== now.length || want.some((w, i) => w.song_id !== now[i].song_id || w.set_number !== now[i].set_number || (!!w.id && w.id !== now[i].id)))) {
           return { data: { saved: false, conflict: true, current: { name: 'Brooklyn', songs: now } }, error: null };
         }
         db.rows = args.p_songs.map((s, i) => ({ id: s.id ?? `new-${i}`, song_id: s.song_id, position: i + 1, set_number: s.set_number }));
@@ -73,5 +75,20 @@ describe('Stage mode: the leader reorders online', () => {
     await waitFor(() => expect(result.current.saveState).toBe('saved'), { timeout: 3000 });
     expect(db.upserts).toBe(0);
     expect(db.rows.map((r) => r.id)).toEqual(['r3', 'r1', 'r2']);
+  });
+
+  // Round 7 (Codex r6 B6): the order it was made on is checked row by row:
+  // the same songs in the same places but other rows (moved meanwhile) is a change.
+  it('rows moved meanwhile (same songs, other rows): nothing is written', async () => {
+    const { result } = renderHook(() => useStageLive({ setlistId: 'sl', songs, open: false, isLeader: true }));
+    db.rows = [
+      { id: 'r2', song_id: 'a', position: 1, set_number: 1 },
+      { id: 'r1', song_id: 'b', position: 2, set_number: 1 },
+      { id: 'r3', song_id: 'c', position: 3, set_number: 1 },
+    ];
+    act(() => result.current.move(2, 0));
+    await waitFor(() => expect(result.current.saveState).toBe('error'), { timeout: 3000 });
+    expect(db.rows.map((r) => r.id)).toEqual(['r2', 'r1', 'r3']);
+    expect(db.rpcs[0]).toMatchObject({ p_expected: { songs: [{ id: 'r1' }, { id: 'r2' }, { id: 'r3' }] } });
   });
 });

@@ -1125,7 +1125,8 @@ export const StageMode: React.FC<StageModeProps> = ({
           inSetlist={inSetlist}
           onPick={(song) => {
             setExtraOpen(false);
-            void regia!.playExtra(song);
+            // Changed meanwhile: the picker opens again on the latest setlist.
+            void regia!.playExtra(song).then((r) => { if (r === 'changed') setExtraOpen(true); });
           }}
           onClose={() => setExtraOpen(false)}
           accent={accentColor}

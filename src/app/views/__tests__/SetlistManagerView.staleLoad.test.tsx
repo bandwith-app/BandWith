@@ -102,7 +102,7 @@ describe('SetlistManagerView: a slow load never lands on another setlist', () =>
     expect(svc.replaceSetlistSongs).toHaveBeenCalledWith('sl-a', [{ id: 'row-sl-a', song_id: 'song-a', set_number: 1 }], {
       name: 'Rooftop Session · Saturday',
       // Saved only over what the second load showed.
-      expected: { name: 'Rooftop Session', songs: [{ song_id: 'song-a', set_number: 1 }] },
+      expected: { name: 'Rooftop Session', songs: [{ id: 'row-sl-a', song_id: 'song-a', set_number: 1, vocal_parts: null }] },
     });
   });
 });

@@ -133,6 +133,44 @@ describe('offline event extras', () => {
     expect(told).toContainEqual(expect.objectContaining({ userId: 'u-1', kind: 'gigSetlist' }));
   });
 
+  // Round 7 (Codex r6 B4): the refused list is full: the setlist is never
+  // dropped. The answer says it waits (the queue keeps it) and the app is told.
+  it('a conflict with the refused list full: nothing dropped, it waits, the app is told', async () => {
+    mocks.eventSetlistId = 'sl-old';
+    mocks.replaceSetlistSongs.mockResolvedValue({ error: null, conflict: { name: 'Other', songs: [] } });
+    const { keepRefused, REFUSED_LIMIT } = await import('@/lib/liveOutbox');
+    for (let i = 0; i < REFUSED_LIMIT; i++) keepRefused('u-1', { kind: 'gigSetlist', eventId: `e${i}`, setlistId: 's', songs: [], reason: 'changed' });
+    const told: unknown[] = [];
+    const listen = (e: Event) => told.push((e as CustomEvent).detail);
+    window.addEventListener('bw:live-refused', listen);
+    const failed = await replayEventExtras('e1', { setlist: { ...setlist, loaded: { id: 'sl-old', songs: [] } } }, 'u-1');
+    window.removeEventListener('bw:live-refused', listen);
+    expect(failed).toContain('setlist-waiting');
+    expect(readRefusedLiveOps('u-1')).toHaveLength(REFUSED_LIMIT);
+    expect(told).toContainEqual(expect.objectContaining({ userId: 'u-1', kind: 'gigSetlist', full: true }));
+  });
+
+  // Round 7 (Codex r6 B5): filed under the account that made the change (the
+  // queue's owner), never under whoever is signed in now.
+  it('a refused setlist goes to the queue owner’s list, not the account signed in now', async () => {
+    mocks.eventSetlistId = 'sl-old';
+    mocks.session = 'u-2';
+    mocks.replaceSetlistSongs.mockResolvedValue({ error: null, conflict: { name: 'Other', songs: [] } });
+    await replayEventExtras('e1', { setlist: { ...setlist, loaded: { id: 'sl-old', songs: [] } } }, 'u-1');
+    expect(readRefusedLiveOps('u-1')).toHaveLength(1);
+    expect(readRefusedLiveOps('u-2')).toHaveLength(0);
+  });
+
+  // Round 7 (Codex r6 B3): the gig had no setlist when the wizard opened, and
+  // has one now (someone else's): a conflict, nothing written over it.
+  it('no setlist when opened, one now: nothing written, a conflict', async () => {
+    mocks.eventSetlistId = 'sl-theirs';
+    const failed = await replayEventExtras('e1', { setlist: { ...setlist, loaded: { id: null, songs: [] } } }, 'u-1');
+    expect(mocks.replaceSetlistSongs).not.toHaveBeenCalled();
+    expect(failed).toContain('setlist');
+    expect(readRefusedLiveOps('u-1')[0]).toMatchObject({ kind: 'gigSetlist', eventId: 'e1', setlistId: 'sl-theirs' });
+  });
+
   it('saves to-dos, the lineup and the stage, and reports what failed', async () => {
     mocks.existingMembers = [{ user_id: 'gone', status: 'confirmed' }];
     mocks.syncEventTasks.mockResolvedValue({ error: new Error('rls') });

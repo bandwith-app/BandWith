@@ -17,7 +17,7 @@ process.on('unhandledRejection', (e) => { console.log('ERROR', e.message); proce
 let fails = 0;
 const ok = (cond, msg) => { if (!cond) { fails++; console.log('FAIL', msg); } else console.log('ok  ', msg); };
 const id = (n) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
-const [BAND, OTHER_BAND, ADMIN, MEMBER, STRANGER] = [1, 2, 3, 4, 5].map(id);
+const [BAND, OTHER_BAND, ADMIN, MEMBER, STRANGER, ADMIN2] = [1, 2, 3, 4, 5, 6].map(id);
 const SL = id(10);
 const [S1, S2, S3, S4, FOREIGN] = [21, 22, 23, 24, 29].map(id);
 const [R1, R2, R3] = [31, 32, 33].map(id);
@@ -54,6 +54,9 @@ CREATE POLICY setlist_songs_select ON public.setlist_songs FOR SELECT TO authent
   USING (EXISTS (SELECT 1 FROM public.setlists s WHERE s.id = setlist_songs.setlist_id AND public.bw_is_band_member(s.band_id)));
 CREATE POLICY setlist_songs_insert ON public.setlist_songs FOR INSERT TO authenticated
   WITH CHECK (EXISTS (SELECT 1 FROM public.setlists s WHERE s.id = setlist_songs.setlist_id AND public.bw_is_band_admin(s.band_id)));
+CREATE POLICY setlist_songs_update ON public.setlist_songs FOR UPDATE TO authenticated
+  USING (EXISTS (SELECT 1 FROM public.setlists s WHERE s.id = setlist_songs.setlist_id AND public.bw_is_band_admin(s.band_id)))
+  WITH CHECK (EXISTS (SELECT 1 FROM public.setlists s WHERE s.id = setlist_songs.setlist_id AND public.bw_is_band_admin(s.band_id)));
 CREATE POLICY setlist_songs_delete ON public.setlist_songs FOR DELETE TO authenticated
   USING (EXISTS (SELECT 1 FROM public.setlists s WHERE s.id = setlist_songs.setlist_id AND public.bw_is_band_admin(s.band_id)));
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.setlists, public.setlist_songs TO authenticated;
@@ -71,7 +74,7 @@ BEGIN
 END $f$;
 CREATE TRIGGER t_fail BEFORE INSERT ON public.setlist_songs FOR EACH ROW EXECUTE FUNCTION public.t_fail();
 
-INSERT INTO band_members VALUES ('${BAND}','${ADMIN}','admin',true), ('${BAND}','${MEMBER}','member',true);
+INSERT INTO band_members VALUES ('${BAND}','${ADMIN}','admin',true), ('${BAND}','${MEMBER}','member',true), ('${BAND}','${ADMIN2}','admin',true);
 INSERT INTO songs VALUES ('${S1}','${BAND}','Empire State of Mind'), ('${S2}','${BAND}','New York, New York'),
   ('${S3}','${BAND}','Brooklyn Bridge'), ('${S4}','${BAND}','Harlem Nocturne'), ('${FOREIGN}','${OTHER_BAND}','Not ours');
 `);
@@ -313,6 +316,98 @@ await db.exec(`ALTER TABLE public.setlist_songs DROP CONSTRAINT t_pos_unique`);
   const odd = await save(ADMIN, [{ id: FOREIGN, song_id: S1 }, { song_id: S2 }, { song_id: S3, set_number: 2 }, { song_id: S1, set_number: 2 }]);
   const after2 = await rows();
   ok(!odd?.error && after2.map((r) => r.id).join() === [R4, R2, R3, R1].join(), `an unknown id is ignored, the song matches its row (${odd?.error ?? after2.map((r) => r.id).join()})`);
+}
+
+// Round 7 (Codex r6 B6): the conflict check compares rows, not only songs:
+// the same song twice swapped (row ids), or who sings it changed, is a
+// change. Expected entries without id / vocal_parts are checked as before.
+{
+  await seed();
+  const R4 = id(35);
+  await db.exec(`INSERT INTO setlist_songs (id, setlist_id, song_id, position, set_number, vocal_parts) VALUES ('${R4}','${SL}','${S1}',4,2,'{"lead":["${ADMIN}"]}')`);
+  const saveExp = (user, songs, expected) =>
+    asCommit(user, () => db.query(`SELECT public.bw_save_setlist_songs($1, $2::jsonb, NULL, $3::jsonb) AS r`, [SL, JSON.stringify(songs), JSON.stringify(expected)]))
+      .then((r) => r.rows[0].r, (e) => ({ error: e.message }));
+  const loadedRows = (await rows()).map((r) => ({ id: r.id, song_id: r.song_id, set_number: r.set_number, vocal_parts: r.vocal_parts }));
+  // Admin B swaps the two performances of S1 (by row id): same songs, same sets.
+  await save(ADMIN2, [{ id: R4, song_id: S1, set_number: 1 }, { id: R2, song_id: S2 }, { id: R3, song_id: S3, set_number: 2 }, { id: R1, song_id: S1, set_number: 2 }]);
+  const plain = loadedRows.map(({ song_id, set_number }) => ({ song_id, set_number }));
+  const swapped = await saveExp(ADMIN, [{ song_id: S2 }, { song_id: S1 }], { songs: loadedRows });
+  ok(swapped?.conflict === true && (await rows()).length === 4, `two performances of a song swapped meanwhile is a conflict (${JSON.stringify(swapped)?.slice(0, 60)})`);
+  ok(Array.isArray(swapped?.current?.songs) && swapped.current.songs[0]?.id === R4, 'the conflict carries the rows (ids) stored now');
+  // Who sings it changed meanwhile.
+  await seed();
+  await db.exec(`INSERT INTO setlist_songs (id, setlist_id, song_id, position, set_number, vocal_parts) VALUES ('${R4}','${SL}','${S1}',4,2,'{"lead":["${ADMIN}"]}')`);
+  const loaded2 = (await rows()).map((r) => ({ id: r.id, song_id: r.song_id, set_number: r.set_number, vocal_parts: r.vocal_parts }));
+  await asCommit(ADMIN2, () => db.query(`UPDATE setlist_songs SET vocal_parts = '{"lead":["${MEMBER}"]}' WHERE id = $1`, [R4]));
+  const sung = await saveExp(ADMIN, [{ song_id: S2 }], { songs: loaded2 });
+  ok(sung?.conflict === true, 'who sings a song changed meanwhile is a conflict');
+  // The old shape (songs and sets only) still checks as before.
+  const old = await saveExp(ADMIN, [{ id: R1, song_id: S1 }, { id: R2, song_id: S2 }, { id: R3, song_id: S3, set_number: 2 }, { id: R4, song_id: S1, set_number: 2 }], { songs: plain });
+  ok(!old?.error && old?.saved === true, `expected without ids is checked by song and set, as before (${old?.error ?? JSON.stringify(old)?.slice(0, 60)})`);
+  const same = await saveExp(ADMIN, [{ id: R1, song_id: S1 }, { id: R2, song_id: S2 }, { id: R3, song_id: S3, set_number: 2 }, { id: R4, song_id: S1, set_number: 2 }],
+    { songs: (await rows()).map((r) => ({ id: r.id, song_id: r.song_id, set_number: r.set_number, vocal_parts: r.vocal_parts })) });
+  ok(!same?.error && same?.saved === true, 'expected with the same rows and singers saves');
+}
+
+// Round 7 (Claude r6 Regia): a save returns the rows in play order with
+// their ids, new rows included (the Regia jumps to the song it added).
+{
+  await seed();
+  const res = await save(ADMIN, [{ id: R1, song_id: S1 }, { song_id: S4 }, { id: R2, song_id: S2 }, { id: R3, song_id: S3, set_number: 2 }]);
+  const now = await rows();
+  ok(Array.isArray(res?.rows) && res.rows.map((r) => r.id).join() === now.map((r) => r.id).join(), `the save returns the rows with their ids (${JSON.stringify(res?.rows)?.slice(0, 60)})`);
+  ok(res?.rows?.[1]?.song_id === S4 && res.rows[1].id && ![R1, R2, R3].includes(res.rows[1].id), 'the new row’s id is among them, in its place');
+}
+
+// Round 7 (main): an old build's Stage order (383f15b: upsert onConflict id)
+// can't bring back a row another admin deleted. Deleted ids are remembered
+// (tombstones) and an insert with one is skipped; an upsert on a live id is
+// an update and goes through. The deleting admin putting the rows back right
+// away (an old build's failed save restoring them) still works.
+{
+  await seed();
+  // Admin B removes S2 (row R2) with a save; the old phone still shows it.
+  await save(ADMIN2, [{ id: R1, song_id: S1 }, { id: R3, song_id: S3, set_number: 2 }]);
+  const upsert383 = (user, list) =>
+    asCommit(user, () =>
+      db.query(
+        `INSERT INTO setlist_songs (id, setlist_id, song_id, position, set_number)
+         SELECT x.id, x.setlist_id, x.song_id, x.position, x.set_number
+           FROM jsonb_to_recordset($1::jsonb) AS x(id uuid, setlist_id uuid, song_id uuid, position int, set_number int)
+         ON CONFLICT (id) DO UPDATE SET setlist_id = EXCLUDED.setlist_id, song_id = EXCLUDED.song_id,
+                                       position = EXCLUDED.position, set_number = EXCLUDED.set_number
+         RETURNING id`,
+        [JSON.stringify(list)],
+      ),
+    ).then((r) => r.rows, (e) => ({ error: e.message }));
+  const back = await upsert383(ADMIN, [
+    { id: R3, setlist_id: SL, song_id: S3, position: 1, set_number: 1 },
+    { id: R2, setlist_id: SL, song_id: S2, position: 2, set_number: 1 },
+    { id: R1, setlist_id: SL, song_id: S1, position: 3, set_number: 1 },
+  ]);
+  const afterOld = await rows();
+  ok(!back?.error && !afterOld.some((r) => r.id === R2), `an old build's upsert doesn't bring back a deleted row (${back?.error ?? afterOld.map((r) => r.id).join()})`);
+  ok(afterOld.map((r) => r.id).join() === [R3, R1].join() && Array.isArray(back) && back.length === 2, 'the live rows are updated (the upsert of a live id is an update), 2 of 3 returned');
+  // Deleted by a plain DELETE too (older builds' editor).
+  await seed();
+  await asCommit(ADMIN2, () => db.query(`DELETE FROM setlist_songs WHERE id = $1`, [R3]));
+  const back2 = await upsert383(ADMIN, [{ id: R3, setlist_id: SL, song_id: S3, position: 3, set_number: 2 }]);
+  ok(!back2?.error && !(await rows()).some((r) => r.id === R3), 'a row deleted by a plain DELETE is not brought back either');
+  // Older builds' failed save: the same admin puts the rows back right away.
+  await seed();
+  await asCommit(ADMIN, async () => {
+    await db.query(`DELETE FROM setlist_songs WHERE setlist_id = $1`, [SL]);
+    await db.query(`INSERT INTO setlist_songs (id, setlist_id, song_id, position, set_number) VALUES ($2,$1,$3,1,1),($4,$1,$5,2,1),($6,$1,$7,3,2)`, [SL, R1, S1, R2, S2, R3, S3]);
+  });
+  ok((await rows()).map((r) => r.id).join() === [R1, R2, R3].join(), 'the deleting admin restoring the rows at once (old build) still works');
+  // The tombstones: nobody reads or writes them directly; older than 30 days are pruned.
+  const priv = (await db.query(`SELECT has_table_privilege('authenticated', 'public.setlist_song_tombstones', 'SELECT') OR has_table_privilege('authenticated', 'public.setlist_song_tombstones', 'INSERT') OR has_table_privilege('anon', 'public.setlist_song_tombstones', 'SELECT') AS x`)).rows[0].x;
+  ok(priv === false, 'no grants on the tombstones (definer and triggers only)');
+  await db.exec(`INSERT INTO public.setlist_song_tombstones (id, setlist_id, deleted_at) VALUES ('${id(77)}','${SL}', now() - interval '31 days') ON CONFLICT DO NOTHING`);
+  await asCommit(ADMIN, () => db.query(`DELETE FROM setlist_songs WHERE id = $1`, [R2]));
+  const old31 = (await db.query(`SELECT count(*)::int AS n FROM public.setlist_song_tombstones WHERE id = $1`, [id(77)])).rows[0].n;
+  ok(old31 === 0, 'tombstones older than 30 days are pruned');
 }
 
 // Older builds: their own delete + insert keeps working for admins, not for members.

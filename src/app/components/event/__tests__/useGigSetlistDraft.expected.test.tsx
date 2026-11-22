@@ -38,8 +38,9 @@ describe('useGigSetlistDraft save', () => {
     expect(rows).toEqual([
       { song_id: 'B', set_number: 1 }, { song_id: 'A', set_number: 1 }, { song_id: 'A', set_number: 2 },
     ]);
+    // Row by row (188 checks the row ids, Codex r6 B6).
     expect(opts).toEqual({ expected: { songs: [
-      { song_id: 'A', set_number: 1 }, { song_id: 'B', set_number: 1 }, { song_id: 'A', set_number: 3 },
+      { id: 'r1', song_id: 'A', set_number: 1 }, { id: 'r2', song_id: 'B', set_number: 1 }, { id: 'r3', song_id: 'A', set_number: 3 },
     ] } });
   });
 

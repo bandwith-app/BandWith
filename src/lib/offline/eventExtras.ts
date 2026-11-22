@@ -11,7 +11,7 @@
 import { supabase } from '@/lib/supabase';
 import { createSetlist } from '@/lib/services/songs';
 import { saveExistingGigSetlist, SetlistConflictError, type LoadedGigSetlist } from '@/lib/services/gigSetlistSave';
-import { keepRefused } from '@/lib/liveOutbox';
+import { keepRefused, LIVE_REFUSED_EVENT } from '@/lib/liveOutbox';
 import { sessionUserId } from '@/lib/sessionUser';
 import { syncEventTasks, type EventTaskDraft } from '@/lib/services/eventTasks';
 import { saveEventLineup, type LineupRow } from '@/lib/services/eventMemberMoney';
@@ -58,7 +58,18 @@ export const lineupDiff = (
   };
 };
 
-const saveSetlist = async (eventId: string, setlist: QueuedSetlist): Promise<void> => {
+/**
+ * replayEventExtras' answer when a refused setlist found no room in the
+ * refused list (full, or no account to file it under): it is not dropped.
+ * The queue keeps it (only the setlist) and tries again later.
+ */
+export const SETLIST_WAITING = 'setlist-waiting';
+
+class RefusedListFullError extends Error {
+  code = 'BW_REFUSED_FULL';
+}
+
+const saveSetlist = async (eventId: string, setlist: QueuedSetlist, owner?: string | null): Promise<void> => {
   const { data: ev, error: readErr } = await supabase.from('events').select('setlist_id').eq('id', eventId).maybeSingle();
   if (readErr) throw readErr;
   const existingId = (ev as { setlist_id?: string | null } | null)?.setlist_id;
@@ -70,11 +81,19 @@ const saveSetlist = async (eventId: string, setlist: QueuedSetlist): Promise<voi
       await saveExistingGigSetlist(existingId, songs, setlist.loaded);
     } catch (err) {
       // Someone else's setlist meanwhile: not written over it, and never
-      // thrown away: kept in the refused list (Settings › Offline & live),
-      // and the app says so (LIVE_REFUSED_EVENT).
+      // thrown away: kept in the refused list (Settings › Offline & live)
+      // of the account that made the change (the queue's owner, not whoever
+      // is signed in now), and the app says so (LIVE_REFUSED_EVENT). No room
+      // there: it stays queued and the app asks to review the list.
       if (err instanceof SetlistConflictError) {
-        const me = await sessionUserId();
-        if (me) keepRefused(me, { kind: 'gigSetlist', eventId, setlistId: setlist.loaded?.id ?? existingId, songs, reason: 'changed' });
+        const me = owner ?? (await sessionUserId());
+        const kept = !!me && keepRefused(me, { kind: 'gigSetlist', eventId, setlistId: setlist.loaded?.id ?? existingId ?? undefined, songs, reason: 'changed' });
+        if (!kept) {
+          if (me && typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent(LIVE_REFUSED_EVENT, { detail: { userId: me, kind: 'gigSetlist', full: true } }));
+          }
+          throw new RefusedListFullError('The refused list is full.');
+        }
       }
       throw err;
     }
@@ -107,18 +126,22 @@ const saveLineup = async (eventId: string, lineup: LineupRow[]): Promise<void> =
 };
 
 /** Saves the extras for `eventId`. Returns what failed (empty when all saved). */
-export async function replayEventExtras(eventId: string, extras: QueuedEventExtras): Promise<string[]> {
+/**
+ * `owner`: the account whose queue this is (a refused setlist is filed under
+ * it). The answer holds SETLIST_WAITING when the setlist must stay queued.
+ */
+export async function replayEventExtras(eventId: string, extras: QueuedEventExtras, owner?: string | null): Promise<string[]> {
   const failed: string[] = [];
   const step = async (name: string, run: () => Promise<void>) => {
     try {
       await run();
     } catch (err) {
       console.warn(`[syncQueue] ${name} not saved for ${eventId}:`, err);
-      failed.push(name);
+      failed.push(err instanceof RefusedListFullError ? SETLIST_WAITING : name);
     }
   };
   if (extras.lineup) await step('lineup', () => saveLineup(eventId, extras.lineup!));
-  if (extras.setlist) await step('setlist', () => saveSetlist(eventId, extras.setlist!));
+  if (extras.setlist) await step('setlist', () => saveSetlist(eventId, extras.setlist!, owner));
   if (extras.tasks && (extras.tasks.drafts.length > 0 || extras.tasks.originalIds.length > 0)) {
     await step('tasks', async () => {
       const { error } = await syncEventTasks(eventId, extras.tasks!.drafts, extras.tasks!.eventDate, extras.tasks!.originalIds);

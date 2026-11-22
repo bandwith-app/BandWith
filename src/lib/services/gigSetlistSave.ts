@@ -1,7 +1,10 @@
 import { replaceSetlistSongs } from './songs';
 
-/** The gig's setlist as the wizard loaded it: which setlist, its songs in play order. */
-export type LoadedGigSetlist = { id: string; songs: { song_id: string; set_number: number }[] };
+/**
+ * The gig's setlist as the wizard loaded it: which setlist, its songs in play
+ * order (with row ids). `id: null`: the gig had no setlist when it was opened.
+ */
+export type LoadedGigSetlist = { id: string | null; songs: { song_id: string; set_number: number; id?: string }[] };
 
 /** The setlist changed since it was loaded: nothing was written. */
 export class SetlistConflictError extends Error {
@@ -23,7 +26,9 @@ export async function saveExistingGigSetlist(
   loaded?: LoadedGigSetlist | null
 ) {
   // The gig now links another setlist than the one loaded: A is never
-  // written over B (Codex review #292 round 6). Nothing written.
+  // written over B (Codex review #292 round 6). The gig had none when the
+  // wizard opened and has one now (someone else's): the same (round 7, B3).
+  // Nothing written.
   if (loaded && loaded.id !== setlistId) throw new SetlistConflictError();
   const expected = loaded ? { songs: loaded.songs } : undefined;
   const res = await replaceSetlistSongs(setlistId, songs, expected ? { expected } : undefined);

@@ -9,7 +9,13 @@
 import { refusedChanges, waitingChanges } from './liveOutbox';
 import { readChatOutboxCount, signOutKeeps } from './offline/storage';
 
-export type SignOutChoice = 'signout' | 'cancel';
+/**
+ * 'erase': sign out and erase the refused changes; 'keep-queued': sign out
+ * from the lock screen, the waiting changes kept as refused (the wipe would
+ * delete them). Both are carried out by AuthContext only once the session
+ * check passed, never before.
+ */
+export type SignOutChoice = 'signout' | 'cancel' | 'erase' | 'keep-queued';
 /** `messages`: chat messages not sent (readChatOutboxCount), counted by the caller. */
 type Gate = (userId: string, messages: number) => Promise<SignOutChoice>;
 
@@ -29,10 +35,15 @@ export function setSignOutGate(next: Gate): () => void {
  * account, or "Erase them and sign out".
  */
 export async function askBeforeSignOut(userId: string | null | undefined): Promise<boolean> {
-  if (!userId || !gate) return true;
+  return (await askSignOutChoice(userId)) !== 'cancel';
+}
+
+/** The person's answer ('signout' when nothing needed asking). */
+export async function askSignOutChoice(userId: string | null | undefined): Promise<SignOutChoice> {
+  if (!userId || !gate) return 'signout';
   const messages = await readChatOutboxCount(userId);
-  if (!gate || waitingChanges(userId) + messages + refusedChanges(userId) === 0) return true;
-  return (await gate(userId, messages)) === 'signout';
+  if (!gate || waitingChanges(userId) + messages + refusedChanges(userId) === 0) return 'signout';
+  return gate(userId, messages);
 }
 
 /** A sign-out the person called off in that sheet: still signed in. */

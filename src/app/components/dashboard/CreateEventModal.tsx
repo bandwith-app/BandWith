@@ -770,7 +770,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   const editingSetlistId: string | undefined = isEditing ? editingEvent?.setlistId : undefined;
   const savedSongCountRef = useRef(0);
   // Editing: the setlist as it loaded, so the save never overwrites a newer one (188).
-  const savedSetlistRef = useRef<{ id: string; songs: { song_id: string; set_number: number }[] } | null>(null);
+  const savedSetlistRef = useRef<{ id: string; songs: { song_id: string; set_number: number; id?: string }[] } | null>(null);
   // Edit: what the form held once the saved setlist and to-dos loaded, to ask
   // before closing with changes (set below, after the snapshot).
   const editBaselineRef = useRef<string | null>(null);
@@ -1003,7 +1003,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       setlist,
       // Every song removed from a saved setlist: empty it (no songs alone means "unchanged").
       _setlistCleared: isEditing && savedSongCountRef.current > 0 && setSongCount(setlist) === 0,
-      _setlistExpected: isEditing ? savedSetlistRef.current : null,
+      // No setlist when the gig was opened: a setlist someone adds meanwhile is never written over (B3).
+      _setlistExpected: isEditing ? (editingSetlistId ? savedSetlistRef.current : { id: null, songs: [] }) : null,
       // A task typed but not yet added with the button still counts.
       tasks: newTaskText.trim()
         ? [...tasks, { uid: `t-${Date.now()}`, title: newTaskText.trim(), completed: false }]

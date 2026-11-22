@@ -17,15 +17,22 @@
 --            song; otherwise rows are matched by song (below).
 --   p_name   new name, or NULL / blank to keep the current one.
 --   p_expected  optional: the setlist as the editor loaded it,
---            { "name": text, "songs": [{ "song_id", "set_number" }, …] } in
---            play order. Two admins on the same setlist: if it changed since
+--            { "name": text, "songs": [{ "song_id", "set_number", "id"?,
+--            "vocal_parts"? }, …] } in play order. An entry with "id" checks
+--            that row is still in that place (the same song twice swapped is a
+--            change); with "vocal_parts", that who sings it is unchanged ({}
+--            and null are the same). Entries without them check song and set
+--            only, as before. Two admins on the same setlist: if it changed since
 --            (another save, a Stage reorder, an older build's delete +
 --            insert, a rename), nothing is written and the answer is
---            { "saved": false, "conflict": true, "current": { name, songs } }.
+--            { "saved": false, "conflict": true, "current": { name, songs } }
+--            (songs with id, song_id, set_number, vocal_parts).
 --            The app then offers "Load the latest version" or "Save mine
 --            instead" (the same call with expected = current). NULL: no check.
 --   returns  { "saved": true, "previous": [{ song_id, set_number, position }, …],
---              "song_count": n }
+--              "song_count": n, "rows": [{ id, song_id, set_number, position }, …] }
+--            rows = the setlist as saved, in play order, new rows with their
+--            new ids (the Stage's Regia starts the song it just added).
 --            previous = the order before the save, so the app can sum up the
 --            change for the band's push (107, bw_notify_setlist_saved, which
 --            the app still calls after this; it is not redefined here).
@@ -45,6 +52,18 @@
 -- a singer change another admin saves meanwhile (Voice picker, 172) is either
 -- in the copy or waits for this save, never put back to the old value.
 --
+-- Deleted rows stay deleted. Every deleted setlist_songs row (this save, an
+-- older build's delete + insert, a plain DELETE) leaves its id in
+-- setlist_song_tombstones for 30 days, and an insert with such an id is
+-- skipped quietly: an older build's Stage order (383f15b upserts every row
+-- it shows, by id) can't bring back a song another admin removed meanwhile.
+-- An upsert of a row that still exists is an update and goes through. One
+-- exception keeps older builds working: the admin who deleted the rows can
+-- put them back within 2 minutes (their failed save restoring the old rows
+-- with their ids). Requests without a signed-in user (service role, SQL
+-- editor) are never skipped. The tombstones have no grants: only these triggers
+-- (definer) read or write them.
+--
 -- Additive only: older TestFlight / APK builds keep doing their own
 -- delete + insert on setlist_songs under the 074 policies, unchanged.
 -- Needs 172 (setlist_songs.vocal_parts): stops with a message without it.
@@ -52,6 +71,96 @@
 -- ============================================================================
 
 BEGIN;
+
+-- Deleted rows, so an older build's upsert can't bring them back (above).
+CREATE TABLE IF NOT EXISTS public.setlist_song_tombstones (
+  id uuid PRIMARY KEY,
+  setlist_id uuid NOT NULL,
+  deleted_by uuid,
+  deleted_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS setlist_song_tombstones_deleted_at_idx
+  ON public.setlist_song_tombstones (deleted_at);
+ALTER TABLE public.setlist_song_tombstones ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.setlist_song_tombstones FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.bw_setlist_song_tombstone()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO public.setlist_song_tombstones (id, setlist_id, deleted_by, deleted_at)
+  VALUES (OLD.id, OLD.setlist_id, auth.uid(), now())
+  ON CONFLICT (id) DO UPDATE
+    SET setlist_id = EXCLUDED.setlist_id, deleted_by = EXCLUDED.deleted_by, deleted_at = EXCLUDED.deleted_at;
+  RETURN OLD;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.bw_setlist_song_tombstones_prune()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  DELETE FROM public.setlist_song_tombstones WHERE deleted_at < now() - interval '30 days';
+  RETURN NULL;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.bw_setlist_song_skip_deleted()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_by uuid;
+  v_at timestamptz;
+BEGIN
+  SELECT t.deleted_by, t.deleted_at INTO v_by, v_at
+    FROM public.setlist_song_tombstones t WHERE t.id = NEW.id;
+  IF NOT FOUND THEN
+    RETURN NEW;
+  END IF;
+  -- Still there (an upsert's update path): never skipped.
+  IF EXISTS (SELECT 1 FROM public.setlist_songs ss WHERE ss.id = NEW.id) THEN
+    RETURN NEW;
+  END IF;
+  -- Not a signed-in user's request (service role, SQL editor, a restore by
+  -- hand), or the deleting admin putting the rows back at once (older
+  -- builds' failed save restoring them): let it in.
+  IF auth.uid() IS NULL
+     OR (v_by IS NOT NULL AND v_by = auth.uid() AND v_at > now() - interval '2 minutes') THEN
+    DELETE FROM public.setlist_song_tombstones WHERE id = NEW.id;
+    RETURN NEW;
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.bw_setlist_song_tombstone() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.bw_setlist_song_tombstones_prune() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.bw_setlist_song_skip_deleted() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS bw_setlist_song_tombstone ON public.setlist_songs;
+CREATE TRIGGER bw_setlist_song_tombstone
+  AFTER DELETE ON public.setlist_songs
+  FOR EACH ROW EXECUTE FUNCTION public.bw_setlist_song_tombstone();
+DROP TRIGGER IF EXISTS bw_setlist_song_tombstones_prune ON public.setlist_songs;
+CREATE TRIGGER bw_setlist_song_tombstones_prune
+  AFTER DELETE ON public.setlist_songs
+  FOR EACH STATEMENT EXECUTE FUNCTION public.bw_setlist_song_tombstones_prune();
+DROP TRIGGER IF EXISTS bw_setlist_song_skip_deleted ON public.setlist_songs;
+CREATE TRIGGER bw_setlist_song_skip_deleted
+  BEFORE INSERT ON public.setlist_songs
+  FOR EACH ROW EXECUTE FUNCTION public.bw_setlist_song_skip_deleted();
+
+COMMENT ON TABLE public.setlist_song_tombstones IS
+  'Ids of deleted setlist_songs rows (30 days): an insert with one is skipped, so an older build''s upsert can''t bring a removed song back (188). No grants.';
 
 -- One function only: an older draft with three parameters next to this one
 -- would make PostgREST calls ambiguous (PGRST203). Not live before 188.
@@ -87,6 +196,7 @@ DECLARE
   v_prev jsonb;
   v_plan jsonb;
   v_now jsonb;
+  v_exp jsonb;
   v_now_name text;
   v_count integer;
   v_bad integer;
@@ -133,22 +243,35 @@ BEGIN
     IF jsonb_typeof(p_expected) <> 'object' THEN
       RAISE EXCEPTION 'The expected setlist must be an object' USING ERRCODE = '22023';
     END IF;
-    SELECT coalesce(jsonb_agg(jsonb_build_object('song_id', ss.song_id, 'set_number', coalesce(ss.set_number, 1))
+    SELECT coalesce(jsonb_agg(jsonb_build_object('id', ss.id, 'song_id', ss.song_id,
+                                                 'set_number', coalesce(ss.set_number, 1),
+                                                 'vocal_parts', ss.vocal_parts)
                               ORDER BY coalesce(ss.set_number, 1), ss.position, ss.id), '[]'::jsonb)
       INTO v_now
       FROM public.setlist_songs ss
      WHERE ss.setlist_id = p_setlist_id;
     SELECT s.name INTO v_now_name FROM public.setlists s WHERE s.id = p_setlist_id;
+    v_exp := CASE WHEN jsonb_typeof(p_expected -> 'songs') = 'array' THEN p_expected -> 'songs' ELSE '[]'::jsonb END;
+    -- Per place in play order: the song and set; the row when the entry
+    -- names it; who sings it when the entry carries vocal_parts.
     IF (p_expected ? 'name' AND v_now_name IS DISTINCT FROM (p_expected ->> 'name'))
-       OR (p_expected ? 'songs' AND v_now IS DISTINCT FROM (
-             SELECT coalesce(jsonb_agg(jsonb_build_object(
-                      'song_id', (e.item ->> 'song_id')::uuid,
-                      'set_number', CASE WHEN jsonb_typeof(e.item -> 'set_number') = 'number'
-                                         THEN floor((e.item ->> 'set_number')::numeric)::int ELSE 1 END)
-                    ORDER BY e.ord), '[]'::jsonb)
-               FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p_expected -> 'songs') = 'array'
-                                              THEN p_expected -> 'songs' ELSE '[]'::jsonb END)
-                    WITH ORDINALITY AS e(item, ord)))
+       OR (p_expected ? 'songs' AND (
+             jsonb_array_length(v_now) <> jsonb_array_length(v_exp)
+          OR EXISTS (
+               SELECT 1
+                 FROM jsonb_array_elements(v_now) WITH ORDINALITY AS a(r, o)
+                 JOIN jsonb_array_elements(v_exp) WITH ORDINALITY AS e(item, o) USING (o)
+                WHERE jsonb_typeof(e.item) <> 'object'
+                   OR (a.r ->> 'song_id')::uuid IS DISTINCT FROM (e.item ->> 'song_id')::uuid
+                   OR (a.r ->> 'set_number')::int IS DISTINCT FROM
+                        CASE WHEN jsonb_typeof(e.item -> 'set_number') = 'number'
+                             THEN floor((e.item ->> 'set_number')::numeric)::int ELSE 1 END
+                   OR (coalesce(e.item ->> 'id', '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                       AND (a.r ->> 'id')::uuid IS DISTINCT FROM (e.item ->> 'id')::uuid)
+                   OR (e.item ? 'vocal_parts'
+                       AND CASE WHEN a.r -> 'vocal_parts' IN ('null'::jsonb, '{}'::jsonb) THEN NULL ELSE a.r -> 'vocal_parts' END
+                           IS DISTINCT FROM
+                           CASE WHEN e.item -> 'vocal_parts' IN ('null'::jsonb, '{}'::jsonb) THEN NULL ELSE e.item -> 'vocal_parts' END))))
     THEN
       RETURN jsonb_build_object('saved', false, 'conflict', true,
                                 'current', jsonb_build_object('name', v_now_name, 'songs', v_now));
@@ -247,6 +370,11 @@ BEGIN
   RETURN jsonb_build_object(
     'saved', true,
     'song_count', v_count,
+    'rows', coalesce((
+      SELECT jsonb_agg(jsonb_build_object('id', ss.id, 'song_id', ss.song_id,
+                                          'set_number', coalesce(ss.set_number, 1), 'position', ss.position)
+                       ORDER BY coalesce(ss.set_number, 1), ss.position, ss.id)
+        FROM public.setlist_songs ss WHERE ss.setlist_id = p_setlist_id), '[]'::jsonb),
     'previous', coalesce((
       SELECT jsonb_agg(jsonb_build_object('song_id', x ->> 'song_id', 'set_number', (x ->> 'set_number')::int,
                                           'position', (x ->> 'position')::int) ORDER BY o)

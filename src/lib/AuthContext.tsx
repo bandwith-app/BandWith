@@ -494,18 +494,32 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       await discardAccountWrites(user?.id);
     } else {
       const asked = user?.id ?? null;
-      const { askBeforeSignOut } = await import('./signOutGate');
-      if (!(await askBeforeSignOut(asked))) return { error: null, cancelled: true as const };
+      const { askSignOutChoice } = await import('./signOutGate');
+      const choice = await askSignOutChoice(asked);
+      if (choice === 'cancel') return { error: null, cancelled: true as const };
       // Answered for the account it was asked about only: another tab signed
-      // someone else in meanwhile → no sign-out, nothing cleared.
+      // someone else in meanwhile → no sign-out, nothing cleared. Can't tell
+      // (token expired, no signal): the confirmed sign-out goes ahead, on this
+      // device, and keeps what the keep list keeps; never called off unseen.
       if (asked) {
         let now: string | null = null;
         try {
-          now = (await supabase.auth.getSession()).data.session?.user?.id ?? null;
+          now = (await getSessionOfflineSafe()).session?.user?.id ?? null;
         } catch {
           now = null;
         }
-        if (now !== asked) return { error: null, cancelled: true as const };
+        if (now && now !== asked) return { error: null, cancelled: true as const };
+        // Only now, for the account asked about: erased only once it is
+        // known to be the one signed in; kept as refused whenever the
+        // sign-out goes ahead (the wipe would delete them).
+        if (choice === 'erase' && now === asked) {
+          const { discardRefusedChanges } = await import('./liveOutbox');
+          discardRefusedChanges(asked);
+        }
+        if (choice === 'keep-queued') {
+          const { keepQueuedAsRefused } = await import('./liveOutbox');
+          keepQueuedAsRefused(asked);
+        }
       }
     }
     const gone = opts?.discardPendingWrites ? user?.id : null;

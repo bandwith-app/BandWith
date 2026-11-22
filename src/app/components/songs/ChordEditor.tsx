@@ -301,10 +301,21 @@ export const ChordEditor: React.FC = () => {
   };
 
   // The latest version replaces the draft; "mine instead" saves the draft over it.
-  const loadLatest = () => {
+  // The song is read again too, so its key and iReal chart are the latest
+  // (the checks below use them); unreadable, the lyrics from the conflict.
+  const loadLatest = async () => {
     if (!song || !conflict) return;
-    const lyrics = editableLyrics(conflict.stored);
-    setSong({ ...song, lyrics, stored: conflict.stored });
+    const id = song.id;
+    let latest: { stored: string | null; key: string | null; chart: SongChart | null } = { stored: conflict.stored, key: song.key, chart: song.chart };
+    try {
+      const { data } = await supabase.from('songs').select('id, band_id, title, key, lyrics, chord_chart').eq('id', id).single();
+      const row = data as { key: string | null; lyrics: string | null; chord_chart: unknown } | null;
+      if (row) latest = { stored: row.lyrics ?? null, key: row.key, chart: asSongChart(row.chord_chart) };
+    } catch {
+      /* offline: the lyrics the conflict brought */
+    }
+    const lyrics = editableLyrics(latest.stored);
+    setSong((cur) => (cur && cur.id === id ? { ...cur, lyrics, stored: latest.stored, key: latest.key, chart: latest.chart } : cur));
     setText(lyrics);
     setHistory([]);
     setSelected(null);
@@ -658,7 +669,7 @@ export const ChordEditor: React.FC = () => {
                     {t('Load the latest version to see their changes (yours are dropped), or save yours over theirs.')}
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    <PillButton size="md" variant="outline" fullWidth={false} onClick={loadLatest} disabled={saving}>
+                    <PillButton size="md" variant="outline" fullWidth={false} onClick={() => void loadLatest()} disabled={saving}>
                       {t('Load the latest version')}
                     </PillButton>
                     <PillButton size="md" variant="dark" fullWidth={false} onClick={saveMineInstead} loading={saving}>

@@ -13,12 +13,9 @@ vi.mock('@/lib/regiaAudio', async () => ({
     throw new Error('the real player is never used in tests');
   },
 }));
-const addMock = vi.fn();
-const saveOrderMock = vi.fn();
-vi.mock('@/lib/services/songs', async () => ({
-  addSongToSetlist: (...a: unknown[]) => addMock(...a),
-  saveStageOrder: (...a: unknown[]) => saveOrderMock(...a),
-  setlistOrder: (await vi.importActual<typeof import('@/lib/services/songs')>('@/lib/services/songs')).setlistOrder,
+const saveMock = vi.fn();
+vi.mock('@/lib/services/songs', () => ({
+  replaceSetlistSongs: (...a: unknown[]) => saveMock(...a),
 }));
 const outputMock = vi.fn();
 const playbackMock = vi.fn();
@@ -137,8 +134,7 @@ beforeEach(() => {
   cachedMock.mockReset().mockResolvedValue(new Set());
   downloadMock.mockReset().mockResolvedValue({ ok: true });
   playableMock.mockReset().mockImplementation(async (ref: string) => ({ url: `local:${ref}`, local: true }));
-  addMock.mockReset();
-  saveOrderMock.mockReset().mockResolvedValue({ error: null });
+  saveMock.mockReset();
   stopPlayerMock.mockReset();
   outputMock.mockReset().mockResolvedValue({ kind: 'usb', name: 'USB-C to 3.5mm' });
   playbackMock.mockReset().mockResolvedValue(undefined);
@@ -314,29 +310,54 @@ describe('useStageRegia (stage manager mode)', () => {
   });
 
   it('a song off the setlist is added right after the current one, then plays', async () => {
-    addMock.mockResolvedValue({ data: { id: 'r9' }, error: null });
+    saveMock.mockResolvedValue({
+      error: null,
+      previous: [],
+      rows: [
+        { id: 'r1', song_id: 's1', set_number: 1, position: 1 },
+        { id: 'r9', song_id: 's9', set_number: 1, position: 2 },
+        { id: 'r2', song_id: 's2', set_number: 1, position: 3 },
+        { id: 'r3', song_id: 's3', set_number: 2, position: 4 },
+      ],
+    });
     const { result, jumpTo, players } = setup();
     act(() => result.current.turnOn());
     await act(async () => {
       await result.current.playExtra({ id: 's9', title: 'Nuova', audio: 'sb://song-files/b/audio/9.mp3' });
     });
-    expect(addMock).toHaveBeenCalledWith('list-1', 's9', 4, 1);
+    // One guarded save (188): the new song with no row yet, the others by row, over the order shown.
+    expect(saveMock).toHaveBeenCalledTimes(1);
+    expect(saveMock.mock.calls[0][0]).toBe('list-1');
+    expect(saveMock.mock.calls[0][1]).toEqual([
+      { id: 'r1', song_id: 's1', set_number: 1 },
+      { song_id: 's9', set_number: 1 },
+      { id: 'r2', song_id: 's2', set_number: 1 },
+      { id: 'r3', song_id: 's3', set_number: 2 },
+    ]);
+    expect(saveMock.mock.calls[0][2]).toEqual({
+      expected: {
+        songs: [
+          { id: 'r1', song_id: 's1', set_number: 1 },
+          { id: 'r2', song_id: 's2', set_number: 1 },
+          { id: 'r3', song_id: 's3', set_number: 2 },
+        ],
+      },
+    });
+    // The new row's id comes back from the save, then everyone jumps.
     expect(jumpTo).toHaveBeenCalledWith('r9', ['r1', 'r9', 'r2', 'r3']);
-    expect(saveOrderMock.mock.calls[0][0]).toBe('list-1');
-    expect(saveOrderMock.mock.calls[0][1].map((r: { id: string; set_number: number }) => [r.id, r.set_number])).toEqual([
-      ['r1', 1],
-      ['r9', 1],
-      ['r2', 1],
-      ['r3', 2],
-    ]);
-    // Over the setlist as the server has it after the insert (the new row at the end of set 1).
-    expect(saveOrderMock.mock.calls[0][2]).toEqual([
-      { songId: 's1', setNumber: 1 },
-      { songId: 's2', setNumber: 1 },
-      { songId: 's9', setNumber: 1 },
-      { songId: 's3', setNumber: 2 },
-    ]);
     expect(players[0].loaded).toEqual(['local:sb://song-files/b/audio/9.mp3']);
+  });
+
+  it('a song off the setlist: the save fails, nothing jumps or plays', async () => {
+    saveMock.mockResolvedValue({ error: new Error('offline') });
+    const { result, jumpTo, players } = setup();
+    act(() => result.current.turnOn());
+    await act(async () => {
+      await result.current.playExtra({ id: 's9', title: 'Nuova', audio: 'sb://song-files/b/audio/9.mp3' });
+    });
+    expect(result.current.error).toEqual({ kind: 'insert' });
+    expect(jumpTo).not.toHaveBeenCalled();
+    expect(players[0]?.loaded ?? []).toEqual([]);
   });
 
   it('closing Stage mode stops the audio and tells the band', async () => {

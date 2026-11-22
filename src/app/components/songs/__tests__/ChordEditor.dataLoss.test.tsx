@@ -22,14 +22,14 @@ vi.mock('@/lib/services/setlistNotify', () => ({ notifySongUpdated: vi.fn() }));
 
 // The server: one song row. A plain update overwrites it; the 189 function
 // writes only over the lyrics the editor loaded.
-const server = vi.hoisted(() => ({ lyrics: '' as string | null }));
+const server = vi.hoisted(() => ({ lyrics: '' as string | null, key: 'C' as string | null }));
 vi.mock('@/lib/supabase', () => ({
   getSafeUser: async () => ({ data: { user: { id: 'u1' } } }),
   supabase: {
     from: () => ({
       select: () => ({
         eq: () => ({
-          single: async () => ({ data: { id: 's1', band_id: 'b1', title: 'Hudson Line', key: 'C', lyrics: server.lyrics, chord_chart: null }, error: null }),
+          single: async () => ({ data: { id: 's1', band_id: 'b1', title: 'Hudson Line', key: server.key, lyrics: server.lyrics, chord_chart: null }, error: null }),
         }),
       }),
       update: (v: { lyrics: string }) => ({
@@ -59,6 +59,7 @@ const putChordOn = async (word: string, chord: string) => {
 
 beforeEach(() => {
   server.lyrics = '# Verse 1\n[C]Hello again';
+  server.key = 'C';
 });
 afterEach(() => {
   act(() => closeChordEditor());
@@ -91,6 +92,24 @@ describe('chord editor: no lost lyrics', () => {
     await putChordOn('again', 'G');
     fireEvent.click(screen.getByRole('button', { name: 'Save chords' }));
     await waitFor(() => expect(server.lyrics).toBe('# Verse 1\n[C]Hello [G]again\n\n# Verse 2\nUptown lights'));
+  });
+
+  // Round 7 (Codex r6 M2): "Load the latest version" reads the song again:
+  // the key (and iReal chart) another admin changed are the ones checked.
+  it('Load the latest version also brings the latest key', async () => {
+    server.lyrics = '# Verse 1\n[C]Hello [F]again [G]uptown [C]lights tonight';
+    render(<ChordEditor />);
+    act(() => openChordEditor('s1'));
+    await screen.findByRole('button', { name: 'Hello, chord C' });
+    expect(screen.queryByText(/the song is in/i)).toBeNull();
+    // Admin B moves the song to D and adds a verse.
+    server.lyrics = '# Verse 1\n[C]Hello [F]again [G]uptown [C]lights tonight\n\n# Verse 2\nRiver';
+    server.key = 'D';
+    await putChordOn('tonight', 'C');
+    fireEvent.click(screen.getByRole('button', { name: 'Save chords' }));
+    fireEvent.click(await screen.findByRole('button', { name: /load the latest version/i }));
+    await screen.findByRole('button', { name: 'River' });
+    await waitFor(() => expect(screen.getByText(/the chords sound in C, the song is in D/i)).toBeTruthy());
   });
 
   it('A can also keep their own version on purpose', async () => {

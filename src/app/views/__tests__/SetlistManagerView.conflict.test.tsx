@@ -69,7 +69,8 @@ describe('SetlistManagerView: saved only over the setlist as loaded', () => {
     await waitFor(() => expect(svc.replaceSetlistSongs).toHaveBeenCalledTimes(1));
     expect(svc.replaceSetlistSongs.mock.calls[0][2]).toEqual({
       name: 'Rooftop Session · Saturday',
-      expected: { name: 'Rooftop Session', songs: [{ song_id: 'song-a', set_number: 1 }] },
+      // Row by row, with who sings it (Codex r6 M1, 188 checks them).
+      expected: { name: 'Rooftop Session', songs: [{ id: 'row-1', song_id: 'song-a', set_number: 1, vocal_parts: null }] },
     });
     expect(await screen.findByText(/someone else changed this setlist/i)).toBeTruthy();
     expect(screen.getByDisplayValue('Rooftop Session · Saturday')).toBeTruthy();

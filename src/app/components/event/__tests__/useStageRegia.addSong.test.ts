@@ -3,18 +3,20 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 
 // Round 6 (main session): a song added on the Regia was saved with a plain
 // upsert of every row the device still showed, so a song another admin had
-// just removed came back. Now the new order is one guarded save (188, row
-// ids, `expected`): changed meanwhile, nothing but the added song is written.
+// just removed came back. Round 7 (Claude r6): adding it is one guarded save
+// (188, row ids, `expected`): changed meanwhile, nothing is written at all,
+// the setlist reloads and the picker opens again; saved, the new row's id
+// comes back from 188 and only then everyone jumps to it.
 // Made-up setlist (Brooklyn gig).
 
 type Row = { id: string; setlist_id: string; song_id: string; position: number; set_number: number };
-const db = vi.hoisted(() => ({ rows: [] as Row[], upserts: 0, n: 0 }));
+const db = vi.hoisted(() => ({ rows: [] as Row[], upserts: 0, inserts: 0, n: 0 }));
 vi.mock('@/lib/supabase', () => {
   const order = (rows: Row[]) => [...rows].sort((a, b) => a.set_number - b.set_number || a.position - b.position);
   const from = (table: string) => {
     let insert: Omit<Row, 'id'> | null = null;
     const b: any = {
-      insert: (v: Omit<Row, 'id'>) => ((insert = v), b),
+      insert: (v: Omit<Row, 'id'>) => ((insert = v), db.inserts++, b),
       upsert: (rows: Row[]) => {
         db.upserts++;
         for (const r of rows) {
@@ -41,13 +43,13 @@ vi.mock('@/lib/supabase', () => {
     supabase: {
       from,
       // bw_save_setlist_songs (188): written only while the setlist is still `p_expected`.
-      rpc: vi.fn(async (_fn: string, args: { p_setlist_id: string; p_songs: { id?: string; song_id: string; set_number: number }[]; p_expected?: { songs: { song_id: string; set_number: number }[] } }) => {
-        const now = order(db.rows).map((r) => ({ song_id: r.song_id, set_number: r.set_number }));
-        if (args.p_expected && JSON.stringify(args.p_expected.songs) !== JSON.stringify(now)) {
-          return { data: { saved: false, conflict: true, current: { name: 'Brooklyn', songs: now } }, error: null };
-        }
-        db.rows = args.p_songs.map((s, i) => ({ id: s.id ?? `x-${i}`, setlist_id: args.p_setlist_id, song_id: s.song_id, position: i + 1, set_number: s.set_number }));
-        return { data: { saved: true, previous: [] }, error: null };
+      rpc: vi.fn(async (_fn: string, args: { p_setlist_id: string; p_songs: { id?: string; song_id: string; set_number: number }[]; p_expected?: { songs: { id?: string; song_id: string; set_number: number }[] } }) => {
+        const now = order(db.rows).map((r) => ({ id: r.id, song_id: r.song_id, set_number: r.set_number }));
+        const want = args.p_expected?.songs;
+        const differs = !!want && (want.length !== now.length || want.some((w, i) => w.song_id !== now[i].song_id || w.set_number !== now[i].set_number || (!!w.id && w.id !== now[i].id)));
+        if (differs) return { data: { saved: false, conflict: true, current: { name: 'Brooklyn', songs: now } }, error: null };
+        db.rows = args.p_songs.map((s, i) => ({ id: s.id ?? `new-${++db.n}`, setlist_id: args.p_setlist_id, song_id: s.song_id, position: i + 1, set_number: s.set_number }));
+        return { data: { saved: true, previous: [], rows: order(db.rows).map(({ id, song_id, set_number, position }) => ({ id, song_id, set_number, position })) }, error: null };
       }),
     },
     getSafeUser: async () => ({ data: { user: { id: 'u-admin' } } }),
@@ -87,6 +89,7 @@ const SONGS: RegiaSong[] = [
   { id: 'r3', songId: 'c', setNumber: 1, title: 'Brooklyn Bridge' },
 ];
 
+const jumpTo = vi.fn();
 const setup = () =>
   renderHook(() =>
     useStageRegia({
@@ -101,7 +104,7 @@ const setup = () =>
       songs: SONGS,
       currentId: 'r1',
       select: vi.fn(),
-      jumpTo: vi.fn(),
+      jumpTo,
       createPlayer: player,
     }),
   );
@@ -110,32 +113,54 @@ beforeEach(() => {
   localStorage.clear();
   db.rows = SONGS.map((s, i) => ({ id: s.id!, setlist_id: 'sl', song_id: s.songId!, position: i + 1, set_number: 1 }));
   db.upserts = 0;
+  db.inserts = 0;
   db.n = 0;
+  jumpTo.mockClear();
 });
 
 describe('Regia: a song off the setlist added on stage', () => {
-  it('a song another admin removed meanwhile does not come back', async () => {
+  it('a song another admin removed meanwhile does not come back, nothing is written, pick again', async () => {
     const { result } = setup();
     act(() => result.current.turnOn());
     // Another device removes "b" (row r2); this one still shows it.
     db.rows = db.rows.filter((r) => r.id !== 'r2');
+    let out: unknown;
     await act(async () => {
-      await result.current.playExtra({ id: 'd', title: 'Juicy', audio: 'sb://song-files/b/audio/d.mp3' });
+      out = await result.current.playExtra({ id: 'd', title: 'Juicy', audio: 'sb://song-files/b/audio/d.mp3' });
     });
-    await waitFor(() => expect(db.rows.some((r) => r.song_id === 'd')).toBe(true));
     await new Promise((r) => setTimeout(r, 30));
-    expect(db.upserts).toBe(0);
-    expect(db.rows.map((r) => r.song_id)).not.toContain('b');
-    expect(db.rows.map((r) => r.id).sort()).toEqual(['new-1', 'r1', 'r3']);
+    expect(out).toBe('changed');
+    expect(result.current.error).toEqual({ kind: 'changed' });
+    expect(db.upserts + db.inserts).toBe(0);
+    expect(db.rows.map((r) => r.id)).toEqual(['r1', 'r3']);
+    expect(jumpTo).not.toHaveBeenCalled();
   });
 
-  it('nothing changed meanwhile: the song goes right after the current one, rows keep their ids', async () => {
+  it('nothing changed meanwhile: one save, the song right after the current one, everyone jumps to its new row', async () => {
     const { result } = setup();
     act(() => result.current.turnOn());
     await act(async () => {
       await result.current.playExtra({ id: 'd', title: 'Juicy', audio: 'sb://song-files/b/audio/d.mp3' });
     });
-    await waitFor(() => expect(db.rows.map((r) => r.id)).toEqual(['r1', 'new-1', 'r2', 'r3']));
-    expect(db.upserts).toBe(0);
+    expect(db.rows.map((r) => r.id)).toEqual(['r1', 'new-1', 'r2', 'r3']);
+    expect(db.upserts + db.inserts).toBe(0);
+    expect(jumpTo).toHaveBeenCalledWith('new-1', ['r1', 'new-1', 'r2', 'r3']);
+  });
+
+  it('the same song twice, swapped meanwhile by another admin, is a change (row ids are checked)', async () => {
+    const { result } = setup();
+    act(() => result.current.turnOn());
+    // Same songs in the same places, but other rows there (moved on another device).
+    db.rows = [
+      { id: 'r3', setlist_id: 'sl', song_id: 'a', position: 1, set_number: 1 },
+      { id: 'r2', setlist_id: 'sl', song_id: 'b', position: 2, set_number: 1 },
+      { id: 'r1', setlist_id: 'sl', song_id: 'c', position: 3, set_number: 1 },
+    ];
+    let out: unknown;
+    await act(async () => {
+      out = await result.current.playExtra({ id: 'd', title: 'Juicy', audio: null });
+    });
+    expect(out).toBe('changed');
+    expect(db.rows.map((r) => r.id)).toEqual(['r3', 'r2', 'r1']);
   });
 });

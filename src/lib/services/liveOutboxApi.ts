@@ -76,13 +76,18 @@ export const liveOutboxApi: LiveOutboxApi = {
       op.setlistId,
       // Each entry names its row: the same song twice keeps each row's singers.
       inOrder.map((r) => ({ id: r.id, song_id: r.song_id, set_number: r.set_number })),
-      { expected: { songs: op.before.map((b) => ({ song_id: b.songId, set_number: b.setNumber ?? 1 })) } },
+      { expected: { songs: op.before.map((b) => ({ ...(b.id ? { id: b.id } : {}), song_id: b.songId, set_number: b.setNumber ?? 1 })) } },
     );
     if (res.error) return { error: res.error };
     // "Changed meanwhile" into exactly this order: sent before, its answer
     // lost. Anything else: refused for good, nothing written.
-    const wanted = inOrder.map((r) => `${r.song_id}:${r.set_number ?? 1}`).join(',');
-    if (res.conflict && res.conflict.songs.map((x) => `${x.song_id}:${x.set_number ?? 1}`).join(',') === wanted) return { error: null };
+    const now = res.conflict?.songs;
+    if (
+      now &&
+      now.length === inOrder.length &&
+      inOrder.every((r, i) => r.song_id === now[i].song_id && (r.set_number ?? 1) === (now[i].set_number ?? 1) && (!now[i].id || now[i].id === r.id))
+    )
+      return { error: null };
     if (res.conflict) return { error: Object.assign(new Error('The setlist changed meanwhile.'), { code: 'BW_SETLIST_CONFLICT' }) };
     void notifySetlistSaved({
       setlistId: op.setlistId,
@@ -106,7 +111,7 @@ export const liveOutboxApi: LiveOutboxApi = {
  */
 export async function keepOrderOffline(
   error: unknown,
-  order: { setlistId: string; eventId?: string; rows: OrderRow[]; before: { songId: string; setNumber?: number }[] },
+  order: { setlistId: string; eventId?: string; rows: OrderRow[]; before: { songId: string; setNumber?: number; id?: string }[] },
   owner?: string | null,
 ): Promise<boolean> {
   if (!isOfflineError(error)) return false;

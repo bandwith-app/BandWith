@@ -1725,9 +1725,18 @@ const rpcOnline = (fn: string, args: Row = {}) => {
       const exp = args.p_expected as { name?: string; songs?: Row[] } | null | undefined;
       if (exp && typeof exp === 'object') {
         const sl = table('setlists').find((r) => r.id === id);
-        const now = before.map((r) => ({ song_id: r.song_id, set_number: r.set_number ?? 1 }));
-        const want = (Array.isArray(exp.songs) ? exp.songs : []).map((r) => ({ song_id: r.song_id, set_number: r.set_number ?? 1 }));
-        if (('name' in exp && exp.name !== sl?.name) || ('songs' in exp && JSON.stringify(now) !== JSON.stringify(want))) {
+        const now = before.map((r) => ({ id: r.id, song_id: r.song_id, set_number: r.set_number ?? 1, vocal_parts: r.vocal_parts ?? null }));
+        const want = Array.isArray(exp.songs) ? exp.songs : [];
+        // Per place: song and set; the row when named; who sings it when sent (188).
+        const voices = (v: unknown) => (v == null || (typeof v === 'object' && Object.keys(v as object).length === 0) ? 'null' : JSON.stringify(v));
+        const differs =
+          now.length !== want.length ||
+          want.some((w, i) =>
+            w.song_id !== now[i].song_id ||
+            (w.set_number ?? 1) !== now[i].set_number ||
+            (w.id && w.id !== now[i].id) ||
+            ('vocal_parts' in w && voices(w.vocal_parts) !== voices(now[i].vocal_parts)));
+        if (('name' in exp && exp.name !== sl?.name) || ('songs' in exp && differs)) {
           data = { saved: false, conflict: true, current: { name: sl?.name ?? '', songs: now } };
           break;
         }
@@ -1735,7 +1744,7 @@ const rpcOnline = (fn: string, args: Row = {}) => {
       const left = [...before];
       const list: Row[] = Array.isArray(args.p_songs) ? args.p_songs : [];
       const now = new Date().toISOString();
-      const next = list.map((e, i) => {
+      const next: Row[] = list.map((e, i) => {
         // An entry naming its row keeps it (188), else the first of that song.
         const byId = e.id ? left.findIndex((r) => r.id === e.id && r.song_id === e.song_id) : -1;
         const k = byId >= 0 ? byId : left.findIndex((r) => r.song_id === e.song_id);
@@ -1763,6 +1772,7 @@ const rpcOnline = (fn: string, args: Row = {}) => {
         saved: true,
         song_count: next.length,
         previous: before.map((r) => ({ song_id: r.song_id, set_number: r.set_number ?? 1, position: r.position })),
+        rows: next.map((r) => ({ id: r.id, song_id: r.song_id, set_number: r.set_number, position: r.position })),
       };
       break;
     }

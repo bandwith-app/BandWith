@@ -4,7 +4,6 @@ import {
   parseRegiaState,
   REGIA_RESEND_MS,
   regiaReadiness,
-  rowsWithInserted,
   takesOver,
   type RegiaReadiness,
   type RegiaState,
@@ -19,7 +18,7 @@ import {
 } from '@/lib/regiaAudio';
 import { stopPlayer } from '@/lib/audioPlayer';
 import { currentAudioOutput, onAudioOutputChange, outputWarning, setPlaybackSession, type AudioOutput } from '@/lib/audioOutput';
-import { addSongToSetlist, saveStageOrder, setlistOrder } from '@/lib/services/songs';
+import { replaceSetlistSongs } from '@/lib/services/songs';
 import { SETLIST_ORDER_SAVED, type StageRegiaBridge } from './useStageLive';
 import { useAudioDownloads, type SongAudio } from './useAudioDownloads';
 
@@ -96,7 +95,9 @@ export type PlayFailure = AudioFailure | 'pending';
 export type RegiaError =
   | { kind: 'load'; title: string; reason: PlayFailure }
   | { kind: 'no-audio'; title: string }
-  | { kind: 'insert' };
+  | { kind: 'insert' }
+  /** Another admin changed the setlist meanwhile: nothing added, the list reloads, pick again. */
+  | { kind: 'changed' };
 
 const online = () => (typeof navigator === 'undefined' ? true : navigator.onLine !== false);
 
@@ -397,40 +398,51 @@ export function useStageRegia({
    * Play a song from the repertoire that isn't in tonight's setlist: it is
    * added to the gig's setlist right after the current song (saved, so it
    * also shows in the gig afterwards), everyone jumps to it, and it plays.
+   * One guarded save (188): written only over the setlist as shown here (row
+   * ids), so a song another admin removed meanwhile never comes back. Changed
+   * meanwhile: nothing is written, the setlist reloads and the answer is
+   * 'changed' (the picker opens again on the latest list).
    */
   const playExtra = useCallback(
-    async (song: RegiaExtraSong) => {
+    async (song: RegiaExtraSong): Promise<boolean | 'changed'> => {
       const { setlistId: list, songs: ordered, currentId: cur, jumpTo: jump } = ctx.current;
       if (!on || !list) return false;
       setError(null);
-      const saved = ordered.filter((s) => s.id && s.songId).map((s) => ({ id: s.id!, songId: s.songId!, setNumber: s.setNumber }));
+      const saved = ordered.filter((s) => s.id && s.songId).map((s) => ({ id: s.id!, songId: s.songId!, setNumber: s.setNumber ?? 1 }));
       const at = saved.findIndex((s) => s.id === cur);
-      const { data, error: addError } = await addSongToSetlist(list, song.id, saved.length + 1, saved[at]?.setNumber ?? 1);
-      if (addError || !data?.id) {
+      const insertAt = at >= 0 ? at + 1 : saved.length;
+      const setNumber = saved[at >= 0 ? at : saved.length - 1]?.setNumber ?? 1;
+      const entries = [
+        ...saved.slice(0, insertAt).map((s) => ({ id: s.id, song_id: s.songId, set_number: s.setNumber })),
+        { song_id: song.id, set_number: setNumber },
+        ...saved.slice(insertAt).map((s) => ({ id: s.id, song_id: s.songId, set_number: s.setNumber })),
+      ];
+      const reload = () => {
+        try {
+          window.dispatchEvent(new CustomEvent(SETLIST_ORDER_SAVED, { detail: { setlistId: list } }));
+        } catch {
+          /* no window */
+        }
+      };
+      const res = await replaceSetlistSongs(list, entries, {
+        expected: { songs: saved.map((s) => ({ id: s.id, song_id: s.songId, set_number: s.setNumber })) },
+      });
+      if (res.error) {
         setError({ kind: 'insert' });
         return false;
       }
-      const order = saved.map((s) => s.id);
-      const rows = rowsWithInserted(list, saved, order, cur, { id: data.id, songId: song.id });
-      const liveOrder = rows ? rows.map((r) => r.id) : [...order, data.id];
-      jump(data.id, liveOrder);
-      if (rows) {
-        // The setlist as the server has it now, if nobody changed it meanwhile:
-        // ours, with the new row at the end of its set. One guarded save (188,
-        // row ids): changed meanwhile, only the added song is written; a song
-        // another admin removed never comes back.
-        const afterInsert = setlistOrder([
-          ...saved.map((s, i) => ({ id: s.id, song_id: s.songId, position: i + 1, set_number: s.setNumber ?? 1 })),
-          { id: data.id, song_id: song.id, position: saved.length + 1, set_number: saved[at]?.setNumber ?? 1 },
-        ]);
-        void saveStageOrder(list, rows, afterInsert.map((r) => ({ songId: r.song_id, setNumber: r.set_number })));
+      if (res.conflict) {
+        setError({ kind: 'changed' });
+        reload();
+        return 'changed';
       }
-      try {
-        window.dispatchEvent(new CustomEvent(SETLIST_ORDER_SAVED, { detail: { setlistId: list } }));
-      } catch {
-        /* no window */
-      }
-      return start({ id: data.id, title: song.title, audio: song.audio });
+      const known = new Set(saved.map((s) => s.id));
+      const added = res.rows?.find((r) => !known.has(r.id) && r.song_id === song.id);
+      reload();
+      // Saved, but the new row's id didn't come back (a database without 188): it shows after the reload.
+      if (!added || !res.rows) return false;
+      jump(added.id, res.rows.map((r) => r.id));
+      return start({ id: added.id, title: song.title, audio: song.audio });
     },
     [on, start],
   );

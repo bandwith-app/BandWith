@@ -437,10 +437,16 @@ export default function AuthenticatedApp() {
   // written over it, kept in Settings › Offline & live, and said here.
   useEffect(() => {
     const onRefused = (e: globalThis.Event) => {
-      const d = (e as CustomEvent<{ userId?: string; kind?: string }>).detail;
+      const d = (e as CustomEvent<{ userId?: string; kind?: string; full?: boolean }>).detail;
       if (d?.kind !== 'gigSetlist' || d.userId !== user?.id) return;
       const place = `${t('Settings & account')} › ${t('Offline & live')}`;
-      setSaveToast({ message: t('Someone else changed a gig setlist meanwhile, so your offline changes were not saved. They’re kept in {place}.', { place }), type: 'error' });
+      // No room in the refused list: the setlist waits on this device (still queued).
+      setSaveToast({
+        message: d.full
+          ? t('Too many unsaved changes: review them in {place}. Your gig setlist waits on this device until there’s room.', { place })
+          : t('Someone else changed a gig setlist meanwhile, so your offline changes were not saved. They’re kept in {place}.', { place }),
+        type: 'error',
+      });
     };
     window.addEventListener(LIVE_REFUSED_EVENT, onRefused);
     return () => window.removeEventListener(LIVE_REFUSED_EVENT, onRefused);

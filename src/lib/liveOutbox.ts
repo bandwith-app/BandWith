@@ -9,7 +9,7 @@
  */
 import { isOfflineError } from './offline/networkErrors';
 import type { NoteAnchor, PersonalNote } from './personalNotes';
-import { OUTBOX_EVENT, readOutbox } from './rehearsalNotesOutbox';
+import { OUTBOX_EVENT, readOutbox, writeOutbox } from './rehearsalNotesOutbox';
 
 export interface OrderRow {
   id: string;
@@ -25,8 +25,11 @@ export type LiveOp =
   | { kind: 'noteDelete'; id: string; songId: string }
   /** A suggestion to the band (song_suggestions row, with its own id). */
   | { kind: 'suggestion'; id: string; row: Record<string, unknown> }
-  /** The leader's new order; `before`: the order the server had (for the band's summary push). */
-  | { kind: 'order'; setlistId: string; eventId?: string; rows: OrderRow[]; before: { songId: string; setNumber?: number }[] };
+  /**
+   * The leader's new order; `before`: the order the server had (for the
+   * band's summary push, and saved only over it: with `id`, row by row, 188).
+   */
+  | { kind: 'order'; setlistId: string; eventId?: string; rows: OrderRow[]; before: { songId: string; setNumber?: number; id?: string }[] };
 
 const keyOfOp = (op: LiveOp): string => {
   switch (op.kind) {
@@ -200,6 +203,37 @@ export function restoreRefusedLiveOp(userId: string, op: RefusedLiveOp, index: n
   if (list.some((o) => refusedId(o) === refusedId(op))) return;
   const at = Math.max(0, Math.min(index, list.length));
   writeRefused(userId, [...list.slice(0, at), op, ...list.slice(at)]);
+}
+
+/**
+ * Signing out from the lock screen (nothing can be sent from there) when
+ * sign-out would wipe the queues: the waiting changes move to the kept
+ * refused lists instead (Stage changes to bw:live_refused:, rehearsal note
+ * texts to bw:rehearsal_notes_rejected: in #296's shape), so nothing is
+ * destroyed. What finds no room stays queued. A waiting tick or delete of a
+ * rehearsal note has no text to keep and stays queued too.
+ */
+export function keepQueuedAsRefused(userId: string): void {
+  const live = readLiveOutbox(userId);
+  if (live.length) writeLiveOutbox(userId, live.filter((op) => !keepRefused(userId, op)));
+  const ops = readOutbox(userId);
+  const saves = ops.filter((o): o is Extract<typeof o, { kind: 'save' }> => o.kind === 'save');
+  if (!saves.length) return;
+  const key = `bw:rehearsal_notes_rejected:${userId}`;
+  // #296's rejectedKey: one entry per version of a note.
+  const version = (n: { id?: unknown; body?: unknown; section?: unknown; preset?: unknown; songId?: unknown }) =>
+    JSON.stringify([n.id, n.body ?? null, n.section ?? null, n.preset ?? null, n.songId ?? null]);
+  try {
+    const raw: unknown = JSON.parse(localStorage.getItem(key) || '[]');
+    const stored = Array.isArray(raw) ? raw : [];
+    const seen = new Set(stored.map((n) => version((n ?? {}) as Record<string, unknown>)));
+    const add = saves.map((o) => o.note).filter((n) => !seen.has(version(n)));
+    localStorage.setItem(key, JSON.stringify([...stored, ...add]));
+    writeOutbox(userId, ops.filter((o) => o.kind !== 'save'));
+  } catch {
+    /* storage full or blocked: they stay queued */
+  }
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(LIVE_REFUSED_EVENT, { detail: { userId } }));
 }
 
 export function queueLiveOp(userId: string, op: LiveOp) {

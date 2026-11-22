@@ -138,7 +138,17 @@ describe('editing the gig setlist (audit review, Claude MINOR 9)', () => {
     fireEvent.click(screen.getByText('Save changes'));
     await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
     const sent = (onCreate.mock.calls[0] as unknown[])[0] as any;
-    expect(sent._setlistExpected).toEqual({ id: 'sl-9', songs: [{ song_id: 'A', set_number: 1 }, { song_id: 'A', set_number: 2 }] });
+    expect(sent._setlistExpected).toEqual({ id: 'sl-9', songs: [{ id: 'r1', song_id: 'A', set_number: 1 }, { id: 'r2', song_id: 'A', set_number: 2 }] });
+  });
+
+  // Round 7 (Codex r6 B3): the gig had no setlist when opened: the save says
+  // so, and a setlist someone adds meanwhile is never written over.
+  it('a gig with no setlist when opened sends "none loaded"', async () => {
+    const onCreate = vi.fn(async () => true);
+    render(<CreateEventModal onClose={vi.fn()} onCreate={onCreate} editingEvent={{ ...gig, setlistId: undefined }} currentUserId="me" />);
+    fireEvent.click(screen.getByText('Save changes'));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
+    expect(((onCreate.mock.calls[0] as unknown[])[0] as any)._setlistExpected).toEqual({ id: null, songs: [] });
   });
 });
 

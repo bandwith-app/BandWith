@@ -203,8 +203,9 @@ interface SetlistManagerViewProps {
 
 type ViewMode = 'songs' | 'setlists';
 
-const editorSnapshot = (name: string, songIds: string[], sets: number[]) =>
-  JSON.stringify([name.trim(), songIds, compactSets(sets)]);
+// Row ids too: the same song twice swapped is a change (Codex r6 M1).
+const editorSnapshot = (name: string, songIds: string[], sets: number[], rowIds: (string | undefined)[]) =>
+  JSON.stringify([name.trim(), songIds, compactSets(sets), rowIds.map((r) => r ?? null)]);
 
 export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose }) => {
   const t = useT();
@@ -577,18 +578,22 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
   // (a reprise) stays twice.
   function applyLoadedSetlist(setlistId: string, data: NonNullable<Awaited<ReturnType<typeof getSetlist>>['data']>) {
     setEditorLoadedId(setlistId);
-    editorLoadedStateRef.current = {
-      name: data.name,
-      songs: [...data.songs]
-        .sort((a, b) => ((a.set_number ?? 1) - (b.set_number ?? 1)) || (a.position - b.position) || String(a.id).localeCompare(String(b.id)))
-        .map((s) => ({ song_id: s.song_id, set_number: s.set_number ?? 1 })),
-    };
-    setEditingSetlistName(data.name);
     const ordered = [...data.songs]
       .sort((a, b) => ((a.set_number ?? 1) - (b.set_number ?? 1)) || (a.position - b.position) || String(a.id).localeCompare(String(b.id)));
+    // Row by row, with who sings it: saved only over exactly this (188, Codex r6 M1).
+    editorLoadedStateRef.current = {
+      name: data.name,
+      songs: ordered.map((s) => ({
+        ...(s.id ? { id: s.id } : {}),
+        song_id: s.song_id,
+        set_number: s.set_number ?? 1,
+        vocal_parts: (s as { vocal_parts?: unknown }).vocal_parts ?? null,
+      })),
+    };
+    setEditingSetlistName(data.name);
     setEditorItems(ordered.map((s) => ({ key: s.id || newEditorKey(), songId: s.song_id, ...(s.id ? { rowId: s.id } : {}) })));
     setEditorSets(compactSets(ordered.map((s) => s.set_number ?? 1)));
-    setEditorBaseline(editorSnapshot(data.name, ordered.map((s) => s.song_id), ordered.map((s) => s.set_number ?? 1)));
+    setEditorBaseline(editorSnapshot(data.name, ordered.map((s) => s.song_id), ordered.map((s) => s.set_number ?? 1), ordered.map((s) => s.id || undefined)));
     setEditorLoadFailed(false);
   }
 
@@ -638,7 +643,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
   const editorDirty =
     !!editingSetlistId &&
     editorBaseline !== null &&
-    editorSnapshot(editingSetlistName, editorItems.map((it) => it.songId), editorSets) !== editorBaseline;
+    editorSnapshot(editingSetlistName, editorItems.map((it) => it.songId), editorSets, editorItems.map((it) => it.rowId)) !== editorBaseline;
   // What to do once the user leaves: just close, or open another setlist.
   const [editorLeaveAction, setEditorLeaveAction] = useState<null | (() => void)>(null);
   const guardEditor = (after: () => void) => (editorDirty ? setEditorLeaveAction(() => after) : after());
@@ -670,7 +675,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
       const rows = editorItems.map((it, i) => ({ ...(it.rowId ? { id: it.rowId } : {}), song_id: it.songId, set_number: sets[i] ?? 1 }));
       // Only over the setlist as loaded: another admin's songs are never dropped unseen.
       const expected = over ?? editorLoadedStateRef.current ?? undefined;
-      const { error: songsError, previous, conflict } = await replaceSetlistSongs(editingSetlistId, rows, { name, ...(expected ? { expected } : {}) });
+      const { error: songsError, previous, conflict, rows: savedRows } = await replaceSetlistSongs(editingSetlistId, rows, { name, ...(expected ? { expected } : {}) });
       if (songsError) {
         setEditorError(errorText(songsError, t('Could not save the setlist')));
         return false;
@@ -680,7 +685,12 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
         return 'conflict';
       }
       setEditorConflict(null);
-      editorLoadedStateRef.current = { name, songs: rows.map(({ song_id, set_number }) => ({ song_id, set_number })) };
+      editorLoadedStateRef.current = {
+        name,
+        songs: savedRows
+          ? savedRows.map(({ id, song_id, set_number }) => ({ id, song_id, set_number }))
+          : rows.map(({ song_id, set_number }) => ({ song_id, set_number })),
+      };
       const renamed = name !== (setlists.find(sl => sl.id === editingSetlistId)?.name ?? name);
       setSetlists(prev => prev.map(sl =>
         sl.id === editingSetlistId ? { ...sl, name, song_count: editorItems.length } : sl
