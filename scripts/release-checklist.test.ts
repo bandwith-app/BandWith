@@ -10,9 +10,12 @@ import { definedFunctions } from './sql-functions.mjs';
 const fs = (await import(/* @vite-ignore */ 'node:fs')) as {
   readFileSync: (p: string, e: 'utf8') => string;
   readdirSync: (p: string) => string[];
+  existsSync: (p: string) => boolean;
 };
 const { process } = globalThis as unknown as { process: { cwd(): string } };
 const read = (p: string) => fs.readFileSync(`${process.cwd()}/${p}`, 'utf8');
+const existsSync = (p: string) => fs.existsSync(`${process.cwd()}/${p}`);
+const readdirSync = (p: string) => fs.readdirSync(`${process.cwd()}/${p}`);
 const checklist = read('docs/release-checklist.md');
 const check = read('supabase/checks/release_migrations.sql');
 const checkSql = check.replace(/--.*$/gm, '');
@@ -31,7 +34,7 @@ describe('release migrations: checked by their objects', () => {
   it('the check file has a row for every migration of the release order', () => {
     const rows = [...checkSql.matchAll(/^\s*\('(\d{3})', (?!')/gm)].map((m) => m[1]);
     // docs/release-checklist.md step 2 (no 179), and 177 (sunset list, expected false).
-    const order = ['170', '171', '172', '173', '174', '175', '176', '177', '178', '180', '181', '182', '183', '184', '185', '186', '187', '188', '189', '190', '191', '192', '193', '194', '195', '196', '197'];
+    const order = ['170', '198', '171', '172', '173', '174', '175', '176', '177', '178', '180', '181', '182', '183', '184', '185', '186', '187', '188', '189', '190', '191', '192', '193', '194', '195', '196', '197'];
     for (const n of order) expect(rows, n).toContain(n);
     expect(new Set(rows).size).toBe(rows.length);
   });
@@ -62,7 +65,7 @@ describe('release checklist, round 6 (review #278)', () => {
   it('supabase db reset only on the local database, never as a prod step', () => {
     const lines = checklist.split('\n').filter((l) => /db reset/.test(l));
     expect(lines.length).toBeGreaterThan(0);
-    for (const l of lines) expect(l).toMatch(/Local only/);
+    for (const l of lines) expect(l).toMatch(/Local only|Don't test the release with `supabase db reset` on a local database/);
     expect(checklist).toMatch(/never reset or drop anything on prod/);
   });
 
@@ -77,10 +80,20 @@ describe('release checklist, round 6 (review #278)', () => {
     expect(checklist).not.toMatch(/The code is minute-based/);
   });
 
-  it('170 is "in" only in the current version: partial column and the newer-only status guard', () => {
-    const row = checkSql.split('\n').filter((l, i, all) => /\('170'/.test(l) || /\('170'/.test(all[i - 1] ?? '') || /\('170'/.test(all[i - 2] ?? '')).join(' ');
-    expect(row).toMatch(/c = 'partial'/);
-    expect(row).toMatch(/bw_live_pack_status_newer_only/);
+  it('170 is frozen (main\'s file, one version): its objects; this round (partial, newer-only guard, keep) is 198 (Codex round 2)', () => {
+    const rowOf = (n: string) => {
+      const lines = checkSql.split('\n');
+      const i = lines.findIndex((l) => new RegExp(`^\\s*\\('${n}', (?!')`).test(l));
+      return lines.slice(i, i + 4).join(' ');
+    };
+    expect(rowOf('170')).toMatch(/live_pack_status/);
+    expect(rowOf('170')).toMatch(/bw_live_pack_queue/);
+    expect(rowOf('170')).not.toMatch(/partial/);
+    expect(rowOf('198')).toMatch(/c = 'partial'/);
+    expect(rowOf('198')).toMatch(/bw_live_pack_status_newer_only/);
+    expect(rowOf('198')).toMatch(/bw_live_pack_keep/);
+    expect(markers.filter((k) => k.m === '170')).toEqual([]);
+    expect(markers.filter((k) => k.m === '198').map((k) => k.fn)).toEqual(expect.arrayContaining(['bw_live_pack_can_hold', 'bw_live_pack_refresh_flush', 'bw_live_pack_on', 'bw_live_pack_keep']));
   });
 });
 
@@ -164,12 +177,12 @@ describe('edge functions that wait for, or go before, a migration (main, 11-22)'
 
   it('right after 175: send-push and every other function that imports _shared/auth.ts, with its proof and the ex-member push test', () => {
     const step = after('175');
-    expect(step).toMatch(/175's row is `true`/);
+    expect(step).toMatch(/rows of \*\*194, 184 and 175\*\* are all `true`/);
     expect(step).toMatch(/`send-push`/);
     for (const fn of authUsers().filter((f) => f !== 'delete-account' && f !== 'quote-pdf')) expect(step, fn).toContain(`\`${fn}\``);
     expect(step).toMatch(/_shared\/auth\.ts/);
     expect(step).toMatch(/ex-member[\s\S]*must not reach/);
-    expect(step).toMatch(/194 and 184 are already in/);
+    expect(step).toMatch(/only with \*\*194 and 184 already in\*\*/);
     expect(waits).not.toMatch(/right after 194/);
   });
 
@@ -203,16 +216,16 @@ const definedFns = (sql: string) => definedFunctions(sql) as Map<string, { how: 
 const unquote = (s: string) => s.replace(/''/g, "'");
 /** marker(m, fn, txt) rows of release_migrations.sql. */
 const markers = [...checkSql.matchAll(/^\s*\('(\d{3})', '(\w+)', '((?:[^']|'')*)'\)/gm)].map((m) => ({ m: m[1], fn: m[2], txt: unquote(m[3]) }));
-// The apply order of section 2 (173 and 170 first, then step 4).
+// The apply order of section 2 (173, then 170 + 198, then step 4).
 const releaseOrder = () => {
   const line = applyStep.split('\n').find((l) => /^\s+4\. /.test(l)) ?? '';
-  return ['173', '170', ...[...line.matchAll(/(?:^|\D)(1[789]\d)(?=\D|$)/g)].map((m) => m[1])];
+  return ['173', '170', '198', ...[...line.matchAll(/(?:^|\D)(1[789]\d)(?=\D|$)/g)].map((m) => m[1])];
 };
 
 describe('every proof takes a marker from the final body (Codex, review #278)', () => {
   it('each migration with a function is proven by at least one body marker, not by its objects alone', () => {
-    // 172: already live. 173: one version only, its table. 177: no function (a bucket flag). 171: its trigger (below).
-    const objectsOnly = new Set(['171', '172', '173', '177']);
+    // 172: already live. 173 and 170 (frozen on main): one version only, their tables. 177: no function (a bucket flag). 171: its trigger (below).
+    const objectsOnly = new Set(['170', '171', '172', '173', '177']);
     for (const n of releaseOrder().filter((x) => !objectsOnly.has(x))) {
       expect(markers.filter((k) => k.m === n).length, `${n} has a body marker`).toBeGreaterThan(0);
     }
@@ -220,8 +233,8 @@ describe('every proof takes a marker from the final body (Codex, review #278)', 
   });
 
   it('every marker is in that function in the migration file as it is now (checked once the file is on main)', () => {
-    // main has the A2 copy of 170 (#269); #273 replaces it in place. Remove 170 here once #273 is merged.
-    const replacedByOpenPr = new Set(['170']);
+    // 170 is frozen: main's file is the release's (#273 round 8).
+    const replacedByOpenPr = new Set<string>();
     for (const k of markers) {
       const f = migrationFile(k.m);
       if (!f || replacedByOpenPr.has(k.m)) continue; // the file is on its own branch until it merges
@@ -256,6 +269,9 @@ describe('every proof takes a marker from the final body (Codex, review #278)', 
   });
 });
 
+/** Re-declared unchanged by a later migration of the release (identical live bodies on the 11-22 heads). */
+const SAME_BODY = new Set(['bw_band_free_slots', 'bw_chat_preview', 'bw_js_left']);
+const squash = (b: string | null) => (b ?? '').replace(/--[^\n]*/g, '').replace(/\s+/g, ' ').trim();
 describe('functions redefined by more than one migration: post-apply check (main, 11-22)', () => {
   const redef = read('supabase/checks/redefined_functions.sql');
   const redefSql = noComments(redef);
@@ -282,6 +298,29 @@ describe('functions redefined by more than one migration: post-apply check (main
     expect(redefSql).not.toMatch(/\('public\.\w+\(/);
   });
 
+  it('bw_chat_scope_ok: 175\'s stamp and its lineup rule (Claude review #278)', () => {
+    const marks = rows.filter((r) => r.fn === 'bw_chat_scope_ok').map((r) => r.mark);
+    expect(marks).toEqual(expect.arrayContaining(['bw:175-r4', 'bw_is_event_participant']));
+    expect(rows.filter((r) => r.fn === 'bw_chat_scope_ok').every((r) => r.final === '175' && r.replaces.includes('178'))).toBe(true);
+  });
+
+  it('a definition inside a DO block that returns first counts as conditional (the exception below)', () => {
+    const sql = `DO $do$ BEGIN
+  IF strpos(pg_get_functiondef('public.bw_x(text)'::regprocedure), 'bw:175-r4') > 0 THEN RETURN; END IF;
+  EXECUTE $f$CREATE OR REPLACE FUNCTION public.bw_x(p text) RETURNS boolean LANGUAGE sql AS $b$ SELECT public.bw_is_event_participant() $b$$f$;
+END $do$;`;
+    expect(definedFns(sql).get('bw_x')?.conditional).toBe(true);
+  });
+
+  it('the overlaps of the 11-22 evening heads have rows: 182 over 178, and three identical copies (fn-redefinitions --check)', () => {
+    const final = (fn: string) => rows.find((r) => r.fn === fn)?.final;
+    expect(final('bw_deputy_feed')).toBe('182');
+    expect(final('bw_deputy_request_view')).toBe('182');
+    expect(final('bw_band_free_slots')).toBe('195');
+    expect(final('bw_chat_preview')).toBe('192');
+    expect(final('bw_js_left')).toBe('192');
+  });
+
   it('lists the known groups with the right final migration', () => {
     const final = (fn: string) => rows.find((r) => r.fn === fn)?.final;
     expect(final('bw_withdraw_song_suggestion')).toBe('197');
@@ -304,7 +343,18 @@ describe('functions redefined by more than one migration: post-apply check (main
       if (f) expect(fnBody(read(`${MIGRATIONS}/${f}`), r.fn) ?? '', `${r.final} ${r.fn}`).toContain(r.mark);
       for (const old of r.replaces) {
         const o = migrationFile(old);
-        if (o) expect(fnBody(read(`${MIGRATIONS}/${o}`), r.fn) ?? '', `${old} ${r.fn}`).not.toContain(r.mark);
+        if (!o) continue;
+        // A DO block that defines it only when the final body isn't live (178
+        // keeps 175's bw_chat_scope_ok; its fallback is a copy of 175's, #294)
+        // may hold the same text: the live body decides, not the file.
+        if (definedFns(read(`${MIGRATIONS}/${o}`)).get(r.fn)?.conditional) continue;
+        // A later migration that re-declares the same body (a copy): either one
+        // being live is right; the two must then really be the same.
+        if (SAME_BODY.has(r.fn)) {
+          if (f) expect(squash(fnBody(read(`${MIGRATIONS}/${f}`), r.fn)), `${r.fn}: ${r.final} = ${old}`).toBe(squash(fnBody(read(`${MIGRATIONS}/${o}`), r.fn)));
+          continue;
+        }
+        expect(fnBody(read(`${MIGRATIONS}/${o}`), r.fn) ?? '', `${old} ${r.fn}`).not.toContain(r.mark);
       }
     }
   });
@@ -368,12 +418,69 @@ describe('checklist, Codex round (review #278)', () => {
     expect(candidate).toMatch(/Nothing goes to prod until it is green/);
   });
 
-  it('the run is the CI job PGlite suites, green means strict, needs the base dump, and is a required check (main, 11-22)', () => {
+  it('the run is the CI job PGlite suites, green means strict, and is a required check (main, 11-22)', () => {
     expect(candidate).toMatch(/CI job \*\*PGlite suites\*\*/);
-    expect(candidate).toMatch(/release_integration\.pglite\.mjs/);
     expect(candidate).toMatch(/ends in `\(strict\)`/);
-    expect(candidate).toMatch(/base_schema\.sql/);
     expect(candidate).toMatch(/\*\*required check\*\* on `main`/);
+  });
+
+  it('the release run is integration-chain: one database, 001 → latest, then the release, both checks true (Codex, #278)', () => {
+    expect(candidate).toMatch(/supabase\/tests\/integration-chain\.pglite\.mjs/);
+    expect(candidate).toMatch(/from `001`/);
+    expect(candidate).toMatch(/replay-bridge\.sql/);
+    expect(candidate).toMatch(/BW_RELEASE_HEADS/);
+    expect(candidate).toMatch(/BW_CHAIN_PICK=1/);
+    expect(candidate).not.toMatch(/release_integration|base_schema/);
+    expect(existsSync('supabase/tests/integration-chain.pglite.mjs')).toBe(true);
+    expect(existsSync('supabase/tests/release_integration.pglite.mjs')).toBe(false);
+  });
+
+  it('no local-reset procedure: main\'s files alone don\'t rebuild prod; the replay is the chain runner (Codex MINOR)', () => {
+    expect(checklist).not.toMatch(/`supabase db reset` rebuilds/);
+    expect(candidate).toMatch(/Don't test the release with `supabase db reset`/);
+  });
+});
+
+describe('170 + 198: one transaction, so 170 never runs without the switch (Codex round 2, #273)', () => {
+  it('step 3 applies 170 and 198 together, their own BEGIN/COMMIT replaced by one', () => {
+    expect(applyStep).toMatch(/3\. `170_live_pack` and `198_live_pack_flags`, in \*\*one transaction\*\*/);
+    expect(applyStep).toMatch(/sed '\/\^BEGIN;\$\/d; \/\^COMMIT;\$\/d' supabase\/migrations\/170_live_pack\.sql supabase\/migrations\/198_live_pack_flags\.sql/);
+    expect(applyStep).not.toMatch(/170 reads the switch itself/);
+    expect(applyStep).toMatch(/198 reads the switch/);
+  });
+
+  it('the integration run applies them the same way', () => {
+    const suite = read('supabase/tests/integration-chain.pglite.mjs');
+    expect(suite).toMatch(/oneTransaction\(/);
+  });
+});
+
+describe('send-push after 175, with 194 and 184 in (Claude review #278)', () => {
+  it('the rule in full, and the proofs of the rows it depends on', () => {
+    expect(applyStep).toMatch(/`send-push` goes out \*\*right after 175\*\*, and only with \*\*194 and 184 already in\*\*/);
+    expect(applyStep).toMatch(/Proof: the rows of \*\*194, 184 and 175\*\* are all `true` before the deploy/);
+  });
+});
+
+describe('the replay bridge names real files and real text (supabase/tests/fixtures/replay-bridge.sql)', () => {
+  const bridge = read('supabase/tests/fixtures/replay-bridge.sql');
+  const files = new Set(readdirSync(MIGRATIONS));
+  it('every file it orders, skips, patches or prefixes is on the checkout', () => {
+    const named = [
+      ...(bridge.match(/^-- @order (.+)$/m)?.[1] ?? '').split(/\s+/),
+      ...[...bridge.matchAll(/^-- @(?:skip|sub|before) (\S+)/gm)].map((m) => m[1]),
+    ].filter(Boolean);
+    expect(named.length).toBeGreaterThan(5);
+    for (const f of named) expect(files.has(f), f).toBe(true);
+  });
+  it('each @sub replaces text that is in its file exactly once', () => {
+    for (const m of bridge.matchAll(/^-- @sub (\S+) (.+?) => (.+)$/gm)) {
+      expect(read(`${MIGRATIONS}/${m[1]}`).split(m[2]).length - 1, `${m[1]}: ${m[2]}`).toBe(1);
+    }
+  });
+  it('every block says why (a comment line right after the directive)', () => {
+    for (const m of bridge.matchAll(/^-- @(?:before|skip) \S+(.*)\n(.*)$/gm)) expect(m[1].trim() || m[2], m[0]).toMatch(/\S/);
+    for (const m of bridge.matchAll(/^-- @before \S+\n(.*)$/gm)) expect(m[1], m[0]).toMatch(/^-- /);
   });
 });
 

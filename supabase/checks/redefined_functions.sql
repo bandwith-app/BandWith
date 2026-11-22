@@ -36,10 +36,26 @@ SELECT v.fn AS function,
                    FROM pg_proc p
                   WHERE p.pronamespace = 'public'::regnamespace AND p.proname = v.fn), false) AS ok
 FROM (VALUES
+  -- 182 rewrites 178's deputy views (178 → 182 is a hard order).
+  ('bw_deputy_feed', '182', '178', '(SELECT r.deputy_name FROM public.deputy_requests r WHERE r.calendar_token = p_token),'),
+  ('bw_deputy_request_view', '182', '178', 'v := v || public.bw_deputy_frozen_gig(v_snap) || jsonb_build_object(''event_updated_at'', NULL);'),
+  -- Re-declared unchanged by a later one (identical bodies on the 11-22 heads):
+  -- either being live is right; the marker proves that body is.
+  ('bw_band_free_slots', '195', '178', 'AND public.bw_is_band_member(p_band_id, auth.uid())'),
+  ('bw_chat_preview', '192', '194', '''New message'''),
+  ('bw_js_left', '192', '194', 'v_units := v_units + CASE WHEN ascii(substr(p_text, v_i + 1, 1)) > 65535 THEN 2 ELSE 1 END;'),
+  -- 170 is frozen on main; 198 (right after it) carries the kill switch.
+  ('bw_live_pack_can_hold', '198', '170', 'AND (p_user_id = auth.uid() OR public.bw_is_band_admin(e.band_id))'),
+  ('bw_live_pack_invite_row', '198', '170', 'IF NOT public.bw_live_pack_on() THEN RETURN; END IF;'),
+  ('bw_live_pack_invite_sweep', '198', '170', 'EXIT WHEN NOT public.bw_live_pack_on();'),
+  ('bw_live_pack_refresh_targets', '198', '170', 'AND ((coalesce(p.live_pack_auto, false) AND public.bw_live_pack_on())'),
+  ('bw_live_pack_refresh_flush', '198', '170', 'CONTINUE WHEN NOT EXISTS (SELECT 1 FROM public.bw_live_pack_window_events(q.event_id));'),
+  ('bw_live_pack_remind', '198', '170', 'IF NOT public.bw_live_pack_on() THEN RETURN false; END IF;'),
   ('bw_live_pack_window_events', '178', '170', 'AND NOT public.bw_event_is_quote(e.status::text, e.event_type::text, e.quote_id)'),
   ('bw_trg_dispatch_push', '178', '170', 'IF NEW.type IN (''date_hold'', ''date_hold_changed'', ''date_hold_released'') THEN'),
   -- 178 keeps 175's body (above): the marker 181 also looks for.
   ('bw_chat_scope_ok', '175', '178', 'bw:175-r4'),
+  ('bw_chat_scope_ok', '175', '178', 'bw_is_event_participant'),
   ('get_user_chats', '178', '175', 'AND NOT (c.id = ANY ((SELECT public.bw_hidden_quote_chat_ids())::uuid[]));'),
   ('bw_mark_chat_read', '180', '175', 'to_regprocedure(''public.bw_chat_scope_ok_for(uuid,uuid)'') IS NOT NULL'),
   ('bw_mark_chats_delivered', '180', '175', 'to_regprocedure(''public.bw_chat_scope_ok_for(uuid,uuid)'') IS NOT NULL'),

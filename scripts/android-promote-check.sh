@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Before promoting an Android prerelease to everyone (docs/release-checklist.md):
-# its APK must have a versionCode above every published stable release.
+# its APK must have its version's versionCode, above every release ever published.
 # Android won't install a lower code over a higher one, and the in-app updater
 # needs a strictly higher one. Example: a hotfix 1.0.13.1 published during
 # the 1.0.14 pilot was built later, so its code is higher; promoting the
@@ -26,16 +26,18 @@
 # release still counts for the code check: phones may have installed it.
 # Fails closed: no answer from GitHub (network, auth) means no promotion.
 set -euo pipefail
-VERSION="${1:?usage: scripts/android-promote-check.sh <version> [--code <versionCode>]}"
-VERSION="${VERSION#android-v}"
-[[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){1,3}$ ]] || { echo "Version must look like 1.0.14: $VERSION" >&2; exit 1; }
+HERE="$(cd "$(dirname "$0")" && pwd)"
+INPUT="${1:?usage: scripts/android-promote-check.sh <version> [--code <versionCode>]}"
+# Canonical, 1.0.14 or later, one spelling (android-version-code.sh); the APK's
+# code must be that version's code (Claude review #278).
+TAG="$("$HERE/android-version-code.sh" --tag "$INPUT")" || exit 1
+VERSION="${TAG#android-v}"
+WANT_CODE="$("$HERE/android-version-code.sh" "$VERSION")" || exit 1
 CODE_ARG=""
 if [ "${2:-}" = "--code" ]; then
   CODE_ARG="${3:?--code needs a number}"
   case "$CODE_ARG" in *[!0-9]*) echo "--code must be a number: $CODE_ARG" >&2; exit 1 ;; esac
 fi
-TAG="android-v$VERSION"
-HERE="$(cd "$(dirname "$0")" && pwd)"
 
 ERR="$(mktemp)"
 trap 'rm -f "$ERR"' EXIT
@@ -63,7 +65,9 @@ while IFS=$'\t' read -r tag pre draft published apk code; do
     CAND_APK="$apk"
     continue
   fi
-  [ "$pre" = "false" ] && [ "$draft" = "false" ] || continue
+  # Every release ever published counts, prereleases and withdrawn ones too:
+  # phones may have installed any of them. Only drafts were never out.
+  [ "$draft" = "false" ] || continue
   [ -n "$code" ] || code="$("$HERE/android-version-code.sh" --minute-based "$published")"
   if [ "$code" -gt "$TOP_CODE" ]; then
     TOP_CODE="$code"
@@ -89,9 +93,13 @@ fi
   echo "$TAG has no recorded versionCode: pass --code <n> (aapt dump badging BandWith.apk | grep versionCode)." >&2
   exit 1
 }
+if [ "$CAND_CODE" != "$WANT_CODE" ]; then
+  echo "Not promoting $TAG: its versionCode $CAND_CODE is not $VERSION's code $WANT_CODE (scripts/android-version-code.sh): another build." >&2
+  exit 1
+fi
 if [ "$CAND_CODE" -le "$TOP_CODE" ]; then
   echo "Not promoting $TAG: its versionCode $CAND_CODE is not above $TOP_TAG ($TOP_CODE)." >&2
   echo "Phones on $TOP_TAG would refuse it. Rebuild $VERSION as a new version (scripts/release-android.sh) and pilot that." >&2
   exit 1
 fi
-echo "OK: $TAG (code $CAND_CODE) is above every published release${TOP_TAG:+ (highest $TOP_TAG, code $TOP_CODE)}."
+echo "OK: $TAG (code $CAND_CODE) is above every release ever published${TOP_TAG:+ (highest $TOP_TAG, code $TOP_CODE)}."

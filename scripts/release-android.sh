@@ -67,8 +67,9 @@ fi
 KEYSTORE="${BW_ANDROID_KEYSTORE:-$HOME/Developer/BandWith-keys/bandwith-release.jks}"
 # Canonical versions only (1.0.14, 1.0.14.1): the tag, the version name and
 # the versionCode all come from this one spelling (scripts/android-version-code.sh).
-scripts/android-version-code.sh "$VERSION" >/dev/null || exit 1
-TAG="android-v$VERSION"
+# 1.0.14 or android-v1.0.14 alike; never android-vandroid-v… (Codex, #278).
+TAG="$(scripts/android-version-code.sh --tag "$VERSION")" || exit 1
+VERSION="${TAG#android-v}"
 NOTES_FILE=scripts/android-release-notes.md
 
 if [ "$PUBLISH" = "--publish" ]; then

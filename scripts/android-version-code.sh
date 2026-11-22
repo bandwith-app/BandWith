@@ -18,10 +18,23 @@
 #   40000000 until 2045.
 #
 #   scripts/android-version-code.sh 1.0.14
+#   scripts/android-version-code.sh --tag android-v1.0.14   → android-v1.0.14
 #   scripts/android-version-code.sh --minute-based 1795000000
 #     the old code at that Unix time, for releases published before this scheme
 #     (scripts/android-promote-check.sh)
 set -euo pipefail
+
+# --tag <version or tag>: the release tag, android-v<canonical version>. One
+# leading android-v is taken off; a second (android-vandroid-v…) or anything
+# not canonical is refused, so a tag is never doubled (Codex, #278).
+if [ "${1:-}" = "--tag" ]; then
+  V="${2:-}"
+  V="${V#android-v}"
+  [[ "$V" =~ ^[0-9] ]] || { echo "Not a version: '${2:-}'. Use 1.0.14 (or android-v1.0.14)." >&2; exit 1; }
+  "$0" "$V" >/dev/null || exit 1
+  echo "android-v$V"
+  exit 0
+fi
 
 if [ "${1:-}" = "--minute-based" ]; then
   BASE=30000000

@@ -3,31 +3,33 @@
 # proofs were checked at (scripts/fn-redefinitions.mjs warns when the file
 # changed on its branch since). A merged file is read from
 # main; until then from origin/<branch> (scripts/fn-redefinitions.mjs,
-# supabase/tests/release_integration.pglite.mjs). #289 carries #281's 175/176
+# supabase/tests/integration-chain.pglite.mjs, where BW_RELEASE_HEADS picks
+# other heads). 170 and 198 go in as one transaction. #289 carries #281's 175/176
 # unchanged. scripts/release-checklist.test.ts keeps this list and the
 # checklist's order the same.
-173 #273 feat/kill-switches 2f640f03
-170 #273 feat/kill-switches 2f640f03
+173 #273 feat/kill-switches 8aa53c53
+170 #273 feat/kill-switches 8aa53c53
+198 #273 feat/kill-switches 8aa53c53
 171 #272 feat/live-tempo b3a2b068
-174 #277 feat/crash-reports 46b561bf
-194 #284 fix/push-safety 23f750a7
-184 #287 fix/auth-signout 92891775
-175 #281 fix/security-audit 499e1815
-176 #281 fix/security-audit 499e1815
-178 #294 feat/date-on-hold f1da693a
-180 #282 fix/account-deletion 85393e10
-192 #291 fix/chat-audit 2e109f32
-193 #291 fix/chat-audit 2e109f32
-181 #289 fix/event-chat-lineup 2ad914ad
-182 #285 fix/calendar-links 8a0e09ee
-183 #286 fix/quote-page 8f5922d7
-185 #293 fix/money-audit 36a4ce68
-186 #293 fix/money-audit 36a4ce68
-187 #293 fix/money-audit 36a4ce68
-188 #292 fix/data-loss-audit 320aaa22
-189 #292 fix/data-loss-audit 320aaa22
-190 #288 fix/stage-ble-signed 56ce6b0a
-191 #283 fix/stage-clock-topic 19fbd930
-195 #297 fix/events-audit d8108906
-196 #296 fix/stage-live-audit 11b51243
-197 #295 fix/songs-audit 31b21b3f
+174 #277 feat/crash-reports 3b26fc7c
+194 #284 fix/push-safety 00d5ce6f
+184 #287 fix/auth-signout 426afd2b
+175 #281 fix/security-audit 65a55d18
+176 #281 fix/security-audit 65a55d18
+178 #294 feat/date-on-hold 979641c3
+180 #282 fix/account-deletion 837c53f6
+192 #291 fix/chat-audit e24b6734
+193 #291 fix/chat-audit e24b6734
+181 #289 fix/event-chat-lineup 1c2e3c39
+182 #285 fix/calendar-links 0474db5c
+183 #286 fix/quote-page 5f803a0d
+185 #293 fix/money-audit dc93b8a8
+186 #293 fix/money-audit dc93b8a8
+187 #293 fix/money-audit dc93b8a8
+188 #292 fix/data-loss-audit 16798eba
+189 #292 fix/data-loss-audit 16798eba
+190 #288 fix/stage-ble-signed 9b86804b
+191 #283 fix/stage-clock-topic 40f64997
+195 #297 fix/events-audit 62763b36
+196 #296 fix/stage-live-audit 5d858fe2
+197 #295 fix/songs-audit a474bbfb
