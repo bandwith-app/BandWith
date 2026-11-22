@@ -15,6 +15,8 @@ const fake = vi.hoisted(() => {
   // seq: when the object was made (197 compares storage.objects.created_at).
   const store = new Map<string, { body: string; etag: string; seq?: number }>();
   let seq = 0;
+  // A sequence number as a timestamp (storage's created_at, 197's reserved_at).
+  const when = (n: number) => new Date(Date.UTC(2026, 10, 1) + n * 1000).toISOString();
   const songs = new Map<string, Song>();
   let adoptions: Adoption[] = [];
   // Delete claims outside the sweep (197: bw_song_files_claim_delete).
@@ -55,8 +57,9 @@ const fake = vi.hoisted(() => {
       const prefix = `${s.band_id}/${kind}/${s.id}-`;
       if (!a.p_to.startsWith(prefix) || a.p_to.slice(prefix.length).includes('/')) return { error: { message: 'Bad destination', code: '22023' } };
       const had = copies.get(a.p_to);
-      copies.set(a.p_to, { at: clock.now, by: uid, song: s.id, reservedSeq: had?.reservedSeq ?? ++seq });
-      return { data: !had };
+      const reservedSeq = had?.reservedSeq ?? ++seq;
+      copies.set(a.p_to, { at: clock.now, by: uid, song: s.id, reservedSeq });
+      return { data: { registered: !had, reserved_at: when(reservedSeq) } };
     },
     bw_song_file_copy_release: (uid: string, a: { p_song_id: string; p_to: string }) => {
       const s = songs.get(a.p_song_id);
@@ -192,14 +195,17 @@ const fake = vi.hoisted(() => {
             const src = store.get(from);
             if (!src) return { data: null, error: Object.assign(new Error('Object not found'), { statusCode: '404' }) };
             if (store.has(to)) return { data: null, error: Object.assign(new Error('The resource already exists'), { statusCode: '409' }) };
-            store.set(to, { ...src, seq: ++seq });
+            // A multipart upload's etag ("…-3") is not kept by a copy.
+            store.set(to, { ...src, etag: src.etag.includes('-') ? etag(`${src.body}:${seq}`) : src.etag, seq: ++seq });
             log.push(`copy ${from} -> ${to}`);
             return { data: { path: to }, error: null };
           },
           info: async (path: string) => {
             await at('info');
             const o = store.get(path);
-            return o ? { data: { size: o.body.length, etag: o.etag }, error: null } : { data: null, error: new Error('Object not found') };
+            return o
+              ? { data: { size: o.body.length, etag: o.etag, contentType: 'audio/mpeg', createdAt: when(o.seq ?? 0) }, error: null }
+              : { data: null, error: new Error('Object not found') };
           },
           remove: async (paths: string[]) => {
             await at('remove');
@@ -249,7 +255,8 @@ const fake = vi.hoisted(() => {
     removals: () => removals,
     copies: () => copies,
     failNextRemove: () => void failRemove++,
-    put: (path: string, body: string) => store.set(path, { body, etag: etag(body), seq: ++seq }),
+    put: (path: string, body: string, opts?: { multipart?: boolean }) =>
+      store.set(path, { body, etag: opts?.multipart ? `${etag(body).slice(0, -1)}-3"` : etag(body), seq: ++seq }),
   };
 });
 
@@ -508,6 +515,27 @@ describe('names that collide', () => {
     const out = await sweepAdoptedFiles(BAND, { client: B.client as never });
     expect(out.error).toBeNull();
     expect(fake.store.get(DEST)?.body).toBe('something else');
+  });
+
+  it('an earlier run’s copy of a multipart upload (etags never match) is reused, not copied again (Claude review of 28cb3199)', async () => {
+    fake.put(ORIG, 'take one', { multipart: true });
+    A.crashAt('repoint');
+    void adopt(A);
+    await settle();
+    expect(fake.store.has(DEST)).toBe(true);
+    const out = await adopt(B);
+    expect(out).toEqual({ refs: { audio_url: ref(DEST) }, error: null });
+    expect(B.log.filter((l) => l.startsWith('copy '))).toEqual([]);
+    expect([...fake.store.keys()].filter((k) => k.startsWith(`${BAND}/audio/`))).toEqual([DEST]);
+  });
+
+  it('a different file of the same size already there before the move is never taken for the copy', async () => {
+    fake.put(DEST, 'take two', { multipart: true });
+    fake.put(ORIG, 'take one', { multipart: true });
+    await adopt(A);
+    expect(fake.store.get(DEST)?.body).toBe('take two');
+    expect(song().audio_url).not.toBe(ref(DEST));
+    expect(fake.store.get(song().audio_url!.slice(fake.REF.length))?.body).toBe('take one');
   });
 
   it('the same file already there (an earlier run’s copy) keeps its registration', async () => {

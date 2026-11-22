@@ -53,7 +53,7 @@ import { diffSetlist, entriesFromRows } from '@/lib/setlistChanges';
 import { notifySetlistSaved } from '@/lib/services/setlistNotify';
 import { ScreenHeader, IconButton, SearchField, Card, Tag, BwSheet, ListRow } from '@/app/components/bw/Screen';
 import { PillButton, PillField, Selector, FormError } from '@/app/components/bw/Form';
-import { adoptSuggestionFiles, hasUnadoptedFiles, isStoredSongFile, openSongResource, sweepAdoptedFiles } from '@/lib/services/songFiles';
+import { adoptSuggestionFiles, hasUnadoptedFiles, isStorageFullError, isStoredSongFile, openSongResource, songFilesFit, sweepAdoptedFiles } from '@/lib/services/songFiles';
 import { formatHoursMinutes, genresOf, parseGenres, songHasGenre } from '@/lib/songGenres';
 import { playTrack } from '@/lib/audioPlayer';
 import { t, useT } from '@/lib/i18n';
@@ -370,8 +370,10 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
   const adoptTried = useRef(new Set<string>());
   const adoptFiles = useCallback(async (song: Pick<Song, 'id' | 'audio_url' | 'chart_url'>) => {
     adoptTried.current.add(song.id);
-    const { refs } = await adoptSuggestionFiles(song);
+    const { refs, error } = await adoptSuggestionFiles(song);
     if (Object.keys(refs).length) setSongs((prev) => prev.map((s) => (s.id === song.id ? { ...s, ...refs } : s)));
+    // No room in the band's storage: said (every retry would fail the same way).
+    if (isStorageFullError(error)) setNotice({ text: error!.message, error: true });
   }, []);
   // Originals left by a move that could not delete them (recorded on the
   // server, 197), lapsed delete claims and unused copies: tidied once per
@@ -393,6 +395,14 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
   const handleSetSongStatus = async (song: Song, status: Song['status']) => {
     setActionMenuId(null);
     const previous = song.status;
+    // Accepting a suggested song whose files don't fit in the band's storage:
+    // it stays suggested (its move would fail; Codex review of #295).
+    if (previous === 'suggested' && status !== 'suggested'
+        && hasUnadoptedFiles({ status, audio_url: song.audio_url, chart_url: song.chart_url })
+        && !(await songFilesFit(selectedBand?.id, [song.audio_url, song.chart_url]))) {
+      setNotice({ text: t('Band storage is full: free up space to add this recording.'), error: true });
+      return;
+    }
     // Files move only once the new status is saved (not on the optimistic one).
     const adoptWaits = !adoptTried.current.has(song.id);
     adoptTried.current.add(song.id);

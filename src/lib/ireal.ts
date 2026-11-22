@@ -317,7 +317,9 @@ const decodeHtmlEntities = (s: string) =>
  */
 export const findIrealLinkInHtml = (html: string): string | null => {
   const s = html || '';
-  for (const m of s.matchAll(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>`]+))/gi)) {
+  // Unquoted: up to whitespace or ">" (an apostrophe is part of it, e.g.
+  // irealb://Don't…; Codex review of #295).
+  for (const m of s.matchAll(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)) {
     const href = decodeHtmlEntities((m[1] ?? m[2] ?? m[3] ?? '').trim());
     if (/^irealb(?:ook)?:\/\/./i.test(href) && !/\s/.test(href)) return href;
   }

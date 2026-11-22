@@ -28,7 +28,7 @@
 --        `from` for the sweep, in the same transaction.
 --      bw_song_file_copy_reserve(song, field, from, to)
 --        right before each copy: the destination is registered
---        (song_file_copies; true when this call registered it); the
+--        (song_file_copies; {registered, reserved_at}); the
 --        repoint closes it. One never linked (the run stopped, the song
 --        went) is swept after 10 minutes, never an object that was there
 --        before its first registration (storage created_at < reserved_at:
@@ -44,7 +44,10 @@
 --        older than a day nothing uses or records (rolling backfill), all
 --        claimed again by bw_song_file_sweep_claim under the file lock and
 --        closed by bw_song_file_sweep_done (only the caller's claims), so no
---        file stays orphaned. Lapsed claims of used files are cleared.
+--        file stays orphaned. Lapsed claims of used or missing files are
+--        cleared. First it repairs: a song on a missing suggestion file
+--        whose moved copy (an older build's Storage move to
+--        <band>/<kind>/<name>) is there, unlinked, gets that copy.
 --      bw_song_file_sweep_claim(band, path)
 --        right before each delete, the file key locked: re-checks that no
 --        song and no member suggestion links the path, then marks it
@@ -71,6 +74,8 @@
 --    only through a claim: bw_song_files_claim_delete (under the file keys'
 --    exclusive locks; claimed files can't be linked), the Storage delete,
 --    then bw_song_files_removed; a failed delete lapses after 10 minutes.
+--    Only files in Storage are claimed, and a member holds at most 200
+--    open claims.
 --    Someone outside the band gets 42501 before any file check (songs and
 --    suggestions). No song
 --    (an admin's either) links another band's file (42501); a member's
@@ -100,7 +105,12 @@
 --    same lapsed claim (nothing is deleted by the migration); after that the
 --    sweep keeps finding such objects itself (bw_song_file_orphans: e.g. an
 --    older build's refused rollback of a fresh upload, which nothing
---    records).
+--    records). Age is the later of created_at and updated_at of every
+--    version at that name, on the live row (180's live-row predicate). In
+--    a band's final folders an orphan is deleted only 7 days after the
+--    sweep first saw it (song_file_orphan_seen; a link forgets it): an
+--    older build accepts with a Storage move, which keeps created_at, and
+--    links the moved file in a separate update.
 --
 -- Links and deletes of one file are ordered by one advisory lock on the
 -- file's key (shared to link, exclusive to claim), so a link can't slip in
@@ -294,10 +304,39 @@ $$;
 ALTER TABLE public.song_file_copies ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.song_file_copies FROM PUBLIC, anon, authenticated;
 
+-- Unlinked old objects in a band's final folders (not a suggestions
+-- folder), by when the sweep first saw them: deleted only if still
+-- unlinked 7 days later (Claude review of 28cb3199, B1: an older build
+-- accepts with a Storage move, which keeps the upload's created_at, then
+-- links the moved file in a separate update). A link forgets the sighting.
+CREATE TABLE IF NOT EXISTS public.song_file_orphan_seen (
+  path text PRIMARY KEY,
+  band_id uuid NOT NULL,
+  first_seen_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS song_file_orphan_seen_band_idx ON public.song_file_orphan_seen (band_id);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'song_file_orphan_seen_band_fk') THEN
+    ALTER TABLE public.song_file_orphan_seen
+      ADD CONSTRAINT song_file_orphan_seen_band_fk FOREIGN KEY (band_id) REFERENCES public.bands (id) ON DELETE CASCADE;
+  END IF;
+END;
+$$;
+ALTER TABLE public.song_file_orphan_seen ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.song_file_orphan_seen FROM PUBLIC, anon, authenticated;
+
+-- The refs every file check looks up (bw_song_file_in_use, the triggers,
+-- the orphan scan).
+CREATE INDEX IF NOT EXISTS songs_audio_url_idx ON public.songs (audio_url);
+CREATE INDEX IF NOT EXISTS songs_chart_url_idx ON public.songs (chart_url);
+
 -- The file is in Storage: a row in storage.objects that is not archived and
 -- not a delete marker (prod storage has archived_at / is_delete_marker; a
 -- setup without them, e.g. local or PGlite, checks the row alone). Built
 -- from the columns present when this runs; re-run 197 if they appear later.
+-- The live-row predicate is the one 180's bw_storage_live_filter() builds
+-- (the PGlite test compares them).
 DO $do$
 DECLARE
   v_pred text := '';
@@ -473,10 +512,19 @@ GRANT EXECUTE ON FUNCTION public.bw_song_file_adopt_repoint(uuid, text, text, te
 
 -- Before each copy: the destination is registered (same rules as the
 -- repoint's), so a copy no song ends up linking is found by the sweep.
--- Returns true when this call registered it (false: it already was, by an
--- earlier or parallel run). Only the app of this PR calls it.
+-- Returns {registered: this call registered it (false: an earlier or
+-- parallel run did), reserved_at: the first registration (an object made
+-- after it is this move's copy)}. Only the app of this PR calls it.
+DO $$
+BEGIN
+  IF to_regprocedure('public.bw_song_file_copy_reserve(uuid, text, text, text)') IS NOT NULL
+     AND (SELECT prorettype FROM pg_proc WHERE oid = to_regprocedure('public.bw_song_file_copy_reserve(uuid, text, text, text)')) <> 'jsonb'::regtype THEN
+    DROP FUNCTION public.bw_song_file_copy_reserve(uuid, text, text, text);
+  END IF;
+END;
+$$;
 CREATE OR REPLACE FUNCTION public.bw_song_file_copy_reserve(p_song_id uuid, p_field text, p_from text, p_to text)
-RETURNS boolean
+RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path TO 'public'
@@ -487,6 +535,7 @@ DECLARE
   v_parts text[];
   v_prefix text;
   v_new boolean;
+  v_at timestamptz;
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'Not signed in' USING ERRCODE = '42501';
@@ -512,8 +561,8 @@ BEGIN
   INSERT INTO public.song_file_copies (path, band_id, song_id, made_by, made_at, reserved_at)
   VALUES (p_to, s.band_id, s.id, v_uid, now(), now())
   ON CONFLICT (path) DO UPDATE SET made_by = EXCLUDED.made_by, made_at = now()
-  RETURNING (xmax = 0) INTO v_new;
-  RETURN v_new;
+  RETURNING (xmax = 0), reserved_at INTO v_new, v_at;
+  RETURN jsonb_build_object('registered', v_new, 'reserved_at', v_at);
 END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_song_file_copy_reserve(uuid, text, text, text) FROM PUBLIC, anon;
@@ -546,40 +595,69 @@ $$;
 REVOKE ALL ON FUNCTION public.bw_song_file_copy_release(uuid, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_song_file_copy_release(uuid, text) TO authenticated;
 
--- Rolling backfill: band objects older than a day that nothing uses and
--- nothing records (no claim, no registered copy, no move in progress):
--- older builds' refused deletes (a failed save's rollback of its fresh
--- upload) and other leftovers. At most 200 per call; with p_path, that one.
--- Built from the columns storage.objects has (created_at; without it, none).
+-- Rolling backfill: band objects that nothing uses and nothing records (no
+-- claim, no registered copy, no move in progress), and whose every version
+-- at that name is older than a day: older builds' refused deletes (a failed
+-- save's rollback of its fresh upload) and other leftovers. With p_path,
+-- that one. The row found is the live one (not archived, not a delete
+-- marker: Codex review of 28cb3199, B1, versioned Storage keeps old rows
+-- next to a fresh upload), and age is the later of created_at and
+-- updated_at of every row at that name (Claude B1). Built from the columns
+-- storage.objects has (without created_at, none). The sweep lists them
+-- (final folders only after their 7-day grace, bw_song_file_orphan_due).
 DO $do$
 DECLARE
+  v_live text := '';
   v_age text := 'false';
+  v_at text := 'v.created_at';
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_attribute
+              WHERE attrelid = 'storage.objects'::regclass AND attname = 'archived_at' AND attnum > 0 AND NOT attisdropped) THEN
+    v_live := v_live || ' AND o.archived_at IS NULL';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_attribute
+              WHERE attrelid = 'storage.objects'::regclass AND attname = 'is_delete_marker' AND attnum > 0 AND NOT attisdropped) THEN
+    v_live := v_live || ' AND NOT coalesce(o.is_delete_marker, false)';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_attribute
+              WHERE attrelid = 'storage.objects'::regclass AND attname = 'updated_at' AND attnum > 0 AND NOT attisdropped) THEN
+    v_at := 'greatest(v.created_at, coalesce(v.updated_at, v.created_at))';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_attribute
               WHERE attrelid = 'storage.objects'::regclass AND attname = 'created_at' AND attnum > 0 AND NOT attisdropped) THEN
-    v_age := $a$o.created_at < now() - interval '24 hours'$a$;
+    -- No version at that name (archived or not) is recent, or of unknown age.
+    v_age := format($a$NOT EXISTS (SELECT 1 FROM storage.objects v
+                                    WHERE v.bucket_id = 'song-files' AND v.name = o.name
+                                      AND (v.created_at IS NULL OR %s >= now() - interval '24 hours'))$a$, v_at);
   END IF;
   EXECUTE format($f$
     CREATE OR REPLACE FUNCTION public.bw_song_file_orphans(p_band_id uuid, p_path text DEFAULT NULL)
     RETURNS SETOF text LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $b$
-      SELECT o.name FROM storage.objects o
+      SELECT DISTINCT o.name FROM storage.objects o
        WHERE o.bucket_id = 'song-files'
-         AND left(o.name, 37) = p_band_id::text || '/'
-         AND (p_path IS NULL OR o.name = p_path)
+         AND o.name COLLATE "C" LIKE (p_band_id::text || '/%%') COLLATE "C"
+         AND (p_path IS NULL OR o.name = p_path)%s
          AND %s
-         AND public.bw_song_file_stored(o.name)
          AND NOT public.bw_song_file_in_use(o.name)
          AND NOT EXISTS (SELECT 1 FROM public.song_file_removals r WHERE r.path = o.name)
          AND NOT EXISTS (SELECT 1 FROM public.song_file_copies c WHERE c.path = o.name)
          AND NOT EXISTS (SELECT 1 FROM public.song_file_adoptions a
-                          WHERE (a.from_path = o.name OR a.to_path = o.name) AND a.state IN ('copying', 'repointed', 'deleting'))
-       ORDER BY o.name
-       LIMIT 200;
+                          WHERE (a.from_path = o.name OR a.to_path = o.name) AND a.state IN ('copying', 'repointed', 'deleting'));
     $b$;
-  $f$, v_age);
+  $f$, v_live, v_age);
 END;
 $do$;
 REVOKE ALL ON FUNCTION public.bw_song_file_orphans(uuid, text) FROM PUBLIC, anon, authenticated;
+
+-- An orphan the sweep may delete now: one in a suggestions folder (24 hours
+-- old, as above), or one in a final folder first seen 7 days ago.
+CREATE OR REPLACE FUNCTION public.bw_song_file_orphan_due(p_path text)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $$
+  SELECT split_part(p_path, '/', 2) = 'suggestions'
+      OR EXISTS (SELECT 1 FROM public.song_file_orphan_seen s
+                  WHERE s.path = p_path AND s.first_seen_at < now() - interval '7 days');
+$$;
+REVOKE ALL ON FUNCTION public.bw_song_file_orphan_due(text) FROM PUBLIC, anon, authenticated;
 
 -- Originals of moved files that no song links to any more: safe to delete.
 CREATE OR REPLACE FUNCTION public.bw_song_file_sweep_list(p_band_id uuid)
@@ -593,11 +671,52 @@ BEGIN
   IF auth.uid() IS NULL OR NOT public.bw_is_band_admin(p_band_id, auth.uid()) THEN
     RAISE EXCEPTION 'Only band admins can move song files' USING ERRCODE = '42501';
   END IF;
-  -- Lapsed claims of files another song (or a pending suggestion) uses:
-  -- nothing to delete, so they go (no re-check on every visit).
+  -- Repair first (Claude review of 28cb3199, B1): an older build's accept
+  -- moved a suggestion file to <band>/<kind>/<name> and its link of the
+  -- moved file failed. A song of the band on a missing suggestion file gets
+  -- that file when it is there, linked by nothing and claimed by nobody,
+  -- and no other song would map to it. It is then in use: never deleted.
+  WITH c AS (
+    SELECT s.id, f.field, f.p,
+           p_band_id::text || '/' || split_part(f.p, '/', 4) || '/' || split_part(f.p, '/', 5) AS dest
+      FROM public.songs s
+     CROSS JOIN LATERAL (VALUES ('audio_url', s.audio_url), ('chart_url', s.chart_url)) v(field, ref)
+     CROSS JOIN LATERAL (SELECT v.field, substr(v.ref, length('sb://song-files/') + 1) AS p) f
+     WHERE s.band_id = p_band_id
+       AND v.ref LIKE 'sb://song-files/' || p_band_id::text || '/suggestions/%'
+       AND array_length(string_to_array(f.p, '/'), 1) = 5
+       AND split_part(f.p, '/', 4) IN ('audio', 'chart') AND split_part(f.p, '/', 5) <> ''
+       AND NOT public.bw_song_file_stored(f.p)
+  ), u AS (
+    SELECT c.* FROM c
+     WHERE (SELECT count(*) FROM c c2 WHERE c2.dest = c.dest) = 1
+       AND public.bw_song_file_stored(c.dest)
+       AND NOT public.bw_song_file_in_use(c.dest)
+       AND NOT public.bw_song_file_being_removed(c.dest)
+  )
+  UPDATE public.songs s
+     SET audio_url = coalesce((SELECT 'sb://song-files/' || u.dest FROM u WHERE u.id = s.id AND u.field = 'audio_url'), s.audio_url),
+         chart_url = coalesce((SELECT 'sb://song-files/' || u.dest FROM u WHERE u.id = s.id AND u.field = 'chart_url'), s.chart_url)
+   WHERE s.id IN (SELECT u.id FROM u);
+  -- Lapsed claims nothing needs: the file is used again (another song, a
+  -- pending suggestion), or is not in Storage (Codex B2): they go.
   DELETE FROM public.song_file_removals r
    WHERE r.band_id = p_band_id AND r.claimed_at < now() - interval '15 minutes'
-     AND public.bw_song_file_in_use(r.path);
+     AND (public.bw_song_file_in_use(r.path) OR NOT public.bw_song_file_stored(r.path));
+  -- A registration over an object that was already there, a day old (its
+  -- release failed): the row goes, never the object.
+  DELETE FROM public.song_file_copies c
+   WHERE c.band_id = p_band_id AND c.reserved_at < now() - interval '1 day'
+     AND NOT public.bw_song_file_copy_ours(c.path, c.reserved_at);
+  -- First sightings in final folders: forgotten once used or gone; new
+  -- ones recorded (their 7 days start now).
+  DELETE FROM public.song_file_orphan_seen s
+   WHERE s.band_id = p_band_id
+     AND (public.bw_song_file_in_use(s.path) OR NOT public.bw_song_file_stored(s.path));
+  INSERT INTO public.song_file_orphan_seen (path, band_id, first_seen_at)
+  SELECT o, p_band_id, now() FROM public.bw_song_file_orphans(p_band_id) o
+   WHERE split_part(o, '/', 2) <> 'suggestions'
+  ON CONFLICT (path) DO NOTHING;
   RETURN coalesce((
     SELECT array_agg(DISTINCT x.p ORDER BY x.p) FROM (
       SELECT a.from_path AS p
@@ -624,7 +743,9 @@ BEGIN
          AND c.path LIKE p_band_id::text || '/%'
          AND public.bw_song_file_copy_ours(c.path, c.reserved_at)
       UNION
-      SELECT o FROM public.bw_song_file_orphans(p_band_id) o) x
+      -- At most 200 orphans per visit.
+      SELECT z.o FROM (SELECT o FROM public.bw_song_file_orphans(p_band_id) o
+                        WHERE public.bw_song_file_orphan_due(o) ORDER BY 1 LIMIT 200) z) x
      WHERE NOT public.bw_song_file_in_use(x.p)), '{}'::text[]);
 END;
 $$;
@@ -655,14 +776,26 @@ BEGIN
    ORDER BY updated_at DESC LIMIT 1
    FOR UPDATE;
   IF a.id IS NULL THEN
-    -- A lapsed delete claim, or a stale unused copy: claimed now for this admin.
+    -- Not in Storage: nothing to delete; its lapsed (or own) claim and its
+    -- stale registration go.
+    IF NOT public.bw_song_file_stored(p_path) THEN
+      DELETE FROM public.song_file_removals
+       WHERE path = p_path AND band_id = p_band_id
+         AND (claimed_at < now() - interval '10 minutes' OR claimed_by = auth.uid());
+      DELETE FROM public.song_file_copies
+       WHERE path = p_path AND band_id = p_band_id AND made_at < now() - interval '10 minutes';
+      RETURN jsonb_build_object('ok', false, 'reason', 'gone');
+    END IF;
+    -- A lapsed delete claim, a stale unused copy, or an orphan that is due:
+    -- claimed now for this admin.
     IF EXISTS (SELECT 1 FROM public.song_file_removals r
                 WHERE r.path = p_path AND r.band_id = p_band_id AND r.path LIKE p_band_id::text || '/%')
        OR EXISTS (SELECT 1 FROM public.song_file_copies c
                    WHERE c.path = p_path AND c.band_id = p_band_id AND c.made_at < now() - interval '10 minutes'
                      AND c.path LIKE p_band_id::text || '/%'
                      AND public.bw_song_file_copy_ours(c.path, c.reserved_at))
-       OR EXISTS (SELECT 1 FROM public.bw_song_file_orphans(p_band_id, p_path)) THEN
+       OR (EXISTS (SELECT 1 FROM public.bw_song_file_orphans(p_band_id, p_path))
+           AND public.bw_song_file_orphan_due(p_path)) THEN
       IF cardinality(public.bw_song_files_claim_for(ARRAY[public.bw_song_file_ref(p_path)], auth.uid(), true)) > 0 THEN
         DELETE FROM public.song_file_copies WHERE path = p_path;
         RETURN jsonb_build_object('ok', true);
@@ -713,6 +846,9 @@ BEGIN
    WHERE band_id = p_band_id AND (claimed_by = auth.uid() OR claimed_by IS NULL)
      AND path = ANY (coalesce(p_paths, '{}'::text[]));
   GET DIAGNOSTICS m = ROW_COUNT;
+  -- Their first sightings too (the files are gone).
+  DELETE FROM public.song_file_orphan_seen
+   WHERE band_id = p_band_id AND path = ANY (coalesce(p_paths, '{}'::text[]));
   RETURN n + m;
 END;
 $$;
@@ -785,6 +921,10 @@ BEGIN
         USING ERRCODE = 'BWF02';
     END IF;
   END LOOP;
+  -- Linked: no longer an orphan (a later unlink starts a new grace).
+  IF cardinality(v_paths) > 0 THEN
+    DELETE FROM public.song_file_orphan_seen WHERE path = ANY (v_paths);
+  END IF;
   RETURN NEW;
 END;
 $$;
@@ -819,6 +959,7 @@ BEGIN
     INSERT INTO public.song_file_removals (path, band_id, claimed_by, claimed_at)
     SELECT substr(v_ref, length('sb://song-files/') + 1), OLD.band_id, NULL, now() - interval '16 minutes'
      WHERE EXISTS (SELECT 1 FROM public.bands b WHERE b.id = OLD.band_id)
+       AND public.bw_song_file_stored(substr(v_ref, length('sb://song-files/') + 1))
     ON CONFLICT (path) DO NOTHING;
   END LOOP;
   RETURN NULL;
@@ -917,6 +1058,7 @@ DECLARE
   v_band text;
   r record;
   v_out text[] := '{}';
+  v_open integer;
 BEGIN
   IF p_uid IS NULL THEN
     RETURN v_out;
@@ -944,8 +1086,23 @@ BEGIN
   -- New statements: they see every link committed while we waited.
   FOREACH v_path IN ARRAY v_paths LOOP
     CONTINUE WHEN public.bw_song_file_in_use(v_path);
+    -- Only a file in Storage (Codex review of 28cb3199, B2: no claims for
+    -- files that don't exist).
+    CONTINUE WHEN NOT public.bw_song_file_stored(v_path);
     SELECT * INTO r FROM public.song_file_removals WHERE path = v_path;
     CONTINUE WHEN r.path IS NOT NULL AND r.claimed_by IS DISTINCT FROM p_uid AND r.claimed_at >= now() - interval '10 minutes';
+    -- A member (not an admin of the file's band) holds at most 200 open
+    -- claims; one they already hold doesn't count again.
+    IF NOT public.bw_is_band_admin(split_part(v_path, '/', 1)::uuid, p_uid) THEN
+      IF v_open IS NULL THEN
+        SELECT count(*) INTO v_open FROM public.song_file_removals
+         WHERE claimed_by = p_uid AND claimed_at >= now() - interval '15 minutes';
+      END IF;
+      IF NOT (r.path IS NOT NULL AND r.claimed_by = p_uid AND r.claimed_at >= now() - interval '15 minutes') THEN
+        CONTINUE WHEN v_open >= 200;
+        v_open := v_open + 1;
+      END IF;
+    END IF;
     CONTINUE WHEN EXISTS (SELECT 1 FROM public.song_file_adoptions a
                            WHERE a.from_path = v_path AND a.state = 'deleting' AND a.deleting_at >= now() - interval '10 minutes');
     INSERT INTO public.song_file_removals (path, band_id, claimed_by, claimed_at)
@@ -1232,14 +1389,17 @@ STABLE
 SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
-  SELECT p_bucket IS DISTINCT FROM 'song-files'
-      OR (auth.uid() IS NOT NULL
-          AND NOT public.bw_song_file_in_use(p_name)
+  -- Only for the caller's bands (any other: no, before any lookup).
+  SELECT CASE
+    WHEN p_bucket IS DISTINCT FROM 'song-files' THEN true
+    WHEN auth.uid() IS NULL OR NOT (split_part(p_name, '/', 1) = ANY (public.bw_my_band_ids())) THEN false
+    ELSE (NOT public.bw_song_file_in_use(p_name)
           AND (EXISTS (SELECT 1 FROM public.song_file_removals r
                         WHERE r.path = p_name AND r.claimed_by = auth.uid() AND r.claimed_at >= now() - interval '10 minutes')
                OR EXISTS (SELECT 1 FROM public.song_file_adoptions a
                            WHERE a.from_path = p_name AND a.state = 'deleting' AND a.deleting_by = auth.uid()
-                             AND a.deleting_at >= now() - interval '10 minutes')));
+                             AND a.deleting_at >= now() - interval '10 minutes')))
+  END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_song_file_delete_allowed(text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_song_file_delete_allowed(text, text) TO authenticated;
@@ -1265,26 +1425,22 @@ CREATE POLICY bw_song_files_write_delete ON storage.objects
   );
 
 -- ------------------------------------------------------------- backfill --
--- Once: song-files objects older than a day that nothing uses (older
--- builds' refused deletes, earlier leftovers) become lapsed delete claims
--- for the sweep. Nothing is deleted here. Only stored objects (not archived,
--- not delete markers) of an existing band. Needs storage.objects.created_at.
+-- Once, by the sweep's own rules (bw_song_file_orphans: live row, every
+-- version a day old, nothing uses or records it): in a suggestions folder
+-- an orphan becomes a lapsed delete claim for the sweep; in a final folder
+-- it is only first seen (its 7 days start now). Nothing is deleted here.
 DO $do$
 BEGIN
-  IF EXISTS (SELECT 1 FROM pg_attribute
-              WHERE attrelid = 'storage.objects'::regclass AND attname = 'created_at' AND attnum > 0 AND NOT attisdropped) THEN
-    EXECUTE $q$
-      INSERT INTO public.song_file_removals (path, band_id, claimed_by, claimed_at)
-      SELECT o.name, b.id, NULL, now() - interval '16 minutes'
-        FROM storage.objects o
-        JOIN public.bands b ON b.id::text = split_part(o.name, '/', 1)
-       WHERE o.bucket_id = 'song-files'
-         AND o.created_at < now() - interval '24 hours'
-         AND public.bw_song_file_stored(o.name)
-         AND NOT public.bw_song_file_in_use(o.name)
-      ON CONFLICT (path) DO NOTHING
-    $q$;
-  END IF;
+  INSERT INTO public.song_file_removals (path, band_id, claimed_by, claimed_at)
+  SELECT o, b.id, NULL, now() - interval '16 minutes'
+    FROM public.bands b CROSS JOIN LATERAL public.bw_song_file_orphans(b.id) o
+   WHERE split_part(o, '/', 2) = 'suggestions'
+  ON CONFLICT (path) DO NOTHING;
+  INSERT INTO public.song_file_orphan_seen (path, band_id, first_seen_at)
+  SELECT o, b.id, now()
+    FROM public.bands b CROSS JOIN LATERAL public.bw_song_file_orphans(b.id) o
+   WHERE split_part(o, '/', 2) <> 'suggestions'
+  ON CONFLICT (path) DO NOTHING;
 END;
 $do$;
 

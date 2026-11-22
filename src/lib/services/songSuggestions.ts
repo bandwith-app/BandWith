@@ -3,7 +3,7 @@ import { isOfflineError } from '../offline/networkErrors';
 import { queueLiveOp } from '../liveOutbox';
 import { newLocalId, sessionUserId } from '../sessionUser';
 import { supabase } from '../supabase';
-import { adoptSuggestionFiles, removeSongFiles } from './songFiles';
+import { adoptSuggestionFiles, isStorageFullError, isSuggestionFile, removeSongFiles, songFilesFit, storageFullError } from './songFiles';
 import type { SongChart } from '../ireal';
 import type { SongSuggestion, SuggestionKind, SuggestionStatus } from '../songSuggestions';
 
@@ -115,6 +115,13 @@ export async function reviewSongSuggestion(
   opts: ReviewOptions & { edited?: boolean; song?: { audio_url?: string | null; chart_url?: string | null } | null } = {},
 ): Promise<{ status: SuggestionStatus | null; error: Error | null }> {
   try {
+    // A suggested song whose recording doesn't fit in the band's storage
+    // stays pending: its move would fail (Codex review of #295, 28cb3199).
+    const files = [opts.song?.audio_url, opts.song?.chart_url];
+    if (decision === 'accept' && suggestion.kind === 'new_song' && files.some(isSuggestionFile)) {
+      const bandId = files.find(isSuggestionFile)!.slice('sb://song-files/'.length).split('/')[0];
+      if (!(await songFilesFit(bandId, files))) return { status: null, error: storageFullError() };
+    }
     const { data, error } = await supabase.rpc('bw_review_song_suggestion', {
       p_id: suggestion.id,
       p_decision: decision,
@@ -130,7 +137,12 @@ export async function reviewSongSuggestion(
     // already saved: if the move stops half-way the song still links to its
     // original file, and the repertoire finishes the move later (audit 09 #9).
     if (decision === 'accept' && suggestion.kind === 'new_song' && res.song_id && opts.song) {
-      await adoptSuggestionFiles({ id: res.song_id, ...opts.song });
+      const moved = await adoptSuggestionFiles({ id: res.song_id, ...opts.song });
+      // No room after all (filled meanwhile): said, never shown as approved.
+      if (isStorageFullError(moved.error)) {
+        notifySuggestionsChanged();
+        return { status: null, error: moved.error };
+      }
     }
     notifySuggestionsChanged();
     return { status: res.status ?? null, error: null };

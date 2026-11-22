@@ -21,6 +21,12 @@ describe('iReal links with an apostrophe', () => {
     expect(irealLinkFrom(data({ 'text/uri-list': `# from the forum\r\n${LINK}\r\n` }))).toBe(LINK);
   });
 
+  it('reads an unquoted href with an apostrophe up to whitespace or ">" (Codex review of 28cb3199)', () => {
+    expect(LINK.startsWith("irealb://Don't")).toBe(true);
+    expect(irealLinkFrom(data({ 'text/html': `<a href=${LINK}>Don't Stop</a>` }))).toBe(LINK);
+    expect(irealLinkFrom(data({ 'text/html': `<a href=${LINK} class=x>Don't Stop</a>` }))).toBe(LINK);
+  });
+
   it('reads an HTML link from its href, entities decoded', () => {
     const escaped = LINK.replace(/'/g, '&#39;');
     expect(irealLinkFrom(data({ 'text/html': `<a href="${LINK}">Don't Stop</a>` }))).toBe(LINK);

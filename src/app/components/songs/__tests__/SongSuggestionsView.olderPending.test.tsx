@@ -349,6 +349,33 @@ describe('Suggestions: an older pending one stays reachable', () => {
     expect(dialog().queryByText('Pending 10')).toBeNull();
   });
 
+  it('"Load older" in Waiting during a refresh: Reviewed still takes its own "more" from it (Codex review of 28cb3199)', { timeout: 30_000 }, async () => {
+    db.rows = [];
+    for (let i = 1; i <= 150; i++) db.rows.push(row(i, 'pending', `Pending ${i}`));
+    for (let i = 1; i <= 101; i++) db.rows.push(row(1000 + i, 'accepted', `Reviewed ${i}`));
+    render(<SongSuggestionsView />);
+    act(() => openSongSuggestions());
+    await screen.findByText('Pending 150');
+    // A refresh starts and hangs; meanwhile the oldest reviewed one goes
+    // (its song was deleted): Reviewed now fits on one page.
+    let release!: () => void;
+    db.holdList = new Promise<void>((r) => (release = r));
+    db.rows = db.rows.filter((r) => r.id !== 'sg-1001');
+    await act(async () => window.dispatchEvent(new CustomEvent(SUGGESTIONS_CHANGED)));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Load older suggestions' })));
+    await screen.findByText('Pending 1');
+    await act(async () => {
+      release();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Reviewed/ }));
+    await screen.findByText('Reviewed 101');
+    expect(screen.queryByRole('button', { name: 'Load older suggestions' })).toBeNull();
+    // Waiting kept the rows it paged in.
+    fireEvent.click(screen.getByRole('button', { name: /^Waiting/ }));
+    expect(screen.getByText('Pending 1')).toBeTruthy();
+  });
+
   it('a "Load older" that failed, then worked: the error goes (Codex review of ed7ec29f)', { timeout: 30_000 }, async () => {
     seed();
     render(<SongSuggestionsView />);

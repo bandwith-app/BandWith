@@ -3380,6 +3380,7 @@ const dict: Dictionary = {
   "Could not open the forum. Try again.": "Impossibile aprire il forum. Riprova.",
   "This file is not MusicXML.": "Questo file non è MusicXML.",
   "This file is too large.": "Questo file è troppo grande.",
+  "Band storage is full: free up space to add this recording.": "Lo spazio della band è pieno: libera spazio per aggiungere questa registrazione.",
   "This file is no longer available: upload it again.": "Questo file non è più disponibile: caricalo di nuovo.",
   "This file belongs to another song: upload it again.": "Questo file appartiene a un altro brano: caricalo di nuovo.",
   "From the forum": "Dal forum",

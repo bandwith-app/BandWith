@@ -97,7 +97,7 @@ export const SongSuggestionsView: React.FC = () => {
   // The rows each "Load older" page added, by the generation it ran in: a
   // refresh merges only the ones added during its own run (read after it
   // started), never older ones it no longer finds.
-  const moreRows = React.useRef(new Map<string, number>());
+  const moreRows = React.useRef(new Map<string, { gen: number; tab: Tab }>());
   // The notification target that failed to load (kept selected, with Try again).
   const [focusError, setFocusError] = React.useState<string | null>(null);
 
@@ -173,22 +173,22 @@ export const SongSuggestionsView: React.FC = () => {
     setFocusError(oneFailed && focusId ? focusId : null);
     const samePages = pagesScope.current === forScope;
     pagesScope.current = forScope;
-    const addedMeanwhile = new Set([...moreRows.current].filter(([, g]) => g === seq).map(([id]) => id));
+    // Per tab (Codex review of 28cb3199, M2): a tab "Load older" added rows
+    // to while this ran keeps them (those past its range) and its "more";
+    // the other tab takes this load's rows and "more".
+    const added: Record<Tab, Set<string>> = { pending: new Set(), reviewed: new Set() };
+    for (const [id, v] of moreRows.current) if (v.gen === seq) added[v.tab].add(id);
     // Read by the next refresh again (they are shown): no longer needed.
     moreRows.current.clear();
-    if (samePages && addedMeanwhile.size) {
-      // "Load older" added rows while this ran (read after it started): keep
-      // those past its range; any other row it no longer finds goes.
-      const merge = (prev: SongSuggestion[], fresh: SongSuggestion[]) => {
-        const last = fresh[fresh.length - 1];
-        const ids = new Set(fresh.map((s) => s.id));
-        return [...fresh, ...prev.filter((s) => !ids.has(s.id) && addedMeanwhile.has(s.id) && (!last || olderThan(s, last)))];
-      };
-      setPages((prev) => ({ pending: merge(prev.pending, p.data), reviewed: merge(prev.reviewed, r.data) }));
-    } else {
-      setPages({ pending: p.data, reviewed: r.data });
-      setMore({ pending: p.more, reviewed: r.more });
-    }
+    const keeps = (tab: Tab) => samePages && added[tab].size > 0;
+    const merge = (tab: Tab, prev: SongSuggestion[], fresh: SongSuggestion[]) => {
+      if (!keeps(tab)) return fresh;
+      const last = fresh[fresh.length - 1];
+      const ids = new Set(fresh.map((s) => s.id));
+      return [...fresh, ...prev.filter((s) => !ids.has(s.id) && added[tab].has(s.id) && (!last || olderThan(s, last)))];
+    };
+    setPages((prev) => ({ pending: merge('pending', prev.pending, p.data), reviewed: merge('reviewed', prev.reviewed, r.data) }));
+    setMore((prev) => ({ pending: keeps('pending') ? prev.pending : p.more, reviewed: keeps('reviewed') ? prev.reviewed : r.more }));
     // A failed fetch keeps what was shown for the target.
     setExtra((prev) => one ?? (oneFailed && prev?.id === focusId ? prev : null));
     setTotals({ pending: nPending, reviewed: nReviewed });
@@ -231,7 +231,7 @@ export const SongSuggestionsView: React.FC = () => {
     }
     setLoadError(null);
     const page = data.slice(0, PAGE);
-    for (const s of page) moreRows.current.set(s.id, gen);
+    for (const s of page) moreRows.current.set(s.id, { gen, tab: forTab });
     setPages((prev) => ({ ...prev, [forTab]: [...prev[forTab], ...page.filter((s) => !prev[forTab].some((x) => x.id === s.id))] }));
     setMore((prev) => ({ ...prev, [forTab]: data.length > PAGE }));
     void loadSongs(page);

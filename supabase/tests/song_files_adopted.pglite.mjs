@@ -351,13 +351,15 @@ ok((rej2?.files ?? []).length === 1 && (await qs(`SELECT claimed_by FROM song_fi
 const linkU = await asCommit(ADMIN, `INSERT INTO songs VALUES ('${id(40)}','${BAND}','Relink U','ready','sb://song-files/${U}',NULL) RETURNING 1 AS v`);
 ok(String(linkU).includes('BW_FILE_REMOVED'), `a claimed file can't be linked meanwhile (${linkU})`);
 const W = `${BAND}/audio/w-replaced.mp3`;
+const ownMem = `${BAND}/suggestions/${MEM2}/audio/own.mp3`;
+// (Round 10: only files in Storage are claimed.)
+await q(`INSERT INTO storage.objects (bucket_id, name, owner) VALUES ('song-files', $1, $2), ('song-files', $3, $4)`, [W, ADMIN, ownMem, MEM2]);
 const c1d = await claimDel(ADMIN, [`sb://song-files/${O}`, `sb://song-files/${U}`, `sb://song-files/${W}`, `sb://song-files/${OTHER_BAND}/audio/z.mp3`, 'https://example.com/x.mp3']);
 ok(Array.isArray(c1d) && c1d.length === 2 && c1d.includes(`sb://song-files/${U}`) && c1d.includes(`sb://song-files/${W}`) && !c1d.includes(`sb://song-files/${O}`),
   `claim: only files nothing uses, of the caller's band (${JSON.stringify(c1d)})`);
 ok(JSON.stringify(await claimDel(ADMIN2, [`sb://song-files/${W}`])) === '[]', 'claim: another admin meanwhile gets nothing');
 ok(JSON.stringify(await claimDel(STRANGER, [`sb://song-files/${U}`])) === '[]', 'claim: nothing of another band');
 ok(JSON.stringify(await claimDel(MEM2, [`sb://song-files/${BAND}/audio/v.mp3`])) === '[]', 'claim: a member only for their own suggestion files');
-const ownMem = `${BAND}/suggestions/${MEM2}/audio/own.mp3`;
 ok(JSON.stringify(await claimDel(MEM2, [`sb://song-files/${ownMem}`])) === JSON.stringify([`sb://song-files/${ownMem}`]), 'claim: a member for their own suggestion file');
 ok((await removedDone(ADMIN, [`sb://song-files/${W}`])) === 1 && (await qs(`SELECT 1 FROM song_file_removals WHERE path = $1`, [W])).rows.length === 0, 'removed: the claim is closed');
 // A failed delete: the claim lapses after 10 minutes, links work again.
@@ -451,6 +453,7 @@ ok((await codeOf(MEM, `INSERT INTO songs VALUES ('${id(60)}','${BAND}','Reuse O 
 ok((await codeOf(ADMIN, `INSERT INTO songs VALUES ('${id(61)}','${BAND}','Link C late again','ready','sb://song-files/${C}',NULL)`)) === 'BWF02', 'BW_FILE_REMOVED has SQLSTATE BWF02');
 // The suggestion scan reads only the file's band (no leak, no scan of every band).
 const Y = `${BAND}/audio/y-mentioned.mp3`;
+await q(`INSERT INTO storage.objects (bucket_id, name, owner) VALUES ('song-files', $1, $2)`, [Y, ADMIN]);
 await q(`INSERT INTO song_suggestions (band_id, kind, proposed) VALUES ($1, 'note', jsonb_build_object('audio_url', $2::text))`, [OTHER_BAND, `sb://song-files/${Y}`]);
 ok(JSON.stringify(await claimDel(ADMIN, [`sb://song-files/${Y}`])) === JSON.stringify([`sb://song-files/${Y}`]), 'another band’s suggestion mentioning the path does not count');
 await removedDone(ADMIN, [`sb://song-files/${Y}`]);
@@ -680,10 +683,13 @@ ok((await qs(`DELETE FROM songs WHERE id = '${id(107)}' RETURNING 1 AS v`)).rows
 
 // Claude B1 backfill: old unused objects become lapsed claims (never deleted
 // by the migration); referenced or recent ones don't.
-const BF1 = `${BAND}/audio/r7-bf-old.mp3`, BF2 = `${BAND}/audio/r7-bf-used.mp3`, BF3 = `${BAND}/audio/r7-bf-new.mp3`;
+// (Round 10: in a suggestions folder; an old object in a final folder only
+// starts its 7-day grace, see below.)
+const BF1 = sug(MEM, 'audio/r7-bf-old.mp3'), BF2 = `${BAND}/audio/r7-bf-used.mp3`, BF3 = `${BAND}/audio/r7-bf-new.mp3`;
+const BF4 = `${BAND}/audio/r7-bf-final.mp3`;
 await db.exec(`INSERT INTO storage.objects (bucket_id, name, owner, created_at) VALUES
   ('song-files','${BF1}','${ADMIN}', now() - interval '2 days'), ('song-files','${BF2}','${ADMIN}', now() - interval '2 days'),
-  ('song-files','${BF3}','${ADMIN}', now());
+  ('song-files','${BF3}','${ADMIN}', now()), ('song-files','${BF4}','${ADMIN}', now() - interval '2 days');
   INSERT INTO songs VALUES ('${id(108)}','${BAND}','Uses BF2','ready','${R(BF2)}',NULL)`);
 await db.exec(mig);
 const bf = async (p) => (await qs(`SELECT claimed_by, claimed_at < now() - interval '10 minutes' AS lapsed FROM song_file_removals WHERE path = $1`, [p])).rows[0];
@@ -691,6 +697,8 @@ ok((await bf(BF1))?.lapsed === true && (await bf(BF1))?.claimed_by === null && !
   && (await qs(`SELECT 1 FROM storage.objects WHERE name = $1`, [BF1])).rows.length === 1,
   'backfill: an old unused object becomes a lapsed claim (not deleted); a used or recent one does not');
 ok((await sweep(ADMIN)).includes(BF1), 'and the sweep lists it');
+ok(!(await bf(BF4)) && (await qs(`SELECT 1 FROM song_file_orphan_seen WHERE path = $1`, [BF4])).rows.length === 1 && !(await sweep(ADMIN)).includes(BF4),
+  'Round 10: backfill: an old unused object in a final folder only starts its grace (first seen, not listed)');
 
 // Codex 5: a copy is registered before it is made; if the song goes before
 // the repoint, the sweep deletes it.
@@ -748,6 +756,7 @@ const RCS = id(120), RCF = sug(MEM, 'audio/r8-copy.mp3'), RCT = `${BAND}/audio/$
 await putObj(RCF, 'song-files', MEM);
 await db.exec(`INSERT INTO songs VALUES ('${RCS}','${BAND}','R8 copy','learning','${R(RCF)}',NULL)`);
 await reserve(ADMIN, RCS, RCF, RCT);
+await putObj(RCT);
 await removedDone(STRANGER, [R(RCT)]);
 await removedDone(ADMIN2, [R(RCT)]);
 ok((await qs(`SELECT 1 FROM song_file_copies WHERE path = $1`, [RCT])).rows.length === 1,
@@ -777,7 +786,7 @@ await db.exec(`DELETE FROM song_suggestions WHERE kind = 'note'`);
 
 // 3: rolling backfill: old band objects that nothing uses and nothing
 // records are swept too (older builds' refused rollback deletes).
-const RB = `${BAND}/audio/r8-rollback.mp3`, RBU = `${BAND}/audio/r8-rollback-used.mp3`, RBN = `${BAND}/audio/r8-rollback-new.mp3`;
+const RB = sug(MEM, 'audio/r8-rollback.mp3'), RBU = `${BAND}/audio/r8-rollback-used.mp3`, RBN = `${BAND}/audio/r8-rollback-new.mp3`;
 const RBC = `${BAND}/audio/${id(122)}-r8-recorded.mp3`;
 await db.exec(`INSERT INTO storage.objects (bucket_id, name, owner, created_at) VALUES
   ('song-files','${RB}','${ADMIN}', now() - interval '2 days'), ('song-files','${RBU}','${ADMIN}', now() - interval '2 days'),
@@ -836,7 +845,8 @@ await db.exec(`INSERT INTO storage.objects (bucket_id, name, owner, created_at) 
   INSERT INTO songs VALUES ('${PS9}','${BAND}','Something already there','learning','${R(PF9)}',NULL)`);
 const rv1 = await reserve(ADMIN, PS9, PF9, PT9);
 const rv2 = await reserve(ADMIN, PS9, PF9, PT9);
-ok(rv1 === true && rv2 === false, `reserve says whether this call registered the path (${rv1}, ${rv2})`);
+ok(rv1?.registered === true && rv2?.registered === false && typeof rv1?.reserved_at === 'string' && rv1.reserved_at === rv2.reserved_at,
+  `reserve says whether this call registered the path, and since when (${JSON.stringify(rv1)}, ${JSON.stringify(rv2)})`);
 await db.exec(`UPDATE song_file_copies SET made_at = now() - interval '11 minutes' WHERE path = '${PT9}'`);
 const list9 = await sweep(ADMIN);
 ok(Array.isArray(list9) && !list9.includes(PT9), 'B3: a stale registration of an object older than it is not listed');
@@ -858,6 +868,116 @@ await reserve(ADMIN, QS9, QF9, QT9);
 await db.exec(`DELETE FROM songs WHERE id = '${QS9}'; UPDATE song_file_copies SET made_at = now() - interval '11 minutes' WHERE path = '${QT9}'`);
 ok((await sweep(ADMIN)).includes(QT9), 'B3: a copy made after the first registration is still swept when unused');
 
+// ---- Round 10: Claude and Codex reviews of 28cb3199
+const sweepC = (user) => asCommit(user, `SELECT public.bw_song_file_sweep_list($1) AS v`, [BAND]);
+// The app's sweep: list, then claim, delete and close each one.
+const sweepRun = async (user) => {
+  const l = await sweepC(user);
+  for (const p of Array.isArray(l) ? l : []) {
+    if ((await claim(user, p))?.ok === true) { await delObj(user, p); await doneSweep(user, [p]); }
+  }
+  return l;
+};
+const seen = async (p) => (await qs(`SELECT 1 FROM song_file_orphan_seen WHERE path = $1`, [p])).rows.length === 1;
+
+// Claude B1: an old build (383f15b) accepts with a Storage move (a row
+// UPDATE, created_at kept), then links the moved file in a separate update
+// whose error it ignores. A new build's sweep in between must not take it.
+const OLDB = id(140), OLDS = sug(MEM, 'audio/r10-oldmove.mp3'), OLDD = `${BAND}/audio/r10-oldmove.mp3`;
+await db.exec(`INSERT INTO storage.objects (bucket_id, name, owner, created_at) VALUES ('song-files','${OLDS}','${MEM}', now() - interval '3 days');
+  INSERT INTO songs VALUES ('${OLDB}','${BAND}','Old build accept','learning','${R(OLDS)}',NULL);
+  UPDATE storage.objects SET name = '${OLDD}' WHERE bucket_id = 'song-files' AND name = '${OLDS}'`);
+await sweepRun(ADMIN2);
+const oldLink = await codeOf(ADMIN, `UPDATE songs SET audio_url = '${R(OLDD)}' WHERE id = '${OLDB}'`);
+ok(oldLink === 'ok' && (await qs(`SELECT 1 FROM storage.objects WHERE name = $1`, [OLDD])).rows.length === 1
+  && (await q(`SELECT audio_url FROM songs WHERE id = $1`, [OLDB])).rows[0].audio_url === R(OLDD),
+  `Claude B1: an old build's move, a new build's sweep, then its link: the file stays and the link works (${oldLink})`);
+
+// Repair: a song on a missing suggestion file, its moved copy unlinked at
+// <band>/<kind>/<name>: the sweep repoints the song (never deletes the copy).
+const RP = id(141), RPS = sug(MEM, 'chart/r10-repair.pdf'), RPD = `${BAND}/chart/r10-repair.pdf`;
+await putObj(RPD);
+await db.exec(`ALTER TABLE songs DISABLE TRIGGER songs_file_not_removed;
+  INSERT INTO songs VALUES ('${RP}','${BAND}','Lost its link','ready',NULL,'${R(RPS)}');
+  ALTER TABLE songs ENABLE TRIGGER songs_file_not_removed`);
+// Two songs that would map to the same file: neither is repointed.
+const AM1 = id(142), AM2 = id(143), AMD = `${BAND}/audio/r10-ambiguous.mp3`;
+await putObj(AMD);
+await db.exec(`ALTER TABLE songs DISABLE TRIGGER songs_file_not_removed;
+  INSERT INTO songs VALUES ('${AM1}','${BAND}','Ambiguous 1','ready','${R(sug(MEM, 'audio/r10-ambiguous.mp3'))}',NULL),
+    ('${AM2}','${BAND}','Ambiguous 2','ready','${R(sug(MEM2, 'audio/r10-ambiguous.mp3'))}',NULL);
+  ALTER TABLE songs ENABLE TRIGGER songs_file_not_removed`);
+await sweepRun(ADMIN);
+const rpRow = (await q(`SELECT chart_url FROM songs WHERE id = $1`, [RP])).rows[0];
+ok(rpRow.chart_url === R(RPD) && (await qs(`SELECT 1 FROM storage.objects WHERE name = $1`, [RPD])).rows.length === 1,
+  `repair: the sweep repoints a song on a missing suggestion file to its moved copy (${rpRow.chart_url})`);
+ok((await q(`SELECT count(*)::int AS n FROM songs WHERE id IN ('${AM1}','${AM2}') AND audio_url = '${R(AMD)}'`)).rows[0].n === 0,
+  'repair: never when two songs would map to the same file');
+
+// 7-day grace: an unlinked old object in a final folder is first recorded,
+// and deleted only if still unlinked 7 days later.
+const GR = `${BAND}/audio/r10-grace.mp3`;
+await db.exec(`INSERT INTO storage.objects (bucket_id, name, owner, created_at) VALUES ('song-files','${GR}','${ADMIN}', now() - interval '3 days')`);
+const gr1 = await sweepC(ADMIN);
+ok(Array.isArray(gr1) && !gr1.includes(GR) && (await seen(GR)) && (await claim(ADMIN, GR))?.ok !== true,
+  'grace: first seen, not listed, not claimable');
+await db.exec(`UPDATE song_file_orphan_seen SET first_seen_at = now() - interval '6 days' WHERE path = '${GR}'`).catch(() => undefined);
+ok(!(await sweepC(ADMIN)).includes(GR), 'grace: still kept after 6 days');
+await db.exec(`UPDATE song_file_orphan_seen SET first_seen_at = now() - interval '8 days' WHERE path = '${GR}'`).catch(() => undefined);
+await sweepRun(ADMIN);
+ok((await qs(`SELECT 1 FROM storage.objects WHERE name = $1`, [GR])).rows.length === 0 && !(await seen(GR)),
+  'grace: after 7 days still unlinked: deleted');
+// Linked meanwhile: the record goes (a later unlink starts a new grace).
+const GL = `${BAND}/audio/r10-grace-linked.mp3`;
+await db.exec(`INSERT INTO storage.objects (bucket_id, name, owner, created_at) VALUES ('song-files','${GL}','${ADMIN}', now() - interval '3 days')`);
+await sweepC(ADMIN);
+ok(await seen(GL), 'grace: recorded');
+ok((await commitSql(ADMIN, `INSERT INTO songs VALUES ('${id(144)}','${BAND}','Links GL','ready','${R(GL)}',NULL)`)) === 1 && !(await seen(GL)),
+  'grace: a link forgets the first sighting');
+
+// Codex B2: no claim for a file not in Storage; at most 200 open claims per member.
+const GH = sug(MEM, 'audio/r10-ghost.mp3');
+ok(JSON.stringify(await claimDel(MEM, [R(GH)])) === '[]' && (await qs(`SELECT 1 FROM song_file_removals WHERE path = $1`, [GH])).rows.length === 0,
+  'Codex B2: a claim needs the file in Storage');
+const MEM3 = id(146);
+await db.exec(`INSERT INTO band_members VALUES ('${BAND}','${MEM3}','member',true);
+  INSERT INTO storage.objects (bucket_id, name, owner)
+  SELECT 'song-files', '${BAND}/suggestions/${MEM3}/audio/r10-cap-' || lpad(g::text, 3, '0') || '.mp3', '${MEM3}' FROM generate_series(1, 201) g`);
+const capRefs = Array.from({ length: 201 }, (_, i) => R(`${BAND}/suggestions/${MEM3}/audio/r10-cap-${String(i + 1).padStart(3, '0')}.mp3`));
+const capped = await claimDel(MEM3, capRefs);
+ok(Array.isArray(capped) && capped.length === 200, `Codex B2: a member holds at most 200 open claims (${Array.isArray(capped) ? capped.length : capped})`);
+ok(JSON.stringify(await claimDel(MEM3, [capRefs[0]])) === JSON.stringify([capRefs[0]]), 'one already held still counts as held');
+await removedDone(MEM3, capRefs);
+await db.exec(`DELETE FROM storage.objects WHERE name LIKE '${BAND}/suggestions/${MEM3}/audio/r10-cap-%'`);
+const GH2 = `${BAND}/audio/r10-ghost-lapsed.mp3`;
+await db.exec(`INSERT INTO song_file_removals (path, band_id, claimed_by, claimed_at) VALUES ('${GH2}','${BAND}',NULL, now() - interval '16 minutes')`);
+await sweepC(ADMIN);
+ok((await qs(`SELECT 1 FROM song_file_removals WHERE path = $1`, [GH2])).rows.length === 0, 'Codex B2: the sweep drops lapsed claims of missing files');
+
+// NIT 3: a registration whose object was there before it, older than a day: the row goes, never the object.
+const N3 = `${BAND}/audio/${id(145)}-r10-stale.mp3`;
+await db.exec(`INSERT INTO storage.objects (bucket_id, name, owner, created_at) VALUES ('song-files','${N3}','${ADMIN}', now() - interval '3 days');
+  INSERT INTO song_file_copies (path, band_id, song_id, made_at, reserved_at) VALUES ('${N3}','${BAND}','${id(145)}', now() - interval '2 days', now() - interval '2 days')`).catch(() => undefined);
+await sweepC(ADMIN);
+ok((await qs(`SELECT 1 FROM song_file_copies WHERE path = $1`, [N3])).rows.length === 0
+  && (await qs(`SELECT 1 FROM storage.objects WHERE name = $1`, [N3])).rows.length === 1, 'NIT 3: a stale registration of an older object is dropped; the object stays');
+
+// NIT 4: the delete check answers only for the caller's bands (a member who
+// left keeps no delete right through an old claim).
+const N4 = sug(MEM2, 'audio/r10-left.mp3');
+await putObj(N4, 'song-files', MEM2);
+await claimDel(MEM2, [R(N4)]);
+await db.exec(`UPDATE band_members SET is_active = false WHERE band_id = '${BAND}' AND user_id = '${MEM2}'`);
+const n4 = await rpc(MEM2, `SELECT public.bw_song_file_delete_allowed('song-files', $1) AS v`, [N4]);
+await db.exec(`UPDATE band_members SET is_active = true WHERE band_id = '${BAND}' AND user_id = '${MEM2}'`);
+ok(n4 === false, `NIT 4: outside the band, the delete check says no (${n4})`);
+await removedDone(MEM2, [R(N4)]);
+
+// NIT 5: the orphan scan reads the band's prefix with the C collation, and songs' refs are indexed.
+const orphDef = (await qs(`SELECT pg_get_functiondef('public.bw_song_file_orphans(uuid, text)'::regprocedure) AS d`)).rows[0]?.d ?? '';
+const idx = (await q(`SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'songs'`)).rows.map((r) => r.indexdef).join('\n');
+ok(/COLLATE "C"/.test(orphDef) && /\(audio_url\)/.test(idx) && /\(chart_url\)/.test(idx), 'NIT 5: prefix scan with COLLATE "C", indexes on songs(audio_url) and songs(chart_url)');
+
 // ---- Main (after the prod dry run of 220767ca): prod storage.objects has
 // archived_at / is_delete_marker; an archived object or a delete marker is not
 // a stored file. Without those columns (here so far) nothing changes, as
@@ -878,6 +998,31 @@ const linkDM = await codeOf(ADMIN, `INSERT INTO songs VALUES ('${id(91)}','${BAN
 const linkLV = await codeOf(ADMIN, `INSERT INTO songs VALUES ('${id(92)}','${BAND}','Live','ready','sb://song-files/${LV}',NULL)`);
 ok(linkAR === 'BWF02' && linkDM === 'BWF02', `an archived object and a delete marker count as absent (${linkAR}, ${linkDM})`);
 ok(linkLV === 'ok', `a live object (is_delete_marker NULL) still counts (${linkLV})`);
+
+// ---- Round 10 (end: with prod's columns). Codex B1: versioned Storage keeps
+// archived rows; age and "stored" read the same live row. Claude B1.1: age
+// is the later of created_at and updated_at.
+await db.exec(`ALTER TABLE storage.objects ADD COLUMN IF NOT EXISTS updated_at timestamptz`);
+await db.exec(mig);
+const VB = sug(MEM, 'audio/r10-versioned.mp3');
+await db.exec(`INSERT INTO storage.objects (bucket_id, name, owner, created_at, archived_at) VALUES ('song-files','${VB}','${MEM}', now() - interval '3 days', now() - interval '1 hour');
+  INSERT INTO storage.objects (bucket_id, name, owner, created_at) VALUES ('song-files','${VB}','${MEM}', now())`);
+const UA = sug(MEM, 'audio/r10-touched.mp3'), UA2 = sug(MEM, 'audio/r10-untouched.mp3');
+await db.exec(`INSERT INTO storage.objects (bucket_id, name, owner, created_at, updated_at) VALUES
+  ('song-files','${UA}','${MEM}', now() - interval '3 days', now()), ('song-files','${UA2}','${MEM}', now() - interval '3 days', now() - interval '2 days')`);
+const endList = await sweep(ADMIN);
+ok(Array.isArray(endList) && !endList.includes(VB), 'Codex B1: an old archived version plus a fresh upload at the same path is never swept');
+ok(Array.isArray(endList) && !endList.includes(UA) && endList.includes(UA2), 'Claude B1: age counts from the latest of created_at / updated_at');
+const live180 = src180 && fnFrom(src180, 'bw_storage_live_filter');
+if (!live180) {
+  console.warn('SKIP 180 live-row predicate check: no bw_storage_live_filter in 180');
+} else {
+  await db.exec(live180);
+  const pred = (await q(`SELECT public.bw_storage_live_filter() AS p`)).rows[0].p.trim();
+  const od = (await qs(`SELECT pg_get_functiondef('public.bw_song_file_orphans(uuid, text)'::regprocedure) AS d`)).rows[0]?.d ?? '';
+  ok(pred.length > 0 && (await storedDef()).includes(pred) && od.includes(pred),
+    `197's live-row check is 180's bw_storage_live_filter predicate (${pred})`);
+}
 
 console.log(fails ? `\n${fails} FAILED` : '\nALL OK');
 process.exit(fails ? 1 : 0);

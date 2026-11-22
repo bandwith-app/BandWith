@@ -16,7 +16,7 @@ vi.mock('@/lib/haptics', () => ({
 
 const ORIG = 'sb://song-files/band-1/suggestions/member-1/audio/abc-take.mp3';
 const ADOPTED = 'sb://song-files/band-1/audio/abc-take.mp3';
-const svc = vi.hoisted(() => ({ getSongs: vi.fn(), updateSong: vi.fn(), adopt: vi.fn(), sweep: vi.fn(async () => ({ error: null })) }));
+const svc = vi.hoisted(() => ({ getSongs: vi.fn(), updateSong: vi.fn(), adopt: vi.fn(), sweep: vi.fn(async () => ({ error: null })), fit: vi.fn(async () => true) }));
 vi.mock('@/lib/services/songs', () => ({
   getSongs: svc.getSongs,
   getSetlists: vi.fn(async () => ({ data: [], error: null })),
@@ -30,6 +30,7 @@ vi.mock('@/lib/services/songFiles', async (orig) => ({
   ...(await orig<typeof import('@/lib/services/songFiles')>()),
   adoptSuggestionFiles: svc.adopt,
   sweepAdoptedFiles: svc.sweep,
+  songFilesFit: svc.fit,
 }));
 
 globalThis.ResizeObserver = class {
@@ -43,6 +44,7 @@ import { SetlistManagerView } from '../SetlistManagerView';
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  svc.fit.mockResolvedValue(true);
 });
 
 const suggested = { id: 'song-1', band_id: 'band-1', title: 'Empire State of Mind', artist: 'Alicia Keys', duration_seconds: 276, status: 'suggested', genre: null, audio_url: ORIG, chart_url: null };
@@ -82,6 +84,25 @@ describe('Approving a suggested song from its menu', () => {
     await waitFor(() => expect(svc.sweep).toHaveBeenCalledWith('band-1'));
     expect(svc.sweep).toHaveBeenCalledTimes(1);
     expect(svc.adopt).not.toHaveBeenCalled();
+  });
+
+  it('a band whose storage is full: approving keeps the song suggested and says why (Codex review of 28cb3199)', async () => {
+    svc.getSongs.mockResolvedValue({ data: [suggested], error: null });
+    svc.fit.mockResolvedValue(false);
+    render(<SetlistManagerView onClose={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: /actions for empire state of mind/i }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /approve · learning/i }));
+    expect(await screen.findByText('Band storage is full: free up space to add this recording.')).toBeTruthy();
+    expect(svc.updateSong).not.toHaveBeenCalled();
+    expect(svc.adopt).not.toHaveBeenCalled();
+  });
+
+  it('a move refused for storage on a later visit is shown, not dropped (Codex review of 28cb3199)', async () => {
+    svc.getSongs.mockResolvedValue({ data: [{ ...suggested, status: 'learning' }], error: null });
+    const { UserError } = await import('@/lib/userError');
+    svc.adopt.mockResolvedValue({ refs: {}, error: new UserError('Band storage is full: free up space to add this recording.') });
+    render(<SetlistManagerView onClose={() => {}} />);
+    expect(await screen.findByText('Band storage is full: free up space to add this recording.')).toBeTruthy();
   });
 
   it('tidies also when the band has no songs left (Codex review of ed7ec29f)', async () => {

@@ -11,6 +11,8 @@ import { Browser } from '@capacitor/browser';
 import { supabase } from '../supabase';
 import { t } from '@/lib/i18n';
 import { UserError } from '../userError';
+import { fetchBandPlan } from '@/lib/usePlan';
+import { canUse, limitFor } from '@/lib/plans';
 
 export const SONG_FILES_BUCKET = 'song-files';
 const REF_PREFIX = `sb://${SONG_FILES_BUCKET}/`;
@@ -256,22 +258,26 @@ async function adoptOne(client: AdoptClient, songId: string, field: Field, busyW
     // Registered before it exists: if this run stops (or the song goes)
     // before the repoint, the sweep deletes the copy no song uses (never an
     // object that was there before the registration: 197 checks).
-    const { data: reservedNow, error: reserveError } = await client.rpc('bw_song_file_copy_reserve', {
+    const { data: reserved, error: reserveError } = await client.rpc('bw_song_file_copy_reserve', {
       p_song_id: songId,
       p_field: field,
       p_from: c.from,
       p_to: candidate,
     });
     if (reserveError) return { error: asError(reserveError, 'Could not move the files') };
+    const reservation = (reserved || {}) as { registered?: boolean; reserved_at?: string };
     const { error: copyError } = await bucket.copy(c.from, candidate);
     if (!copyError) {
       to = candidate;
       created = true;
     } else if (!alreadyExists(copyError)) {
+      // A band over its storage plan: 161's policy refuses the copy (Codex
+      // review of 28cb3199, M1). Said as such, not as a silent failure.
+      if (policyRefusal(copyError) && (await onStoragePlan(c.from.split('/')[0]))) return { error: storageFullError() };
       return { error: asError(copyError, 'Could not copy the file') };
-    } else if (await sameFile(bucket, c.from, candidate)) {
+    } else if (await sameFile(bucket, c.from, candidate, reservation.reserved_at)) {
       to = candidate;
-    } else if (reservedNow === true) {
+    } else if (reservation.registered === true) {
       // Another file is there: not this move's copy. Only the name finally
       // chosen stays registered (Codex review of ed7ec29f); a failure here
       // is harmless, the sweep never deletes an object older than its
@@ -321,17 +327,80 @@ const withTag = (path: string, songId: string) => {
   return `${path.slice(0, cut + 1)}${songId}-${tag}-${rest}`;
 };
 
-/** Same file: same size and same hash (etag). Unknown counts as different. */
-async function sameFile(bucket: ReturnType<AdoptClient['storage']['from']>, a: string, b: string): Promise<boolean> {
+/**
+ * The copy already at `b` is this move's (an earlier or parallel run's):
+ * same size, and either the same single-part hash (etag) or made after
+ * this destination was first registered (`reservedAt`, from the server)
+ * with the same content type. A multipart upload's etag ("…-3") never
+ * matches its copy's. Unknown counts as different.
+ */
+async function sameFile(bucket: ReturnType<AdoptClient['storage']['from']>, a: string, b: string, reservedAt?: string): Promise<boolean> {
   try {
     const [x, y] = await Promise.all([bucket.info(a), bucket.info(b)]);
-    const fx = x.data as { size?: number; etag?: string } | null;
-    const fy = y.data as { size?: number; etag?: string } | null;
-    return !!fx && !!fy && fx.size != null && fx.size === fy.size && !!fx.etag && fx.etag === fy.etag;
+    type Info = { size?: number; etag?: string; contentType?: string; content_type?: string; createdAt?: string; created_at?: string };
+    const fx = x.data as Info | null;
+    const fy = y.data as Info | null;
+    if (!fx || !fy || fx.size == null || fx.size !== fy.size) return false;
+    const multipart = (e?: string) => !e || /-\d+"?$/.test(e);
+    if (!multipart(fx.etag) && !multipart(fy.etag)) return fx.etag === fy.etag;
+    const madeAt = Date.parse(fy.createdAt ?? fy.created_at ?? '');
+    const since = Date.parse(reservedAt ?? '');
+    const type = (f: Info) => f.contentType ?? f.content_type ?? null;
+    return Number.isFinite(madeAt) && Number.isFinite(since) && madeAt >= since && type(fx) === type(fy);
   } catch {
     return false;
   }
 }
+
+/** A Storage refusal by a policy (161's storage limit refuses this way). */
+const policyRefusal = (e: unknown) => {
+  const x = e as { statusCode?: unknown; status?: unknown; message?: unknown };
+  const code = String(x?.statusCode ?? x?.status ?? '');
+  return (code === '400' || code === '403') && /row-level security|policy|unauthori[sz]ed/i.test(String(x?.message ?? ''));
+};
+
+/** The band's plan limits its storage (so a policy refusal of a copy is that limit). */
+async function onStoragePlan(bandId: string): Promise<boolean> {
+  try {
+    return limitFor(await fetchBandPlan(bandId, true), 'storage_mb') !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** Said when the band's plan has no room for a song's recording or chart. */
+export const storageFullError = () => new UserError(t('Band storage is full: free up space to add this recording.'));
+export const isStorageFullError = (e: unknown) =>
+  e instanceof UserError && e.message === t('Band storage is full: free up space to add this recording.');
+
+/**
+ * Before accepting a suggested song: its suggestion files fit in the band's
+ * storage (the move copies them first). Unknown (no plan, plans off, sizes
+ * not readable) counts as fitting: the server decides.
+ */
+export const songFilesFit = async (
+  bandId: string | null | undefined,
+  refs: Array<string | null | undefined>,
+  opts?: { client?: AdoptClient },
+): Promise<boolean> => {
+  const files = refs.filter(isSuggestionFile);
+  if (!bandId || files.length === 0) return true;
+  try {
+    const ent = await fetchBandPlan(bandId, true);
+    if (limitFor(ent, 'storage_mb') === null) return true;
+    const bucket = (opts?.client ?? supabase).storage.from(SONG_FILES_BUCKET);
+    const sizes = await Promise.all(
+      files.map(async (r) => {
+        const { data } = await bucket.info(r.slice(REF_PREFIX.length));
+        return Number((data as { size?: number } | null)?.size ?? 0) || 0;
+      }),
+    );
+    const mb = sizes.reduce((a, b) => a + b, 0) / 1048576;
+    return canUse(ent, 'storage_mb', ent?.usage.storage_mb ?? 0, mb);
+  } catch {
+    return true;
+  }
+};
 
 async function currentRef(client: AdoptClient, songId: string, field: Field): Promise<string | null | undefined> {
   try {

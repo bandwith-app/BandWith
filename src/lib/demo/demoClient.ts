@@ -955,8 +955,9 @@ function demoSongFiles(fn: string, args: Row): { data: any; error: any } {
       return { data: { won: true, from: parts.join('/'), to: `${parts[0]}/${parts[3]}/${song.id}-${parts[4]}` }, error: null };
     }
     case 'bw_song_file_copy_reserve':
+      return song && isDemoAdmin(song.band_id) ? { data: { registered: true, reserved_at: new Date().toISOString() }, error: null } : notAdmin;
     case 'bw_song_file_copy_release':
-      return song && isDemoAdmin(song.band_id) ? { data: fn === 'bw_song_file_copy_reserve', error: null } : notAdmin;
+      return song && isDemoAdmin(song.band_id) ? { data: true, error: null } : notAdmin;
     case 'bw_song_file_adopt_repoint': {
       if (!song || !isDemoAdmin(song.band_id)) return notAdmin;
       const to = `${SONG_REF}${args.p_to}`;
