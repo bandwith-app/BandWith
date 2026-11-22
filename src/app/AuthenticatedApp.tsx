@@ -99,6 +99,8 @@ import { listMyDeputyGigs } from "@/lib/services/deputies";
 import { OfflineBanner } from "@/app/components/ui/OfflineBanner";
 import { useNetworkStatus, isOfflineError, reportNetworkStatus } from "@/lib/offline/useNetworkStatus";
 import { enqueueMutation, getPendingMutations } from "@/lib/offline/syncQueue";
+import { skipRehearsalDate } from "@/lib/services/rehearsalSkip";
+import { isSkippedOccurrence } from "@/lib/recurrenceSkips";
 import type { QueuedEventExtras } from "@/lib/offline/eventExtras";
 import { getOfflineItem, setOfflineItem, getCacheKey } from "@/lib/offline/storage";
 import { todayLocal } from '../lib/dates';
@@ -1863,7 +1865,7 @@ export default function AuthenticatedApp() {
       if (realBand?.id && e.band_id && e.band_id !== realBand.id) return;
       const normDate = (e.date || '').includes('T') ? e.date.split('T')[0] : (e.date || '');
 
-      if (!normDate || normDate >= todayStr) {
+      if ((!normDate || normDate >= todayStr) && !isSkippedOccurrence(e, normDate)) {
         rehearsals.push(e);
       }
 
@@ -1875,7 +1877,7 @@ export default function AuthenticatedApp() {
           const maxCount = rule.count || 24;
           repeatDates(normDate, rule, until, maxCount).forEach((cursor) => {
             const occDate = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
-            if (occDate >= todayStr && occDate !== normDate) {
+            if (occDate >= todayStr && occDate !== normDate && !isSkippedOccurrence(e, occDate)) {
               rehearsals.push({
                 ...e,
                 // Keyed by the date, not its place in the list: deleting one
@@ -2729,10 +2731,21 @@ export default function AuthenticatedApp() {
     }
   };
 
-  const handleEventDelete = async () => {
+  const handleEventDelete = async (scope?: 'date' | 'series') => {
     if (!selectedEvent?.eventId) return;
     haptic.delete();
     try {
+      if (scope === 'date' && selectedEvent.band_id && selectedEvent.date) {
+        // One date of a repeating rehearsal: the series and its notes stay (audit 05 #4).
+        const { error } = await skipRehearsalDate(selectedEvent.eventId, selectedEvent.date);
+        if (error) throw error;
+        setSaveToast({ message: t('Rehearsal date deleted'), type: 'success' });
+        refetchEvents();
+        refetchDashboard?.();
+        setSelectedEvent(null);
+        setSelectedEventMembership(null);
+        return;
+      }
       if (!selectedEvent.band_id) {
         const { error } = await deletePersonalGig(selectedEvent.eventId, user?.id);
         if (error) throw error;
@@ -3826,7 +3839,7 @@ export default function AuthenticatedApp() {
         return;
       }
 
-      if (d && d >= todayStr) {
+      if (d && d >= todayStr && !isSkippedOccurrence(e as any, d)) {
         liveUpcomingEvents.push(e);
       }
 
@@ -3839,7 +3852,7 @@ export default function AuthenticatedApp() {
           const maxCount = rule.count || 24;
           for (const cursor of repeatDates(d, rule, until, maxCount)) {
             const occDate = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
-            if (occDate >= todayStr && occDate !== d) {
+            if (occDate >= todayStr && occDate !== d && !isSkippedOccurrence(e as any, occDate)) {
               liveUpcomingEvents.push({
                 ...e,
                 id: `${e.id}-occ-${occDate}`,
@@ -4870,7 +4883,7 @@ export default function AuthenticatedApp() {
             onEventUpdated={() => { refetchEvents(); if (refetchDashboard) refetchDashboard().catch(() => {}); }}
             onToast={(message, type) => setSaveToast({ message, type })}
             onEdit={() => inItemBand(selectedEvent.band_id, "edit this event", handleEventEdit)}
-            onDelete={() => inItemBand(selectedEvent.band_id, "delete this event", handleEventDelete)}
+            onDelete={(scope) => inItemBand(selectedEvent.band_id, "delete this event", () => handleEventDelete(scope))}
             onChat={handleEventChat}
             onConfirmQuote={(ev) => inItemBand(ev.band_id, "confirm this quote", () => handleConfirmQuote(ev))}
             onRevertQuote={(ev) => inItemBand(ev.band_id, "change this quote", () => handleRevertQuote(ev))}

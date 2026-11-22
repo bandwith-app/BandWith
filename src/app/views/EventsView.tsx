@@ -28,6 +28,7 @@ import { FIT, FitText } from '@/app/components/bw/FitText';
 import { getActiveSymbol as sym, useCurrency } from '@/lib/currency';
 import { PlannerMode, type PlannerEvent } from '@/app/components/duo';
 import { keyboardSafeTap } from '@/lib/keyboardSafeTap';
+import { isSkippedOccurrence } from '@/lib/recurrenceSkips';
 import { useSystemBack } from '@/lib/backStack';
 import { eventWarningKeys, isQuoteEvent } from '@/lib/eventVisibility';
 import { ALL_BANDS, PERSONAL, bandFilterCanCreate, bandFilterShowsFees, feeForViewer, matchesBandFilter, type BandFilterOption } from '@/lib/bandFilter';
@@ -479,6 +480,8 @@ export const EventsView: React.FC<EventsViewProps> = ({
       if (!normDate) {
         // Undated drafts or unscheduled events stay in upcoming
         upcoming.push(event);
+      } else if (isSkippedOccurrence(event as any, normDate)) {
+        // This date of a repeating rehearsal was deleted on its own (audit 05 #4).
       } else if (normDate >= todayStr) {
         upcoming.push(event);
       } else {
@@ -495,7 +498,7 @@ export const EventsView: React.FC<EventsViewProps> = ({
           const maxCount = rule.count || 24;
           for (const cursor of repeatDates(normDate, rule, until, maxCount)) {
             const occDate = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
-            if (occDate >= todayStr && occDate !== normDate) {
+            if (occDate >= todayStr && occDate !== normDate && !isSkippedOccurrence(rec, occDate)) {
               upcoming.push({
                 ...event,
                 id: `${event.id}-occ-${occDate}` as any,
@@ -589,6 +592,7 @@ export const EventsView: React.FC<EventsViewProps> = ({
       const key = `${dateObj.getFullYear()}-${dateObj.getMonth()}-${dateObj.getDate()}`;
       if (!map[key]) map[key] = [];
       const occDate = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+      if (isSkippedOccurrence(ev as any, occDate)) return;
       const evForDay: EventData = {
         ...ev,
         date: occDate,

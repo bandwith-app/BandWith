@@ -128,7 +128,11 @@ interface EventDetailProps {
   /** The viewer has an event_members row (shows the rehearsal RSVP card). Defaults to !isAdmin. */
   canRespond?: boolean;
   onEdit?: () => void;
-  onDelete?: () => void;
+  /**
+   * Delete. On a repeating rehearsal the admin picks: 'date' takes only this
+   * date out of the series, 'series' deletes every date (audit 05 #4).
+   */
+  onDelete?: (scope?: 'date' | 'series') => void;
   onChat?: () => void;
   onConfirmQuote?: (event: EventData) => Promise<void> | void;
   onRevertQuote?: (event: EventData) => Promise<void> | void;
@@ -1316,7 +1320,43 @@ export const EventDetail: React.FC<EventDetailProps> = ({
         ? { label: t('DETAILS'), run: () => setActiveSheet('lineup') }
         : null;
 
-  const renderDeleteConfirm = (onCancel: () => void) => (
+  // A repeating rehearsal: this date only, or the whole series (audit 05 #4).
+  const repeatingRehearsal = isRehearsal && !!event.is_recurring && !!event.recurrence_rule;
+  const renderDeleteConfirm = (onCancel: () => void) => repeatingRehearsal ? (
+    <div className="flex flex-col gap-3 w-full" role="group" aria-label={t('Delete which dates?')}>
+      <p className="bw-body-sm text-muted-foreground">
+        {t('This rehearsal repeats. Delete only this date, or every date with its notes?')}
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <PillButton
+          size="sm"
+          fullWidth={false}
+          className="bg-destructive-solid text-white"
+          onClick={() => {
+            onDelete?.('date');
+            setShowDeleteConfirm(false);
+          }}
+        >
+          {t('Delete this date')}
+        </PillButton>
+        <PillButton
+          size="sm"
+          fullWidth={false}
+          variant="outline"
+          className="text-destructive-solid"
+          onClick={() => {
+            onDelete?.('series');
+            setShowDeleteConfirm(false);
+          }}
+        >
+          {t('Delete the whole series')}
+        </PillButton>
+        <button onClick={onCancel} className={LINK_CLASS}>
+          {t('CANCEL')}
+        </button>
+      </div>
+    </div>
+  ) : (
     <div className="flex items-center gap-3">
       <PillButton
         size="sm"

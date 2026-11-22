@@ -30,6 +30,7 @@ import { repeatDates } from '@/lib/recurrence';
 import { usePayoutsDue } from '@/app/hooks/usePayoutsDue';
 import { personName, personInitials } from '@/lib/personName';
 import { money } from '@/lib/currency';
+import { isSkippedOccurrence } from '@/lib/recurrenceSkips';
 import { LaunchNoticeCard } from '@/app/components/plans/LaunchNoticeCard';
 import { PlanEndingCard } from '@/app/components/plans/PlanEndingCard';
 
@@ -355,7 +356,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       const isRecurring = Boolean(e.is_recurring || e.recurrence_rule || (e.recurrence && e.recurrence !== 'once'));
 
       // If base event date is today or future, add it
-      if (d && d >= todayStr) {
+      if (d && d >= todayStr && !isSkippedOccurrence(e, d)) {
         expandedList.push(e);
       }
 
@@ -371,7 +372,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         const maxCount = rule.count || 24;
         for (const cursor of repeatDates(d, { ...rule, frequency: freq }, until, maxCount)) {
           const occDate = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
-          if (occDate >= todayStr && occDate !== d) {
+          if (occDate >= todayStr && occDate !== d && !isSkippedOccurrence(e, occDate)) {
             expandedList.push({
               ...e,
               id: `${e.id || e.eventId}-occ-${occDate}`,
