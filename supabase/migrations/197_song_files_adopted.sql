@@ -58,7 +58,8 @@
 --    (an admin's either) links another band's file (42501); a member's
 --    can't link a file another song of the band uses (BW_FILE_IN_USE,
 --    SQLSTATE BWF01). An app user can't link a file no longer in Storage
---    (BW_FILE_REMOVED, BWF02).
+--    (BW_FILE_REMOVED, BWF02; archived objects and delete markers count as
+--    gone where storage.objects has those columns).
 --
 -- 4. Storage deletes need a claim: bw_song_files_delete_claimed, a
 --    RESTRICTIVE delete policy on song-files (bw_song_files_write_delete,
@@ -222,6 +223,33 @@ END;
 $$;
 ALTER TABLE public.song_file_removals ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.song_file_removals FROM PUBLIC, anon, authenticated;
+
+-- The file is in Storage: a row in storage.objects that is not archived and
+-- not a delete marker (prod storage has archived_at / is_delete_marker; a
+-- setup without them, e.g. local or PGlite, checks the row alone). Built
+-- from the columns present when this runs; re-run 197 if they appear later.
+DO $do$
+DECLARE
+  v_pred text := '';
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_attribute
+              WHERE attrelid = 'storage.objects'::regclass AND attname = 'archived_at' AND attnum > 0 AND NOT attisdropped) THEN
+    v_pred := v_pred || ' AND o.archived_at IS NULL';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_attribute
+              WHERE attrelid = 'storage.objects'::regclass AND attname = 'is_delete_marker' AND attnum > 0 AND NOT attisdropped) THEN
+    v_pred := v_pred || ' AND NOT coalesce(o.is_delete_marker, false)';
+  END IF;
+  EXECUTE format($f$
+    CREATE OR REPLACE FUNCTION public.bw_song_file_stored(p_path text)
+    RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $b$
+      SELECT EXISTS (SELECT 1 FROM storage.objects o
+                      WHERE o.bucket_id = 'song-files' AND o.name = p_path%s);
+    $b$;
+  $f$, v_pred);
+END;
+$do$;
+REVOKE ALL ON FUNCTION public.bw_song_file_stored(text) FROM PUBLIC, anon, authenticated;
 
 -- The file is being deleted, or was (no new link to it). A claim allows
 -- its Storage delete for 10 minutes (the delete policy below) and blocks
@@ -515,12 +543,13 @@ BEGIN
   END LOOP;
   -- New statements: they see a claim (or a delete) that committed while we
   -- waited. An app user's link to a file no longer in Storage (deleted
-  -- after its claim lapsed, or never uploaded) is refused the same way
-  -- (the service role may set a ref before its upload).
+  -- after its claim lapsed, archived, a delete marker, or never uploaded:
+  -- bw_song_file_stored) is refused the same way (the service role may set
+  -- a ref before its upload).
   FOREACH v_path IN ARRAY v_paths LOOP
     IF public.bw_song_file_being_removed(v_path)
        OR (auth.uid() IS NOT NULL
-           AND NOT EXISTS (SELECT 1 FROM storage.objects o WHERE o.bucket_id = 'song-files' AND o.name = v_path)) THEN
+           AND NOT public.bw_song_file_stored(v_path)) THEN
       RAISE EXCEPTION 'BW_FILE_REMOVED: this file is being removed; upload it again'
         USING ERRCODE = 'BWF02';
     END IF;

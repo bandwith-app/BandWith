@@ -592,5 +592,26 @@ const keyLog = await (async () => {
 ok(Array.isArray(keyLog) && keyLog.includes('file') && keyLog.includes('band') && keyLog.lastIndexOf('file') < keyLog.indexOf('band'),
   `reject: all file keys before any band key (${Array.isArray(keyLog) ? keyLog.join(',') : keyLog})`);
 
+// ---- Main (after the prod dry run of 220767ca): prod storage.objects has
+// archived_at / is_delete_marker; an archived object or a delete marker is not
+// a stored file. Without those columns (here so far) nothing changes, as
+// every case above shows. Last case: it adds the columns and re-runs 197.
+const storedDef = async () => (await qs(`SELECT pg_get_functiondef('public.bw_song_file_stored(text)'::regprocedure) AS d`)).rows[0]?.d ?? '';
+ok((await storedDef()) !== '' && !/archived_at|is_delete_marker/.test(await storedDef()), 'without the columns the stored check is the plain one');
+await db.exec(`ALTER TABLE storage.objects ADD COLUMN IF NOT EXISTS archived_at timestamptz, ADD COLUMN IF NOT EXISTS is_delete_marker boolean, ADD COLUMN IF NOT EXISTS version text`);
+await db.exec(mig);
+ok(/archived_at IS NULL/.test(await storedDef()) && /is_delete_marker/.test(await storedDef()), 'with the columns, 197 builds the check on them');
+const AR = `${BAND}/audio/arch-archived.mp3`;
+const DM = `${BAND}/audio/arch-marker.mp3`;
+const LV = `${BAND}/audio/arch-live.mp3`;
+await db.exec(`INSERT INTO storage.objects (bucket_id, name, owner, archived_at) VALUES ('song-files', '${AR}', '${ADMIN}', now());
+  INSERT INTO storage.objects (bucket_id, name, owner, is_delete_marker) VALUES ('song-files', '${DM}', '${ADMIN}', true);
+  INSERT INTO storage.objects (bucket_id, name, owner, is_delete_marker) VALUES ('song-files', '${LV}', '${ADMIN}', NULL)`);
+const linkAR = await codeOf(ADMIN, `INSERT INTO songs VALUES ('${id(90)}','${BAND}','Archived','ready','sb://song-files/${AR}',NULL)`);
+const linkDM = await codeOf(ADMIN, `INSERT INTO songs VALUES ('${id(91)}','${BAND}','Delete marker','ready','sb://song-files/${DM}',NULL)`);
+const linkLV = await codeOf(ADMIN, `INSERT INTO songs VALUES ('${id(92)}','${BAND}','Live','ready','sb://song-files/${LV}',NULL)`);
+ok(linkAR === 'BWF02' && linkDM === 'BWF02', `an archived object and a delete marker count as absent (${linkAR}, ${linkDM})`);
+ok(linkLV === 'ok', `a live object (is_delete_marker NULL) still counts (${linkLV})`);
+
 console.log(fails ? `\n${fails} FAILED` : '\nALL OK');
 process.exit(fails ? 1 : 0);
