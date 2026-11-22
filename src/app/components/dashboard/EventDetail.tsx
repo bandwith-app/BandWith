@@ -436,7 +436,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     onSaved: (songs, savedId) => {
       setSetlistSongs(songs as typeof setlistSongs);
       if (currentUserId && savedId === event.setlistId)
-        void savePackSongs({ userId: currentUserId, event: packRow, occurrenceDate: occurrenceDate(event.date) ?? undefined, songs: songs as LiveSong[] });
+        void savePackSongs({ userId: currentUserId, event: packRow, occurrenceDate: occurrenceDate(event.date) ?? undefined, songs: songs as LiveSong[] }).catch(() => undefined);
       setSetlistReloadKey((k) => k + 1);
       // A new setlist was linked to the gig: the events list picks up its id.
       if (savedId !== event.setlistId) onEventUpdated?.();
@@ -585,13 +585,13 @@ export const EventDetail: React.FC<EventDetailProps> = ({
         if (currentUserId && event.band_id && event.eventId) {
           const occurrence = occurrenceDate(event.date) ?? undefined;
           if (songs.length === 0) {
-            void refreshPack({ userId: currentUserId, event: packRow, occurrenceDate: occurrence, songs });
+            void refreshPack({ userId: currentUserId, event: packRow, occurrenceDate: occurrence, songs }).catch(() => undefined);
           } else {
-            await savePackSongs({ userId: currentUserId, event: packRow, occurrenceDate: occurrence, songs });
+            await savePackSongs({ userId: currentUserId, event: packRow, occurrenceDate: occurrence, songs }).catch(() => undefined);
             // My notes and files, band notes, the key: at most every few minutes.
             if (fullPackDue(event.eventId)) {
               const withFiles = packAllowed(readChoice(currentUserId), event.eventId);
-              void refreshPack({ userId: currentUserId, event: packRow, occurrenceDate: occurrence, songs, withFiles });
+              void refreshPack({ userId: currentUserId, event: packRow, occurrenceDate: occurrence, songs, withFiles }).catch(() => undefined);
             }
           }
         }
@@ -835,13 +835,17 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     if (canStage) prefetchStageKey(event.eventId);
   }, [canStage, event.eventId]);
   const isGigDay = isLiveDay(gigTimes);
-  // "Go live" opens the gig (or rehearsal) straight in live mode (once, on open).
+  // "Go live" opens the gig (or rehearsal) straight in live mode: on open, and
+  // again when it comes for the gig already open in the side pane (iPad, Duo).
   useEffect(() => {
     if (startInStage && canStage) setIsStageOpen(true);
-    // "Review payouts" from Home opens the gig on its Fee & payouts sheet.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startInStage]);
+  // "Review payouts" from Home opens the gig on its Fee & payouts sheet.
+  useEffect(() => {
     if (startOnFee && eventType === 'gig' && !isPersonalGig) setActiveSheet('fee');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [startOnFee]);
   // iPhone Duo: Stage mode joins the rail's Side Actions; on gig day it is
   // the screen's primary action (filled).
   const stageInRail = useRailAction(
@@ -1817,6 +1821,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                   }}
                 />
               )}
+              {/* Tablets (gig workspace tabs): offline readiness sits in the overview too. */}
+              {tab === 'overview' && offlineReady}
 
               {/* ─── GEAR KIT (094; self-contained) ─── */}
               {(tab ? tab === 'rider' : true) && !isPersonalGig && !isRehearsal && !isQuote && !!event.band_id && !!event.eventId && (

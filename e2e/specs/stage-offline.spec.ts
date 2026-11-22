@@ -21,6 +21,27 @@ async function closeEvent(app: App) {
   await app.settle();
 }
 
+/**
+ * At the venue, no signal: phones go Home → "Go live" on the next gig. Wide
+ * layouts (iPad, Duo book/laptop) keep the gig open in its pane, or open it
+ * again from Search, and start Stage mode from there.
+ */
+async function reopenOffline(app: App) {
+  await app.tab('Home');
+  const goLive = app.button('Go live', { exact: true }).first();
+  if (await goLive.click({ trial: true, timeout: 2500 }).then(() => true, () => false)) {
+    await goLive.click();
+    return;
+  }
+  const open = await eventDetail(app).getByText(SEED.gigToday).first().isVisible().catch(() => false);
+  if (!open) {
+    await app.page.keyboard.press('Escape');
+    await app.settle();
+    await openEvent(app, SEED.gigToday);
+  }
+  await app.button('Open stage mode', { exact: true }).first().click();
+}
+
 for (const role of ['admin', 'member'] as const) {
   test.describe(`Stage offline as ${role}`, () => {
     test.use({ role });
@@ -35,9 +56,7 @@ for (const role of ['admin', 'member'] as const) {
 
       // The network goes away (a venue with no signal).
       await context.setOffline(true);
-      await openEvent(app, SEED.gigToday);
-      await expect(eventDetail(app).getByText(SEED.gigToday).first()).toBeVisible();
-      await app.button('Open stage mode', { exact: true }).first().click();
+      await reopenOffline(app);
       await expect(stageDialog(app)).toBeAttached();
       await app.settle();
 
