@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import appSource from '@/app/AuthenticatedApp.tsx?raw';
 
 /**
@@ -223,5 +223,44 @@ describe('195: the request id decides (Codex #297 round 3 B1)', () => {
     db.rpc = { data: { published: false, poll_id: 'p1', band_id: 'band-B', status: 'expired' }, error: null };
     const { error } = await createOrPublishAdminPoll({ ...args, clientId: 'req-1' } as any);
     expect(String((error as any)?.message)).toMatch(/no longer open/);
+  });
+});
+
+describe('who is told: the invite list stored with the poll (Claude #297 r5 minor 8)', () => {
+  const { invitedUserIds: _omit, ...noInvitees } = args;
+  const bandB = db.members['band-B'];
+  afterEach(() => { db.members['band-B'] = bandB; });
+
+  it('195: a publish that leaves invitees out tells only the invitees the database kept', async () => {
+    db.members['band-B'] = ['a-admin', 'b-member', 'b-other'];
+    db.rpc = { data: { published: true, poll_id: 'p1', band_id: 'band-B', status: 'polling', invited_user_ids: ['b-member', 'a-admin'] }, error: null };
+    await createOrPublishAdminPoll(noInvitees as any);
+    const sent = (notify.mock.calls[0] as unknown[])[0] as { user_id: string }[];
+    expect(sent.map((n) => n.user_id)).toEqual(['b-member']);
+  });
+
+  it('195: its own request replayed tells the stored invitees too', async () => {
+    db.members['band-B'] = ['a-admin', 'b-member', 'b-other'];
+    db.rpc = { data: { published: true, replayed: true, poll_id: 'p1', band_id: 'band-B', status: 'polling', invited_user_ids: ['b-other'] }, error: null };
+    await createOrPublishAdminPoll({ ...noInvitees, clientId: 'req-1' } as any);
+    const sent = (notify.mock.calls[0] as unknown[])[0] as { user_id: string }[];
+    expect(sent.map((n) => n.user_id)).toEqual(['b-other']);
+  });
+
+  it('older database: reads the stored list before telling anyone', async () => {
+    db.members['band-B'] = ['a-admin', 'b-member', 'b-other'];
+    db.rpc = { data: null, error: { code: 'PGRST202', message: 'Could not find the function' } };
+    db.pollRow = { id: 'p1', band_id: 'band-B', status: 'polling', invited_user_ids: ['b-member', 'a-admin'] } as any;
+    await createOrPublishAdminPoll(noInvitees as any);
+    const sent = (notify.mock.calls[0] as unknown[])[0] as { user_id: string }[];
+    expect(sent.map((n) => n.user_id)).toEqual(['b-member']);
+  });
+
+  it('a stored list that is empty means the whole band', async () => {
+    db.members['band-B'] = ['a-admin', 'b-member', 'b-other'];
+    db.rpc = { data: { published: true, poll_id: 'p1', band_id: 'band-B', status: 'polling', invited_user_ids: [] }, error: null };
+    await createOrPublishAdminPoll(noInvitees as any);
+    const sent = (notify.mock.calls[0] as unknown[])[0] as { user_id: string }[];
+    expect(sent.map((n) => n.user_id).sort()).toEqual(['b-member', 'b-other']);
   });
 });

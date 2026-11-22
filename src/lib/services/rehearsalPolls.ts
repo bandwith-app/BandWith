@@ -561,6 +561,12 @@ export const createOrPublishAdminPoll = async ({
     let notifyBandId = bandId;
     /** Options already saved with the poll (one-step publish). */
     let optionsSaved = false;
+    /**
+     * Who is told: the invite list stored with the poll (empty = the band).
+     * A publish that leaves invitedUserIds out keeps the stored list, so
+     * the form's value alone could tell uninvited members (Claude #297 r5).
+     */
+    let storedInvitees: string[] | null = invitedUserIds !== undefined ? invitees : null;
 
     if (pollId) {
       // Converting a member's proposal: one transaction, only while it is
@@ -584,13 +590,14 @@ export const createOrPublishAdminPoll = async ({
         p_client_id: requestId,
       });
       if (res?.error && !isMissingRpc(res.error)) throw res.error;
-      const out = (res?.error ? null : res?.data) as { published?: boolean; band_id?: string; status?: string } | null;
+      const out = (res?.error ? null : res?.data) as { published?: boolean; band_id?: string; status?: string; invited_user_ids?: unknown } | null;
       if (out && typeof out.published === 'boolean') {
         // published: this request did it (replayed: its answer was lost,
         // the database knows its id). Not published: another request did,
         // or the proposal was declined; nothing is sent (Codex #297 round 3).
         if (!out.published) throw alreadyPublishedError(out.status);
         if (out.band_id) notifyBandId = out.band_id;
+        if (Array.isArray(out.invited_user_ids)) storedInvitees = out.invited_user_ids.filter((u): u is string => typeof u === 'string');
         optionsSaved = true;
       } else {
         // Database before 195: the step-by-step publish, still only while it
@@ -674,6 +681,12 @@ export const createOrPublishAdminPoll = async ({
 
     // Notify all active band members
     try {
+      if (storedInvitees === null) {
+        // Before 195, or no answer: the list as stored now.
+        const { data: row } = await supabase.from('rehearsal_polls').select('invited_user_ids').eq('id', activePollId).maybeSingle();
+        const list = (row as { invited_user_ids?: unknown } | null)?.invited_user_ids;
+        storedInvitees = Array.isArray(list) ? list.filter((u): u is string => typeof u === 'string') : [];
+      }
       const { data: members } = await supabase
         .from('band_members')
         .select('user_id')
@@ -685,7 +698,7 @@ export const createOrPublishAdminPoll = async ({
         // admin who published it.
         const uniqueMemberIds = pollNotifyTargets(
           members.map((m: { user_id: string }) => m.user_id),
-          invitees,
+          storedInvitees,
           adminId,
         );
 
