@@ -45,6 +45,31 @@ const shift = (day: string, by: number) => {
   return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
 };
 
+/**
+ * Duo Laptop pose: Home is the Band desk (the next gig and what needs doing)
+ * and has no list of upcoming dates, so a rehearsal's dates are read and
+ * opened on the Calendar's Planner there. Picks `day` on its month grid
+ * (moving on a month when needed) and returns the rehearsal's rows in that
+ * day's agenda.
+ */
+const isLaptop = () => test.info().project.name === 'duo-laptop';
+async function plannerRows(app: App, day: string) {
+  const [y, m, d] = day.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  // The Planner lies over the Calendar (which has a "Next month" of its own).
+  const planner = app.page.locator('.bw-fold-split').last();
+  const month = planner.getByRole('heading', { name: date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), exact: true });
+  for (let i = 0; i < 3 && !(await month.isVisible()); i++) {
+    await planner.getByRole('button', { name: app.t('Next month'), exact: true }).click();
+    await app.settle();
+  }
+  await expect(month).toBeVisible();
+  const label = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  await planner.getByRole('gridcell', { name: new RegExp(`^${label}(,|$)`) }).click();
+  await app.settle();
+  return planner.getByRole('region', { name: app.t('Agenda') }).getByRole('button', { name: new RegExp(SEED.rehearsalTomorrow, 'i') });
+}
+
 test.describe('a repeating rehearsal opened from Home @smoke', () => {
   let tomorrow = '';
   test.beforeEach(async ({ app }) => {
@@ -61,8 +86,14 @@ test.describe('a repeating rehearsal opened from Home @smoke', () => {
 
   test('Delete this date takes out the date tapped on Home', async ({ app }) => {
     expect(tomorrow).not.toBe('');
-    await app.tab('Home');
-    await app.page.getByRole('button', { name: new RegExp(SEED.rehearsalTomorrow, 'i') }).filter({ visible: true }).first().click();
+    if (isLaptop()) {
+      // The date tapped on the Planner (no list of dates on the Band desk).
+      await app.tab('Calendar');
+      await (await plannerRows(app, tomorrow)).first().click();
+    } else {
+      await app.tab('Home');
+      await app.page.getByRole('button', { name: new RegExp(SEED.rehearsalTomorrow, 'i') }).filter({ visible: true }).first().click();
+    }
     await app.settle();
     const detail = eventDetail(app);
     await detail.getByRole('button', { name: app.t('DELETE THIS REHEARSAL') }).filter({ visible: true }).first().click();
@@ -101,6 +132,14 @@ test.describe('a deleted date on Home @smoke', () => {
 
   test('does not come back; the date after shows instead', async ({ app }) => {
     expect(tomorrow).not.toBe('');
+    if (isLaptop()) {
+      // The same three dates, on the Planner.
+      await app.tab('Calendar');
+      await expect(await plannerRows(app, tomorrow), 'the first date is on the Planner').toHaveCount(1);
+      await expect(await plannerRows(app, shift(tomorrow, 7)), 'the deleted date is not').toHaveCount(0);
+      await expect(await plannerRows(app, shift(tomorrow, 14)), 'the date after the deleted one is').toHaveCount(1);
+      return;
+    }
     await app.tab('Home');
     const tile = (day: string) => {
       const [y, m, d] = day.split('-').map(Number);
@@ -147,9 +186,18 @@ test.describe('a repeating rehearsal in New York @smoke', () => {
       const mon = new Date(y, m - 1, d).toLocaleString('en-US', { month: 'short' });
       return app.page.getByRole('button', { name: new RegExp(`^${d} ${mon}\\b.*${SEED.rehearsalTomorrow}`, 'i') }).filter({ visible: true });
     };
-    await expect(tile(shift(tomorrow, -1)), 'no rehearsal the day before').toHaveCount(0);
-    await expect(tile(tomorrow), 'on its weekday').toHaveCount(1);
-    await tile(tomorrow).click();
+    if (isLaptop()) {
+      // The Planner's month grid and agenda, read in New York too.
+      await app.tab('Calendar');
+      await expect(await plannerRows(app, shift(tomorrow, -1)), 'no rehearsal the day before').toHaveCount(0);
+      const row = await plannerRows(app, tomorrow);
+      await expect(row, 'on its weekday').toHaveCount(1);
+      await row.click();
+    } else {
+      await expect(tile(shift(tomorrow, -1)), 'no rehearsal the day before').toHaveCount(0);
+      await expect(tile(tomorrow), 'on its weekday').toHaveCount(1);
+      await tile(tomorrow).click();
+    }
     await app.settle();
     const detail = eventDetail(app);
     await detail.getByRole('button', { name: app.t('DELETE THIS REHEARSAL') }).filter({ visible: true }).first().click();
