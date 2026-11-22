@@ -48,7 +48,8 @@ The web app and the database reach everyone at once. That is why they get the mo
 Do it in this order, so every build in use keeps working at every step:
 
 1. **Additive migrations**
-   - Apply them with the service role, one at a time, in number order.
+   - Apply them with the service role, one at a time, in number order, **except that the kill switches go first**: `173_app_flags` before any migration that reads `app_flags` (170 live pack does), so a feature can be turned off before its server side starts. For the live release: 173, then 170, then the others in number order.
+   - 170 reads the switch itself (no table or no row means on), so the wrong order fails safe; it just leaves no way to stop its invites until 173 is in.
    - After each, run its test from `supabase/tests/` (they roll back), or a quick `SELECT` on what it added.
 2. **Edge functions**
    - Deploy from a **clean worktree** on the release commit, only the functions that changed:
