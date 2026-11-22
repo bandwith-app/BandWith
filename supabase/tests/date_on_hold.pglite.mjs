@@ -82,7 +82,8 @@ CREATE TABLE public.bands (id uuid PRIMARY KEY, name text);
 CREATE TABLE public.band_members (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_id uuid, user_id uuid, role user_role,
   is_active boolean DEFAULT true, left_at timestamptz);
 CREATE TABLE public.quotes (id uuid PRIMARY KEY, band_id uuid, created_by uuid, client_name text, total numeric,
-  status text DEFAULT 'draft', valid_until date, converted_to_event_id uuid, quote_number text);
+  status text DEFAULT 'draft', valid_until date, converted_to_event_id uuid, quote_number text,
+  event_date date, event_time_start time, event_time_end time, created_at timestamptz DEFAULT now());
 CREATE TABLE public.quote_links (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), quote_id uuid, band_id uuid, status text DEFAULT 'draft');
 CREATE TABLE public.events (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_id uuid, title text, status text, event_type text,
   quote_id uuid, created_by uuid, event_date date, "date" date, start_time time, end_time time, load_in_time time,
@@ -161,6 +162,8 @@ await d.exec(lines('042_security_hardening.sql', 103, 146)); // bw_can_add_chat_
 await d.exec(lines('042_security_hardening.sql', 225, 272)); // get_user_chats
 await d.exec(lines('083_member_stats_rpc.sql', 15, 86)); // bw_member_stats
 await d.exec(lines('095_band_free_slots.sql', 23, 145)); // bw_band_free_slots
+await d.exec(lines('086_deputy_in_app.sql', 42, 103)); // bw_deputy_notify
+await d.exec(lines('086_deputy_in_app.sql', 109, 202)); // bw_deputy_request_open, bw_deputy_request_ping
 await d.exec(`
 CREATE TRIGGER bw_event_changed_notify AFTER UPDATE ON public.events FOR EACH ROW EXECUTE FUNCTION public.bw_trg_event_changed();
 CREATE TRIGGER bw_event_deleted_notify AFTER DELETE ON public.events FOR EACH ROW EXECUTE FUNCTION public.bw_trg_event_changed();
@@ -278,7 +281,12 @@ INSERT INTO event_members (event_id, user_id, status, fee, notes) VALUES ('${QE}
 ok((await notes(`type = 'date_hold'`)).length === 0, 'quote event saved alone: still no hold notice');
 await asServer(ADMIN, `
 INSERT INTO quotes (id, band_id, created_by, client_name, total, status, valid_until, converted_to_event_id, quote_number)
-VALUES ('${Q}','${BAND}','${ADMIN}','Jane Smith', 4200, 'sent', current_date + 30, '${QE}', 'Q-2026-0042');
+VALUES ('${Q}','${BAND}','${ADMIN}','Jane Smith', 4200, 'sent', current_date + 30, '${QE}', 'Q-2026-0042');`);
+// Codex round 3 (:1639): the app saves the quote, then its musicians (and
+// deletes both if the second write fails): no hold until both are saved.
+ok((await notes(`type = 'date_hold'`)).length === 0, 'quote saved, musicians not yet: still no hold notice');
+await asServer(ADMIN, `
+INSERT INTO quote_musicians (quote_id, user_id, fee) VALUES ('${Q}','${MEM}', 300);
 INSERT INTO setlist_songs (setlist_id, song_id, position) VALUES ('${SL}','${SONG}',1);
 INSERT INTO contracts (band_id, event_id, type, title, status) VALUES ('${BAND}','${QE}','rider','Smith Wedding rider','draft');
 INSERT INTO event_stage VALUES ('${QE}','${BAND}','{"items":[]}');
@@ -610,6 +618,140 @@ await db.exec(`UPDATE events SET event_date = current_date + 21 WHERE id = '${QE
 await db.exec(readFileSync(MIG, 'utf8')).catch(() => {});
 ok((await tryq(`SELECT 1 FROM event_hold_answers WHERE event_id = '${QE0}'`)).rows.length === 0, 're-run: old availability answers are carried only once');
 
+// ── Round 3 (Codex + Claude on 6312a8ea) ────────────────────────────────────
+const [R3Q, R3E, R3G, R3C, R3CH, R3SL, R3SLG, R3DE, R3DEP, R3REQ, R3RV] = [2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011].map(id);
+await mkQuote(R3E, 'Smith Anniversary', `INSERT INTO event_members (event_id, user_id, status, fee) VALUES ('${R3E}','${MEM}','pending', 250)`);
+await db.exec(`SELECT public.bw_date_hold_sweep()`).catch(() => {});
+
+// Codex B1: bw_is_on_event_lineup answers only about yourself, never for a quote.
+{
+  const on = async (uid, ev, who) => (await as(uid, `SELECT public.bw_is_on_event_lineup('${ev}', '${who}') v`)).rows[0]?.v;
+  ok(await on(MEM2, GIG, MEM) === false, 'lineup check: a member can\'t ask about someone else');
+  ok(await on(MEM, R3E, MEM) === false, 'lineup check: on a quote, false for a member (even about themselves)');
+  ok(await on(MEM, GIG, MEM) === true && await on(ADMIN, GIG, MEM) === true, 'lineup check: yourself, or the admin asking, on a gig: true');
+}
+
+// Claude :199: bw_event_quote_hidden about someone else needs an admin caller.
+{
+  const hid = async (uid, who) => (await as(uid, `SELECT public.bw_event_quote_hidden('${R3E}', '${who}') v`)).rows[0]?.v;
+  ok(await hid(MEM, ADMIN) === true, 'quote_hidden: a member asking about the admin learns nothing (hidden)');
+  ok(await hid(ADMIN, ADMIN) === false && await hid(ADMIN2, ADMIN) === false && await hid(ADMIN, MEM) === true,
+    'quote_hidden: the admin about themselves / another admin / a member: unchanged');
+}
+
+// Codex B4 + B5: the quote's day moves (Quotes screen); answers reset, and
+// an answer for the old day is refused.
+{
+  await asServer(ADMIN, `INSERT INTO quotes (id, band_id, status, valid_until, converted_to_event_id, event_date, event_time_start)
+    VALUES ('${R3Q}','${BAND}','sent', current_date + 30, '${R3E}', current_date + 12, '20:00')`);
+  const before = (await tryq(`SELECT to_char(event_date, 'YYYY-MM-DD') d FROM events WHERE id = '${R3E}'`)).rows[0]?.d;
+  const a1 = await as(MEM, `SELECT public.bw_answer_date_hold('${R3E}', 'free') v`);
+  ok(!a1.error, `answer without the shown date (older calls): saved (${a1.error || 'ok'})`);
+  await db.exec(`DELETE FROM notifications`);
+  await asServer(ADMIN, `UPDATE quotes SET event_date = current_date + 13, event_time_start = '21:00' WHERE id = '${R3Q}'`);
+  const ev = (await tryq(`SELECT to_char(event_date, 'YYYY-MM-DD') d, to_char(start_time, 'HH24:MI') t FROM events WHERE id = '${R3E}'`)).rows[0];
+  ok(ev?.d !== before && ev?.t === '21:00', `quote moved on the Quotes screen: its held event moves too (${JSON.stringify(ev)})`);
+  ok((await tryq(`SELECT 1 FROM event_hold_answers WHERE event_id = '${R3E}'`)).rows.length === 0, 'quote moved: the old answers are cleared');
+  ok((await notes(`type = 'date_hold_changed' AND user_id = '${MEM}'`)).length === 1, 'quote moved: members are told the new day');
+  const stale = await as(MEM, `SELECT public.bw_answer_date_hold('${R3E}', 'free', '${before}'::date, '20:00') v`);
+  ok(/date changed/i.test(stale.error || ''), `answer for the old day: refused "the date changed" (${stale.error || 'saved'})`);
+  ok((await tryq(`SELECT 1 FROM event_hold_answers WHERE event_id = '${R3E}'`)).rows.length === 0, '... and nothing saved');
+  const fresh = await as(MEM, `SELECT public.bw_answer_date_hold('${R3E}', 'busy', '${ev.d}'::date, '21:00') v`);
+  ok(!fresh.error && fresh.rows[0]?.v === 'busy', `answer for the day shown now: saved (${fresh.error || fresh.rows[0]?.v})`);
+}
+
+// Codex B2: setlist notices (setlist_id only) about a quote's setlist.
+{
+  await asServer(ADMIN, `INSERT INTO setlists (id, band_id, name) VALUES ('${R3SL}','${BAND}','Smith Anniversary set'), ('${R3SLG}','${BAND}','Club set');
+    UPDATE events SET setlist_id = '${R3SL}' WHERE id IN ('${R3E}', '${GIG}')`);
+  await db.exec(`INSERT INTO notifications (user_id, band_id, type, title, data, reference_id, reference_type) VALUES
+    ('${MEM}','${BAND}','setlist_updated','Smith Anniversary set updated', '{"setlist_id":"${R3SL}"}', '${R3SL}', 'setlist'),
+    ('${MEM}','${BAND}','setlist_updated','Smith Anniversary set saved', '{}', '${R3SL}', 'setlist'),
+    ('${MEM}','${BAND}','setlist_updated','Club set updated', '{"setlist_id":"${R3SLG}"}', '${R3SLG}', 'setlist')`);
+  const kept = (await notes(`user_id = '${MEM}' AND type = 'setlist_updated'`)).map((n) => n.title);
+  ok(kept.length === 1 && kept[0] === 'Club set updated', `setlist notices about a quote's setlist never reach members (${kept})`);
+  await db.exec(`ALTER TABLE notifications DISABLE TRIGGER USER`);
+  await db.exec(`INSERT INTO notifications (user_id, band_id, type, title, data, reference_id, reference_type) VALUES
+    ('${MEM}','${BAND}','setlist_updated','Smith Anniversary set (old)', '{}', '${R3SL}', 'setlist')`);
+  await db.exec(`ALTER TABLE notifications ENABLE TRIGGER USER`);
+  await db.exec(readFileSync(MIG, 'utf8')).catch((e) => console.log('re-run:', e.message));
+  ok((await notes(`user_id = '${MEM}' AND title LIKE 'Smith Anniversary%'`)).length === 0, 'cleanup: old setlist notices (setlist only) about a quote are removed');
+  ok((await notes(`user_id = '${MEM}' AND title = 'Club set updated'`)).length === 1, 'cleanup: other setlist notices stay');
+  await db.exec(`UPDATE events SET setlist_id = NULL WHERE id = '${GIG}'`);
+}
+
+// Codex :1639 is above (quote saved, musicians not yet: no hold).
+
+// Claude :163: a gig made with "Create gig from quote" (confirmed, quote_id) and then cancelled is a gig.
+{
+  await asServer(ADMIN, `INSERT INTO quotes (id, band_id, status, valid_until) VALUES ('${R3C}','${BAND}','sent', current_date + 30);
+    INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, quote_id, created_at)
+    VALUES ('${R3G}','${BAND}','Rooftop Wedding','confirmed','gig','${ADMIN}', current_date + 20, '${R3C}', now() - interval '1 day');
+    INSERT INTO event_members (event_id, user_id, status) VALUES ('${R3G}','${MEM}','confirmed');
+    INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES ('${R3CH}','event','Rooftop Wedding','${BAND}','${R3G}','${ADMIN}');
+    INSERT INTO chat_participants (chat_id, user_id) VALUES ('${R3CH}','${ADMIN}'), ('${R3CH}','${MEM}')`);
+  await db.exec(`DELETE FROM notifications`);
+  await asServer(ADMIN, `UPDATE events SET status = 'cancelled' WHERE id = '${R3G}'`);
+  ok((await notes(`type = 'event_cancelled' AND user_id = '${MEM}'`)).length === 1, 'converted gig cancelled: the member is told');
+  ok((await tryq(`SELECT 1 FROM chat_participants WHERE chat_id = '${R3CH}' AND user_id = '${MEM}'`)).rows.length === 1, 'converted gig cancelled: the member stays in its chat');
+  ok((await as(MEM, `SELECT id FROM events WHERE id = '${R3G}'`)).rows.length === 1, 'converted gig cancelled: the member still sees it');
+  // Cancelled before 178: the one-off cleanup leaves it alone.
+  await db.exec(readFileSync(MIG, 'utf8')).catch((e) => console.log('re-run:', e.message));
+  ok((await notes(`type = 'event_cancelled' AND user_id = '${MEM}'`)).length === 1
+     && (await tryq(`SELECT 1 FROM chat_participants WHERE chat_id = '${R3CH}' AND user_id = '${MEM}'`)).rows.length === 1,
+    'cleanup: a converted gig cancelled earlier keeps its notice and chat member');
+}
+
+// Claude :714: back to a quote with a hold that isn't live: the old cut-off goes.
+{
+  await asServer(ADMIN, `INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, created_at)
+    VALUES ('${R3RV}','${BAND}','Smith Reunion','tentative','gig','${ADMIN}', current_date + 25, now() - interval '1 day');
+    INSERT INTO quotes (id, band_id, status, valid_until, converted_to_event_id) VALUES ('${id(2012)}','${BAND}','sent', current_date + 30, '${R3RV}')`);
+  await asServer(ADMIN, `UPDATE events SET status = 'confirmed' WHERE id = '${R3RV}'`);
+  const first = (await tryq(`SELECT released_at FROM event_date_holds WHERE event_id = '${R3RV}'`)).rows[0]?.released_at;
+  // The quote expired meanwhile: back to a quote, the hold is not live.
+  await db.exec(`UPDATE quotes SET valid_until = current_date - 1 WHERE id = '${id(2012)}'`);
+  await asServer(ADMIN, `UPDATE events SET status = 'tentative' WHERE id = '${R3RV}'`);
+  const mid = (await tryq(`SELECT release_reason r FROM event_date_holds WHERE event_id = '${R3RV}'`)).rows[0]?.r;
+  ok(mid !== 'confirmed', `revert to quote (hold not live): the 'confirmed' row is reset (${mid})`);
+  await new Promise((r) => setTimeout(r, 20));
+  await asServer(ADMIN, `UPDATE events SET status = 'confirmed' WHERE id = '${R3RV}'`);
+  const second = (await tryq(`SELECT released_at FROM event_date_holds WHERE event_id = '${R3RV}'`)).rows[0]?.released_at;
+  ok(!!first && !!second && new Date(second) > new Date(first), 'confirmed again: a new chat cut-off');
+}
+
+// Claude :1061: dropped out is not busy.
+{
+  await asServer(ADMIN, `INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, start_time, end_time)
+    VALUES ('${id(2013)}','${BAND}','Harbor Gig','confirmed','gig','${ADMIN}', current_date + 40, '20:00', '23:00');
+    INSERT INTO event_members (event_id, user_id, status) VALUES ('${id(2013)}','${MEM}','dropped_out')`);
+  const fs = (await as(ADMIN, `SELECT free_count, total_count FROM public.bw_band_free_slots('${BAND}', current_date + 40, current_date + 40)`)).rows[0];
+  ok(fs?.free_count === fs?.total_count, `free slots: dropped out of a gig is free (${JSON.stringify(fs)})`);
+}
+
+// Claude: deputies of a gig that went back to a quote.
+{
+  await db.exec(`ALTER TABLE band_deputies ADD COLUMN IF NOT EXISTS user_id uuid;
+    ALTER TABLE events ADD COLUMN IF NOT EXISTS currency text;
+    ALTER TABLE deputy_requests ADD COLUMN IF NOT EXISTS token text DEFAULT md5(random()::text) || md5(random()::text),
+      ADD COLUMN IF NOT EXISTS replaces_user_id uuid, ADD COLUMN IF NOT EXISTS role text, ADD COLUMN IF NOT EXISTS fee_offered numeric,
+      ADD COLUMN IF NOT EXISTS currency text, ADD COLUMN IF NOT EXISTS created_by uuid, ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now(),
+      ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now()`);
+  await asServer(ADMIN, `INSERT INTO band_deputies (id, band_id, name) VALUES ('${R3DEP}','${BAND}','Ava Dep');
+    INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, created_at)
+    VALUES ('${R3DE}','${BAND}','Smith Gala 4','confirmed','gig','${ADMIN}', current_date + 30, now() - interval '1 day');
+    INSERT INTO deputy_requests (id, band_id, event_id, deputy_id, deputy_name, status) VALUES ('${R3REQ}','${BAND}','${R3DE}','${R3DEP}','Ava Dep','available')`);
+  await asServer(ADMIN, `UPDATE events SET status = 'tentative' WHERE id = '${R3DE}'`);
+  const open = await as(ADMIN, `SELECT * FROM public.bw_deputy_request_open('${R3DE}', '${R3DEP}')`);
+  ok(/still a quote/.test(open.error || ''), `back to a quote: re-opening a deputy's request is refused (${open.error || JSON.stringify(open.rows)})`);
+  const ping = await as(ADMIN, `SELECT public.bw_deputy_request_ping('${R3REQ}') v`);
+  ok(ping.rows[0]?.v === 'closed', `back to a quote: "Ask in the app" is closed (${ping.error || ping.rows[0]?.v})`);
+  await db.exec(`DELETE FROM notifications`);
+  await db.exec(`INSERT INTO notifications (user_id, type, title, body, data, reference_id, reference_type)
+    VALUES ('${OUT}','deputy_gig_changed','Smith Gala 4 has changed','Smith Gala 4 · new time', '{}', '${R3REQ}', 'deputy_request')`);
+  ok((await notes(`type = 'deputy_gig_changed'`)).length === 0, 'back to a quote: deputy pushes about it are dropped');
+}
+
 // ── Re-run after 181 (event chat = lineup): 178 must not undo it ───────────
 // 181 redefines bw_chat_scope_ok to also need bw_is_event_participant (which
 // carries the quote rule since 178). Re-running 178 later (its header says to
@@ -639,6 +781,16 @@ await db.exec(readFileSync(MIG, 'utf8'));
 ok(await scope(GIGCHAT, MEM2) === false, 're-run after 181: a member off the lineup stays out of the gig chat');
 ok(await scope(GIGCHAT, MEM) === true, 're-run after 181: the lineup keeps the gig chat');
 ok(await scope(QCHAT, MEM) === false, 're-run after 181: the quote chat stays hidden from members');
+// #281 round 3: that stand-in is a pre-round-3 shape (no status rule, "yes"
+// for a chat whose gig is gone). 178 must not keep it: it writes 175's
+// round-3 body with the quote rule.
+{
+  const def = await fnDef('bw_chat_scope_ok');
+  const gone = (await db.query(`SELECT public.bw_chat_scope_ok('event', '${BAND}', '${id(2199)}', '${MEM}') ok`)).rows[0]?.ok;
+  const noUser = (await db.query(`SELECT public.bw_chat_scope_ok('direct', NULL, NULL, NULL) ok`)).rows[0]?.ok;
+  ok(def.includes('dropped_out') && def.includes('bw_is_event_participant') && gone === false && noUser === false,
+    `re-run over a pre-round-3 bw_chat_scope_ok: 178 writes the round-3 shape (status rule ${def.includes('dropped_out')}, gone gig ${gone}, no user ${noUser})`);
+}
 
 // Claude 3, order 175 → 178 → 181: 181's sweep runs on top; confirmed, the lineup is back.
 await db.exec(`CREATE TABLE IF NOT EXISTS public.chat_participants_removed_175 (chat_id uuid, user_id uuid, row_data jsonb, removed_at timestamptz DEFAULT now())`);
@@ -693,26 +845,25 @@ const M193 = process.env.MIG_193;
 if (M175 && M181) {
   const db1 = db;
   const sec175 = (() => {
-    const all = readFileSync(M175, 'utf8').split('\n');
-    const a = all.findIndex((l) => l.startsWith('-- ── 3.'));
-    const b = all.findIndex((l) => l.startsWith('-- ── 4.'));
-    return all.slice(a, b).join('\n');
+    // The whole real file (main's rule: the prerequisites as they ship).
+    return readFileSync(M175, 'utf8');
   })();
-  const [GC, GRP, QC, QE8, GIG8] = [70, 71, 72, 38, 39].map(id);
+  const [GC, GRP, QC, QE8, GIG8, RMV, NOLINE] = [70, 71, 72, 38, 39, 2150, 2151].map(id);
   const cross = async (order) => {
     db = new PGlite();
     await boot(db);
     await db.exec(`
       CREATE TYPE chat_type AS ENUM ('direct', 'group', 'band', 'event', 'rider');
       ALTER TABLE chats ALTER COLUMN type TYPE chat_type USING type::chat_type;
-      INSERT INTO auth.users (id) SELECT unnest(ARRAY['${ADMIN}','${MEM}','${MEM2}','${OUT}']::uuid[]);
+      INSERT INTO auth.users (id) SELECT unnest(ARRAY['${ADMIN}','${MEM}','${MEM2}','${OUT}','${RMV}','${NOLINE}']::uuid[]);
+      INSERT INTO profiles (id, full_name) VALUES ('${RMV}','Kim Keys'), ('${NOLINE}','Ari Sax');
       INSERT INTO profiles (id, full_name) VALUES ('${ADMIN}','Leo Admin'), ('${MEM}','Marta Drums'), ('${MEM2}','Sam Bass'), ('${OUT}','Ex Member');
       INSERT INTO bands VALUES ('${BAND}', 'Velvet Static');
-      INSERT INTO band_members (band_id, user_id, role) VALUES ('${BAND}','${ADMIN}','admin'), ('${BAND}','${MEM}','member'), ('${BAND}','${MEM2}','member');
+      INSERT INTO band_members (band_id, user_id, role) VALUES ('${BAND}','${ADMIN}','admin'), ('${BAND}','${MEM}','member'), ('${BAND}','${MEM2}','member'), ('${BAND}','${RMV}','member'), ('${BAND}','${NOLINE}','member');
       INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, created_at) VALUES
         ('${GIG8}','${BAND}','Rooftop Session','confirmed','gig','${ADMIN}', current_date + 5, now() - interval '1 day'),
         ('${QE8}','${BAND}','Smith Brunch','tentative','gig','${ADMIN}', current_date + 9, now() - interval '1 day');
-      INSERT INTO event_members (event_id, user_id, status) VALUES ('${GIG8}','${MEM}','confirmed'), ('${GIG8}','${MEM2}','dropped_out'), ('${QE8}','${MEM}','confirmed');
+      INSERT INTO event_members (event_id, user_id, status) VALUES ('${GIG8}','${MEM}','confirmed'), ('${GIG8}','${MEM2}','dropped_out'), ('${GIG8}','${RMV}','removed'), ('${QE8}','${MEM}','confirmed');
       INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES
         ('${GC}','event','Rooftop Session','${BAND}','${GIG8}','${ADMIN}'), ('${GRP}','group','Velvet crew','${BAND}',NULL,'${ADMIN}'),
         ('${QC}','event','Smith Brunch','${BAND}','${QE8}','${ADMIN}');
@@ -737,7 +888,30 @@ if (M175 && M181) {
     ok((await tryq(`SELECT public.bw_is_event_participant('${GIG8}', '${MEM2}') p`)).rows[0]?.p === false,
       `${tag}: dropped out is off the gig (bw_is_event_participant keeps 181's status list)`);
     if (has181) ok(await inChat(GC, MEM2) === 0 && await inChat(GC, MEM) === 1, `${tag}: gig chat = lineup (dropped out gone, lineup kept)`);
+    // The lineup rule and the off-the-gig statuses, through the live rule.
+    ok(await sc(GC, MEM) === true && await sc(GC, MEM2) === false && await sc(GC, RMV) === false && await sc(GC, NOLINE) === false,
+      `${tag}: gig chat rule = lineup (on ${await sc(GC, MEM)}, dropped out ${await sc(GC, MEM2)}, removed ${await sc(GC, RMV)}, not on it ${await sc(GC, NOLINE)})`);
     ok(await inChat(QC, MEM) === 0, `${tag}: a member is out of the quote chat`);
+    // The rule itself, not only the cleanup: a stale row (written past the
+    // triggers) still gives the member nothing.
+    await db.exec(`ALTER TABLE chat_participants DISABLE TRIGGER USER;
+      INSERT INTO chat_participants (chat_id, user_id) VALUES ('${QC}','${MEM}');
+      ALTER TABLE chat_participants ENABLE TRIGGER USER;`);
+    const listedStale = JSON.stringify((await as(MEM, `SELECT public.get_user_chats('${MEM}') j`)).rows[0]?.j || []).includes(QC);
+    ok(await sc(QC, MEM) === false && !listedStale && await sc(QC, ADMIN) === true,
+      `${tag}: bw_chat_scope_ok and get_user_chats keep a member out of a quote chat (scope ${await sc(QC, MEM)}, listed ${listedStale})`);
+    await db.exec(`DELETE FROM chat_participants WHERE chat_id = '${QC}' AND user_id = '${MEM}'`);
+    // 175 round 3's roster filter: the chat list leaves out participant rows
+    // the rule refuses (dropped out of the gig, left the band), stale or not.
+    await db.exec(`ALTER TABLE chat_participants DISABLE TRIGGER USER;
+      DELETE FROM chat_participants WHERE (chat_id, user_id) IN (('${GC}','${MEM2}'), ('${GRP}','${OUT}'));
+      INSERT INTO chat_participants (chat_id, user_id) VALUES ('${GC}','${MEM2}'), ('${GRP}','${OUT}');
+      ALTER TABLE chat_participants ENABLE TRIGGER USER;`);
+    const roster = (await as(ADMIN, `SELECT public.get_user_chats('${ADMIN}') j`)).rows[0]?.j || [];
+    const people = (chat) => (roster.find((c) => c.id === chat)?.participants || []).map((p) => p.user_id);
+    ok(people(GC).includes(MEM) && !people(GC).includes(MEM2) && people(GRP).includes(MEM) && !people(GRP).includes(OUT),
+      `${tag}: get_user_chats keeps 175's roster filter (gig ${people(GC).length}, group ${people(GRP).length})`);
+    await db.exec(`DELETE FROM chat_participants WHERE (chat_id, user_id) IN (('${GC}','${MEM2}'), ('${GRP}','${OUT}'))`);
     const seen = await as(MEM, `SELECT id FROM chats WHERE id = '${QC}'`);
     ok(!seen.error && seen.rows.length === 0, `${tag}: a member can't see the quote chat row (${seen.error || seen.rows.length})`);
     if (steps.includes('193')) {
@@ -762,7 +936,10 @@ if (M175 && M181) {
     // Re-running 175 afterwards keeps the stronger rule.
     await db.exec(sec175).catch((e) => console.log(`order ${order}, re-run 175:`, e.message));
     const def = await fnDef('bw_chat_scope_ok');
-    ok((has181 ? def.includes('bw_is_event_participant') && def.includes('dropped_out') : def.includes('bw_event_quote_hidden')) && def.includes("'group'"),
+    // The quote rule is in the live bw_chat_scope_ok itself, or in the
+    // bw_is_event_participant it calls (178 carries it there).
+    const viaParticipant = def.includes('bw_is_event_participant') && (await fnDef('bw_is_event_participant')).includes('bw_event_quote_private');
+    ok((def.includes('bw_event_quote_hidden') || viaParticipant) && (!has181 || def.includes('dropped_out')) && def.includes("'group'"),
       `${tag}, then 175 again: the ${has181 ? 'lineup + quote' : 'quote'} rule stays live`);
     const still = await as(MEM, `SELECT id FROM chats WHERE id = '${QC}'`);
     ok(still.rows.length === 1, `${tag}, then 175 again: the confirmed gig's chat stays open to the lineup`);

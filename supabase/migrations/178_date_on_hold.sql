@@ -83,10 +83,11 @@
 -- don't get those rows (events, their own lineup row, notifications), which
 -- the app treats like a gig they are not on. No RPC they call changes shape.
 -- Works with or without 175 / 181, in either order (checked with the real
--- 175 + 181 loaded: 175 -> 178 -> 181 and 175 -> 181 -> 178). Its
--- bw_chat_scope_ok keeps 175's rules ('group' = band, every caller passes
--- type::text); 181's version (lineup rule, which carries the quote rule via
--- bw_is_event_participant) is kept on a re-run, and 175 re-run keeps either.
+-- 175 + 181 loaded: 175 -> 178 -> 181, 175 -> 181 -> 178 and main's
+-- 175 -> 178 -> 193 -> 181). bw_chat_scope_ok and get_user_chats start from
+-- 175's round-3 bodies (lineup and status rule, roster filter) and add the
+-- quote rule; a live round-3 bw_chat_scope_ok is kept (it carries the quote
+-- rule via bw_is_event_participant), an older one is replaced.
 -- bw_is_event_participant keeps 181's off-the-gig statuses (declined,
 -- dropped_out, removed). 175's BEFORE INSERT trigger already skips quote-chat
 -- rows through bw_chat_scope_ok; 178's own trigger makes the same call
@@ -120,6 +121,9 @@ CREATE TABLE IF NOT EXISTS public.event_date_holds (
   release_reason text
 );
 ALTER TABLE public.event_date_holds ADD COLUMN IF NOT EXISTS answers_carried_at timestamptz;
+-- First time the quote became a gig: kept when it goes back to a quote (the
+-- 'confirmed' row is reset then), so a later cancel knows it was a gig.
+ALTER TABLE public.event_date_holds ADD COLUMN IF NOT EXISTS confirmed_once_at timestamptz;
 ALTER TABLE public.event_date_holds ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.event_date_holds FROM PUBLIC, anon, authenticated;
 
@@ -150,9 +154,11 @@ REVOKE ALL ON FUNCTION public.bw_date_hold_today(timestamptz) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_date_hold_today(timestamptz) TO authenticated;
 
 -- A quote that never became a gig: still a quote (111), or cancelled while
--- it was one. Cancelled counts as a quote when it was held or tied to a quote
--- that was never accepted, and it was never confirmed (hold released as
--- 'confirmed').
+-- it was one. A cancelled row is decided first (111 would call any cancelled
+-- row with a quote_id a quote): it is private only if it was never a gig (no
+-- confirmation recorded, and no quote_id: only "Create gig from quote" sets
+-- one, on a confirmed gig) and it was held or tied to a quote that was never
+-- accepted.
 CREATE OR REPLACE FUNCTION public.bw_event_quote_private(p_event_id uuid, p_status text, p_event_type text, p_quote_id uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -160,16 +166,18 @@ STABLE SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
   SELECT CASE
-    WHEN public.bw_event_is_quote(p_status, p_event_type, p_quote_id) THEN true
-    WHEN lower(coalesce(p_status, '')) NOT IN ('cancelled', 'canceled')
-      OR lower(coalesce(p_event_type, '')) = 'rehearsal' THEN false
+    WHEN lower(coalesce(p_event_type, '')) = 'rehearsal' THEN false
+    WHEN lower(coalesce(p_status, '')) NOT IN ('cancelled', 'canceled') THEN
+      public.bw_event_is_quote(p_status, p_event_type, p_quote_id)
     ELSE
-      NOT EXISTS (SELECT 1 FROM event_date_holds h WHERE h.event_id = p_event_id AND h.release_reason = 'confirmed')
+      p_quote_id IS NULL
+      AND NOT EXISTS (SELECT 1 FROM event_date_holds h WHERE h.event_id = p_event_id
+                        AND (h.release_reason = 'confirmed' OR h.confirmed_once_at IS NOT NULL))
       AND (
         EXISTS (SELECT 1 FROM event_date_holds h WHERE h.event_id = p_event_id)
         OR EXISTS (
           SELECT 1 FROM quotes q
-           WHERE (q.id = p_quote_id OR q.converted_to_event_id = p_event_id)
+           WHERE q.converted_to_event_id = p_event_id
              AND lower(coalesce(q.status::text, '')) <> 'accepted')
       )
   END;
@@ -179,7 +187,9 @@ REVOKE ALL ON FUNCTION public.bw_event_quote_private(uuid, text, text, uuid) FRO
 GRANT EXECUTE ON FUNCTION public.bw_event_quote_private(uuid, text, text, uuid) TO authenticated;
 
 -- Is this event a quote that p_user_id may not read? (A band quote event and
--- p_user_id is not an active admin of its band.)
+-- p_user_id is not an active admin of its band.) Asked about someone else by
+-- a caller who doesn't run the band, the answer treats them as a member: it
+-- never tells who the band's admins are, and stays "hidden" for a quote.
 CREATE OR REPLACE FUNCTION public.bw_event_quote_hidden(p_event_id uuid, p_user_id uuid DEFAULT auth.uid())
 RETURNS boolean
 LANGUAGE sql
@@ -191,7 +201,8 @@ AS $$
      WHERE e.id = p_event_id
        AND e.band_id IS NOT NULL
        AND public.bw_event_quote_private(e.id, e.status, e.event_type, e.quote_id)
-       AND NOT public.bw_is_band_admin(e.band_id, p_user_id)
+       AND NOT (public.bw_is_band_admin(e.band_id, p_user_id)
+                AND (auth.uid() IS NULL OR auth.uid() = p_user_id OR public.bw_is_band_admin(e.band_id, auth.uid())))
   );
 $$;
 REVOKE ALL ON FUNCTION public.bw_event_quote_hidden(uuid, uuid) FROM PUBLIC, anon;
@@ -334,6 +345,33 @@ AS $$
       )
   );
 $$;
+
+-- bw_is_on_event_lineup (111): any account could ask about anyone, so a
+-- member learned who is on a private quote. Now a caller asks about
+-- themselves unless they run the event's band (or it's the server); on a
+-- private quote the answer is true only for the band's admins. Same
+-- signature (111's events policy used it; 178's no longer does).
+CREATE OR REPLACE FUNCTION public.bw_is_on_event_lineup(p_event_id uuid, p_user_id uuid DEFAULT auth.uid())
+RETURNS boolean
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT p_user_id IS NOT NULL AND EXISTS (
+    SELECT 1
+      FROM event_members em
+      JOIN events e ON e.id = em.event_id
+     WHERE em.event_id = p_event_id AND em.user_id = p_user_id
+       AND (auth.uid() IS NULL OR auth.uid() = p_user_id
+            OR (e.band_id IS NOT NULL AND public.bw_is_band_admin(e.band_id, auth.uid()))
+            OR (e.band_id IS NULL AND e.created_by = auth.uid()))
+       AND (e.band_id IS NULL
+            OR NOT public.bw_event_quote_private(e.id, e.status, e.event_type, e.quote_id)
+            OR public.bw_is_band_admin(e.band_id, p_user_id))
+  );
+$$;
+REVOKE ALL ON FUNCTION public.bw_is_on_event_lineup(uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_is_on_event_lineup(uuid, uuid) TO authenticated;
 
 -- A member is not a participant of a quote (chats, live pack).
 CREATE OR REPLACE FUNCTION public.bw_is_event_participant(p_event_id uuid, p_user_id uuid DEFAULT auth.uid())
@@ -588,6 +626,118 @@ CREATE TRIGGER bw_deputy_request_quote_guard
   BEFORE INSERT ON public.deputy_requests
   FOR EACH ROW EXECUTE FUNCTION public.bw_trg_deputy_request_quote_guard();
 
+-- A gig back to a quote: deputies asked before get nothing more about it
+-- while it is one. 086's "open" (an existing request is updated and its
+-- link handed out again) and "Ask in the app" refuse; deputy pushes are
+-- dropped (section 10). The reply page and the deputy calendar read the
+-- event themselves (084, and 182 in #285): bw_event_deputy_hidden is the
+-- check for them.
+CREATE OR REPLACE FUNCTION public.bw_event_deputy_hidden(p_event_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT EXISTS (SELECT 1 FROM events e WHERE e.id = p_event_id AND e.band_id IS NOT NULL
+                   AND public.bw_event_quote_private(e.id, e.status, e.event_type, e.quote_id));
+$$;
+REVOKE ALL ON FUNCTION public.bw_event_deputy_hidden(uuid) FROM PUBLIC, anon, authenticated;
+
+-- 086's body; refused while the gig is a quote.
+CREATE OR REPLACE FUNCTION public.bw_deputy_request_open(
+  p_event_id uuid,
+  p_deputy_id uuid,
+  p_replaces_user_id uuid DEFAULT NULL,
+  p_role text DEFAULT NULL,
+  p_fee numeric DEFAULT NULL
+)
+RETURNS TABLE (id uuid, token text, status text)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_band uuid;
+  v_currency text;
+  v_name text;
+  v_row public.deputy_requests;
+BEGIN
+  SELECT e.band_id, e.currency INTO v_band, v_currency FROM public.events e WHERE e.id = p_event_id;
+  IF v_band IS NULL OR NOT public.bw_is_band_admin(v_band) THEN
+    RAISE EXCEPTION 'Not allowed' USING ERRCODE = '42501';
+  END IF;
+  IF public.bw_event_deputy_hidden(p_event_id) THEN
+    RAISE EXCEPTION 'This gig is still a quote: ask a deputy once it is confirmed' USING ERRCODE = '42501';
+  END IF;
+  SELECT d.name INTO v_name FROM public.band_deputies d WHERE d.id = p_deputy_id AND d.band_id = v_band;
+  IF v_name IS NULL THEN
+    RAISE EXCEPTION 'Deputy not found' USING ERRCODE = 'P0002';
+  END IF;
+
+  SELECT r.* INTO v_row FROM public.deputy_requests r
+   WHERE r.event_id = p_event_id AND r.deputy_id = p_deputy_id AND r.status <> 'cancelled'
+   ORDER BY r.created_at DESC LIMIT 1;
+
+  IF v_row.id IS NULL THEN
+    INSERT INTO public.deputy_requests (band_id, event_id, deputy_id, deputy_name, replaces_user_id, role, fee_offered, currency, created_by)
+    VALUES (v_band, p_event_id, p_deputy_id, v_name, p_replaces_user_id, nullif(left(btrim(coalesce(p_role, '')), 120), ''),
+            CASE WHEN p_fee >= 0 THEN p_fee END, left(v_currency, 8), auth.uid())
+    RETURNING * INTO v_row;
+    PERFORM public.bw_deputy_notify(v_row.id, 'request');
+  ELSE
+    UPDATE public.deputy_requests r
+       SET deputy_name = v_name,
+           replaces_user_id = coalesce(p_replaces_user_id, r.replaces_user_id),
+           role = coalesce(nullif(left(btrim(coalesce(p_role, '')), 120), ''), r.role),
+           fee_offered = CASE WHEN p_fee >= 0 THEN p_fee ELSE r.fee_offered END,
+           updated_at = now()
+     WHERE r.id = v_row.id
+    RETURNING * INTO v_row;
+  END IF;
+
+  RETURN QUERY SELECT v_row.id, v_row.token, v_row.status;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_deputy_request_open(uuid, uuid, uuid, text, numeric) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_deputy_request_open(uuid, uuid, uuid, text, numeric) TO authenticated;
+
+-- 086's body; 'closed' while the gig is a quote (same answers as before).
+CREATE OR REPLACE FUNCTION public.bw_deputy_request_ping(p_request_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_req public.deputy_requests;
+  v_view jsonb;
+  v_linked boolean;
+  v_changes text[];
+  v_kind text;
+BEGIN
+  SELECT * INTO v_req FROM public.deputy_requests WHERE id = p_request_id;
+  IF v_req.id IS NULL OR NOT public.bw_is_band_admin(v_req.band_id) THEN
+    RAISE EXCEPTION 'Not allowed' USING ERRCODE = '42501';
+  END IF;
+  IF public.bw_event_deputy_hidden(v_req.event_id) THEN RETURN 'closed'; END IF;
+  SELECT d.user_id IS NOT NULL INTO v_linked FROM public.band_deputies d WHERE d.id = v_req.deputy_id;
+  IF NOT coalesce(v_linked, false) THEN RETURN 'not_linked'; END IF;
+  v_view := public.bw_deputy_request_view(v_req.token);
+  IF v_view IS NULL OR (v_view->>'closed')::boolean THEN RETURN 'closed'; END IF;
+  SELECT coalesce(array_agg(x), '{}') INTO v_changes FROM jsonb_array_elements_text(coalesce(v_view->'changes', '[]'::jsonb)) x;
+  v_kind := CASE
+    WHEN v_req.status IN ('available', 'maybe') AND cardinality(v_changes) > 0 THEN 'changed'
+    WHEN v_req.status = 'available' THEN 'recap'
+    ELSE 'request' END;
+  IF public.bw_deputy_notify(v_req.id, v_kind, CASE WHEN v_kind = 'changed' THEN v_changes END) > 0 THEN
+    RETURN 'sent';
+  END IF;
+  RETURN 'throttled';
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_deputy_request_ping(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_deputy_request_ping(uuid) TO authenticated;
+
 -- ── 4. The event chat of a quote ────────────────────────────────────────────
 -- RESTRICTIVE: ANDed with whatever read policies these tables have (073 or
 -- 175), so the rule holds in either order. The list is worked out once per
@@ -708,12 +858,13 @@ DECLARE
 BEGIN
   SELECT e.band_id INTO v_band FROM events e WHERE e.id = p_event_id;
   IF v_band IS NULL THEN RETURN; END IF;
-  INSERT INTO event_date_holds (event_id, band_id, announced_at, released_at, release_reason)
-  VALUES (p_event_id, v_band, now(), now(), 'confirmed')
+  INSERT INTO event_date_holds (event_id, band_id, announced_at, released_at, release_reason, confirmed_once_at)
+  VALUES (p_event_id, v_band, now(), now(), 'confirmed', now())
   ON CONFLICT (event_id) DO UPDATE
     SET released_at = CASE WHEN event_date_holds.release_reason = 'confirmed' AND event_date_holds.released_at IS NOT NULL
                            THEN event_date_holds.released_at ELSE now() END,
-        release_reason = 'confirmed';
+        release_reason = 'confirmed',
+        confirmed_once_at = coalesce(event_date_holds.confirmed_once_at, now());
   INSERT INTO chat_participants (chat_id, user_id, joined_at, cleared_at)
   SELECT DISTINCT c.id, em.user_id, now(), now()
     FROM chats c
@@ -731,18 +882,23 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_quote_event_confirmed(uuid) FROM PUBLIC, anon, authenticated;
 
--- 175's scope rule (band chats and band event chats need active membership),
--- plus: the event chat of a quote is for the band's admins only. Used by
--- bw_my_chat_ids, the chats read policies and bw_chat_recipient_ids
--- (send-push), once 175 is applied.
--- 181 (event chat = lineup) redefines it to also need bw_is_event_participant,
--- which carries the quote rule since this migration. When that definition is
--- live, keep it: re-running 178 after 181 must not undo the lineup rule.
+-- bw_chat_scope_ok: 175's round-3 body (one definition: 'group' = band, the
+-- lineup rule through bw_is_event_participant, declined / dropped out /
+-- removed off the gig unless they run it, never "yes" by default), plus the
+-- quote rule: the event chat of a quote is for the band's admins only. Used
+-- by bw_my_chat_ids, the chats read policies, get_user_chats (chats and
+-- roster) and bw_chat_recipient_ids (send-push).
+-- When 175's round-3 definition is already live, keep it: it calls
+-- bw_is_event_participant, which carries the quote rule since this
+-- migration (and 175 writes the quote rule in itself when it runs after
+-- 178). Any older definition (no lineup or status rule) is replaced.
 DO $do$
+DECLARE
+  v_def text;
 BEGIN
   IF to_regprocedure('public.bw_chat_scope_ok(text, uuid, uuid, uuid)') IS NOT NULL THEN
-    IF pg_get_functiondef(to_regprocedure('public.bw_chat_scope_ok(text, uuid, uuid, uuid)'))
-       LIKE '%bw_is_event_participant%' THEN
+    v_def := pg_get_functiondef(to_regprocedure('public.bw_chat_scope_ok(text, uuid, uuid, uuid)'));
+    IF v_def LIKE '%bw_is_event_participant%' AND v_def LIKE '%dropped_out%' AND v_def LIKE '%removed%' THEN
       RETURN;
     END IF;
   END IF;
@@ -753,19 +909,28 @@ LANGUAGE sql
 STABLE SECURITY DEFINER
 SET search_path TO 'public'
 AS $f$
-  SELECT CASE
-    -- 'group' with a band: legacy, same rule as the band chat (175).
-    WHEN p_type IN ('band', 'group') THEN
+  SELECT p_user_id IS NOT NULL AND coalesce(CASE
+    WHEN p_type = 'band' THEN
+      p_band_id IS NOT NULL AND public.bw_is_band_member(p_band_id, p_user_id)
+    -- 'group' with a band: legacy, same rule as the band chat.
+    WHEN p_type = 'group' THEN
       p_band_id IS NULL OR public.bw_is_band_member(p_band_id, p_user_id)
     WHEN p_type = 'event' THEN
       (p_band_id IS NULL OR public.bw_is_band_member(p_band_id, p_user_id))
-      AND coalesce((
-        SELECT e.band_id IS NULL OR public.bw_is_band_member(e.band_id, p_user_id)
-          FROM events e WHERE e.id = p_event_id
-      ), true)
-      AND NOT public.bw_event_quote_hidden(p_event_id, p_user_id)
+      AND EXISTS (
+        SELECT 1 FROM events e
+         WHERE e.id = p_event_id
+           AND (e.band_id IS NULL OR public.bw_is_band_member(e.band_id, p_user_id))
+           AND public.bw_is_event_participant(e.id, p_user_id)
+           AND (coalesce(e.created_by = p_user_id, false)
+                OR (e.band_id IS NOT NULL AND public.bw_is_band_admin(e.band_id, p_user_id))
+                OR NOT EXISTS (
+                  SELECT 1 FROM event_members em
+                   WHERE em.event_id = e.id AND em.user_id = p_user_id
+                     AND coalesce(em.status, '') IN ('declined', 'dropped_out', 'removed')))
+           AND NOT public.bw_event_quote_hidden(e.id, p_user_id))
     ELSE true
-  END;
+  END, false);
 $f$;
   $sql$;
 END
@@ -773,8 +938,10 @@ $do$;
 REVOKE ALL ON FUNCTION public.bw_chat_scope_ok(text, uuid, uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_chat_scope_ok(text, uuid, uuid, uuid) TO authenticated;
 
--- The chat list (042, and 175's version): quote chats only for admins.
--- bw_my_chat_ids is 073's (participants) or 175's (scope-checked).
+-- The chat list: 175's round-3 body (chats from bw_my_chat_ids, the roster
+-- filtered by bw_chat_scope_ok, so rows the rule refuses are left out), plus
+-- quote chats only for admins. Without 175, bw_my_chat_ids is 073's
+-- (participants) and bw_chat_scope_ok is the one defined above.
 CREATE OR REPLACE FUNCTION public.get_user_chats(p_user_id UUID)
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -811,6 +978,8 @@ BEGIN
         )
         FROM chat_participants cp
         WHERE cp.chat_id = c.id
+          -- 175 round 3: the roster leaves out rows the rule refuses too
+          AND public.bw_chat_scope_ok(c.type::text, c.band_id, c.event_id, cp.user_id)
       )
     )
     ORDER BY c.updated_at DESC NULLS LAST
@@ -877,10 +1046,12 @@ AS $$
 $$;
 REVOKE ALL ON FUNCTION public.bw_date_hold_live(uuid) FROM PUBLIC, anon, authenticated;
 
--- May the hold be announced yet? Its quote is saved, or (a tentative event
--- with no quote, e.g. from Create event) it has been there 2 minutes: the
--- wizard saves the event first and its quote right after, and deletes the
--- event if the quote fails.
+-- May the hold be announced yet? Its quote is saved with its musicians (the
+-- app writes the quote, then its musicians, and deletes both if the second
+-- write fails), or the quote has been there a minute (no musicians), or (a
+-- tentative event with no quote, e.g. from Create event) the event has been
+-- there 2 minutes. The wizard saves the event first and deletes it if the
+-- quote fails. The sweep announces what the triggers leave.
 CREATE OR REPLACE FUNCTION public.bw_date_hold_ready(p_event_id uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -891,7 +1062,10 @@ AS $$
     SELECT 1 FROM events e
      WHERE e.id = p_event_id
        AND (
-         EXISTS (SELECT 1 FROM quotes q WHERE q.band_id = e.band_id AND (q.id = e.quote_id OR q.converted_to_event_id = e.id))
+         EXISTS (SELECT 1 FROM quotes q
+                  WHERE q.band_id = e.band_id AND (q.id = e.quote_id OR q.converted_to_event_id = e.id)
+                    AND (EXISTS (SELECT 1 FROM quote_musicians qm WHERE qm.quote_id = q.id)
+                         OR coalesce((to_jsonb(q) ->> 'created_at')::timestamptz, now()) < now() - interval '1 minute'))
          OR coalesce(e.created_at, now()) < now() - interval '2 minutes'
        )
   );
@@ -1058,7 +1232,7 @@ AS $$
            SELECT 1 FROM event_members em
            WHERE em.event_id = e.id
              AND em.user_id = m.user_id
-             AND lower(coalesce(em.status, '')) NOT IN ('declined', 'removed')
+             AND lower(coalesce(em.status, '')) NOT IN ('declined', 'dropped_out', 'removed')
          )
          OR (e.band_id IS NULL AND e.created_by = m.user_id)
        )
@@ -1367,8 +1541,12 @@ $$;
 REVOKE ALL ON FUNCTION public.bw_my_date_holds() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_my_date_holds() TO authenticated;
 
--- "I'm free" / "I can't". Returns the answer saved.
-CREATE OR REPLACE FUNCTION public.bw_answer_date_hold(p_event_id uuid, p_answer text)
+-- "I'm free" / "I can't". Returns the answer saved. p_date / p_start_time:
+-- the day and time the card showed; when given and the hold has moved since,
+-- the answer is refused (BWD01, "the date changed") so it never lands on the
+-- new date. Without them (older calls), as before.
+DROP FUNCTION IF EXISTS public.bw_answer_date_hold(uuid, text);
+CREATE OR REPLACE FUNCTION public.bw_answer_date_hold(p_event_id uuid, p_answer text, p_date date DEFAULT NULL, p_start_time text DEFAULT NULL)
 RETURNS text
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1389,8 +1567,19 @@ BEGIN
   IF v_band IS NULL OR NOT public.bw_is_band_member(v_band, v_uid) THEN
     RAISE EXCEPTION 'Not your band' USING ERRCODE = '42501';
   END IF;
+  -- One answer at a time per hold: a date change (which clears answers)
+  -- can't slip in between the check and the write.
+  PERFORM pg_advisory_xact_lock(178, hashtext(p_event_id::text));
   IF NOT public.bw_date_hold_live(p_event_id) THEN
     RAISE EXCEPTION 'This date is no longer on hold' USING ERRCODE = 'P0002';
+  END IF;
+  IF p_date IS NOT NULL AND EXISTS (
+    SELECT 1 FROM events e
+     WHERE e.id = p_event_id
+       AND (e.event_date IS DISTINCT FROM p_date
+            OR coalesce(to_char(e.start_time, 'HH24:MI'), '') <> coalesce(left(btrim(p_start_time), 5), ''))
+  ) THEN
+    RAISE EXCEPTION 'The date changed' USING ERRCODE = 'BWD01';
   END IF;
   INSERT INTO event_hold_answers (event_id, user_id, answer, answered_at)
   VALUES (p_event_id, v_uid, v_answer, now())
@@ -1398,8 +1587,8 @@ BEGIN
   RETURN v_answer;
 END;
 $$;
-REVOKE ALL ON FUNCTION public.bw_answer_date_hold(uuid, text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.bw_answer_date_hold(uuid, text) TO authenticated;
+REVOKE ALL ON FUNCTION public.bw_answer_date_hold(uuid, text, date, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_answer_date_hold(uuid, text, date, text) TO authenticated;
 
 -- Admins: who is free, who can't, who hasn't answered (every active member
 -- who is not an admin, and anyone else who answered).
@@ -1493,8 +1682,12 @@ BEGIN
 
   v_is_quote := NEW.band_id IS NOT NULL AND public.bw_event_quote_private(NEW.id, NEW.status, NEW.event_type, NEW.quote_id);
 
-  -- Back to a quote ("Revert to quote"): members leave its chat.
+  -- Back to a quote ("Revert to quote"): members leave its chat, and the
+  -- confirmation is undone (a live hold starts again below; one that isn't
+  -- live keeps no 'confirmed' row, so a new confirmation sets a new cut-off).
   IF v_is_quote AND NOT v_was_quote THEN
+    UPDATE event_date_holds SET release_reason = 'reverted'
+     WHERE event_id = NEW.id AND release_reason = 'confirmed';
     PERFORM public.bw_quote_chat_prune(NEW.id);
   END IF;
 
@@ -1638,6 +1831,69 @@ DROP TRIGGER IF EXISTS bw_date_hold_quote_saved ON public.quotes;
 CREATE TRIGGER bw_date_hold_quote_saved
   AFTER INSERT ON public.quotes
   FOR EACH ROW EXECUTE FUNCTION public.bw_trg_date_hold_quote_changed();
+-- The quote's musicians are saved: the hold may start now.
+CREATE OR REPLACE FUNCTION public.bw_trg_date_hold_quote_musicians()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT DISTINCT e.id FROM quotes q JOIN events e
+      ON e.band_id = q.band_id AND (e.id = q.converted_to_event_id OR e.quote_id = q.id)
+     WHERE q.id = NEW.quote_id
+  LOOP
+    PERFORM public.bw_date_hold_sync(r.id, false);
+  END LOOP;
+  RETURN NEW;
+EXCEPTION WHEN others THEN
+  RAISE WARNING 'bw_trg_date_hold_quote_musicians: %', SQLERRM;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_trg_date_hold_quote_musicians() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS bw_date_hold_quote_musicians ON public.quote_musicians;
+CREATE TRIGGER bw_date_hold_quote_musicians
+  AFTER INSERT ON public.quote_musicians
+  FOR EACH ROW EXECUTE FUNCTION public.bw_trg_date_hold_quote_musicians();
+
+-- The quote's day or time changed (Quotes screen): its event still on hold
+-- moves with it. The event's own trigger then clears the answers and tells
+-- the members, as when the gig is edited.
+CREATE OR REPLACE FUNCTION public.bw_trg_date_hold_quote_moved()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  UPDATE events e
+     SET event_date = coalesce(NEW.event_date, e.event_date),
+         start_time = CASE WHEN NEW.event_time_start IS DISTINCT FROM OLD.event_time_start THEN NEW.event_time_start ELSE e.start_time END,
+         end_time = CASE WHEN NEW.event_time_end IS DISTINCT FROM OLD.event_time_end THEN NEW.event_time_end ELSE e.end_time END
+   WHERE e.band_id = NEW.band_id
+     AND (e.id = NEW.converted_to_event_id OR e.quote_id = NEW.id)
+     AND public.bw_event_quote_private(e.id, e.status, e.event_type, e.quote_id)
+     AND lower(coalesce(e.status, '')) <> 'cancelled'
+     AND (e.event_date IS DISTINCT FROM coalesce(NEW.event_date, e.event_date)
+          OR (NEW.event_time_start IS DISTINCT FROM OLD.event_time_start AND e.start_time IS DISTINCT FROM NEW.event_time_start)
+          OR (NEW.event_time_end IS DISTINCT FROM OLD.event_time_end AND e.end_time IS DISTINCT FROM NEW.event_time_end));
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_trg_date_hold_quote_moved() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS bw_date_hold_quote_moved ON public.quotes;
+CREATE TRIGGER bw_date_hold_quote_moved
+  AFTER UPDATE OF event_date, event_time_start, event_time_end ON public.quotes
+  FOR EACH ROW
+  WHEN (NEW.event_date IS DISTINCT FROM OLD.event_date
+        OR NEW.event_time_start IS DISTINCT FROM OLD.event_time_start
+        OR NEW.event_time_end IS DISTINCT FROM OLD.event_time_end)
+  EXECUTE FUNCTION public.bw_trg_date_hold_quote_moved();
+
 DROP TRIGGER IF EXISTS bw_date_hold_quote_link_changed ON public.quote_links;
 CREATE TRIGGER bw_date_hold_quote_link_changed
   AFTER UPDATE OF status ON public.quote_links
@@ -1683,6 +1939,51 @@ $$;
 REVOKE ALL ON FUNCTION public.bw_date_hold_sweep() FROM PUBLIC, anon, authenticated;
 
 -- ── 10. Notifications about a quote never reach its members ────────────────
+-- The setlist a notice is about: data.setlist_id / setlistId, or its reference.
+CREATE OR REPLACE FUNCTION public.bw_notification_setlist_id(p_data jsonb, p_ref_type text, p_ref_id uuid)
+RETURNS uuid
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v text := nullif(coalesce(p_data ->> 'setlist_id', p_data ->> 'setlistId'), '');
+BEGIN
+  IF v IS NOT NULL THEN
+    BEGIN
+      RETURN v::uuid;
+    EXCEPTION WHEN others THEN
+      RETURN NULL;
+    END;
+  END IF;
+  IF p_ref_type = 'setlist' THEN RETURN p_ref_id; END IF;
+  RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_notification_setlist_id(jsonb, text, uuid) FROM PUBLIC, anon, authenticated;
+
+-- A notice about this setlist is not for p_user_id: the setlist belongs to a
+-- private quote of a band where they are a member, not an admin (even if a
+-- gig uses it too: the notice can't tell which), or only quotes use it.
+CREATE OR REPLACE FUNCTION public.bw_setlist_notice_hidden(p_setlist_id uuid, p_user_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT p_setlist_id IS NOT NULL AND p_user_id IS NOT NULL AND (
+    public.bw_setlist_quote_hidden(p_setlist_id, p_user_id)
+    OR EXISTS (
+      SELECT 1 FROM events e
+       WHERE e.setlist_id = p_setlist_id
+         AND e.band_id IS NOT NULL
+         AND public.bw_event_quote_private(e.id, e.status, e.event_type, e.quote_id)
+         AND public.bw_is_band_member(e.band_id, p_user_id)
+         AND NOT public.bw_is_band_admin(e.band_id, p_user_id)
+    ));
+$$;
+REVOKE ALL ON FUNCTION public.bw_setlist_notice_hidden(uuid, uuid) FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.bw_trg_notification_quote_guard()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -1708,12 +2009,15 @@ BEGIN
       RETURN NULL;
     END IF;
   END IF;
-  -- A setlist only a quote uses.
-  BEGIN
-    v_setlist := nullif(NEW.data ->> 'setlist_id', '')::uuid;
-  EXCEPTION WHEN others THEN v_setlist := NULL;
-  END;
-  IF v_setlist IS NOT NULL AND NEW.user_id IS NOT NULL AND public.bw_setlist_quote_hidden(v_setlist, NEW.user_id) THEN
+  -- A deputy's push about a gig that is (back to) a quote: title and day.
+  IF NEW.type IN ('deputy_request', 'deputy_gig_changed') AND NEW.reference_type = 'deputy_request'
+     AND EXISTS (SELECT 1 FROM deputy_requests r WHERE r.id = NEW.reference_id
+                  AND public.bw_event_deputy_hidden(r.event_id)) THEN
+    RETURN NULL;
+  END IF;
+  -- A setlist notice (setlist_id only) about a quote's setlist.
+  v_setlist := public.bw_notification_setlist_id(NEW.data, NEW.reference_type, NEW.reference_id);
+  IF v_setlist IS NOT NULL AND NEW.user_id IS NOT NULL AND public.bw_setlist_notice_hidden(v_setlist, NEW.user_id) THEN
     RETURN NULL;
   END IF;
   RETURN NEW;
@@ -1747,6 +2051,14 @@ WITH stale AS (
      AND public.bw_event_quote_private(e.id, e.status, e.event_type, e.quote_id)
      AND public.bw_is_band_member(e.band_id, n.user_id)
      AND NOT public.bw_is_band_admin(e.band_id, n.user_id)
+  UNION
+  -- Setlist notices that carry only the setlist (046, 107): its name is
+  -- often the client's.
+  SELECT n.id, n.user_id, to_jsonb(n)
+    FROM notifications n
+   WHERE n.type NOT IN ('date_hold', 'date_hold_changed', 'date_hold_released')
+     AND n.user_id IS NOT NULL
+     AND public.bw_setlist_notice_hidden(public.bw_notification_setlist_id(n.data, n.reference_type, n.reference_id), n.user_id)
 ), saved AS (
   INSERT INTO public.notifications_quote_178 (id, user_id, row_data)
   SELECT id, user_id, row_data FROM stale
