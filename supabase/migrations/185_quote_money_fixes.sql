@@ -61,6 +61,11 @@
 --    hold's lock) met it, and one of the two got 40P01. The rule: a
 --    transaction takes its strongest events-row lock before the hold's
 --    lock.
+-- 8. Round 13 (Claude review of 97e80955): bw_quote_balance_publish locks
+--    the gig's row (FOR NO KEY UPDATE, after the quote and the link) and
+--    reads its status in the next statement. It is the third writer of an
+--    accepted link (a quote accepted by phone), and read the gig's status
+--    unlocked: an admin's cancel at the same moment was not seen.
 --
 -- No function here comes from an open PR (168 and 099 bodies). New anon
 -- grant: bw_quote_link_preview only (it needs the token and the key).
@@ -353,7 +358,7 @@ BEGIN
   -- bw_quote_save_lineup below needs the row FOR UPDATE); also the event
   -- this save points the quote at, if it names one.
   PERFORM public.bw_quote_lock_events(p_quote_id,
-    CASE WHEN (p_updates ->> 'converted_to_event_id') ~ '^[0-9a-fA-F-]{36}$'
+    CASE WHEN (p_updates ->> 'converted_to_event_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
          THEN (p_updates ->> 'converted_to_event_id')::uuid END);
 
   SELECT string_agg(format('%I', k), ', ' ORDER BY k), string_agg(format('r.%I', k), ', ' ORDER BY k)
@@ -537,12 +542,20 @@ BEGIN
   SELECT q.status, nullif(left(regexp_replace(btrim(coalesce(q.client_name, '')), '\s+', ' ', 'g'), 120), '')
     INTO v_quote_status, v_client
     FROM public.quotes q WHERE q.id = p_quote_id;
+
+  SELECT * INTO v_link FROM public.quote_links l WHERE l.quote_id = p_quote_id FOR UPDATE;
+  -- Round 13: the gig's row locked (quote -> link -> event), then its
+  -- status read in the next statement. This publish can write the link as
+  -- accepted (below); with the status read unlocked, an admin's cancel that
+  -- had not committed yet was not seen, and the cancelled event was left
+  -- with an accepted link and no private period closed (as 187's accept).
+  PERFORM 1 FROM public.events e
+    WHERE e.id = public.bw_quote_gig_id(p_quote_id)
+      FOR NO KEY UPDATE;
   SELECT e.status INTO v_gig_status FROM public.events e WHERE e.id = public.bw_quote_gig_id(p_quote_id);
   IF lower(coalesce(v_gig_status, '')) = 'cancelled' THEN
     RAISE EXCEPTION 'The gig is cancelled' USING ERRCODE = '22023';
   END IF;
-
-  SELECT * INTO v_link FROM public.quote_links l WHERE l.quote_id = p_quote_id FOR UPDATE;
   IF v_link.id IS NULL OR v_link.snapshot IS NULL THEN
     RAISE EXCEPTION 'Publish the quote first' USING ERRCODE = 'P0002';
   END IF;

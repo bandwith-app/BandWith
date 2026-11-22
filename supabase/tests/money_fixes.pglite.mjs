@@ -49,6 +49,10 @@
 //      (bw_quote_save_lineup, bw_quote_save_with_lineup) locks the quote's
 //      events rows FOR UPDATE right after the quote and before it writes
 //      (source and lock probe), and still saves with and without an event;
+//   14. round 13 (Claude review of 97e80955): bw_quote_balance_publish, the
+//      third writer of an accepted link, locks the gig's row after the
+//      link and reads its status in the next statement (source and lock
+//      probe); bw_quote_lock_events never locks another band's event;
 //   7. 187 is a superset of 183 round 3 (the receipt in the quote's
 //      currency, deposit received locks the link before the gig, one
 //      conversation per link, a new client's old link takes nothing), the
@@ -1183,6 +1187,81 @@ const gig = (E) => q(`SELECT deposit_paid, payment_status FROM events WHERE id =
        { n: 'bw_quote_save_lineup', a: 'p_quote_id uuid, p_musicians jsonb, p_base jsonb', r: 'jsonb', d: true, anon: false, auth: true },
        { n: 'bw_quote_save_with_lineup', a: 'p_quote_id uuid, p_updates jsonb, p_musicians jsonb, p_base jsonb', r: 'jsonb', d: false, anon: false, auth: true }]),
     `round 12: bw_quote_lock_events is for the quote's admins only (member ${hm.e ? 'refused' : 'allowed'}, anon ${ha.e ? 'refused' : 'allowed'}, unknown quote ${hx.e ? 'refused' : 'allowed'}, admin ${hok.e || 'ok'}); the saves keep their signatures and grants (${JSON.stringify(sigs.map((x) => x.n + '(' + x.a + ') ' + x.r))})`);
+}
+
+// ---------------------------------------------------------------- 14. round 13: the balance publish locks the gig before it reads its status
+{
+  const code = (await q(`SELECT prosrc FROM pg_proc WHERE proname = 'bw_quote_balance_publish' AND pronamespace = 'public'::regnamespace`)).rows[0].prosrc.replace(/--[^\n]*/g, '');
+  const at = (re) => code.search(re);
+  // a. The source: the quote, the link, the gig's row (FOR NO KEY UPDATE), and only then its status and the refusal.
+  const o = [at(/FROM\s+public\.quotes\s+q\s+WHERE\s+q\.id\s*=\s*p_quote_id\s+FOR\s+UPDATE\s*;/i),
+             at(/FROM\s+public\.quote_links\s+l\b[^;]*\bFOR\s+UPDATE\s*;/i),
+             at(/PERFORM\s+1\s+FROM\s+public\.events\s+e\b[^;]*\bFOR\s+NO\s+KEY\s+UPDATE\s*;/i),
+             at(/SELECT\s+e\.status\s+INTO\s+v_gig_status\b/i),
+             code.indexOf('The gig is cancelled'),
+             code.indexOf('UPDATE public.quote_links')];
+  ok(o.every((v, i) => v >= 0 && (i === 0 || v > o[i - 1])),
+    `round 13: balance publish locks the quote, the link, then the gig's row (FOR NO KEY UPDATE), and reads the gig's status in a later statement, before any write (${JSON.stringify(o)})`);
+  // b. Lock probe (section 12's): a quote accepted by phone, its link not yet
+  // accepted: the publish writes the link as accepted with the gig's row held.
+  await db.exec(`CREATE TRIGGER test_r12_probe BEFORE UPDATE ON quote_links FOR EACH ROW EXECUTE FUNCTION test_r12_probe();`);
+  const p = await quote();
+  await db.exec(`UPDATE quotes SET status = 'accepted' WHERE id = '${p.Q}'; DELETE FROM r12_log; SELECT set_config('test.fn', 'balance_publish', false);`);
+  const pub = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_balance_publish($1, $2::jsonb) v`, [p.Q, balance(1000)]).then((r) => r.rows[0].v)));
+  const log = (await q(`SELECT quote_locked q, event_locked e FROM r12_log`)).rows;
+  await db.exec(`DROP TRIGGER test_r12_probe ON quote_links`);
+  const pl = await link(p.Q);
+  ok(!pub.e && log.length >= 1 && log.every((x) => x.q && x.e),
+    `round 13: balance publish writes the link (accepted by phone) with the quote and the gig's row locked by its transaction (${pub.e || JSON.stringify(log)})`);
+  ok(!pub.e && pub.r?.changed === true && pub.r?.balance_version === pl.balance_version && pub.r?.token === p.T && Object.keys(pub.r).sort().join(',') === 'balance_version,changed,token'
+     && pl.status === 'accepted' && pl.accepted_name === 'Emma Carter' && pl.balance?.amount === 1000,
+    `round 13: balance publish answers and writes as before: {token, balance_version, changed}, the link accepted under the client's name (${pub.e || JSON.stringify(pub.r && { c: pub.r.changed, v: pub.r.balance_version })}, link ${pl.status})`);
+  // c. A cancelled gig: still refused first, nothing written. No event: still published.
+  const c = await quote();
+  await db.exec(`UPDATE quotes SET status = 'accepted' WHERE id = '${c.Q}'; UPDATE events SET status = 'cancelled' WHERE id = '${c.E}'`);
+  const before = JSON.stringify(await link(c.Q));
+  const cp = await asAdmin(() => q(`SELECT public.bw_quote_balance_publish($1, $2::jsonb) v`, [c.Q, balance(1000)])).then(() => ({}), (e) => ({ e: e.message, code: e.code }));
+  const NOLINK = id(n++), NLE = id(n++);
+  await db.exec(`INSERT INTO events (id, band_id, status) VALUES ('${NLE}', '${BAND}', 'cancelled');
+                 INSERT INTO quotes (id, band_id, client_name, status, converted_to_event_id) VALUES ('${NOLINK}', '${BAND}', 'Emma Carter', 'accepted', '${NLE}')`);
+  const first = await asAdmin(() => q(`SELECT public.bw_quote_balance_publish($1, $2::jsonb) v`, [NOLINK, balance(1000)])).then(() => ({}), (e) => ({ e: e.message, code: e.code }));
+  const ne = await quote({ accepted: true });
+  await db.exec(`DELETE FROM events WHERE id = '${ne.E}'; UPDATE quotes SET converted_to_event_id = NULL WHERE id = '${ne.Q}'`);
+  const np = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_balance_publish($1, $2::jsonb) v`, [ne.Q, balance(800)]).then((r) => r.rows[0].v)));
+  ok(cp.code === '22023' && /gig is cancelled/.test(cp.e || '') && JSON.stringify(await link(c.Q)) === before
+     && first.code === '22023' && /gig is cancelled/.test(first.e || '') && !np.e && np.r?.changed === true,
+    `round 13: a cancelled gig is still refused (22023, before "Publish the quote first"), the link as it was; a quote with no event still publishes (${cp.e || 'published'}; ${first.e || 'published'}; ${np.e || 'ok'})`);
+  const sig = (await q(`SELECT pg_get_function_identity_arguments(p.oid) a, pg_get_function_result(p.oid) r, p.prosecdef d,
+      has_function_privilege('anon', p.oid, 'EXECUTE') anon, has_function_privilege('authenticated', p.oid, 'EXECUTE') auth,
+      (SELECT count(*)::int FROM pg_proc x WHERE x.proname = p.proname) n FROM pg_proc p WHERE p.proname = 'bw_quote_balance_publish'`)).rows[0];
+  ok(sig.a === 'p_quote_id uuid, p_balance jsonb' && sig.r === 'jsonb' && sig.d && !sig.anon && sig.auth && sig.n === 1,
+    `round 13: bw_quote_balance_publish keeps its one signature and grants (${JSON.stringify(sig)})`);
+
+  // d. bw_quote_lock_events and another band (N3). Band B's quote: refused
+  // (42501). Band B's event as p_also on band A's quote: not locked (only
+  // the caller's band's events are), band A's own event is.
+  const [BB, BADMIN, BE, BQ] = [id(n++), OTHER, id(n++), id(n++)];
+  await db.exec(`INSERT INTO bands VALUES ('${BB}', 'The Hudson Horns');
+                 INSERT INTO band_members VALUES ('${BB}', '${BADMIN}', 'admin', true);
+                 INSERT INTO events (id, band_id, status) VALUES ('${BE}', '${BB}', 'tentative');
+                 INSERT INTO quotes (id, band_id, client_name, status, converted_to_event_id) VALUES ('${BQ}', '${BB}', 'Jordan Lee', 'sent', '${BE}');`);
+  const a = await quote();
+  const held = async (sql) => {
+    await db.exec(`BEGIN; SELECT set_config('request.jwt.claims', '{"sub":"${ADMIN}","role":"authenticated"}', true); SET LOCAL ROLE authenticated;`);
+    let err = null;
+    try { await db.exec(sql); } catch (e) { err = { code: e.code, e: e.message }; await db.exec('ROLLBACK'); return { err }; }
+    await db.exec('RESET ROLE');
+    const rows = (await q(`SELECT x.id, test_row_for_update('public.events', x.ctid, x.xmax) fu, x.xmax::text xmax FROM events x WHERE x.id IN ($1, $2)`, [a.E, BE])).rows;
+    await db.exec('COMMIT');
+    return { own: rows.find((x) => x.id === a.E), other: rows.find((x) => x.id === BE) };
+  };
+  const viaAlso = await held(`SELECT public.bw_quote_lock_events('${a.Q}', '${BE}')`);
+  const viaQuote = await held(`SELECT public.bw_quote_lock_events('${BQ}')`);
+  const viaQuoteAlso = await held(`SELECT public.bw_quote_lock_events('${BQ}', '${a.E}')`);
+  const viaSave = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_save_with_lineup($1, $2::jsonb, '[]'::jsonb, NULL)`, [BQ, JSON.stringify({ client_phone: '+1 212 555 0100' })])));
+  ok(!viaAlso.err && viaAlso.own?.fu === true && viaAlso.other?.fu === false && viaAlso.other?.xmax === '0'
+     && viaQuote.err?.code === '42501' && viaQuoteAlso.err?.code === '42501' && !!viaSave.e,
+    `round 13: an admin of one band never locks another band's event: as p_also it is left unlocked (own ${viaAlso.own?.fu}, other ${viaAlso.other?.fu}, xmax ${viaAlso.other?.xmax}, ${viaAlso.err?.e || 'no error'}); with the other band's quote: ${viaQuote.err?.code || 'allowed'}, ${viaQuoteAlso.err?.code || 'allowed'}; its save: ${viaSave.e ? 'refused' : 'allowed'}`);
 }
 
 // ---------------------------------------------------------------- 7. 187 is a superset of 183 (round 3)

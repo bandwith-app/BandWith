@@ -125,14 +125,17 @@ ALTER TABLE public.quote_links ADD COLUMN IF NOT EXISTS event_removed_at timesta
 -- with its quotes and events) is not seen by the lock and is skipped,
 -- without a wait or an error; ORDER BY: two deletes that share quotes lock
 -- them in the same order.
--- The order that results: a gig delete goes event -> quote -> link (the
--- DELETE holds the events row before this trigger runs; it was event ->
--- link -> quote). Everything else goes quote -> link -> event. So one
--- cycle is left, through the events row (known limit): a client's open,
--- answer or message, an admin's recorded answer, or a save of the quote
--- (each holds the quote and, with 178's triggers, then takes the quote's
--- events row) at the same moment as a delete of that quote's gig can end
--- in 40P01 for one of the two. Nothing is lost, and the retry works.
+-- The order that results: a gig delete goes event -> hold's lock -> quote
+-- -> link. The DELETE holds the events row before its BEFORE triggers run,
+-- and they run by name: bw_event_deleted_notify (046; with 178 it takes
+-- the hold's advisory lock) sorts before this one. It was event -> hold's
+-- lock -> link -> quote. Everything else goes quote -> link -> event ->
+-- hold's lock. So one cycle is left, through the events row (known
+-- limit): a client's open, answer or message, an admin's recorded answer,
+-- or a save of the quote (each holds the quote and, with 178's triggers,
+-- then takes the quote's events row) at the same moment as a delete of
+-- that quote's gig can end in 40P01 for one of the two. Nothing is lost,
+-- and the retry works.
 CREATE OR REPLACE FUNCTION public.bw_trg_quote_link_event_removed()
 RETURNS trigger
 LANGUAGE plpgsql
