@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useState, type RefObject } from 'react';
 
 /**
  * Keyboard focus for modal layers (BwSheet, the iPad composer): on open,
@@ -31,7 +31,31 @@ interface Layer {
   ownFocus?: boolean;
   /** Its Tab cycle leaves out the Duo rail's actions (a layer with its own Close). */
   noRail?: boolean;
+  /** When its element appeared: the stack keeps layers in the order they opened. */
+  seq: number;
 }
+
+/**
+ * When each layer's element appeared on the page. A trap that turns on later
+ * (the kit page becoming modal as the Duo folds) goes beneath the layers that
+ * opened after its element (the kit editor above it), not on top of them.
+ */
+let seqCounter = 0;
+const seqOf = new WeakMap<HTMLElement, number>();
+const seqFor = (el: HTMLElement): number => {
+  let n = seqOf.get(el);
+  if (n === undefined) {
+    n = ++seqCounter;
+    seqOf.set(el, n);
+  }
+  return n;
+};
+/** Puts a layer on the stack in opening order (a newer one on top). */
+const insert = (layer: Layer) => {
+  let i = stack.length;
+  while (i > 0 && stack[i - 1].seq > layer.seq) i--;
+  stack.splice(i, 0, layer);
+};
 
 const stack: Layer[] = [];
 /**
@@ -193,20 +217,31 @@ const onFocusIn = (e: FocusEvent) => {
 /**
  * Focusable edges of the page while a trap is on: Tab past the last control
  * of the page lands here (and comes back into the layer) instead of leaving
- * for the browser's toolbar. Hidden from screen readers (nothing to read),
- * and focus never stays on one: it goes straight back into the layer.
+ * for the browser's toolbar. Focus never stays on one: it goes straight back
+ * into the layer. (Not aria-hidden, like Radix's guards: a focusable element
+ * must not be hidden from screen readers.)
  */
 let guards: HTMLElement[] = [];
 const makeGuard = (start: boolean) => {
   const g = document.createElement('span');
   g.tabIndex = 0;
   g.setAttribute('data-bw-focus-guard', '');
-  g.setAttribute('aria-hidden', 'true');
   g.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none;outline:none';
-  g.addEventListener('focus', () => {
+  g.addEventListener('focus', (e) => {
     const root = top();
-    // Before the page start: back to the layer's last stop; past its end: its first.
-    if (root && root.isConnected) wrapInto(root, start);
+    if (!root || !root.isConnected) return;
+    const from = e.relatedTarget as HTMLElement | null;
+    // From outside the page (the browser's toolbar): Tab enters at the
+    // layer's first stop, Shift+Tab at its last.
+    if (!from) return wrapInto(root, !start);
+    // From the layer's own last stops, on to the Duo rail's actions (they come
+    // after them in the cycle, but earlier on the page); back the other way.
+    const rail = includedFor(root).flatMap(tabbables);
+    if (!start && rail.length && root.contains(from) && focusFirstOf(rail)) return;
+    if (start && rail.some((r) => r === from || r.contains(from)) && focusFirstOf([...tabbables(root)].reverse())) return;
+    // Otherwise (Safari's Tab skipping buttons): past the end to the first
+    // stop, before the start to the last one.
+    wrapInto(root, start);
   });
   return g;
 };
@@ -231,6 +266,9 @@ const restore = (opener: HTMLElement | null) => {
 
 /** A layer closed: focus back to what opened it, or else into the layer now on top. */
 const backToTrap = (opener: HTMLElement | null) => {
+  // The user tapped into a text field meanwhile (a field on the other Duo
+  // page): focus and the keyboard stay there.
+  if (isTextEntry(document.activeElement)) return;
   restore(opener);
   const root = top();
   if (root && root.isConnected && !root.contains(document.activeElement)) {
@@ -304,7 +342,7 @@ const consider = (el: HTMLElement, opener: HTMLElement | null) => {
   if (!dialog && stack.some((l) => ownedPopups(l.el).includes(el))) return;
   // Waiting hidden (a popup that yields to the sheet), or under the scrim.
   if (!shown(el) || !above(el, below.el)) return;
-  stack.push({ el, opener, auto: true, ownFocus: !dialog });
+  insert({ el, opener, auto: true, ownFocus: !dialog, seq: seqFor(el) });
   if (dialog) focusInto(el);
 };
 
@@ -402,27 +440,33 @@ const handBack = (opener: HTMLElement | null) => {
 
 /** A layer registered by useFocusTrap (it may already be on the stack, found as it opened). */
 const push = (el: HTMLElement, opener: HTMLElement | null, noRail = false): Layer => {
-  if (handover) {
-    opener = handover.opener;
+  const handed = handover;
+  if (handed) {
+    opener = handed.opener;
     handover = null;
   }
   const found = entryOf(el);
   if (found) {
     found.auto = false;
     found.noRail = noRail;
+    if (handed) found.opener = handed.opener;
     return found;
   }
-  const layer: Layer = { el, opener, auto: false, noRail };
-  stack.push(layer);
+  const layer: Layer = { el, opener, auto: false, noRail, seq: seqFor(el) };
+  insert(layer);
   start();
   return layer;
 };
 const remove = (layer: Layer) => {
   const i = stack.indexOf(layer);
   if (i >= 0) stack.splice(i, 1);
+  // Layers opened from inside it (found above it) can't go back there once it
+  // is gone: they go back to what opened it instead.
+  for (const l of stack) if (l.opener && layer.el.contains(l.opener)) l.opener = layer.opener;
   // Layers that opened above it and are still around stay on the stack while
-  // another layer of useFocusTrap is open.
-  stopIfUnowned();
+  // another layer of useFocusTrap is open. Looked at once this commit's
+  // effects have run: a layer found above it may turn its own trap on now.
+  queueMicrotask(stopIfUnowned);
 };
 
 /**
@@ -433,6 +477,11 @@ const remove = (layer: Layer) => {
  */
 export function useFocusTrap(ref: RefObject<HTMLElement | null>, active: boolean, opts?: { rail?: boolean }): void {
   const noRail = opts?.rail === false;
+  // Note when the layer's element appeared (every commit: a new element is
+  // dated by the commit that mounted it, before any trap turns on).
+  useLayoutEffect(() => {
+    if (ref.current) seqFor(ref.current);
+  });
   useEffect(() => {
     if (!active) return;
     const opener = document.activeElement as HTMLElement | null;
@@ -442,7 +491,8 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>, active: boolean
     const id = window.requestAnimationFrame(() => {
       if (!layer && ref.current) layer = push(ref.current, opener, noRail);
       const el = layer?.el;
-      if (el && !el.contains(document.activeElement)) el.focus({ preventScroll: true });
+      // Only on top: a trap that turned on beneath a newer layer leaves its focus be.
+      if (el && topLayer() === layer && !el.contains(document.activeElement)) el.focus({ preventScroll: true });
     });
     return () => {
       window.cancelAnimationFrame(id);
@@ -466,15 +516,36 @@ const isTextEntry = (el: Element | null): boolean => {
   return el instanceof HTMLElement && el.isContentEditable === true;
 };
 
+/** The focus is in an open picker, menu or popover (a Radix one, a listbox). */
+const inPopover = (el: Element | null): boolean => !!el?.closest?.(POPOVER);
+/** The user is busy where the focus is: typing, or choosing in an open picker. */
+const focusBusy = (): boolean => isTextEntry(document.activeElement) || inPopover(document.activeElement);
+
 /**
- * True while a text field has the focus (the keyboard is up). A layer that
- * opens by itself (the urgent pop-up) waits for it, instead of taking the
- * focus away mid-word.
+ * True while the focus is busy: a text field has it (the keyboard is up), or
+ * an open picker or popover does. A layer that opens by itself (the urgent
+ * pop-up) waits for it, instead of taking the focus away mid-word or fighting
+ * the popover for it; it shows once the field or the popover lets go.
  */
 export function useTypingFocus(): boolean {
-  const [typing, setTyping] = useState(() => typeof document !== 'undefined' && isTextEntry(document.activeElement));
+  const [typing, setTyping] = useState(() => typeof document !== 'undefined' && focusBusy());
   useEffect(() => {
-    const check = () => setTyping(isTextEntry(document.activeElement));
+    // A popover can close by leaving the page with the focus in it, with no
+    // focus event: while busy, a change on the page looks again.
+    let observer: MutationObserver | null = null;
+    const check = () => {
+      const busy = focusBusy();
+      setTyping(busy);
+      if (busy && !observer && typeof MutationObserver !== 'undefined') {
+        observer = new MutationObserver(() => {
+          if (!focusBusy()) check();
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+      } else if (!busy && observer) {
+        observer.disconnect();
+        observer = null;
+      }
+    };
     // On focusout the next field has not taken the focus yet: look once it has.
     let id = 0;
     const later = () => {
@@ -486,6 +557,7 @@ export function useTypingFocus(): boolean {
     check();
     return () => {
       window.clearTimeout(id);
+      observer?.disconnect();
       document.removeEventListener('focusin', check);
       document.removeEventListener('focusout', later);
     };

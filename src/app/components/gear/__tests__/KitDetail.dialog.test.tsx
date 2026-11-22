@@ -16,6 +16,16 @@ vi.mock('@/lib/deviceRegions', async (orig) => ({
 }));
 
 import { KitDetail } from '../KitDetail';
+import { KitEditorSheet } from '../KitSheets';
+
+vi.mock('@/lib/haptics', () => ({
+  haptic: { tap: vi.fn(), medium: vi.fn(), confirm: vi.fn(), delete: vi.fn(), selection: vi.fn() },
+}));
+globalThis.ResizeObserver = class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof ResizeObserver;
 
 afterEach(cleanup);
 
@@ -76,5 +86,33 @@ describe('kit page', () => {
     rerender(<Hub open />);
     await new Promise((r) => requestAnimationFrame(() => r(null)));
     expect(document.activeElement).toBe(row);
+  });
+
+  it('folding the Duo with Edit kit open: the kit page traps beneath the editor, which keeps the focus', async () => {
+    layout.twoPane = true;
+    const Hub: React.FC<{ tick: number }> = () => {
+      const [editing, setEditing] = React.useState(false);
+      return (
+        <>
+          <KitDetail kit={kit} summary={summary} canEdit onBack={() => {}} onEdit={() => setEditing(true)} onUseForGig={() => {}} />
+          <KitEditorSheet open={editing} kit={kit} initialItemIds={[]} inventory={[]} saving={false} error={null} onClose={() => setEditing(false)} onSave={() => {}} />
+        </>
+      );
+    };
+    const { rerender } = render(<Hub tick={0} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Edit/ }));
+    const editor = await screen.findByRole('dialog');
+    await waitFor(() => expect(editor.contains(document.activeElement)).toBe(true));
+    // The Duo closes to one page: the kit page becomes a modal dialog with its trap.
+    layout.twoPane = false;
+    rerender(<Hub tick={1} />);
+    expect(screen.getByRole('dialog', { name: 'Club kit' })).toBeTruthy();
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
+    expect(editor.contains(document.activeElement)).toBe(true);
+    // Tab still cycles in the editor, the layer on top.
+    const stops = Array.from(editor.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea'));
+    stops[stops.length - 1].focus();
+    fireEvent.keyDown(document.activeElement!, { key: 'Tab' });
+    expect(editor.contains(document.activeElement)).toBe(true);
   });
 });
