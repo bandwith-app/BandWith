@@ -452,7 +452,7 @@ describe('setlist, to-dos and lineup saved offline (B5)', () => {
     );
     await q.processSyncQueue();
     const realId = mocks.createEvent.mock.calls[0][0].id;
-    expect(mocks.replayEventExtras).toHaveBeenCalledWith(realId, extras);
+    expect(mocks.replayEventExtras).toHaveBeenCalledWith(realId, extras, USER);
   });
 
   it('does not replay them when the create fails', async () => {
@@ -467,7 +467,7 @@ describe('setlist, to-dos and lineup saved offline (B5)', () => {
     await q.enqueueMutation('update_event', { eventId: 'ev-1', updates: { title: 'Gig' }, extras: editExtras });
     await q.processSyncQueue();
     expect(mocks.updateEvent).toHaveBeenCalledWith('ev-1', { title: 'Gig' });
-    expect(mocks.replayEventExtras).toHaveBeenCalledWith('ev-1', editExtras);
+    expect(mocks.replayEventExtras).toHaveBeenCalledWith('ev-1', editExtras, USER);
   });
 
   it('an edit of a not-yet-synced gig carries its lineup and setlist into the create', async () => {
@@ -482,5 +482,23 @@ describe('setlist, to-dos and lineup saved offline (B5)', () => {
     expect(mocks.createEvent.mock.calls[0][1].map((m: any) => m.user_id)).toEqual(['u1', 'u3']);
     const [, replayed] = mocks.replayEventExtras.mock.calls[0];
     expect(replayed).toEqual({ tasks: extras.tasks, setlist: extras.setlist });
+  });
+
+  // Round 7 (Codex r6 B4/B5): the setlist met someone else's and the refused
+  // list is full: the event is saved, the setlist is never dropped. It stays
+  // queued (only the setlist, no second event write) and is tried again.
+  it('a setlist with no room in the refused list stays queued, only the setlist', async () => {
+    mocks.replayEventExtras.mockResolvedValueOnce(['setlist-waiting']);
+    await q.enqueueMutation('update_event', { eventId: 'ev-1', updates: { title: 'Gig' }, extras });
+    await q.processSyncQueue();
+    const left = stored();
+    expect(left).toHaveLength(1);
+    expect(left[0]).toMatchObject({ type: 'update_event', payload: { eventId: 'ev-1', updates: {}, extras: { setlist: extras.setlist } }, lastError: 'BW_REFUSED_FULL' });
+    // Tried again later: the event row is not written a second time.
+    mocks.replayEventExtras.mockResolvedValueOnce([]);
+    await q.processSyncQueue(undefined, { force: true });
+    expect(mocks.updateEvent).toHaveBeenCalledTimes(1);
+    expect(mocks.replayEventExtras).toHaveBeenLastCalledWith('ev-1', { setlist: extras.setlist }, USER);
+    expect(stored() ?? []).toHaveLength(0);
   });
 });

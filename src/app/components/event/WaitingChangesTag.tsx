@@ -5,38 +5,40 @@ import { useWaitingChanges } from '@/app/hooks/useLiveOutbox';
 import { useOnline } from '@/app/components/event/useLivePack';
 import { BwSheet } from '@/app/components/bw/Screen';
 import { PillButton } from '@/app/components/bw/Form';
-import { dismissLiveRefused, LIVE_OUTBOX_EVENT, readLiveRefused, type LiveRefused } from '@/lib/liveOutbox';
+import { LIVE_REFUSED_EVENT, readRefusedLiveOps, refusedId, refusedKey, removeRefusedLiveOp, type RefusedLiveOp } from '@/lib/liveOutbox';
+import { refusedText } from '@/app/components/settings/RefusedLiveChanges';
 
-/** Changes the server refused or never took, kept on this phone (liveOutbox.ts). */
-function useLiveRefused(userId?: string | null): LiveRefused[] {
-  const [items, setItems] = useState(() => readLiveRefused(userId));
+/**
+ * Changes the server refused, kept on this phone: the same list as Settings ›
+ * Offline & live (liveOutbox.ts, readRefusedLiveOps), so removing one here
+ * removes it there too.
+ */
+function useLiveRefused(userId?: string | null): RefusedLiveOp[] {
+  const [items, setItems] = useState(() => readRefusedLiveOps(userId));
   useEffect(() => {
-    const update = () => setItems(readLiveRefused(userId));
+    const update = () => setItems(readRefusedLiveOps(userId));
     update();
-    window.addEventListener(LIVE_OUTBOX_EVENT, update);
-    return () => window.removeEventListener(LIVE_OUTBOX_EVENT, update);
+    // Another tab changed the list (it removed one, or one more was refused).
+    const fromOtherTab = (e: StorageEvent) => {
+      if (!userId || e.key === null || e.key === refusedKey(userId)) update();
+    };
+    window.addEventListener(LIVE_REFUSED_EVENT, update);
+    window.addEventListener('storage', fromOtherTab);
+    return () => {
+      window.removeEventListener(LIVE_REFUSED_EVENT, update);
+      window.removeEventListener('storage', fromOtherTab);
+    };
   }, [userId]);
   return items;
-}
-
-/** The words a refused change carried, to copy (none for a new order). */
-function wordsOf(item: LiveRefused): string {
-  const op = item.op;
-  if (op.kind === 'note') return op.body;
-  if (op.kind === 'suggestion') {
-    const proposed = op.row.proposed as { note?: unknown } | undefined;
-    const note = proposed?.note ?? op.row.note;
-    return typeof note === 'string' ? note : '';
-  }
-  return '';
 }
 
 /**
  * "3 changes waiting for signal" (plan §3.5): notes, suggestions and the
  * leader's order made with no signal, kept on this phone until they are
  * sent. With full signal and the server busy for a moment: "waiting to
- * send". A change the server refused or never took is not lost: "1 change
- * wasn't saved" opens it, to copy its words and remove it. Nothing when
+ * send". A change the server refused is not lost: "1 change wasn't saved"
+ * opens it, to copy its words and remove it (the list of Settings › Offline
+ * & live, through the same calls). Nothing when
  * nothing waits. `stage`: white on the dark Stage header.
  */
 export const WaitingChangesTag: React.FC<{ userId?: string | null; stage?: boolean; className?: string }> = ({
@@ -94,16 +96,23 @@ export const WaitingChangesTag: React.FC<{ userId?: string | null; stage?: boole
         <div className="flex flex-col gap-4">
           <p className="bw-body-sm text-sheet-foreground/80">{t('These changes couldn’t be saved. Copy what you need, then remove them.')}</p>
           {refused.map((item) => {
-            const words = wordsOf(item);
+            // The words to copy (none for a new order or a deleted note: the label says it).
+            const words = item.kind === 'note' || item.kind === 'suggestion' || item.kind === 'gigSetlist' ? refusedText(item, t) : '';
             const what =
-              item.op.kind === 'note' ? t('Your note') : item.op.kind === 'suggestion' ? t('Suggestion to the band') : t('New song order');
+              item.kind === 'note'
+                ? t('Your note')
+                : item.kind === 'suggestion'
+                  ? t('Suggestion to the band')
+                  : item.kind === 'order'
+                    ? t('New song order')
+                    : item.kind === 'noteDelete'
+                      ? t('Deleting one of my notes')
+                      : null;
+            const rid = refusedId(item);
             return (
-              <div key={item.key} className="flex flex-col gap-2 rounded-[16px] border border-sheet-foreground/20 p-4">
-                <span className="bw-label-xs text-sheet-foreground/70">{what}</span>
+              <div key={rid} className="flex flex-col gap-2 rounded-[16px] border border-sheet-foreground/20 p-4">
+                {what && <span className="bw-label-xs text-sheet-foreground/70">{what}</span>}
                 {words && <p className="bw-body [overflow-wrap:anywhere] whitespace-pre-wrap select-text">{words}</p>}
-                <span className="bw-body-sm text-sheet-foreground/70">
-                  {item.why === 'refused' ? t('The server didn’t accept it.') : t('The server didn’t answer for too long.')}
-                </span>
                 <div className="flex gap-2 pt-1">
                   {words && (
                     <PillButton
@@ -115,7 +124,7 @@ export const WaitingChangesTag: React.FC<{ userId?: string | null; stage?: boole
                       {t('Copy')}
                     </PillButton>
                   )}
-                  <PillButton variant="ghost" size="sm" fullWidth={false} onClick={() => userId && dismissLiveRefused(userId, item.key)}>
+                  <PillButton variant="ghost" size="sm" fullWidth={false} onClick={() => userId && removeRefusedLiveOp(userId, rid)}>
                     {t('Remove')}
                   </PillButton>
                 </div>

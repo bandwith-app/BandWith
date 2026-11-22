@@ -60,7 +60,8 @@ interface AuthContextType {
   ) => Promise<{ error: AuthError | null; session: Session | null; existing: boolean }>;
   signInWithGoogle: () => Promise<{ error: AuthError | null }>;
   signInWithApple: () => Promise<{ error: AuthError | null }>;
-  signOut: () => Promise<{ error: AuthError | null }>;
+  /** `discardPendingWrites`: the account is gone (deleted), drop its unsent changes too. */
+  signOut: (opts?: { discardPendingWrites?: boolean }) => Promise<{ error: AuthError | null }>;
   resetPassword: (email: string) => Promise<{ error: AuthError | null }>;
   /** True after the user opened a password-reset link: the app must ask for a new password. */
   isPasswordRecovery: boolean;
@@ -483,6 +484,60 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     await refreshProfile();
   };
 
+  // Changes still waiting on this phone (notes, suggestions, a setlist order):
+  // asked first, "Send now" or "Sign out anyway" (signOutGate.ts); closed,
+  // still signed in. A deleted account is not asked: all it left on this
+  // device goes first (accountWrites.ts), so nothing is sent or written back.
+  const signOutAfterAsking = async (opts?: { discardPendingWrites?: boolean }, again?: { cantKeep?: boolean }): Promise<Awaited<ReturnType<typeof handleSignOut>> & { cancelled?: true }> => {
+    if (opts?.discardPendingWrites) {
+      const { discardAccountWrites } = await import('./accountWrites');
+      await discardAccountWrites(user?.id);
+    } else {
+      const asked = user?.id ?? null;
+      const { askSignOutChoice } = await import('./signOutGate');
+      const choice = await askSignOutChoice(asked, again);
+      if (choice === 'cancel') return { error: null, cancelled: true as const };
+      // Answered for the account it was asked about only: another tab signed
+      // someone else in meanwhile → no sign-out, nothing cleared. Can't tell
+      // (token expired, no signal): the confirmed sign-out goes ahead, on this
+      // device, and keeps what the keep list keeps; never called off unseen.
+      if (asked) {
+        let now: string | null = null;
+        try {
+          now = (await getSessionOfflineSafe()).session?.user?.id ?? null;
+        } catch {
+          now = null;
+        }
+        if (now && now !== asked) return { error: null, cancelled: true as const };
+        // Only now, for the account asked about: erased only once it is
+        // known to be the one signed in; kept as refused whenever the
+        // sign-out goes ahead (the wipe would delete them).
+        if (choice === 'erase' && now === asked) {
+          const { discardRefusedChanges } = await import('./liveOutbox');
+          discardRefusedChanges(asked);
+        }
+        if (choice === 'keep-queued') {
+          const { keepQueuedAsRefused, queuedNotKeptOnSignOut, waitingChanges } = await import('./liveOutbox');
+          // Room checked before anything moves (another tab may have filled
+          // the list since the sheet's check); not all kept: asked again, the
+          // sheet says unlock to send. The wipe never deletes what waits.
+          if (queuedNotKeptOnSignOut(asked) > 0) return signOutAfterAsking(opts, { cantKeep: true });
+          // Storage full partway: each change is either kept as refused or stays queued; nothing is lost.
+          keepQueuedAsRefused(asked);
+          if (waitingChanges(asked) > 0) return signOutAfterAsking(opts, { cantKeep: true });
+        }
+      }
+    }
+    const gone = opts?.discardPendingWrites ? user?.id : null;
+    const res = await (handleSignOut as (o?: typeof opts) => ReturnType<typeof handleSignOut>)(opts);
+    // A send answered while signing out (a refusal, a queue write): it goes too.
+    if (gone && !res.error) {
+      const { discardAccountWrites } = await import('./accountWrites');
+      await discardAccountWrites(gone);
+    }
+    return res;
+  };
+
   const value: AuthContextType = {
     user,
     profile,
@@ -495,7 +550,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signUp: handleSignUp,
     signInWithGoogle: handleSignInWithGoogle,
     signInWithApple: handleSignInWithApple,
-    signOut: handleSignOut,
+    signOut: signOutAfterAsking,
     resetPassword: handleResetPassword,
     isPasswordRecovery,
     completePasswordRecovery,

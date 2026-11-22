@@ -40,9 +40,21 @@ export interface SongFormValues {
 /** Live-mode columns at their defaults are left out of a new song (they need 171; the database fills them). */
 const LIVE_DEFAULTS: Partial<SongChanges> = { time_signature: null, count_in_bars: 1, pickup_beats: 0, backing_track: false };
 
+/**
+ * Longest lyrics a song keeps (characters). The form says so before saving
+ * and keeps the whole text in the field: nothing is ever cut on save (audit
+ * 09 #7: a long medley lost its ending, a JSON sheet its closing brackets).
+ */
+export const MAX_LYRICS_LENGTH = 20000;
+
+/** The lyrics' length as saved (trailing spaces and blank lines don't count). */
+export const savedLyricsLength = (lyrics: string) => lyrics.replace(/\s+$/, '').length;
+
+export const lyricsTooLong = (lyrics: string) => savedLyricsLength(lyrics) > MAX_LYRICS_LENGTH;
+
 /** Every field as the form saves it (null = empty). */
 export function songFields(f: SongFormValues): SongChanges {
-  const lyrics = f.lyrics.trim() ? f.lyrics.replace(/\s+$/, '').slice(0, 20000) : null;
+  const lyrics = f.lyrics.trim() ? f.lyrics.replace(/\s+$/, '') : null;
   const bpm = parseInt(f.bpm, 10);
   return {
     title: f.title.trim(),

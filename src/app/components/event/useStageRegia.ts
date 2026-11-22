@@ -4,7 +4,6 @@ import {
   parseRegiaState,
   REGIA_RESEND_MS,
   regiaReadiness,
-  rowsWithInserted,
   takesOver,
   type RegiaReadiness,
   type RegiaState,
@@ -19,7 +18,7 @@ import {
 } from '@/lib/regiaAudio';
 import { stopPlayer } from '@/lib/audioPlayer';
 import { currentAudioOutput, onAudioOutputChange, outputWarning, setPlaybackSession, type AudioOutput } from '@/lib/audioOutput';
-import { addSongToSetlist, saveSetlistOrder } from '@/lib/services/songs';
+import { replaceSetlistSongs } from '@/lib/services/songs';
 import { SETLIST_ORDER_SAVED, type StageRegiaBridge } from './useStageLive';
 import { useAudioDownloads, type SongAudio } from './useAudioDownloads';
 
@@ -79,12 +78,26 @@ interface Options {
   bridge: { current: StageRegiaBridge };
   /** The setlist in its live order. */
   songs: RegiaSong[];
+  /**
+   * useStageLive: the setlist as stored (its saved order). A song added on
+   * stage is checked against it, not against the live order on screen (a
+   * move not saved yet, an order from Bluetooth). Defaults to `songs`.
+   */
+  savedSongs?: RegiaSong[];
+  /** useStageLive: the last move's order not saved yet, as it is now. */
+  pendingOrder?: () => string[] | null;
+  /** useStageLive: the live order was saved with the added song: drop the order save pending when it started (`ids`). */
+  clearPendingOrder?: (ids: string[] | null) => void;
+  /** useStageLive: a move made while the add was saving, saved against the rows after the add. */
+  rebasePendingOrder?: (ids: string[], rows: { id: string; songId: string; setNumber: number }[]) => void;
+  /** useStageLive: order saves wait while a song is being added; returns the release. */
+  holdOrderSaves?: () => () => void;
   currentId: string | null;
   skipped?: ReadonlySet<string>;
   /** useStageLive: make song `i` current (everyone follows). */
   select: (i: number) => void;
-  /** useStageLive: make a new row current with this live order. */
-  jumpTo: (id: string, order: string[]) => void;
+  /** useStageLive: make a new row current with this live order (`rows`: the setlist as stored after a song added on stage). */
+  jumpTo: (id: string, order: string[], rows?: { id: string; songId: string; setNumber: number }[]) => void;
   /** Tests: a fake player. */
   createPlayer?: () => RegiaPlayer;
 }
@@ -96,7 +109,9 @@ export type PlayFailure = AudioFailure | 'pending';
 export type RegiaError =
   | { kind: 'load'; title: string; reason: PlayFailure }
   | { kind: 'no-audio'; title: string }
-  | { kind: 'insert' };
+  | { kind: 'insert' }
+  /** Another admin changed the setlist meanwhile: nothing added, the list reloads, pick again. */
+  | { kind: 'changed' };
 
 const online = () => (typeof navigator === 'undefined' ? true : navigator.onLine !== false);
 
@@ -124,6 +139,11 @@ export function useStageRegia({
   send,
   bridge,
   songs,
+  savedSongs,
+  pendingOrder,
+  clearPendingOrder,
+  rebasePendingOrder,
+  holdOrderSaves,
   currentId,
   skipped,
   select,
@@ -148,8 +168,18 @@ export function useStageRegia({
   const loadedRef = useRef<{ id: string; title: string } | null>(null);
   const [error, setError] = useState<RegiaError | null>(null);
 
-  const ctx = useRef({ songs, currentId, setlistId, myName, select, jumpTo, send, clientId, skipped });
-  ctx.current = { songs, currentId, setlistId, myName, select, jumpTo, send, clientId, skipped };
+  const stored = savedSongs ?? songs;
+  const ctx = useRef({ songs, stored, pendingOrder, clearPendingOrder, rebasePendingOrder, holdOrderSaves, currentId, setlistId, myName, select, jumpTo, send, clientId, skipped });
+  ctx.current = { songs, stored, pendingOrder, clearPendingOrder, rebasePendingOrder, holdOrderSaves, currentId, setlistId, myName, select, jumpTo, send, clientId, skipped };
+  /** Order-save holds of songs being added; released on unmount too. */
+  const holds = useRef(new Set<() => void>());
+  useEffect(
+    () => () => {
+      for (const release of holds.current) release();
+      holds.current.clear();
+    },
+    [],
+  );
 
   // ── Sending ──────────────────────────────────────────────────────────
   const publish = useCallback((next: Partial<RegiaState> & { on: boolean }) => {
@@ -397,30 +427,96 @@ export function useStageRegia({
    * Play a song from the repertoire that isn't in tonight's setlist: it is
    * added to the gig's setlist right after the current song (saved, so it
    * also shows in the gig afterwards), everyone jumps to it, and it plays.
+   * One guarded save (188): written only over the setlist as shown here (row
+   * ids), so a song another admin removed meanwhile never comes back. Changed
+   * meanwhile: nothing is written, the setlist reloads and the answer is
+   * 'changed' (the picker opens again on the latest list). Checked against
+   * the stored rows; written in the live order (a move here not saved yet is
+   * saved with it, so its own pending save is dropped).
    */
   const playExtra = useCallback(
-    async (song: RegiaExtraSong) => {
-      const { setlistId: list, songs: ordered, currentId: cur, jumpTo: jump } = ctx.current;
+    async (song: RegiaExtraSong): Promise<boolean | 'changed'> => {
+      const { setlistId: list, songs: ordered, stored, pendingOrder: pendingNow, clearPendingOrder: dropPending, currentId: cur, jumpTo: jump } = ctx.current;
       if (!on || !list) return false;
       setError(null);
-      const saved = ordered.filter((s) => s.id && s.songId).map((s) => ({ id: s.id!, songId: s.songId!, setNumber: s.setNumber }));
+      // The order save pending now is the one this save includes; a move made while it runs isn't.
+      const pendingAtStart = pendingNow?.() ?? null;
+      const asStored = stored
+        .filter((s) => s.id && s.songId)
+        .map((s) => ({ id: s.id!, song_id: s.songId!, set_number: s.setNumber ?? 1 }));
+      const saved = ordered.filter((s) => s.id && s.songId).map((s) => ({ id: s.id!, songId: s.songId!, setNumber: s.setNumber ?? 1 }));
       const at = saved.findIndex((s) => s.id === cur);
-      const { data, error: addError } = await addSongToSetlist(list, song.id, saved.length + 1, saved[at]?.setNumber ?? 1);
-      if (addError || !data?.id) {
+      const insertAt = at >= 0 ? at + 1 : saved.length;
+      const setNumber = saved[at >= 0 ? at : saved.length - 1]?.setNumber ?? 1;
+      const entries = [
+        ...saved.slice(0, insertAt).map((s) => ({ id: s.id, song_id: s.songId, set_number: s.setNumber })),
+        { song_id: song.id, set_number: setNumber },
+        ...saved.slice(insertAt).map((s) => ({ id: s.id, song_id: s.songId, set_number: s.setNumber })),
+      ];
+      const reload = () => {
+        try {
+          window.dispatchEvent(new CustomEvent(SETLIST_ORDER_SAVED, { detail: { setlistId: list } }));
+        } catch {
+          /* no window */
+        }
+      };
+      // Order saves wait until this one's answer is in (useStageLive): checked
+      // against the rows before it, they'd be refused (and roll back) meanwhile.
+      const release = ctx.current.holdOrderSaves?.() ?? (() => {});
+      holds.current.add(release);
+      const done = () => {
+        holds.current.delete(release);
+        release();
+      };
+      let res: Awaited<ReturnType<typeof replaceSetlistSongs>>;
+      try {
+        res = await replaceSetlistSongs(list, entries, { expected: { songs: asStored } });
+      } catch (e) {
+        done();
+        throw e;
+      }
+      if (res.error) {
+        done();
         setError({ kind: 'insert' });
         return false;
       }
-      const order = saved.map((s) => s.id);
-      const rows = rowsWithInserted(list, saved, order, cur, { id: data.id, songId: song.id });
-      const liveOrder = rows ? rows.map((r) => r.id) : [...order, data.id];
-      jump(data.id, liveOrder);
-      if (rows) void saveSetlistOrder(rows);
-      try {
-        window.dispatchEvent(new CustomEvent(SETLIST_ORDER_SAVED, { detail: { setlistId: list } }));
-      } catch {
-        /* no window */
+      if (res.conflict) {
+        done();
+        setError({ kind: 'changed' });
+        reload();
+        return 'changed';
       }
-      return start({ id: data.id, title: song.title, audio: song.audio });
+      const known = new Set(saved.map((s) => s.id));
+      const added = res.rows?.find((r) => !known.has(r.id) && r.song_id === song.id);
+      // A move made while this was saving (another pending order than at the
+      // start): kept, with the new song right after the current one, and
+      // saved against the rows as they are now. Otherwise the live order is
+      // saved (with the new song): its pending order save would only conflict.
+      const pendingAfter = ctx.current.pendingOrder?.() ?? null;
+      const moved = !!added && !!res.rows && !!pendingAfter && pendingAfter !== pendingAtStart && !!ctx.current.rebasePendingOrder;
+      if (!moved) dropPending?.(pendingAtStart);
+      reload();
+      // Saved, but the new row's id didn't come back (a database without 188): it shows after the reload.
+      if (!added || !res.rows) {
+        done();
+        return false;
+      }
+      const rowsAfter = res.rows.map((r) => ({ id: r.id, songId: r.song_id, setNumber: r.set_number ?? 1 }));
+      let order = res.rows.map((r) => r.id);
+      if (moved) {
+        // The moved order (the server wrote the live order plus the new row,
+        // so it has every other row), with the new row where the server put
+        // it: right after the song current when it was picked, else last.
+        const ids = new Set(order);
+        const kept = pendingAfter!.filter((id) => ids.has(id) && id !== added.id);
+        const afterCur = cur ? kept.indexOf(cur) : -1;
+        const insertAt = afterCur >= 0 ? afterCur + 1 : kept.length;
+        order = [...kept.slice(0, insertAt), added.id, ...kept.slice(insertAt)];
+      }
+      jump(added.id, order, rowsAfter);
+      if (moved) ctx.current.rebasePendingOrder!(order, rowsAfter);
+      done();
+      return start({ id: added.id, title: song.title, audio: song.audio });
     },
     [on, start],
   );

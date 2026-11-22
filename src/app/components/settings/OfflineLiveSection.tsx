@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useFlag } from '@/lib/appFlags';
+import { RefusedLiveChanges } from './RefusedLiveChanges';
 import { Download, Trash2, Wifi } from '@/app/components/icons';
 import { PillButton, Toggle } from '@/app/components/bw';
 import { cn } from '@/app/components/ui/utils';
@@ -94,6 +95,7 @@ export const OfflineLiveSection: React.FC<{ userId?: string }> = ({ userId }) =>
           ? t('Lyrics, chords, structures and your own notes for your next gigs, on this device for when there is no signal. No fees, no contracts.')
           : t('Downloading setlists ahead is paused for now. What is already on this device stays readable offline until 24 hours after its gig, or until you delete it.')}
       </p>
+      <RefusedLiveChanges userId={userId} />
 
       {livePackOn && (
       <div className={cn(CARD, ROW)}>

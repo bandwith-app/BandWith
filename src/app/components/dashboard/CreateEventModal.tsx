@@ -45,7 +45,7 @@ import { DatePicker, toDatePickerEvents } from '@/app/components/ui/DatePicker';
 import type { EventData } from '@/app/components/dashboard/EventCard';
 import { RehearsalCreationWizard } from '@/app/components/rehearsal/RehearsalCreationWizard';
 import { useBand } from '@/lib/BandContext';
-import { getSongs, getSetlists, getSetlist, type Song, type Setlist } from '@/lib/services/songs';
+import { getSongs, getSetlists, getSetlist, setlistOrder, type Song, type Setlist } from '@/lib/services/songs';
 import { removeSongsFromSets, setsFromSetlistSongs, setSongCount } from '@/lib/setlistSets';
 import { setStartNumbers, withSetSongs } from '@/lib/setlistOrder';
 import { SortableSongList } from '@/app/components/ui/SortableSongList';
@@ -766,9 +766,12 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
 
   const [setlist, setSetlist] = useState<any[]>(() => (Array.isArray(ds?.setlist) ? ds!.setlist : []));
   // Editing: start from the songs already on the gig (the screen showed them,
-  // the form used to open with 0). Songs the user picked meanwhile win.
+  // the form used to open with 0). Until they have loaded, the setlist can't
+  // be edited (see setlistLoad): nothing is added to a setlist nobody saw.
   const editingSetlistId: string | undefined = isEditing ? editingEvent?.setlistId : undefined;
   const savedSongCountRef = useRef(0);
+  // Editing: the setlist as it loaded, so the save never overwrites a newer one (188).
+  const savedSetlistRef = useRef<{ id: string; songs: { song_id: string; set_number: number; id?: string }[] } | null>(null);
   // Edit: what the form held once the saved setlist and to-dos loaded, to ask
   // before closing with changes (set below, after the snapshot).
   const editBaselineRef = useRef<string | null>(null);
@@ -776,16 +779,41 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   const rebaseEdit = () => {
     if (!editDirtyRef.current) editBaselineRef.current = null;
   };
+  // A save refused here, before anything is sent: shown over the Save button.
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // Editing a gig that has a setlist: where its load stands. The setlist is
+  // edited only once it is 'ready'. While 'loading' the section says so, and
+  // 'failed' shows why instead of the editor: songs added on top of a setlist
+  // that had not loaded yet replaced it when saved (25 songs became 3).
+  // 'none': a new gig, or a gig with no setlist, editable at once.
+  const setlistLoadStart = (): 'none' | 'loading' => (editingSetlistId && !Array.isArray(ds?.setlist) ? 'loading' : 'none');
+  const [setlistLoad, setSetlistLoad] = useState<'none' | 'loading' | 'ready' | 'failed'>(setlistLoadStart);
+  const setlistEditable = setlistLoad === 'none' || setlistLoad === 'ready';
   useEffect(() => {
+    // Another gig (or none): nothing is loaded for it yet. savedSetlistRef
+    // stays null until the gig's setlist has loaded; a load that fails leaves
+    // it null, and the save then refuses songs (handleCreate, Codex C1).
+    savedSetlistRef.current = null;
+    savedSongCountRef.current = 0;
+    setSaveError(null);
+    setSetlistLoad(setlistLoadStart());
     if (!editingSetlistId || Array.isArray(ds?.setlist)) return;
     let cancelled = false;
+    const failed = () => {
+      if (!cancelled) setSetlistLoad('failed');
+    };
     getSetlist(editingSetlistId).then(({ data, error }) => {
-      if (cancelled || error || !data?.songs?.length) return;
+      if (cancelled) return;
+      if (error || !data) return failed();
+      savedSetlistRef.current = { id: editingSetlistId, songs: setlistOrder(data.songs ?? []) };
+      setSetlistLoad('ready');
+      if (!data.songs?.length) return;
       const sets = setsFromSetlistSongs(data.songs, (n) => t('Set {n}', { n }));
       savedSongCountRef.current = setSongCount(sets);
       rebaseEdit();
-      setSetlist((prev) => (setSongCount(prev) > 0 ? prev : sets));
-    });
+      // The saved songs are the form's songs: none could be added before them.
+      setSetlist(sets);
+    }, failed);
     return () => {
       cancelled = true;
     };
@@ -968,6 +996,15 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
 
   const handleCreate = async () => {
     if (isSaving) return;
+    setSaveError(null);
+    // The gig has a setlist, and this form does not hold it as it is saved
+    // (the load failed, has not come back yet, or was skipped): songs sent
+    // now would replace all of it, unchecked. Nothing is saved (Codex C1).
+    const setlistUnknown = isEditing && !!editingSetlistId && !savedSetlistRef.current;
+    if (setlistUnknown && setSongCount(setlist) > 0) {
+      setSaveError(t('The setlist could not be loaded. Close and reopen the gig.'));
+      return;
+    }
     const fallbackTitle = getEffectiveTitle();
 
     const membersWithUserIds = selectedMembers.map(id => {
@@ -998,7 +1035,10 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       _lineupCleared: lineupCleared(isEditing, initialLineupCount, membersWithUserIds.length),
       setlist,
       // Every song removed from a saved setlist: empty it (no songs alone means "unchanged").
-      _setlistCleared: isEditing && savedSongCountRef.current > 0 && setSongCount(setlist) === 0,
+      // A setlist that never loaded is never "emptied": no songs leaves it as it is.
+      _setlistCleared: isEditing && !setlistUnknown && savedSongCountRef.current > 0 && setSongCount(setlist) === 0,
+      // No setlist when the gig was opened: a setlist someone adds meanwhile is never written over (B3).
+      _setlistExpected: isEditing ? (editingSetlistId ? savedSetlistRef.current : { id: null, songs: [] }) : null,
       // A task typed but not yet added with the button still counts.
       tasks: newTaskText.trim()
         ? [...tasks, { uid: `t-${Date.now()}`, title: newTaskText.trim(), completed: false }]
@@ -1837,6 +1877,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   };
   // One set (or none yet): that's where the songs go. More: ask which.
   const startAddSongs = () => {
+    if (!setlistEditable) return;
     if (setlist.length > 1) setSetChooserOpen(true);
     else openSongPicker(setlist[0]?.uid || null);
   };
@@ -2305,28 +2346,52 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
         onToggle={() => toggleEditSection('setlist_tasks')}
         stepNumber="04"
         title={t('Setlist, tasks & notes')}
-        summary={`${songsText(totalSongCount)} · ${tasksText(tasks.length)} · ${notes ? t('Notes attached') : t('No notes')}`}
+        summary={[
+          // The song count only once the gig's setlist is in: "0 songs" while it loads would be wrong.
+          setlistEditable ? songsText(totalSongCount) : setlistLoad === 'loading' ? t('Loading setlist…') : null,
+          tasksText(tasks.length),
+          notes ? t('Notes attached') : t('No notes'),
+        ]
+          .filter(Boolean)
+          .join(' · ')}
       >
-        <div className="rounded-[16px] bg-foreground/[0.08] p-4 flex items-center justify-between gap-3">
+        <div
+          className="rounded-[16px] bg-foreground/[0.08] p-4 flex items-center justify-between gap-3"
+          aria-busy={setlistLoad === 'loading' || undefined}
+        >
           <div className="flex flex-col gap-1 min-w-0">
             <span className="bw-label-sm text-muted-foreground">{t('Setlist')}</span>
-            <span className="bw-body-lg text-foreground">
-              {setsText(setlist.length)} · {songsText(totalSongCount)}
-            </span>
+            {setlistLoad === 'failed' ? (
+              // Not loaded: said here, in place of the editor (nothing to add songs to).
+              <p role="alert" className="bw-body-sm text-destructive [overflow-wrap:anywhere]">
+                {t('The setlist could not be loaded. Close and reopen the gig.')}
+              </p>
+            ) : setlistLoad === 'loading' ? (
+              <span role="status" className="bw-body-lg text-muted-foreground">
+                {t('Loading setlist…')}
+              </span>
+            ) : (
+              <span className="bw-body-lg text-foreground">
+                {setsText(setlist.length)} · {songsText(totalSongCount)}
+              </span>
+            )}
           </div>
-          <PillButton
-            variant="primary"
-            size="sm"
-            fullWidth={false}
-            icon={<Music className="w-4 h-4" />}
-            onClick={startAddSongs}
-          >
-            {t('Pick songs')}
-          </PillButton>
+          {setlistLoad !== 'failed' && (
+            <PillButton
+              variant="primary"
+              size="sm"
+              fullWidth={false}
+              icon={<Music className="w-4 h-4" />}
+              onClick={startAddSongs}
+              disabled={!setlistEditable}
+            >
+              {t('Pick songs')}
+            </PillButton>
+          )}
         </div>
 
         {/* Songs in play order; the admin reorders them (saved with the gig). */}
-        {isAdmin && totalSongCount > 0 && (
+        {isAdmin && setlistEditable && totalSongCount > 0 && (
           <div className="flex flex-col gap-2">
             {reorderHint}
             {setlist.map((item, i) =>
@@ -2459,6 +2524,11 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
 
           {/* CTA bar */}
           <div className="bw-edit-cta shrink-0 px-4 pt-3 bg-background" style={ctaPadBottom}>
+            {saveError && (
+              <p role="alert" className="bw-body-sm text-destructive mb-2 [overflow-wrap:anywhere]">
+                {saveError}
+              </p>
+            )}
             <div className="grid grid-cols-[2fr_3fr] gap-3">
               <PillButton variant="outline" size="lg" onClick={requestEditClose}>
                 {t('Cancel')}

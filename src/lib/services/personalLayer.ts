@@ -83,14 +83,25 @@ const waitingChange = (me: string | null, id?: string) =>
  * Save my note. With no signal it is kept on this phone and sent when back
  * online (liveOutbox.ts): `queued`.
  */
+/**
+ * Save one of my notes. `owner`: the account signed in when Save was tapped.
+ * If the session is someone else's by the time the request goes out (a
+ * bandmate signed in on the same browser), nothing is written or queued;
+ * the row names its owner too, so the database (user_id = auth.uid())
+ * refuses it for any other session.
+ */
 export const savePersonalNote = async (
   songId: string,
   anchor: NoteAnchor,
   body: string,
   id?: string,
+  owner?: string | null,
 ): Promise<{ error: unknown; queued?: true }> => {
   const text = body.trim().slice(0, 2000);
   const me = await sessionUserId();
+  if (owner !== undefined && (!me || me !== owner)) {
+    return { error: new UserError(t('Sign in again to save this note.')) };
+  }
   const queue = (isNew: boolean) => {
     queueLiveOp(me!, { kind: 'note', id: id ?? newLocalId(), songId, anchor, body: text, isNew });
     changed(songId);
@@ -99,9 +110,15 @@ export const savePersonalNote = async (
   if (waitingNew(me, id)) return queue(true);
   if (waitingChange(me, id)) return queue(false);
   const res = id
-    ? await supabase.from('song_personal_notes').update({ body: text, anchor }).eq('id', id)
-    : await supabase.from('song_personal_notes').insert({ song_id: songId, anchor, body: text });
+    ? await (me
+        ? supabase.from('song_personal_notes').update({ body: text, anchor }).eq('id', id).eq('user_id', me).select('id')
+        : supabase.from('song_personal_notes').update({ body: text, anchor }).eq('id', id).select('id'))
+    : await supabase.from('song_personal_notes').insert({ song_id: songId, anchor, body: text, ...(me ? { user_id: me } : {}) });
   if (res.error && me && isOfflineError(res.error)) return queue(!id);
+  // An edit that matched no note (deleted on another device): nothing saved.
+  if (!res.error && id && !(Array.isArray(res.data) && res.data.length > 0)) {
+    return { error: new UserError(t('This note was deleted, maybe on another device. Nothing was saved.')) };
+  }
   if (!res.error) changed(songId);
   return { error: res.error };
 };

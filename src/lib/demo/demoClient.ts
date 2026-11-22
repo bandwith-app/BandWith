@@ -7,6 +7,7 @@
  * survive a reload; signing out wipes it.
  */
 import { buildSeed, DEMO_USER, type DemoDB, type Row } from './seed';
+import { voicesKey } from '@/lib/voicesKey';
 import { memberStatsFromRows } from '@/lib/memberStats';
 import { freeSlotsFromRows, type MemberCommitment } from '@/lib/freeSlots';
 import { computeEntitlements, limitFor, type BandPlanRow, type Entitlements, type LimitKey } from '@/lib/plans';
@@ -1100,7 +1101,7 @@ function demoPlanWrite(name: string, row: Row, before?: Row) {
 let demoCalendarToken = '';
 const demoEventCalendarTokens = new Map<string, string>();
 
-const rpc = (fn: string, args: Row = {}) => {
+const rpcOnline = (fn: string, args: Row = {}) => {
   let data: any = null;
   let error: any = null;
   switch (fn) {
@@ -1882,6 +1883,86 @@ const rpc = (fn: string, args: Row = {}) => {
       data = true;
       break;
     }
+    // A setlist saved in one go (188): rows of songs still there keep their id, notes and voice parts.
+    case 'bw_save_setlist_songs': {
+      const id = args.p_setlist_id;
+      const all = table('setlist_songs');
+      const before = all
+        .filter((r) => r.setlist_id === id)
+        .sort((a, b) => (a.set_number ?? 1) - (b.set_number ?? 1) || a.position - b.position);
+      // Changed since the editor loaded it (188 p_expected): nothing is written.
+      const exp = args.p_expected as { name?: string; songs?: Row[] } | null | undefined;
+      if (exp && typeof exp === 'object') {
+        const sl = table('setlists').find((r) => r.id === id);
+        const now = before.map((r) => ({ id: r.id, song_id: r.song_id, set_number: r.set_number ?? 1, vocal_parts: r.vocal_parts ?? null }));
+        const want = Array.isArray(exp.songs) ? exp.songs : [];
+        // Per place: song and set; the row when named; who sings it when sent (188, voicesKey).
+        const differs =
+          now.length !== want.length ||
+          want.some((w, i) =>
+            w.song_id !== now[i].song_id ||
+            (w.set_number ?? 1) !== now[i].set_number ||
+            (w.id && w.id !== now[i].id) ||
+            ('vocal_parts' in w && voicesKey(w.vocal_parts) !== voicesKey(now[i].vocal_parts)));
+        if (('name' in exp && exp.name !== sl?.name) || ('songs' in exp && differs)) {
+          data = { saved: false, conflict: true, current: { name: sl?.name ?? '', songs: now } };
+          break;
+        }
+      }
+      const left = [...before];
+      const list: Row[] = Array.isArray(args.p_songs) ? args.p_songs : [];
+      const now = new Date().toISOString();
+      const next: Row[] = list.map((e, i) => {
+        // An entry naming its row keeps it (188), else the first of that song.
+        const byId = e.id ? left.findIndex((r) => r.id === e.id && r.song_id === e.song_id) : -1;
+        const k = byId >= 0 ? byId : left.findIndex((r) => r.song_id === e.song_id);
+        const old = k >= 0 ? left.splice(k, 1)[0] : null;
+        return {
+          ...(old ?? { id: uuid(), created_at: now, vocal_parts: null }),
+          setlist_id: id,
+          song_id: e.song_id,
+          position: i + 1,
+          set_number: typeof e.set_number === 'number' && e.set_number >= 1 ? Math.floor(e.set_number) : 1,
+          notes: 'notes' in e ? (e.notes ?? null) : (old?.notes ?? null),
+        };
+      });
+      for (let i = all.length - 1; i >= 0; i--) if (all[i].setlist_id === id) all.splice(i, 1);
+      all.push(...next);
+      const s = table('setlists').find((r) => r.id === id);
+      if (s) {
+        s.song_count = next.length;
+        const name = typeof args.p_name === 'string' ? args.p_name.trim() : '';
+        if (name) s.name = name;
+        s.updated_at = now;
+      }
+      persist();
+      data = {
+        saved: true,
+        song_count: next.length,
+        previous: before.map((r) => ({ song_id: r.song_id, set_number: r.set_number ?? 1, position: r.position })),
+        rows: next.map((r) => ({ id: r.id, song_id: r.song_id, set_number: r.set_number, position: r.position })),
+      };
+      break;
+    }
+    // Lyrics written only over the version the editor loaded (189).
+    case 'bw_save_song_lyrics': {
+      const song = table('songs').find((r) => r.id === args.p_song_id);
+      if (!song) {
+        error = { code: '42501', message: 'Only band admins can change this song' };
+        break;
+      }
+      const current = song.lyrics ?? null;
+      if (current !== (args.p_expected ?? null)) {
+        data = { saved: false, lyrics: current };
+        break;
+      }
+      if (args.p_fields && typeof args.p_fields === 'object') Object.assign(song, args.p_fields);
+      song.lyrics = args.p_lyrics;
+      song.updated_at = new Date().toISOString();
+      persist();
+      data = { saved: true, lyrics: args.p_lyrics };
+      break;
+    }
     case 'update_setlist_song_count': {
       const id = args.p_setlist_id ?? args.setlist_id;
       const s = table('setlists').find((r) => r.id === id);
@@ -1891,13 +1972,23 @@ const rpc = (fn: string, args: Row = {}) => {
     }
   }
   const res = { data, error, count: null, status: error ? 400 : 200, statusText: error ? 'Bad Request' : 'OK' };
-  const p: any = Promise.resolve(res);
-  // rpc() is sometimes chained with .single()/.maybeSingle().
+  return chainable(Promise.resolve(res));
+};
+
+// rpc() is sometimes chained with .single()/.maybeSingle().
+const chainable = (p: any) => {
   p.single = () => p;
   p.maybeSingle = () => p;
   p.select = () => p;
   return p;
 };
+
+// Offline (dev builds, the e2e suite): an RPC fails like a real one with no
+// network and writes nothing, as table requests do (DemoQuery.then).
+const rpc = (fn: string, args: Row = {}) =>
+  demoNetworkDown()
+    ? chainable(new Promise((r) => setTimeout(() => r({ data: null, error: { message: 'TypeError: Failed to fetch', code: '' }, count: null, status: 0, statusText: '' }), 40)))
+    : rpcOnline(fn, args);
 
 // ------------------------------------------------------------------ client --
 

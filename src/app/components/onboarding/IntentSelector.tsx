@@ -4,6 +4,7 @@ import { ArrowUpRight } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
 import { useOnboarding } from '@/lib/OnboardingContext';
 import { useAuth } from '@/lib/AuthContext';
+import { signOutCancelled } from '@/lib/signOutGate';
 import { Kicker, PillButton } from '@/app/components/bw/Form';
 import { DotMatrixRadio, WizardTop, wizardStep } from './OnboardingChrome';
 import { useT } from '@/lib/i18n';
@@ -59,8 +60,8 @@ export const IntentSelector: React.FC<IntentSelectorProps> = ({
   const handleSignOut = async () => {
     if (signingOut) return;
     setSigningOut(true);
-    const { error } = await signOut();
-    if (error) setSigningOut(false);
+    const res = await signOut();
+    if (res.error || signOutCancelled(res)) setSigningOut(false);
   };
   const { step, total } = wizardStep(path, 'intent');
 

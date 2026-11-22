@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { render, cleanup, fireEvent, screen, waitFor, act } from '@testing-library/react';
 
 // Phase 3: the gig wizard closes only after a save, and keeps what the user
 // typed (and a draft) when the save fails. Band, pricing, songs and tasks
@@ -20,7 +20,8 @@ vi.mock('@/lib/supabase', () => {
   });
   return { supabase: chain };
 });
-vi.mock('@/lib/services/songs', () => ({
+vi.mock('@/lib/services/songs', async (orig) => ({
+  setlistOrder: (await orig<typeof import('@/lib/services/songs')>()).setlistOrder,
   getSongs: vi.fn(async () => ({ data: [], error: null })),
   getSetlists: vi.fn(async () => ({ data: [], error: null })),
   getSetlist: vi.fn(async () => ({ data: null, error: null })),
@@ -47,6 +48,7 @@ vi.mock('@/lib/wizardDrafts', async (orig) => ({
 }));
 
 import { CreateEventModal } from '../CreateEventModal';
+import { getSetlist } from '@/lib/services/songs';
 import { addressWithoutCity } from '@/lib/eventAddress';
 
 const gig = {
@@ -114,6 +116,39 @@ describe('editing a gig (Phase 3)', () => {
     fireEvent.click(screen.getByText('Save changes'));
     await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
     expect(((onCreate.mock.calls[0] as unknown[])[0] as any).setting).toBe('hybrid');
+  });
+});
+
+describe('editing the gig setlist (audit review, Claude MINOR 9)', () => {
+  it('sends the setlist as it loaded, so the save never overwrites a newer one', async () => {
+    vi.mocked(getSetlist).mockResolvedValueOnce({
+      data: {
+        id: 'sl-9', name: 'Rooftop Session setlist',
+        songs: [
+          { id: 'r1', song_id: 'A', position: 0, set_number: 1, song: { id: 'A', title: 'Autumn Leaves' } },
+          { id: 'r2', song_id: 'A', position: 1, set_number: 2, song: { id: 'A', title: 'Autumn Leaves' } },
+        ],
+      } as any,
+      error: null,
+    });
+    const onCreate = vi.fn(async () => true);
+    render(<CreateEventModal onClose={vi.fn()} onCreate={onCreate} editingEvent={{ ...gig, setlistId: 'sl-9' }} currentUserId="me" />);
+    await waitFor(() => expect(getSetlist).toHaveBeenCalledWith('sl-9'));
+    await act(async () => {});
+    fireEvent.click(screen.getByText('Save changes'));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
+    const sent = (onCreate.mock.calls[0] as unknown[])[0] as any;
+    expect(sent._setlistExpected).toEqual({ id: 'sl-9', songs: [{ id: 'r1', song_id: 'A', set_number: 1 }, { id: 'r2', song_id: 'A', set_number: 2 }] });
+  });
+
+  // Round 7 (Codex r6 B3): the gig had no setlist when opened: the save says
+  // so, and a setlist someone adds meanwhile is never written over.
+  it('a gig with no setlist when opened sends "none loaded"', async () => {
+    const onCreate = vi.fn(async () => true);
+    render(<CreateEventModal onClose={vi.fn()} onCreate={onCreate} editingEvent={{ ...gig, setlistId: undefined }} currentUserId="me" />);
+    fireEvent.click(screen.getByText('Save changes'));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
+    expect(((onCreate.mock.calls[0] as unknown[])[0] as any)._setlistExpected).toEqual({ id: null, songs: [] });
   });
 });
 

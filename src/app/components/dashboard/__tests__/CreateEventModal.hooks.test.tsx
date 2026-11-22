@@ -20,7 +20,8 @@ vi.mock('@/lib/supabase', () => {
   });
   return { supabase: chain };
 });
-vi.mock('@/lib/services/songs', () => ({
+vi.mock('@/lib/services/songs', async (orig) => ({
+  setlistOrder: (await orig<typeof import('@/lib/services/songs')>()).setlistOrder,
   getSongs: vi.fn(async () => ({ data: [], error: null })),
   getSetlists: vi.fn(async () => ({ data: [], error: null })),
   getSetlist: vi.fn(async () => ({ data: null, error: null })),

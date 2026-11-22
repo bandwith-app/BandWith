@@ -36,6 +36,7 @@ import { HeaderAction, IconButton, NavBackButton, Tag } from '@/app/components/b
 import { RailCover, useRailAction } from '@/lib/railActions';
 import { useSystemBack } from '@/lib/backStack';
 import { LeaveWizardSheet } from '@/app/components/bw/LeaveWizardSheet';
+import { UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
 import { PillButton, PillField } from '@/app/components/bw/Form';
 import {
   Quote,
@@ -1484,8 +1485,8 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
 
   // A save is running: the buttons show a spinner and a second tap does nothing.
   const [submitting, setSubmitting] = useState(false);
-  const handleCreate = (sendImmediately = true, sendToClient = false) => {
-    if (submitting) return;
+  /** The quote as Save would write it now. */
+  const buildQuoteData = (): Partial<Quote> => {
     const finalEventName = getEffectiveTitle();
     const finalClientName = clientName.trim() || 'Client';
 
@@ -1582,6 +1583,12 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
       updatedAt: new Date().toISOString(),
       eventTitle: finalEventName,
     };
+    return quoteData;
+  };
+
+  const handleCreate = (sendImmediately = true, sendToClient = false) => {
+    if (submitting) return;
+    const quoteData = buildQuoteData();
     const pending = onCreate(quoteData, {
       share: sendImmediately,
       ...(sendToClient ? { send: true } : {}),
@@ -3131,6 +3138,99 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
     return true;
   });
 
+  // Editing a saved quote: Back, X and Cancel ask first when something
+  // changed (audit 10 #5: Back went past the editor and dropped the edits).
+  // Decided by the values, never by input events (a time wheel changes the
+  // time with none). Two groups:
+  // - what only the user sets (client, date and times, venue, notes…) is
+  //   compared with the quote as it opened;
+  // - what the form also settles by itself from the band's pricing (fees,
+  //   totals, currency, extras, deposit…) is compared per field: a field the
+  //   user changed (in the render of an input, a tap or a key: touched) keeps
+  //   the value it opened with as its baseline; a field the form changes on
+  //   its own (the pricing arriving, however late, and what follows from it)
+  //   moves its baseline along, unless the user touched it.
+  const SETTLED_BY_FORM = [
+    'currency', 'baseFee', 'musicianCount', 'musicians', 'performanceType',
+    'travelIncluded', 'travelFee', 'travelDistanceKm', 'travelMode',
+    'accommodationFee', 'mealsFee', 'lightsFee', 'backlineFee',
+    'productionTier', 'soundIncluded', 'soundFee', 'customItems', 'quoteOptions',
+    'depositAmount', 'depositRequired', 'depositPercentage', 'validityDays', 'validUntil',
+    'subtotal', 'discountAmount', 'netAmount', 'vatAmount', 'total', 'totalWithVat',
+  ];
+  const editBaselineRef = useRef<{ own: string; settled: Record<string, string> } | null>(null);
+  const editLastRef = useRef<Record<string, string> | null>(null);
+  const editTouchedRef = useRef(new Set<string>());
+  const editPricingRef = useRef(pricingSettings);
+  // An input, tap or key of the user's is being handled (until its renders are done).
+  const userActRef = useRef(false);
+  React.useEffect(() => {
+    if (!isEditing) return;
+    let held = false;
+    let timer: number | undefined;
+    const act = () => {
+      userActRef.current = true;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => (userActRef.current = held), 0);
+    };
+    const down = () => ((held = true), act());
+    const up = () => ((held = false), act());
+    const kinds = ['input', 'change', 'click', 'keydown'] as const;
+    for (const k of kinds) document.addEventListener(k, act, true);
+    document.addEventListener('pointerdown', down, true);
+    document.addEventListener('pointerup', up, true);
+    document.addEventListener('pointercancel', up, true);
+    return () => {
+      for (const k of kinds) document.removeEventListener(k, act, true);
+      document.removeEventListener('pointerdown', down, true);
+      document.removeEventListener('pointerup', up, true);
+      document.removeEventListener('pointercancel', up, true);
+      window.clearTimeout(timer);
+    };
+  }, [isEditing]);
+  const editSnapshot = isEditing
+    ? (() => {
+        const { createdAt: _c, updatedAt: _u, ...rest } = buildQuoteData() as Record<string, unknown>;
+        const own: Record<string, unknown> = {};
+        const settled: Record<string, string> = {};
+        for (const [k, v] of Object.entries(rest)) {
+          if (SETTLED_BY_FORM.includes(k)) settled[k] = JSON.stringify(v ?? null);
+          else own[k] = v;
+        }
+        return { own: JSON.stringify(own), settled };
+      })()
+    : null;
+  if (editSnapshot) {
+    const base = editBaselineRef.current;
+    const last = editLastRef.current;
+    // The band's pricing arrived in this very render: what it changed is the form's.
+    const pricingRender = editPricingRef.current !== pricingSettings;
+    editPricingRef.current = pricingSettings;
+    if (!base) editBaselineRef.current = { own: editSnapshot.own, settled: { ...editSnapshot.settled } };
+    else if (last) {
+      // Only the fields that changed in this render, by whom it changed them.
+      for (const [k, v] of Object.entries(editSnapshot.settled)) {
+        if (last[k] === v) continue;
+        if (userActRef.current && !pricingRender) editTouchedRef.current.add(k);
+        else if (!editTouchedRef.current.has(k)) base.settled[k] = v;
+      }
+    }
+    editLastRef.current = editSnapshot.settled;
+  }
+  const editDirty =
+    !!editSnapshot &&
+    !!editBaselineRef.current &&
+    (editSnapshot.own !== editBaselineRef.current.own ||
+      Object.entries(editSnapshot.settled).some(([k, v]) => editBaselineRef.current!.settled[k] !== v));
+  const [editLeaveOpen, setEditLeaveOpen] = useState(false);
+  const requestEditClose = () => (editDirty ? setEditLeaveOpen(true) : onClose());
+  useSystemBack(isEditing, () => {
+    if (editLeaveOpen) setEditLeaveOpen(false);
+    else if (quoteSheet) setQuoteSheet(null);
+    else requestEditClose();
+    return true;
+  });
+
   const closeInRail = useRailAction(isEditing ? undefined : requestClose, {
     label: t('Close quote wizard'),
     icon: <X />,
@@ -3140,7 +3240,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
   if (isEditing) {
     const editActions = (
       <div className="flex gap-2">
-        <PillButton variant="outline" fullWidth={false} className="px-4" onClick={onClose}>
+        <PillButton variant="outline" fullWidth={false} className="px-4" onClick={requestEditClose}>
           {t('Cancel')}
         </PillButton>
         <PillButton variant="outline" fullWidth={false} className="px-4" disabled={submitting} onClick={() => handleCreate(false)}>
@@ -3177,7 +3277,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
               </span>
             </div>
             <RailCover pane />
-            <HeaderAction pane label={t('Close edit quote modal')} icon={<X />} onClick={onClose} />
+            <HeaderAction pane label={t('Close edit quote modal')} icon={<X />} onClick={requestEditClose} />
           </div>
         </header>
 
@@ -3198,6 +3298,21 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
             {editActions}
           </>,
         )}
+        <UnsavedChangesSheet
+          open={editLeaveOpen}
+          title={t('Save your changes?')}
+          body={t('You changed this quote. Save to keep the changes, or discard them.')}
+          saving={submitting}
+          onKeepEditing={() => setEditLeaveOpen(false)}
+          onDiscard={() => {
+            setEditLeaveOpen(false);
+            onClose();
+          }}
+          onSave={() => {
+            setEditLeaveOpen(false);
+            handleCreate(false);
+          }}
+        />
       </motion.div>
     );
   }

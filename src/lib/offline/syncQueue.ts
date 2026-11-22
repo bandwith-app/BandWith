@@ -5,7 +5,7 @@ import {
   LEGACY_MUTATION_QUEUE_KEY,
 } from './storage';
 import { isOfflineError } from './networkErrors';
-import { extrasOf, mergeExtras, replayEventExtras } from './eventExtras';
+import { extrasOf, mergeExtras, replayEventExtras, SETLIST_WAITING, type QueuedEventExtras } from './eventExtras';
 import * as eventsService from '@/lib/services/events';
 import { supabase } from '@/lib/supabase';
 import { t } from '@/lib/i18n';
@@ -321,8 +321,30 @@ export const isTransientSyncError = (err: any): boolean => {
 };
 
 type ExecOutcome =
-  | { ok: true; realId?: string }
+  /** `keep`: the event is saved, but this stays queued in its place (a setlist with no room in the refused list). */
+  | { ok: true; realId?: string; keep?: OfflineMutation }
   | { ok: false; error: any; orphaned?: boolean };
+
+/**
+ * The event is on the server but its setlist met someone else's and the
+ * refused list had no room: never dropped. What stays queued is an edit of
+ * that event with only the setlist, tried again later.
+ */
+const keepSetlist = async (
+  mutation: OfflineMutation,
+  eventId: string,
+  extras: QueuedEventExtras,
+  owner: string | null,
+): Promise<OfflineMutation | undefined> => {
+  const failed = await replayEventExtras(eventId, extras, owner);
+  if (!failed.includes(SETLIST_WAITING) || !extras.setlist) return undefined;
+  return {
+    ...mutation,
+    type: 'update_event',
+    payload: { eventId, updates: {}, extras: { setlist: extras.setlist } },
+    lastError: 'BW_REFUSED_FULL',
+  };
+};
 
 const resolveEventId = (eventId: any): { id: any; orphaned: boolean } => {
   if (!isTempId(eventId)) return { id: eventId, orphaned: false };
@@ -330,7 +352,7 @@ const resolveEventId = (eventId: any): { id: any; orphaned: boolean } => {
   return real ? { id: real, orphaned: false } : { id: eventId, orphaned: true };
 };
 
-const executeMutation = async (mutation: OfflineMutation): Promise<ExecOutcome> => {
+const executeMutation = async (mutation: OfflineMutation, owner: string | null = null): Promise<ExecOutcome> => {
   if (mutation.type === 'create_event') {
     const { eventData, memberIds, isPersonalGig, personalGigInput, clientId } = mutation.payload || {};
     let result: { data: any; error: any };
@@ -359,8 +381,8 @@ const executeMutation = async (mutation: OfflineMutation): Promise<ExecOutcome> 
     if (!result.error && result.data) {
       const realId = result.data.id || clientId;
       // Setlist, to-dos, rider & stage saved with the gig offline.
-      if (extras && realId) await replayEventExtras(realId, extras);
-      return { ok: true, realId };
+      const keep = extras && realId ? await keepSetlist(mutation, realId, extras, owner) : undefined;
+      return { ok: true, realId, ...(keep ? { keep } : {}) };
     }
     if (clientId && isDuplicateKeyError(result.error)) {
       // The first attempt reached the server (e.g. it only timed out on the
@@ -382,8 +404,8 @@ const executeMutation = async (mutation: OfflineMutation): Promise<ExecOutcome> 
           .upsert(lineup, { onConflict: 'event_id,user_id', ignoreDuplicates: true });
         if (lineupErr) console.warn('[syncQueue] lineup after duplicate create:', lineupErr);
       }
-      if (extras) await replayEventExtras(clientId, extras);
-      return { ok: true, realId: clientId };
+      const keep = extras ? await keepSetlist(mutation, clientId, extras, owner) : undefined;
+      return { ok: true, realId: clientId, ...(keep ? { keep } : {}) };
     }
     return { ok: false, error: result.error || new Error('Create returned no data') };
   }
@@ -399,12 +421,15 @@ const executeMutation = async (mutation: OfflineMutation): Promise<ExecOutcome> 
       return error ? { ok: false, error } : { ok: true };
     }
     const { _isPendingSync, _tempId, ...cleanUpdates } = updates || {};
-    const { error } = await eventsService.updateEvent(target.id, cleanUpdates);
-    if (error) return { ok: false, error };
+    // Only a setlist kept queued (keepSetlist): the event row is already saved.
+    if (!(mutation.lastError === 'BW_REFUSED_FULL' && Object.keys(cleanUpdates).length === 0)) {
+      const { error } = await eventsService.updateEvent(target.id, cleanUpdates);
+      if (error) return { ok: false, error };
+    }
     // Lineup, setlist and to-dos edited offline.
     const extras = extrasOf(mutation.payload);
-    if (extras) await replayEventExtras(target.id, extras);
-    return { ok: true };
+    const keep = extras ? await keepSetlist(mutation, target.id, extras, owner) : undefined;
+    return { ok: true, ...(keep ? { keep } : {}) };
   }
 
   if (mutation.type === 'delete_event') {
@@ -519,7 +544,7 @@ export const processSyncQueue = async (
       if (!options.force && mutation.nextRetryAt && mutation.nextRetryAt > now) continue;
       let outcome: ExecOutcome;
       try {
-        outcome = await executeMutation(mutation);
+        outcome = await executeMutation(mutation, userId);
       } catch (err) {
         console.warn(`[SyncQueue] Error executing mutation ${mutation.id}:`, err);
         outcome = { ok: false, error: err };
@@ -527,8 +552,13 @@ export const processSyncQueue = async (
 
       if (outcome.ok) {
         result.synced++;
-        processed.add(mutation.id);
-        updated.delete(mutation.id);
+        if (outcome.keep) {
+          // Saved but for its setlist, which has no room in the refused list: stays queued, tried later.
+          updated.set(mutation.id, { ...outcome.keep, id: mutation.id, nextRetryAt: Date.now() + retryDelayMs(1) });
+        } else {
+          processed.add(mutation.id);
+          updated.delete(mutation.id);
+        }
         if (mutation.type === 'create_event' && outcome.realId) {
           tempIdsOf(mutation).forEach((t) => tempIdMap.set(t, outcome.realId as string));
         }

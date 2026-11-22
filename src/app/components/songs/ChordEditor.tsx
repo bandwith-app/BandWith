@@ -15,12 +15,14 @@ import { isChordToken } from '@/lib/lyrics';
 import { asSongChart, chordLabel, keyLabel, type SongChart } from '@/lib/ireal';
 import { ChordToken } from '@/app/components/ui/MusicSymbol';
 import { notifySongUpdated } from '@/lib/services/setlistNotify';
+import { saveSongLyricsIfUnchanged } from '@/lib/services/songs';
 import {
   applyKeyFix,
   chartChords,
   checkKey,
   chordsMissingFromChart,
   copySectionChords,
+  jsonLyricsAsText,
   matchChartSection,
   normalizeLyrics,
   parseLine,
@@ -76,9 +78,26 @@ interface EditedSong {
   band_id: string;
   title: string;
   key: string | null;
+  /** The text as the editor opened it (the baseline for "changed"). */
   lyrics: string;
+  /** songs.lyrics exactly as stored when loaded: a save is written only over this (189). */
+  stored: string | null;
   chart: SongChart | null;
 }
+
+/**
+ * Stored lyrics → the text the editor works on, line by line. Songs written
+ * before the unified format (chords on their own line above the words) are
+ * edited in it, else a chord placed on a word would sit under the old chord
+ * line and both would be saved. JSON lyrics become sections of lines (a
+ * chord on the JSON itself broke the song, audit 09 #8); they are saved as
+ * text, a format every reader shows.
+ */
+const editableLyrics = (raw: string | null): string => {
+  const fromJson = jsonLyricsAsText(raw);
+  if (fromJson !== null) return normalizeLyrics(fromJson) || fromJson;
+  return normalizeLyrics(raw) || raw || '';
+};
 
 type Pos = { line: number; word: number };
 const samePos = (a: Pos | null, b: Pos | null) => !!a && !!b && a.line === b.line && a.word === b.word;
@@ -99,6 +118,8 @@ export const ChordEditor: React.FC = () => {
   const [rangeEnd, setRangeEnd] = React.useState<number | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
+  // Someone else saved these lyrics while this editor was open: what is stored now.
+  const [conflict, setConflict] = React.useState<{ stored: string | null } | null>(null);
   // Closing with chord changes not saved asks first (the app's sheet, not a native confirm).
   const [leaveOpen, setLeaveOpen] = React.useState(false);
   // Leaving through the tab bar with changes: ask, then go where the user tapped.
@@ -126,6 +147,7 @@ export const ChordEditor: React.FC = () => {
     setHistory([]);
     setError(null);
     setCopyTo(null);
+    setConflict(null);
     if (!id) return;
     let alive = true;
     void (async () => {
@@ -136,11 +158,8 @@ export const ChordEditor: React.FC = () => {
         return;
       }
       const row = data as { id: string; band_id: string; title: string; key: string | null; lyrics: string | null; chord_chart: unknown };
-      // Songs written before the unified format (chords on their own line above
-      // the words) are edited in it: otherwise a chord placed on a word would
-      // sit under the old chord line and both would be saved.
-      const lyrics = normalizeLyrics(row.lyrics) || row.lyrics || '';
-      setSong({ id: row.id, band_id: row.band_id, title: row.title, key: row.key, lyrics, chart: asSongChart(row.chord_chart) });
+      const lyrics = editableLyrics(row.lyrics);
+      setSong({ id: row.id, band_id: row.band_id, title: row.title, key: row.key, lyrics, stored: row.lyrics ?? null, chart: asSongChart(row.chord_chart) });
       setText(lyrics);
     })();
     return () => {
@@ -252,27 +271,65 @@ export const ChordEditor: React.FC = () => {
     moveChord(d.from, { line: Number(target.dataset.line), word: Number(target.dataset.word) });
   };
 
-  const save = async () => {
+  const save = async (over: string | null = song?.stored ?? null) => {
     if (!song || saving) return;
     setSaving(true);
     setError(null);
-    const { error: e } = await supabase.from('songs').update({ lyrics: text }).eq('id', song.id);
+    // Written only over the lyrics this editor loaded (audit 09 #6): a
+    // bandmate's save meanwhile is never erased; the draft stays here.
+    const { error: e, conflict: storedNow } = await saveSongLyricsIfUnchanged(song.id, text, over);
     setSaving(false);
     if (e) {
       setError(userMessage(e, t('Could not save the chords.')));
       return;
     }
+    if (storedNow !== undefined) {
+      setLeaveOpen(false);
+      pendingLeave.current = null;
+      setConflict({ stored: storedNow });
+      return;
+    }
+    setConflict(null);
     void notifySongUpdated(song.id, ['chords']);
     try {
       window.dispatchEvent(new CustomEvent(SONG_SAVED, { detail: { id: song.id, lyrics: text } }));
     } catch {
       /* no window */
     }
-    setSong({ ...song, lyrics: text });
+    setSong({ ...song, lyrics: text, stored: text });
     closeChordEditor();
     const next = pendingLeave.current;
     pendingLeave.current = null;
     next?.();
+  };
+
+  // The latest version replaces the draft; "mine instead" saves the draft over it.
+  // The song is read again too, so its key and iReal chart are the latest
+  // (the checks below use them); unreadable, the lyrics from the conflict.
+  const loadLatest = async () => {
+    if (!song || !conflict) return;
+    const id = song.id;
+    let latest: { stored: string | null; key: string | null; chart: SongChart | null } = { stored: conflict.stored, key: song.key, chart: song.chart };
+    try {
+      const { data } = await supabase.from('songs').select('id, band_id, title, key, lyrics, chord_chart').eq('id', id).single();
+      const row = data as { key: string | null; lyrics: string | null; chord_chart: unknown } | null;
+      if (row) latest = { stored: row.lyrics ?? null, key: row.key, chart: asSongChart(row.chord_chart) };
+    } catch {
+      /* offline: the lyrics the conflict brought */
+    }
+    // Another song was opened (or the editor closed) meanwhile: its text,
+    // undo steps and conflict are not this song's to replace.
+    if (openId !== id) return;
+    const lyrics = editableLyrics(latest.stored);
+    setSong((cur) => (cur && cur.id === id ? { ...cur, lyrics, stored: latest.stored, key: latest.key, chart: latest.chart } : cur));
+    setText(lyrics);
+    setHistory([]);
+    setSelected(null);
+    setConflict(null);
+  };
+  const saveMineInstead = () => {
+    if (!conflict) return;
+    void save(conflict.stored);
   };
 
   const selWord = selected ? parseLine(lines[selected.line] || '').words[selected.word] : null;
@@ -606,8 +663,28 @@ export const ChordEditor: React.FC = () => {
                     </PillButton>
                   </form>
                 </>
+              ) : conflict ? (
+                <div className="flex flex-col gap-3">
+                  <p role="alert" className="bw-body-md flex gap-3 items-start">
+                    <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" aria-hidden />
+                    <span className="min-w-0">
+                      {t('Someone else changed these lyrics while you were editing. Your changes are still here, not saved yet.')}
+                    </span>
+                  </p>
+                  <p className="bw-body-sm text-muted-foreground">
+                    {t('Load the latest version to see their changes (yours are dropped), or save yours over theirs.')}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <PillButton size="md" variant="outline" fullWidth={false} onClick={() => void loadLatest()} disabled={saving}>
+                      {t('Load the latest version')}
+                    </PillButton>
+                    <PillButton size="md" variant="dark" fullWidth={false} onClick={saveMineInstead} loading={saving}>
+                      {t('Save mine instead')}
+                    </PillButton>
+                  </div>
+                </div>
               ) : (
-                <PillButton icon={<Check className="w-4 h-4" />} onClick={save} loading={saving} disabled={!dirty}>
+                <PillButton icon={<Check className="w-4 h-4" />} onClick={() => void save()} loading={saving} disabled={!dirty}>
                   {t('Save chords')}
                 </PillButton>
               )}

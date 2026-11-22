@@ -286,12 +286,55 @@ export const deleteChatOutboxEntry = async (userId: string | null | undefined, c
 };
 
 /**
- * Removes every cached key `drop` says yes to (IndexedDB and the localStorage
- * fallback), never the chat outbox: sign-out keeps unsent chat messages for
- * their account (Codex #291 r7 B5; #292's KEEP_ON_SIGN_OUT_PREFIXES has it).
+ * Kept per account until the person deals with them: the changes the server
+ * refused (Settings › Offline & live: Stage notes and orders, rehearsal notes
+ * #296) and the chat messages not sent yet (#291). No bulk wipe takes them,
+ * sign-out included; only deleting the account erases them (accountWrites.ts).
  */
-const removeOfflineItemsWhere = async (dropAny: (key: string) => boolean): Promise<void> => {
-  const drop = (key: string) => !key.startsWith(CHAT_OUTBOX_PREFIX) && dropAny(key);
+export const KEEP_ON_SIGN_OUT_PREFIXES = ['bw:live_refused:', 'bw:rehearsal_notes_rejected:', CHAT_OUTBOX_PREFIX] as const;
+export const isKeptOnSignOut = (key: string): boolean => KEEP_ON_SIGN_OUT_PREFIXES.some((p) => key.startsWith(p));
+
+/**
+ * The options a sign-out clears this device with (AuthContext; #287 passes
+ * `keepPendingWrites: true`, which this file honours once #287 is in).
+ */
+export const SIGN_OUT_CLEAR = { keepPendingWrites: true } as const;
+
+type ClearCall = (prefix?: string, opts?: typeof SIGN_OUT_CLEAR) => Promise<void>;
+let probe: ((drop: (key: string) => boolean) => void) | null = null;
+
+/**
+ * Does a sign-out keep `key` on this device? One source of truth: it asks
+ * clearOfflineCache itself, as a dry run (nothing is removed), so the
+ * sign-out sheet's sentence always follows what the wipe does: refused
+ * changes and chat messages always stay; queued changes stay only when
+ * clearOfflineCache keeps pending writes (#287). Synchronous: the dry run
+ * never spans an await, so no other wipe can run inside it. `clear`: tests.
+ */
+export function signOutKeeps(key: string, clear: ClearCall = clearOfflineCache as ClearCall): boolean {
+  let erased = true; // not reached by the dry run: say "deleted", never promise more
+  probe = (drop) => {
+    erased = drop(key);
+  };
+  try {
+    // The key as prefix: only it is looked at, and no legacy step runs first.
+    void clear(key, SIGN_OUT_CLEAR).catch(() => {});
+  } finally {
+    probe = null;
+  }
+  return !erased;
+}
+
+/** Removes every cached key `drop` says yes to (IndexedDB and the localStorage fallback), never a kept one. */
+export const removeOfflineItemsWhere = async (dropAny: (key: string) => boolean): Promise<void> => {
+  const drop = (key: string) => !isKeptOnSignOut(key) && dropAny(key);
+  // signOutKeeps' dry run: answer, touch nothing.
+  if (probe) {
+    const answer = probe;
+    probe = null;
+    answer(drop);
+    return;
+  }
   if (isIndexedDBAvailable()) {
     try {
       const db = await getDB();

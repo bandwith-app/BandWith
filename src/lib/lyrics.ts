@@ -53,6 +53,21 @@ const fromJson = (data: unknown): LyricsSection[] | null => {
   return null;
 };
 
+/**
+ * JSON lyrics (one of the shapes above) → sections; null when the text is
+ * not JSON lyrics (plain text, Markdown, "[Chorus]"…).
+ */
+export function parseJsonLyrics(raw: string | null | undefined): LyricsSection[] | null {
+  const text = (raw || '').trim();
+  if (!text || (text[0] !== '{' && text[0] !== '[')) return null;
+  try {
+    const parsed = fromJson(JSON.parse(text));
+    return parsed ? parsed.filter((s) => s.name || s.lines.some((l) => l.trim())) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Lyrics text (Markdown or JSON) → sections of lines. */
 export function parseLyrics(raw: string | null | undefined): LyricsSection[] {
   const text = (raw || '').trim();

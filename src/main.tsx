@@ -8,6 +8,7 @@ import { ThemeProvider } from "./lib/ThemeContext";
 import App from "./app/App";
 import { ErrorBoundary } from "./app/components/ui/ErrorBoundary";
 import { UpdateRequired } from "./app/components/layout/UpdateRequired";
+import { UnsentChangesSignOut } from './app/components/layout/UnsentChangesSignOut';
 import { enableEdgeToEdge } from "./lib/systemBars";
 import { installDuoLayout } from "./lib/deviceRegions";
 import { installKeyboardInsets } from "./lib/keyboardInsets";
@@ -56,6 +57,8 @@ void localeReady().then(() => createRoot(document.getElementById("root")!).rende
               <App />
               {/* Paid plans P4: below the server's minimum version, "Update BandWith". */}
               <UpdateRequired />
+              {/* Signing out with changes not sent yet asks first. */}
+              <UnsentChangesSignOut />
             </ErrorBoundary>
           </BandProvider>
         </OnboardingProvider>

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, act, fireEvent, within } from '@testing-library/react';
 import { WaitingChangesTag } from '../WaitingChangesTag';
-import { flushLiveOutbox, queueLiveOp, readLiveRefused, type LiveOutboxApi } from '@/lib/liveOutbox';
+import { flushLiveOutbox, queueLiveOp, readRefusedLiveOps, type LiveOutboxApi } from '@/lib/liveOutbox';
 
 const note = (id: string, body = 'capo 2') => ({ kind: 'note' as const, id, songId: 's1', anchor: { type: 'song' as const }, body, isNew: true });
 
@@ -47,7 +47,8 @@ describe('"N changes waiting for signal"', () => {
 
 describe('a change that was not saved', () => {
   const refuse: LiveOutboxApi = {
-    note: async () => ({ error: { message: 'Forbidden' }, status: 403 }),
+    // Not allowed (42501): a refusal for good in #292's classes (liveOutbox.ts, isDefiniteRefusal).
+    note: async () => ({ error: { message: 'Forbidden', code: '42501' } }),
     noteDelete: async () => ({ error: null }),
     suggestion: async () => ({ error: null }),
     order: async () => ({ error: null }),
@@ -69,7 +70,8 @@ describe('a change that was not saved', () => {
     fireEvent.click(within(sheet).getByRole('button', { name: 'Copy' }));
     expect(writeText).toHaveBeenCalledWith('Capo 2 on the bridge');
     fireEvent.click(within(sheet).getByRole('button', { name: 'Remove' }));
-    expect(readLiveRefused('u-1')).toEqual([]);
+    // Removed through the list's own call: Settings › Offline & live no longer has it either.
+    expect(readRefusedLiveOps('u-1')).toEqual([]);
     expect(screen.queryByRole('button', { name: /wasn’t saved/ })).toBeNull();
   });
 });
