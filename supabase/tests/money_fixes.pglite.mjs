@@ -33,6 +33,18 @@
 //      BW_176_REF / BW_180_REF, git repo BW_GIT or the repo; SKIP when
 //      not found) let the
 //      event_removed_at write through;
+//   12. round 12 (Claude review of 5f062639): the accept locks the event
+//      row and checks "is the date gone" in the statement after it (the
+//      function's source, a lock probe, and a stand-in for a cancel that
+//      commits while the accept is in flight); the event delete trigger
+//      locks the quote before it writes the link (source and lock probe);
+//      a refusal writes nothing, a decline and a message take no event
+//      lock, a band going with its quotes and events still goes through;
+//      "the client answered by phone" (bw_quote_link_set_outcome, 105's,
+//      now redefined by 187) locks the quote before the link and answers
+//      as it did.
+//      PGlite is one connection: the two real races (two sessions) are
+//      left to the real-Postgres pass on the release checklist;
 //   7. 187 is a superset of 183 round 3 (the receipt in the quote's
 //      currency, deposit received locks the link before the gig, one
 //      conversation per link, a new client's old link takes nothing), the
@@ -820,6 +832,241 @@ const gig = (E) => q(`SELECT deposit_paid, payment_status FROM events WHERE id =
       `round 11: an admin whose account deletion is committed: 180 refuses the event delete as on any table, nothing marked (${delc})`);
     await db.exec(`DELETE FROM account_deletions_pending; DROP TRIGGER bw_deleting_account_writes ON quote_links; DROP TRIGGER bw_deleting_account_writes ON events;`);
   }
+}
+
+// ---------------------------------------------------------------- 12. round 12: the accept locks the event, the delete locks the quote
+{
+  const answer = (T, action, version = 1) =>
+    asAnon(() => q(`SELECT public.bw_quote_link_respond($1, $2, 'Emma Carter', NULL, $3) v`, [T, action, version]).then((r) => r.rows[0].v))
+      .then((r) => ({ r }), (e) => ({ e: e.message, code: e.code }));
+  const src = (fn) => q(`SELECT prosrc FROM pg_proc WHERE proname = $1 AND pronamespace = 'public'::regnamespace`, [fn])
+    .then((r) => (r.rows[0]?.prosrc ?? '').replace(/--[^\n]*/g, '')); // without its comments
+  // Everything an answer can write: the quote, the link, the event, the timeline, the notifications.
+  const written = (Q, E) => q(`SELECT jsonb_build_object(
+      'quote', (SELECT to_jsonb(x) FROM quotes x WHERE x.id = $1),
+      'link', (SELECT to_jsonb(x) FROM quote_links x WHERE x.quote_id = $1),
+      'event', (SELECT to_jsonb(x) FROM events x WHERE x.id = $2),
+      'activity', (SELECT count(*) FROM quote_activity x WHERE x.quote_id = $1),
+      'notifications', (SELECT count(*) FROM notifications x WHERE x.data ->> 'quote_id' = $1::text)) w`, [Q, E]).then((r) => JSON.stringify(r.rows[0].w));
+
+  // a. The source (PGlite cannot run two sessions): in the accept, the event
+  // row is locked FOR NO KEY UPDATE, and "is the date gone" is asked in a
+  // later statement; the page read before the lock (v_view) does not decide.
+  const rs = await src('bw_quote_link_respond');
+  const lockAt = rs.search(/PERFORM\s+1\s+FROM\s+public\.events\s+e\b[^;]*\bFOR\s+NO\s+KEY\s+UPDATE\s*;/i);
+  const lockEnd = lockAt < 0 ? -1 : rs.indexOf(';', lockAt);
+  const checkAt = rs.search(/bw_quote_date_unavailable\s*\(/);
+  const raiseAt = rs.indexOf("'BWQ01'");
+  const acceptAt = rs.search(/IF\s+v_action\s*=\s*'accept'\s+THEN/i);
+  ok(lockAt > acceptAt && acceptAt >= 0 && checkAt > lockEnd && raiseAt > checkAt && !/v_view\s*->>\s*'unavailable'/.test(rs),
+    `round 12: respond's accept locks the event row (FOR NO KEY UPDATE), then asks bw_quote_date_unavailable in a later statement, then refuses (accept ${acceptAt}, lock ${lockAt}..${lockEnd}, check ${checkAt}, BWQ01 ${raiseAt})`);
+  // b. The source of the delete trigger: its first statement locks the quote(s), in id order.
+  const ts = await src('bw_trg_quote_link_event_removed');
+  ok(/^\s*BEGIN\s+PERFORM\s+1\s+FROM\s+public\.quotes\s+q\b[^;]*\bORDER\s+BY\s+q\.id\s+FOR\s+UPDATE\s*;/i.test(ts)
+     && /EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+public\.bands\s+b\s+WHERE\s+b\.id\s*=\s*l\.band_id\s*\)/i.test(ts),
+    `round 12: the event delete trigger's first statement locks the quote (FOR UPDATE, ORDER BY q.id), and round 11's skip of a deleted band's link stays`);
+
+  // c. A stand-in for the admin's cancel that commits while the accept is in
+  // flight (as section 4's revoke): when armed, and the event row is not
+  // locked by this transaction, the cancel lands right after the page was
+  // read. An accept that decides on that read goes through on a cancelled
+  // event; one that locks the event and asks again refuses.
+  const mark = (await q(`SELECT pg_get_functiondef('public.bw_band_shows_mark(uuid)'::regprocedure) d`)).rows[0].d;
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS public.race_cancel (event_id uuid);
+    CREATE OR REPLACE FUNCTION public.bw_band_shows_mark(p_band_id uuid) RETURNS boolean LANGUAGE plpgsql VOLATILE SECURITY DEFINER AS $f$
+    BEGIN
+      UPDATE public.events e SET status = 'cancelled'
+       WHERE e.id IN (SELECT event_id FROM public.race_cancel)
+         AND e.xmax::text <> pg_current_xact_id()::xid::text;
+      IF FOUND THEN DELETE FROM public.race_cancel; END IF;
+      RETURN false;
+    END $f$;`);
+  const rc = await quote();
+  await db.exec(`INSERT INTO race_cancel VALUES ('${rc.E}')`);
+  const ra = await answer(rc.T, 'accept');
+  await db.exec(`DELETE FROM race_cancel`);
+  const rst = (await q(`SELECT q.status qs, l.status ls, e.status es, (SELECT count(*)::int FROM quote_activity a WHERE a.quote_id = q.id AND a.kind = 'accepted') acts
+                          FROM quotes q JOIN quote_links l ON l.quote_id = q.id JOIN events e ON e.id = $2 WHERE q.id = $1`, [rc.Q, rc.E])).rows[0];
+  ok(ra.code === 'BWQ01' && rst.qs !== 'accepted' && rst.ls !== 'accepted' && rst.acts === 0,
+    `round 12: a cancel that lands while the accept is in flight: refused (BWQ01), no accepted quote on a cancelled event (${ra.code || ra.e || ra.r?.status}; event ${rst.es}, quote ${rst.qs}, link ${rst.ls})`);
+  await db.exec(mark);
+
+  // d. Lock probes (pageinspect, as section 6): what this transaction holds
+  // at the moment the link is written.
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS r12_log (fn text, quote_locked boolean, event_locked boolean);
+    CREATE OR REPLACE FUNCTION test_r12_probe() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $f$
+    DECLARE v_quote boolean; v_event boolean;
+    BEGIN
+      SELECT test_row_locked('public.quotes', x.ctid, x.xmax) INTO v_quote FROM quotes x WHERE x.id = NEW.quote_id;
+      SELECT test_row_locked('public.events', x.ctid, x.xmax) INTO v_event FROM events x WHERE x.id = public.bw_quote_gig_id(NEW.quote_id);
+      INSERT INTO r12_log VALUES (current_setting('test.fn', true), coalesce(v_quote, false), coalesce(v_event, false));
+      RETURN NEW;
+    END $f$;
+    CREATE TRIGGER test_r12_probe BEFORE UPDATE ON quote_links FOR EACH ROW EXECUTE FUNCTION test_r12_probe();`);
+  const probed = async (fn, run) => {
+    await db.exec(`DELETE FROM r12_log; SELECT set_config('test.fn', '${fn}', false)`);
+    const r = await run();
+    return { r, log: (await q(`SELECT quote_locked q, event_locked e FROM r12_log`)).rows };
+  };
+  // An accept on a live event: the event is locked when the link is
+  // written, and it writes what it wrote before.
+  const a = await quote();
+  const acc = await probed('accept', () => answer(a.T, 'accept'));
+  const al = await link(a.Q);
+  const aq = (await q(`SELECT status, response_type, accepted_at IS NOT NULL at, responded_at IS NOT NULL rat, rejection_reason FROM quotes WHERE id = $1`, [a.Q])).rows[0];
+  const aa = (await q(`SELECT kind, body, version FROM quote_activity WHERE quote_id = $1 AND kind IN ('accepted', 'declined')`, [a.Q])).rows;
+  const an = (await q(`SELECT type, data ->> 'accepted_name' name, user_id FROM notifications WHERE data ->> 'quote_id' = $1`, [a.Q])).rows;
+  const ae = (await q(`SELECT status, payment_status, deposit_paid FROM events WHERE id = $1`, [a.E])).rows[0];
+  ok(acc.log.length === 1 && acc.log[0].q && acc.log[0].e,
+    `round 12: an accept writes the link with the quote and the event row locked by its transaction (${JSON.stringify(acc.log)})`);
+  ok(!acc.r.e && acc.r.r?.status === 'accepted' && acc.r.r?.unavailable === false && acc.r.r?.accepted_name === 'Emma Carter'
+     && al.status === 'accepted' && al.accepted_name === 'Emma Carter' && al.accepted_version === 1 && al.responded_at !== null
+     && JSON.stringify(al.accepted_snapshot) === JSON.stringify(al.snapshot) && al.decline_reason === null
+     && aq.status === 'accepted' && aq.response_type === 'accepted' && aq.at && aq.rat && aq.rejection_reason === null
+     && aa.length === 1 && aa[0].kind === 'accepted' && aa[0].body === 'Emma Carter' && aa[0].version === 1
+     && an.length === 1 && an[0].type === 'quote_accepted' && an[0].name === 'Emma Carter' && an[0].user_id === ADMIN
+     && ae.status === 'confirmed' && ae.payment_status === 'pending' && ae.deposit_paid === false,
+    `round 12: an accept on a live event writes what it wrote before: link, quote, one timeline row, one notification, the event untouched (${acc.r.e || `${al.status}/${aq.status}, ${aa.length} rows, ${an.length} notified, event ${ae.status}`})`);
+  // The reply is the page, as before (older pages read it).
+  const keys = (o) => Object.keys(o || {}).sort().join(',');
+  ok(keys(acc.r.r) === keys(await view(a.T)) && keys(acc.r.r).includes('unavailable'), `round 12: the accept's reply has the page's shape (${keys(acc.r.r)})`);
+  // A decline and a message never lock the event.
+  const dq = await quote();
+  const msg = await probed('message', () => tryIt(asAnon(() => q(`SELECT public.bw_quote_link_message($1, 'Is the load-in from 33rd Street?') v`, [dq.T]).then((r) => r.rows[0].v))));
+  const dec = await probed('decline', () => answer(dq.T, 'decline'));
+  ok(!msg.r.e && msg.log.length === 1 && msg.log[0].q && !msg.log[0].e && !dec.r.e && dec.r.r?.status === 'declined' && dec.log.length === 1 && dec.log[0].q && !dec.log[0].e,
+    `round 12: a message and a decline lock the quote and the link, never the event (message ${msg.r.e || JSON.stringify(msg.log)}, decline ${dec.r.e || JSON.stringify(dec.log)})`);
+  // A gig deleted: the trigger writes the link with the quote locked first.
+  const g = await quote();
+  const other = await quote();
+  const del = await probed('delete', () => tryIt(db.exec(`DELETE FROM events WHERE id = '${g.E}'`)));
+  ok(!del.r.e && del.log.length === 1 && del.log[0].q, `round 12: a gig delete writes its quote's link with the quote locked first (${del.r.e || JSON.stringify(del.log)})`);
+  await db.exec(`DROP TRIGGER test_r12_probe ON quote_links`);
+  // ... and still marks only its own quote's link, and no accepted one.
+  const k = await quote({ accepted: true });
+  await db.exec(`DELETE FROM events WHERE id = '${k.E}'`);
+  ok((await link(g.Q)).event_removed_at !== null && (await link(other.Q)).event_removed_at === null && (await link(k.Q)).event_removed_at === null
+     && (await q(`SELECT count(*)::int c FROM events WHERE id = $1`, [other.E])).rows[0].c === 1,
+    `round 12: a gig delete marks only its own quote's link: not another quote's, not an accepted one`);
+
+  // e. A cancelled event: refused as before, and the refusal writes nothing
+  // (the lock goes with the transaction).
+  const c = await quote();
+  await db.exec(`UPDATE events SET status = 'cancelled' WHERE id = '${c.E}'`);
+  const before = await written(c.Q, c.E);
+  const ca = await answer(c.T, 'accept');
+  const after = await written(c.Q, c.E);
+  const free = (await q(`SELECT count(*)::int c FROM pg_locks WHERE locktype IN ('tuple', 'transactionid') AND NOT granted`)).rows[0].c;
+  ok(ca.code === 'BWQ01' && /no longer available/.test(ca.e || '') && before === after && free === 0,
+    `round 12: accept on a cancelled event: BWQ01, and the quote, link, event, timeline and notifications are as they were (${ca.code || ca.e || 'accepted'}, same ${before === after})`);
+  // No event at all (a quote never put on the calendar): the lock finds no row, the accept goes through.
+  const ne = await quote();
+  await db.exec(`DELETE FROM events WHERE id = '${ne.E}'; UPDATE quotes SET converted_to_event_id = NULL WHERE id = '${ne.Q}'; UPDATE quote_links SET event_removed_at = NULL WHERE quote_id = '${ne.Q}'`);
+  const na = await answer(ne.T, 'accept');
+  ok(!na.e && na.r?.status === 'accepted', `round 12: a quote with no event (never on the calendar) still accepts (${na.e || na.r?.status})`);
+
+  // f. A band going with its quotes and its events in one statement (as an
+  // account deletion does): the trigger's lock meets a quote this statement
+  // deletes, before or after the events. Neither order errors or waits.
+  for (const first of ['quotes', 'events']) {
+    const fk = {
+      quotes: `ALTER TABLE quotes ADD CONSTRAINT test_quotes_band_fkey FOREIGN KEY (band_id) REFERENCES bands(id) ON DELETE CASCADE NOT VALID;`,
+      events: `ALTER TABLE events ADD CONSTRAINT test_events_band_fkey FOREIGN KEY (band_id) REFERENCES bands(id) ON DELETE CASCADE NOT VALID;`,
+    };
+    // Postgres fires a table's cascades in the order its FKs were made; the link's is the youngest (as 11a).
+    await db.exec(`${fk[first]} ${fk[first === 'quotes' ? 'events' : 'quotes']}
+      ALTER TABLE quote_links DROP CONSTRAINT quote_links_band_id_fkey;
+      ALTER TABLE quote_links ADD CONSTRAINT quote_links_band_id_fkey FOREIGN KEY (band_id) REFERENCES bands(id) ON DELETE CASCADE;
+      ALTER TABLE quote_activity DROP CONSTRAINT IF EXISTS quote_activity_band_id_fkey;`);
+    const [B, E1, E2, Q1, Q2] = [id(n++), id(n++), id(n++), id(n++), id(n++)];
+    const seed = `INSERT INTO bands VALUES ('${B}', 'The Hudson Horns');
+      INSERT INTO events (id, band_id, status) VALUES ('${E1}', '${B}', 'tentative'), ('${E2}', '${B}', 'confirmed');
+      INSERT INTO quotes (id, band_id, client_name, status, converted_to_event_id) VALUES ('${Q1}', '${B}', 'Emma Carter', 'sent', '${E1}'), ('${Q2}', '${B}', 'Jordan Lee', 'accepted', '${E2}');
+      INSERT INTO quote_links (quote_id, band_id, snapshot, version, status) VALUES ('${Q1}', '${B}', '{}'::jsonb, 1, 'sent'), ('${Q2}', '${B}', '{}'::jsonb, 1, 'accepted');`;
+    const run = (sql) => db.exec(sql).then(() => null, async (e) => { await db.exec('ROLLBACK').catch(() => {}); return `${e.code} ${e.message}`; });
+    const left = () => q(`SELECT (SELECT count(*)::int FROM bands WHERE id = $1) + (SELECT count(*)::int FROM quotes WHERE band_id = $1)
+                             + (SELECT count(*)::int FROM quote_links WHERE band_id = $1) + (SELECT count(*)::int FROM events WHERE band_id = $1) c`, [B]).then((r) => r.rows[0].c);
+    // Rows from an earlier transaction, then rows made in the deleting transaction (round 11's case).
+    const e1 = await run(`${seed} BEGIN; SET LOCAL lock_timeout = '2s'; DELETE FROM bands WHERE id = '${B}'; COMMIT;`);
+    const l1 = await left();
+    const e2 = await run(`BEGIN; SET LOCAL lock_timeout = '2s'; ${seed} DELETE FROM bands WHERE id = '${B}'; COMMIT;`);
+    const l2 = await left();
+    ok(e1 === null && l1 === 0 && e2 === null && l2 === 0,
+      `round 12: a band deleted with its quotes and events (${first} cascade first): goes through, committed rows and rows of the same transaction (${e1 || `left ${l1}`}; ${e2 || `left ${l2}`})`);
+    await db.exec(`ALTER TABLE quotes DROP CONSTRAINT test_quotes_band_fkey; ALTER TABLE events DROP CONSTRAINT test_events_band_fkey;`);
+  }
+
+  // g. Same signature, same grants (older builds and cached pages call it).
+  const sig = (await q(`SELECT pg_get_function_identity_arguments(p.oid) a, pg_get_function_result(p.oid) r, p.prosecdef d,
+      has_function_privilege('anon', p.oid, 'EXECUTE') anon, has_function_privilege('authenticated', p.oid, 'EXECUTE') auth,
+      (SELECT count(*)::int FROM pg_proc x WHERE x.proname = p.proname) n,
+      has_function_privilege('anon', 'public.bw_trg_quote_link_event_removed()', 'EXECUTE') tanon,
+      has_function_privilege('authenticated', 'public.bw_trg_quote_link_event_removed()', 'EXECUTE') tauth
+      FROM pg_proc p WHERE p.proname = 'bw_quote_link_respond'`)).rows[0];
+  ok(sig.a === 'p_token text, p_action text, p_name text, p_reason text, p_version integer' && sig.r === 'jsonb' && sig.d && sig.anon && sig.auth && sig.n === 1 && !sig.tanon && !sig.tauth,
+    `round 12: bw_quote_link_respond keeps its one signature and grants; the trigger function is not callable (${JSON.stringify(sig)})`);
+
+  // h. "The client answered by phone" (bw_quote_link_set_outcome, 105's body
+  // with the quote locked first): the source, a lock probe, and its replies.
+  const outcome = (Q, o, reason = null, who = asAdmin) =>
+    who(() => q(`SELECT public.bw_quote_link_set_outcome($1, $2, $3) v`, [Q, o, reason]).then((r) => r.rows[0].v)).then((r) => ({ r }), (e) => ({ e: e.message, code: e.code }));
+  const os = await src('bw_quote_link_set_outcome');
+  const oq = os.search(/FROM\s+public\.quotes\s+q\s+WHERE\s+q\.id\s*=\s*p_quote_id\s+FOR\s+UPDATE\s*;/i);
+  const ol = os.search(/FROM\s+public\.quote_links\s+l\b[^;]*\bFOR\s+UPDATE\s*;/i);
+  ok(oq >= 0 && ol > oq && os.indexOf('UPDATE public.quote_links') > ol,
+    `round 12: set_outcome locks the quote (FOR UPDATE) before the link, and writes after both (quote ${oq}, link ${ol})`);
+  await db.exec(`CREATE TRIGGER test_r12_probe BEFORE UPDATE ON quote_links FOR EACH ROW EXECUTE FUNCTION test_r12_probe();`);
+  const o1 = await quote();
+  const op = await probed('outcome', () => outcome(o1.Q, 'accepted'));
+  await db.exec(`DROP TRIGGER test_r12_probe ON quote_links`);
+  ok(!op.r.e && op.log.length === 1 && op.log[0].q, `round 12: set_outcome writes the link with the quote locked first (${op.r.e || JSON.stringify(op.log)})`);
+  // What it returned and wrote before (105): the outcome; the link as accepted
+  // under the client's name; one timeline row with who recorded it.
+  const o1l = await link(o1.Q);
+  const o1a = (await q(`SELECT kind, body, version, actor_id FROM quote_activity WHERE quote_id = $1 AND kind IN ('accepted', 'declined')`, [o1.Q])).rows;
+  const o1q = (await q(`SELECT status FROM quotes WHERE id = $1`, [o1.Q])).rows[0].status;
+  const again = await outcome(o1.Q, 'declined', 'Changed their mind');
+  const o2 = await quote();
+  const dec2 = await outcome(o2.Q, 'Declined ', 'Went with a DJ');
+  const o2l = await link(o2.Q);
+  const o2a = (await q(`SELECT kind, body, actor_id FROM quote_activity WHERE quote_id = $1 AND kind = 'declined'`, [o2.Q])).rows;
+  const same = await outcome(o2.Q, 'declined', 'Again');
+  const flip = await outcome(o2.Q, 'accepted');
+  const NOLINK = id(n++);
+  await db.exec(`INSERT INTO quotes (id, band_id, client_name, status) VALUES ('${NOLINK}', '${BAND}', 'Emma Carter', 'draft')`);
+  const none = await outcome(NOLINK, 'accepted');
+  const bad = await outcome(o2.Q, 'maybe');
+  const member = await outcome(o2.Q, 'accepted', null, asMember);
+  const missing = await outcome(id(n++), 'accepted');
+  const anonCall = await tryIt(asAnon(() => q(`SELECT public.bw_quote_link_set_outcome($1, 'accepted', NULL)`, [o2.Q])));
+  ok(op.r.r === 'accepted' && o1l.status === 'accepted' && o1l.accepted_name === 'Emma Carter' && o1l.accepted_version === 1
+     && JSON.stringify(o1l.accepted_snapshot) === JSON.stringify(o1l.snapshot) && o1l.responded_at !== null
+     && o1a.length === 1 && o1a[0].kind === 'accepted' && o1a[0].body === 'Emma Carter' && o1a[0].actor_id === ADMIN && o1q !== 'accepted'
+     && again.r === 'accepted' && (await link(o1.Q)).status === 'accepted',
+    `round 12: set_outcome 'accepted' answers and writes as 105 did: the link accepted under the client's name, one timeline row by the admin, the quote row left to the app; an accepted link stays accepted (${op.r.e || op.r.r}, link ${o1l.status}, ${o1a.length} rows, then ${again.e || again.r})`);
+  ok(dec2.r === 'declined' && o2l.status === 'declined' && o2l.decline_reason === 'Went with a DJ' && o2a.length === 1 && o2a[0].body === 'Went with a DJ' && o2a[0].actor_id === ADMIN
+     && same.r === 'declined' && (await q(`SELECT count(*)::int c FROM quote_activity WHERE quote_id = $1 AND kind = 'declined'`, [o2.Q])).rows[0].c === 1
+     && flip.r === 'accepted' && none.r === null && !none.e && bad.code === '22023' && member.code === '42501' && missing.code === '42501' && !!anonCall.e,
+    `round 12: set_outcome 'declined' with its reason, the same answer again writes nothing, declined then accepted, no link gives NULL, a wrong outcome 22023, a member, an unknown quote and anon refused (${dec2.e || dec2.r}, ${same.r}, ${flip.e || flip.r}, ${none.e || none.r}, ${bad.code}, ${member.code}, ${missing.code}, anon ${anonCall.e ? 'refused' : 'allowed'})`);
+  const osig = (await q(`SELECT pg_get_function_identity_arguments(p.oid) a, pg_get_function_result(p.oid) r, p.prosecdef d, p.proconfig::text cfg,
+      has_function_privilege('anon', p.oid, 'EXECUTE') anon, has_function_privilege('authenticated', p.oid, 'EXECUTE') auth,
+      (SELECT count(*)::int FROM pg_proc x WHERE x.proname = p.proname) n FROM pg_proc p WHERE p.proname = 'bw_quote_link_set_outcome'`)).rows[0];
+  ok(osig.a === 'p_quote_id uuid, p_outcome text, p_reason text' && osig.r === 'text' && osig.d && /search_path=public/.test(osig.cfg) && !osig.anon && osig.auth && osig.n === 1,
+    `round 12: set_outcome keeps its one signature (uuid, text, text) RETURNS text, definer, authenticated only (${JSON.stringify(osig)})`);
+
+  // i. Known limit, as the page says ("Ask the band for a new quote"): the
+  // same quote sent again after its gig was deleted is not a new offer (no
+  // new version); a changed one is (section 10b).
+  const u = await quote();
+  await db.exec(`DELETE FROM events WHERE id = '${u.E}'; UPDATE quotes SET converted_to_event_id = NULL WHERE id = '${u.Q}'`);
+  await asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish($1, $2::jsonb, 'en', NULL)`, [u.Q, snap(1000)]));
+  await asAdmin(() => q(`SELECT public.bw_quote_link_mark_sent($1, 'sent', 'email')`, [u.Q]));
+  const uv = await view(u.T);
+  const ua = await answer(u.T, 'accept', uv?.version);
+  ok(uv?.version === 1 && uv?.unavailable === true && ua.code === 'BWQ01',
+    `round 12 (known limit): the unchanged quote sent again after its gig was deleted stays "no longer available" (version ${uv?.version}, ${uv?.unavailable}, ${ua.code || ua.e || ua.r?.status})`);
 }
 
 // ---------------------------------------------------------------- 7. 187 is a superset of 183 (round 3)

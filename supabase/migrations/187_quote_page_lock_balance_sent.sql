@@ -38,6 +38,24 @@
 --    older cached page ignores the flag, and its accept gets the generic
 --    "Something went wrong" (it shows any error code that way); nothing is
 --    recorded.
+--    Round 12 (Claude review of 5f062639): the accept locks the event row
+--    (FOR NO KEY UPDATE, after the quote and the link) and reads "is the
+--    date gone" in the statement after it. A cancel that had not committed
+--    yet was not seen: the accept went through beside it, and the cancelled
+--    event was left with an accepted quote and no private period. The
+--    event delete trigger locks the quote before it writes the link (quote
+--    -> link, as every other writer of a link): a message or a publish at
+--    the same moment as a gig delete could deadlock.
+-- 4. "The client answered by phone" locks the quote first (round 12, found
+--    in #294's last round). bw_quote_link_set_outcome (105, not touched by
+--    183) locked the link and never the quote. With 178 its status write
+--    locks the quote inside the trigger: link -> quote, against the quote
+--    -> link of every other writer, so an admin recording the answer at
+--    the same moment as the client's own answer or a save of the quote
+--    could deadlock (40P01). It now locks the quote, then the link. This
+--    migration redefines it from 105's body: same signature
+--    (uuid, text, text) RETURNS text, same grants (authenticated), same
+--    replies; the lock is the only change.
 --
 -- Superset of 183: the three bodies below are 183's as of fix/quote-page
 -- 8f5922d7 (PR #286 round 4: link_id conversations, the deposit receipt in
@@ -46,6 +64,7 @@
 -- Round 5 (Claude review of #293): the message limit (20 an hour) counts
 -- the messages on this link, not on the quote: a new client is not held
 -- back by what the previous one wrote.
+-- Round 12 also redefines bw_quote_link_set_outcome, from 105's body (4).
 -- 183 must not be run again after this one (183 refuses: its guard sees
 -- balance_sent in the view). Same signatures and grants (anon keeps
 -- EXECUTE on the page RPCs it had). Apply after 183 and 185 (this
@@ -84,13 +103,26 @@ $guard$;
 ALTER TABLE public.quote_links ADD COLUMN IF NOT EXISTS event_removed_at timestamptz;
 
 -- Before the delete: the FK (ON DELETE SET NULL) still points at the event.
--- Round 11: a band deleted with its events (the cascade) leaves its links
--- alone: they go with the band, and a link written in the same transaction
--- would have its band FK checked again and abort the delete (23503). The
--- write changes event_removed_at only: 176's pdf_keys trigger keeps the
--- keys (the document is the same), and 180's account-deletion guard checks
--- only the account columns a write changes (none here); the deleting
--- account itself is refused there, as on its own events delete.
+-- Round 11: a link whose band is gone is skipped (the EXISTS on bands
+-- below): a band deleted with its events (the cascade) takes its links
+-- with it, and a link written in the same transaction would have its band
+-- FK checked again and abort the delete (23503). That EXISTS is the only
+-- skip written here; a link whose quote is already gone is not found by
+-- the join on quotes. The write changes event_removed_at only: 176's
+-- pdf_keys trigger keeps the keys (the document is the same), and 180's
+-- account-deletion guard checks only the account columns a write changes
+-- (none here); the deleting account itself is refused there, as on its own
+-- events delete.
+-- Round 12: the quote is locked first. The mark writes the link, and then
+-- the FK's SET NULL writes the quote: link -> quote, while a client's
+-- message or answer and an admin's publish go quote -> link, so one of
+-- them at the same moment as a gig delete could deadlock (40P01). With the
+-- quote locked here a link is always written after its quote is held (the
+-- event row is already held by the delete). A quote deleted earlier in
+-- this transaction (a band or an account going with its quotes and
+-- events) is not seen by the lock and is skipped, without a wait or an
+-- error; ORDER BY: two deletes that share quotes lock them in the same
+-- order.
 CREATE OR REPLACE FUNCTION public.bw_trg_quote_link_event_removed()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -98,6 +130,11 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
+  PERFORM 1 FROM public.quotes q
+    WHERE q.band_id IS NOT DISTINCT FROM OLD.band_id
+      AND (q.converted_to_event_id = OLD.id OR q.id = OLD.quote_id)
+    ORDER BY q.id
+      FOR UPDATE;
   UPDATE public.quote_links l
      SET event_removed_at = now()
     FROM public.quotes q
@@ -289,6 +326,7 @@ DECLARE
   v_view jsonb;
   v_title text;
   v_client text;
+  v_gone boolean;
 BEGIN
   IF v_action NOT IN ('accept', 'decline') THEN
     RAISE EXCEPTION 'Action must be accept or decline' USING ERRCODE = '22023';
@@ -322,7 +360,23 @@ BEGIN
     -- 187 round 10: no acceptance on a date the band gave up (cancelled or
     -- deleted event). An error, so a page from before this says it did not
     -- go through; nothing is written. Decline and messages still work.
-    IF (v_view ->> 'unavailable')::boolean THEN
+    -- Round 12: the event row locked first (quote -> link -> event), then
+    -- the check in a statement of its own. An admin's cancel of the event
+    -- that has not committed yet is waited for here, and the next statement
+    -- reads what it committed (READ COMMITTED: a new snapshot per
+    -- statement); v_view above was read before the lock and does not
+    -- decide. NO KEY UPDATE: it waits for a writer of the event, not for
+    -- the key-share locks foreign keys take on it. Only an accept that got
+    -- this far takes it: a decline, a message, a stale version and an
+    -- answer on an accepted link never lock the event. A delete of this
+    -- event at the same moment holds the event and waits for the quote
+    -- (its trigger above): Postgres ends one of the two (40P01), and either
+    -- way nothing is accepted on a deleted date.
+    PERFORM 1 FROM public.events e
+      WHERE e.id = public.bw_quote_gig_id(v_link.quote_id)
+        FOR NO KEY UPDATE;
+    SELECT public.bw_quote_date_unavailable(v_link.quote_id, v_link.event_removed_at, v_link.version_at) INTO v_gone;
+    IF v_gone THEN
       RAISE EXCEPTION 'This date is no longer available' USING ERRCODE = 'BWQ01';
     END IF;
     IF v_name IS NULL OR length(v_name) < 2 THEN
@@ -420,6 +474,67 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_quote_link_message(text, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.bw_quote_link_message(text, text) TO anon, authenticated;
+
+-- --------------------------------------------------------------------
+-- 4. The answer the admin recorded in the app: the quote, then the link
+--    (105's set_outcome; round 12)
+-- --------------------------------------------------------------------
+
+-- Returns the link's status afterwards, or NULL when the quote has no link.
+CREATE OR REPLACE FUNCTION public.bw_quote_link_set_outcome(
+  p_quote_id uuid,
+  p_outcome text,
+  p_reason text DEFAULT NULL
+)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_band uuid := public.bw_quote_admin_band(p_quote_id);
+  v_outcome text := lower(btrim(coalesce(p_outcome, '')));
+  v_reason text := nullif(left(btrim(coalesce(p_reason, '')), 1000), '');
+  v_link public.quote_links;
+  v_name text;
+BEGIN
+  IF v_outcome NOT IN ('accepted', 'declined') THEN
+    RAISE EXCEPTION 'Outcome must be accepted or declined' USING ERRCODE = '22023';
+  END IF;
+  -- 187 round 12 (added): the quote first, then the link, as 183's and
+  -- 185's writers of a link (the quote is there: bw_quote_admin_band
+  -- above refuses a quote that is not). Nothing else changed from 105.
+  PERFORM 1 FROM public.quotes q WHERE q.id = p_quote_id FOR UPDATE;
+  SELECT * INTO v_link FROM public.quote_links l WHERE l.quote_id = p_quote_id FOR UPDATE;
+  IF v_link.id IS NULL THEN RETURN NULL; END IF;
+  -- Never sent, or already accepted on the page: nothing to change.
+  IF v_link.status IN ('draft', 'accepted') OR v_link.status = v_outcome THEN
+    RETURN v_link.status;
+  END IF;
+
+  IF v_outcome = 'accepted' THEN
+    SELECT nullif(left(regexp_replace(btrim(coalesce(q.client_name, '')), '\s+', ' ', 'g'), 120), '')
+      INTO v_name FROM public.quotes q WHERE q.id = p_quote_id;
+    UPDATE public.quote_links l
+       SET status = 'accepted', responded_at = now(), accepted_name = v_name,
+           accepted_version = l.version, accepted_snapshot = l.snapshot,
+           accepted_pdf_url = CASE WHEN l.pdf_version = l.version THEN l.pdf_url END,
+           decline_reason = NULL, updated_at = now()
+     WHERE l.id = v_link.id;
+    INSERT INTO public.quote_activity (quote_id, band_id, kind, body, version, actor_id)
+    VALUES (p_quote_id, v_band, 'accepted', v_name, v_link.version, auth.uid());
+  ELSE
+    UPDATE public.quote_links l
+       SET status = 'declined', responded_at = now(), decline_reason = v_reason, updated_at = now()
+     WHERE l.id = v_link.id;
+    INSERT INTO public.quote_activity (quote_id, band_id, kind, body, version, actor_id)
+    VALUES (p_quote_id, v_band, 'declined', v_reason, v_link.version, auth.uid());
+  END IF;
+  RETURN v_outcome;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_quote_link_set_outcome(uuid, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_quote_link_set_outcome(uuid, text, text) TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
 
