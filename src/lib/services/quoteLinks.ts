@@ -329,18 +329,32 @@ export function clientLinkMessage(
 
 // ------------------------------------------------------------------ RPCs
 
+/**
+ * 183: the link was replaced (the client changed, or "New link") after the
+ * caller read its token, so the publish wrote nothing.
+ */
+export const isLinkChangedError = (e: unknown): boolean =>
+  /BW_LINK_CHANGED/.test(String((e as { message?: string } | null)?.message ?? ''));
+
+/**
+ * Publish what the client sees. `token`: the link the caller read; when it
+ * has been replaced since, nothing is written and the error says so
+ * (isLinkChangedError), so a publish started for the old client never lands
+ * on the new client's link. Without a token (no link yet) as before.
+ */
 export async function publishQuoteLink(
   quoteId: string,
   snapshot: ClientQuoteSnapshot,
   lang: Locale,
   pdfUrl?: string | null,
+  token?: string | null,
 ): Promise<Result<{ token: string; status: QuoteLinkStatus; version: number; revoked: boolean }>> {
-  const { data, error } = await supabase.rpc('bw_quote_link_publish', {
-    p_quote_id: quoteId,
-    p_snapshot: snapshot,
-    p_lang: lang,
-    p_pdf_url: pdfUrl || null,
-  });
+  const args = { p_quote_id: quoteId, p_snapshot: snapshot, p_lang: lang, p_pdf_url: pdfUrl || null };
+  let { data, error } = await supabase.rpc('bw_quote_link_publish', token ? { ...args, p_token: token } : args);
+  // A database before 183 has no p_token: publish as before.
+  if (error && token && (error as { code?: string }).code === 'PGRST202') {
+    ({ data, error } = await supabase.rpc('bw_quote_link_publish', args));
+  }
   if (error) return { data: null, error: asError(error) };
   const row = (Array.isArray(data) ? data[0] : data) as { token: string; status: QuoteLinkStatus; version: number; revoked: boolean } | null;
   return row?.token ? { data: row, error: null } : { data: null, error: new Error('No link') };
@@ -537,6 +551,17 @@ export const QUOTE_STAGE_ORDER: ClientQuoteStage[] = ['sent', 'viewed', 'discuss
  * link a new token (the old client's link stopped working) and put it back
  * to draft. True until the quote is sent to the new client.
  */
+/**
+ * 183: when the quote was last given to another client (the latest
+ * "recipient_changed" new link). The band's conversation labels client
+ * messages written before it as the previous client's, not the current one's.
+ */
+export const recipientChangedAt = (activity: QuoteActivity[]): string | null =>
+  activity.reduce<string | null>(
+    (at, a) => (a.kind === 'link_rotated' && a.body === 'recipient_changed' && (!at || a.created_at > at) ? a.created_at : at),
+    null,
+  );
+
 export const awaitingNewRecipient = (link: Pick<QuoteLinkRow, 'status'> | null | undefined, activity: QuoteActivity[]) =>
   !!link && link.status === 'draft' && activity.some((a) => a.kind === 'link_rotated' && a.body === 'recipient_changed');
 
@@ -573,7 +598,8 @@ export async function republishClientQuote(
     } catch (e) {
       console.warn('[quoteLinks] PDF of the new version not created:', e);
     }
-    const pub = await publishQuoteLink(quote.id, buildClientQuoteSnapshot(quote, link.lang, settings), link.lang, pdfUrl);
+    // The link read above: if it is replaced meanwhile (new client), nothing is published.
+    const pub = await publishQuoteLink(quote.id, buildClientQuoteSnapshot(quote, link.lang, settings), link.lang, pdfUrl, link.token);
     return pub.error ? { data: null, error: pub.error } : { data: pub.data?.version ?? null, error: null };
   } catch (e) {
     return { data: null, error: asError(e) };

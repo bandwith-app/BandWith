@@ -50,6 +50,7 @@ import {
   buildClientQuoteSnapshot,
   clientLinkMessage,
   getQuoteLinkState,
+  isLinkChangedError,
   markQuoteLinkSent,
   publishQuoteLink,
   quoteLinkUrl,
@@ -270,13 +271,19 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
 
   if (!isOpen) return null;
 
+  const linkPublishError = (e: Error | null) =>
+    isLinkChangedError(e)
+      ? t('The quote link changed meanwhile. Close this and open the quote again.')
+      : t('The client page could not be updated. Try again.');
+
   /** Publish what the client sees now (summary, language, PDF), then record the send. */
   const publishAndRecord = async (channel: QuoteChannel) => {
     const id = String(quote.id);
     const snapshot = buildClientQuoteSnapshot(quoteRef.current, docLang, settings);
-    const pub = await publishQuoteLink(id, snapshot, docLang, uploadedUrl);
+    // The token this sheet handed out: if the link was replaced meanwhile, nothing lands on it (183).
+    const pub = await publishQuoteLink(id, snapshot, docLang, uploadedUrl, link?.token);
     if (pub.error || !pub.data) {
-      flash(t('The client page could not be updated. Try again.'), 'error');
+      flash(linkPublishError(pub.error), 'error');
       return false;
     }
     const sent = await markQuoteLinkSent(id, kind === 'reminder' ? 'reminded' : 'sent', channel);
@@ -341,9 +348,9 @@ export const QuoteShareModal: React.FC<QuoteShareModalProps> = ({
     setEmailing(true);
     try {
       const id = String(quote.id);
-      const pub = await publishQuoteLink(id, buildClientQuoteSnapshot(quoteRef.current, docLang, settings), docLang, uploadedUrl);
+      const pub = await publishQuoteLink(id, buildClientQuoteSnapshot(quoteRef.current, docLang, settings), docLang, uploadedUrl, link.token);
       if (pub.error) {
-        flash(t('The client page could not be updated. Try again.'), 'error');
+        flash(linkPublishError(pub.error), 'error');
         return;
       }
       const res = await sendQuoteEmail(id, kind);
