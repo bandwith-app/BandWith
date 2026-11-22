@@ -40,6 +40,8 @@ export interface CountInState {
   /** Time signature ("6/8") and the chart's grouping of an odd bar. */
   time: string;
   groups: number[] | null;
+  /** The BPM counts every tick (a song with no time signature of its own, meter.perTick). */
+  perTick?: boolean;
   /** 1 or 2 (the first in half time). */
   bars: number;
   /** Counted beats before bar 1: GO comes that many beats early. */
@@ -110,6 +112,7 @@ export function parseCountInState(payload: unknown): CountInState | null {
     pickup: Math.round(p.pickup as number),
     style: p.style,
     startAt: p.startAt as number,
+    ...(p.perTick === true ? { perTick: true } : {}),
   };
 }
 
@@ -138,14 +141,15 @@ export function startCountIn(opts: {
     pickup: Math.max(0, Math.min(beats - 1, Math.round(opts.pickup ?? 0))),
     style: opts.style === 'up' ? 'up' : 'down',
     startAt: opts.now + COUNTIN_LEAD_MS,
+    ...(opts.meter.perTick ? { perTick: true } : {}),
   };
 }
 
 export const stopCountIn = (s: CountInState): CountInState => ({ ...s, seq: nextSeq(s.seq), on: false });
 
 /** Every count of the count-in, and when GO and bar 1 come. */
-export function countInPlan(state: Pick<CountInState, 'bpm' | 'time' | 'groups' | 'bars' | 'pickup' | 'style'>): CountInPlan {
-  const meter = meterOf(state.time, state.groups);
+export function countInPlan(state: Pick<CountInState, 'bpm' | 'time' | 'groups' | 'bars' | 'pickup' | 'style' | 'perTick'>): CountInPlan {
+  const meter = meterOf(state.time, state.groups, state.perTick);
   const tick = tickMs(meter, state.bpm);
   const barMs = meter.num * tick;
   const dotsOf = (len: number) => (meter.compound ? 3 : meter.den >= 8 ? len : 1);

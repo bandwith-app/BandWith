@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { COUNTIN_LEAD_MS, GO_MS, countInAt, countInPlan, parseCountInState, startCountIn, stopCountIn, type CountInState } from './countIn';
-import { meterOf } from './meter';
+import { meterOf, songMeter } from './meter';
 
 const plan = (time: string, opts: Partial<CountInState> = {}) =>
   countInPlan({ bpm: 120, time, groups: null, bars: 1, pickup: 0, style: 'down', ...opts });
@@ -109,6 +109,19 @@ describe('count-in on every phone', () => {
     expect(odd.pickup).toBe(2);
     expect(odd.groups).toEqual([3, 2, 2]);
     expect(startCountIn({ from: 'l', songId: null, bpm: 120, meter: meterOf('6/8'), now: 0 }).groups).toBeNull();
+  });
+});
+
+describe('count-in: the same BPM rule as the click and the playhead', () => {
+  it('a 6/8 from the chart only (no meter of its own): the BPM counts the eighths, as the click does', () => {
+    const chartOnly = startCountIn({ from: 'l', songId: null, bpm: 120, meter: songMeter({ chart: { time: '6/8', sections: [] } }), now: 0 });
+    expect(chartOnly.perTick).toBe(true);
+    // Six eighths of 500 ms: a 3 s bar, counted 2 1 (the dotted beats).
+    expect(countInPlan(chartOnly).barMs).toBeCloseTo(3000);
+    expect(parseCountInState(JSON.parse(JSON.stringify(chartOnly)))).toEqual(chartOnly);
+    const picked = startCountIn({ from: 'l', songId: null, bpm: 120, meter: songMeter({ timeSignature: '6/8' }), now: 0 });
+    expect(picked).not.toHaveProperty('perTick');
+    expect(countInPlan(picked).barMs).toBeCloseTo(1000);
   });
 });
 
