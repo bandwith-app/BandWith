@@ -9,7 +9,8 @@
  *   (ErrorBoundary), sent to `bw_report_client_error`.
  *
  * No personal data and no user content: only the message and stack, scrubbed
- * here (no emails, ids, long numbers, tokens, quoted text or URL queries),
+ * here line by line (no emails, ids, long numbers, tokens, quoted text of any
+ * kind, or query strings on any link, relative ones too),
  * the app version, the platform and the screen name ("Stage", "Gig").
  * At most 10 per session, each error once; the server caps it again.
  * Reporting never throws and never reports itself.
@@ -32,8 +33,11 @@ const STACK_MAX = 4000;
 // ------------------------------------------------------------ the switch --
 
 const listeners = new Set<() => void>();
+/** This run's choice: wins over storage (blocked storage must not turn it back on). */
+let override: boolean | null = null;
 
 export function readCrashReportsEnabled(): boolean {
+  if (override !== null) return override;
   try {
     return localStorage.getItem(CRASH_REPORTS_KEY) !== 'off';
   } catch {
@@ -50,16 +54,19 @@ async function applyNative(on: boolean) {
   try {
     const { FirebaseCrashlytics } = await loadPlugin();
     await FirebaseCrashlytics.setEnabled({ enabled: on });
+    // Off: crashes recorded but not uploaded yet never leave either.
+    if (!on) await FirebaseCrashlytics.deleteUnsentReports();
   } catch {
     /* crash reporting must never break the app */
   }
 }
 
 export function setCrashReportsEnabled(on: boolean) {
+  override = on;
   try {
     localStorage.setItem(CRASH_REPORTS_KEY, on ? 'on' : 'off');
   } catch {
-    /* storage blocked: applies to this run */
+    /* storage blocked: the override holds for this run */
   }
   if (!on) pending.length = 0;
   listeners.forEach((l) => l());
@@ -83,29 +90,36 @@ export const useCrashReportsEnabled = (): boolean =>
 const EMAIL = /[\w.+-]+@[\w-]+(\.[\w-]+)+/g;
 const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 const JWT = /\beyJ[\w-]*\.[\w-]+\.[\w-]+/g;
-const LONG_TOKEN = /\b[A-Za-z0-9_-]{24,}\b/g;
-const URL_QUERY = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s?#'"`)]*)[?#][^\s'"`)]*/gi;
+/** Random-looking: 20+ characters with a digit, or 40+ of anything (long function names stay). */
+const LONG_TOKEN = /\b(?:(?=[A-Za-z_-]*\d)[A-Za-z0-9_-]{20,}|[A-Za-z0-9_-]{40,})\b/g;
+/** Any query string, on full and relative links alike (/deputy.html?deputy=…, /quote.html?t=…). */
+const QUERY = /\?[^\s'"`()]+/g;
+/** A fragment after a path (#418 in "Minified React error #418" stays). */
+const FRAGMENT = /(\/[^\s#'"`()]*)#[^\s'"`()]+/g;
 const PHONE_OR_NUMBER = /\+?\d[\d\s().-]{5,}\d/g;
-/** Quoted text that isn't a plain identifier ('map', "length") is user content: dropped. */
+/** All quoted text: it can be anything the user typed, even one word (a song called "Yesterday"). */
 const QUOTED = /(["'`“‘])([^"'`”’\n]*)(["'`”’])/g;
-const IDENT = /^[A-Za-z_$][\w$.-]{0,40}$/;
+/** A stack line's position (file:line:col), kept as it is. */
+const POSITION = /:\d+:\d+\)?$/;
 
-function scrubCommon(s: string): string {
+/** The one scrub, for the message and for every stack line. */
+function scrubText(s: string): string {
   return s
-    .replace(URL_QUERY, '$1')
+    .replace(QUERY, '')
+    .replace(FRAGMENT, '$1')
     .replace(EMAIL, '<email>')
     .replace(UUID, '<id>')
-    .replace(JWT, '<token>');
+    .replace(JWT, '<token>')
+    .replace(QUOTED, (_all, open: string, _body: string, close: string) => `${open}…${close}`)
+    .replace(LONG_TOKEN, '<token>')
+    .replace(PHONE_OR_NUMBER, '<n>');
 }
 
 export function scrubMessage(raw: string): string {
-  const s = scrubCommon(String(raw ?? ''))
-    .replace(QUOTED, (all, open: string, body: string, close: string) => (IDENT.test(body) ? all : `${open}…${close}`))
-    .replace(PHONE_OR_NUMBER, '<n>')
-    .replace(LONG_TOKEN, '<token>')
+  return scrubText(String(raw ?? ''))
     .replace(/\s+/g, ' ')
-    .trim();
-  return s.slice(0, MESSAGE_MAX);
+    .trim()
+    .slice(0, MESSAGE_MAX);
 }
 
 export function scrubStack(raw: string | undefined | null): string | null {
@@ -113,7 +127,11 @@ export function scrubStack(raw: string | undefined | null): string | null {
   const lines = String(raw)
     .split('\n')
     .slice(0, STACK_LINES)
-    .map((l) => scrubCommon(l).replace(QUOTED, (all, o: string, b: string, c: string) => (IDENT.test(b) ? all : `${o}…${c}`)).trimEnd());
+    .map((l) => {
+      // The position's numbers are not a phone number: scrub the rest, keep it.
+      const pos = POSITION.exec(l)?.[0] ?? '';
+      return (scrubText(pos ? l.slice(0, -pos.length) : l) + pos).trimEnd();
+    });
   return lines.join('\n').slice(0, STACK_MAX) || null;
 }
 
@@ -134,6 +152,7 @@ function describe(err: unknown): { message: string; stack: string | null } {
 
 let sent = 0;
 const seen = new Set<string>();
+/** Waiting to go out, oldest first (not signed in yet, no signal), a few at most. */
 const pending: Array<Record<string, unknown>> = [];
 
 async function send(args: Record<string, unknown>): Promise<boolean> {
@@ -145,13 +164,31 @@ async function send(args: Record<string, unknown>): Promise<boolean> {
   }
 }
 
-/** Not signed in yet (or no signal): kept for the next chance, a few at most. */
-async function flushPending() {
-  while (pending.length) {
-    const next = pending[0];
-    if (!(await send(next))) return;
-    pending.shift();
-  }
+let flushing: Promise<void> | null = null;
+
+/** One flush at a time: every report goes once, in order. Switched off: nothing leaves, the queue goes. */
+function flushPending(): Promise<void> {
+  if (flushing) return flushing;
+  flushing = (async () => {
+    while (pending.length) {
+      if (!readCrashReportsEnabled()) {
+        pending.length = 0;
+        return;
+      }
+      const next = pending[0];
+      const ok = await send(next);
+      // Switched off while the request was out: drop whatever is left.
+      if (!readCrashReportsEnabled()) {
+        pending.length = 0;
+        return;
+      }
+      if (!ok) return;
+      if (pending[0] === next) pending.shift();
+    }
+  })().finally(() => {
+    flushing = null;
+  });
+  return flushing;
 }
 
 /** Report one error. Never throws. */
@@ -174,8 +211,12 @@ export async function reportClientError(kind: ClientErrorKind, err: unknown): Pr
       p_platform: currentPlatform(),
       p_route: currentScreenName()?.slice(0, 60) ?? null,
     };
-    if (pending.length) await flushPending();
-    if (!(await send(args)) && pending.length < MAX_PENDING) pending.push(args);
+    // Switched off while the version was read: not sent, not kept.
+    if (!readCrashReportsEnabled() || pending.length >= MAX_PENDING) return;
+    pending.push(args);
+    await flushPending();
+    // The flush running before this one was pushed may have stopped early: one more go.
+    if (pending.includes(args)) await flushPending();
   } catch {
     /* the reporter never reports itself */
   }
@@ -215,4 +256,7 @@ export function __resetCrashReportsForTest() {
   seen.clear();
   pending.length = 0;
   listeners.clear();
+  override = null;
+  flushing = null;
+  installed = false;
 }

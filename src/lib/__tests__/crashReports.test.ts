@@ -7,14 +7,26 @@ const h = vi.hoisted(() => ({
   rpcResult: { data: true as unknown, error: null as unknown },
   native: false,
   setEnabled: [] as boolean[],
+  deleted: 0,
+  /** The next rpc calls wait for this (a request in flight). */
+  rpcGate: null as Promise<void> | null,
+  version: async () => '1.0.14' as string | null,
+  auth: null as ((event: string) => void) | null,
 }));
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     rpc: async (fn: string, args: Record<string, unknown>) => {
       h.rpc.push({ fn, args });
-      return h.rpcResult;
+      const result = h.rpcResult;
+      if (h.rpcGate) await h.rpcGate;
+      return result;
     },
-    auth: { onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }) },
+    auth: {
+      onAuthStateChange: (cb: (event: string) => void) => {
+        h.auth = cb;
+        return { data: { subscription: { unsubscribe: () => {} } } };
+      },
+    },
   },
 }));
 vi.mock('@capacitor/core', async (orig) => ({
@@ -26,9 +38,12 @@ vi.mock('@capacitor-firebase/crashlytics', () => ({
     setEnabled: async ({ enabled }: { enabled: boolean }) => {
       h.setEnabled.push(enabled);
     },
+    deleteUnsentReports: async () => {
+      h.deleted++;
+    },
   },
 }));
-vi.mock('@/lib/minVersion', () => ({ currentPlatform: () => (h.native ? 'android' : 'web'), installedVersion: async () => '1.0.14' }));
+vi.mock('@/lib/minVersion', () => ({ currentPlatform: () => (h.native ? 'android' : 'web'), installedVersion: () => h.version() }));
 vi.mock('@/lib/appAnalytics', () => ({ currentScreenName: () => 'Stage' }));
 
 import {
@@ -45,13 +60,25 @@ import {
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 beforeEach(() => {
+  vi.unstubAllGlobals();
   localStorage.clear();
   h.rpc = [];
   h.rpcResult = { data: true, error: null };
   h.native = false;
   h.setEnabled = [];
+  h.deleted = 0;
+  h.rpcGate = null;
+  h.version = async () => '1.0.14';
+  h.auth = null;
+  vi.unstubAllGlobals();
   __resetCrashReportsForTest();
 });
+
+const gate = () => {
+  let open = () => {};
+  const p = new Promise<void>((r) => (open = r));
+  return { p, open };
+};
 
 describe('scrubbing: no personal data, no user content', () => {
   it('removes emails, ids, numbers, tokens, quoted text and URL queries', () => {
@@ -64,10 +91,34 @@ describe('scrubbing: no personal data, no user content', () => {
     expect(m).toContain('https://app.bandwith.fun/x');
   });
 
-  it('keeps what helps: error names and property names', () => {
+  it('keeps the error name and shape, never quoted text (it can be a song title)', () => {
     expect(scrubMessage("TypeError: Cannot read properties of undefined (reading 'map')")).toBe(
-      "TypeError: Cannot read properties of undefined (reading 'map')",
+      "TypeError: Cannot read properties of undefined (reading '…')",
     );
+    expect(scrubMessage('SyntaxError: Unexpected token \'Y\', "Yesterday" is not valid JSON')).toBe(
+      'SyntaxError: Unexpected token \'…\', "…" is not valid JSON',
+    );
+  });
+
+  it('relative links lose their query too (deputy and quote links carry tokens)', () => {
+    const m = scrubMessage('Failed to load /deputy.html?deputy=9f8e7d6c5b4a39281706 and /quote.html?t=k1Lm2Np3Qr4St5#x');
+    expect(m).not.toMatch(/9f8e7d|k1Lm2|deputy=|t=/);
+    expect(m).toContain('/deputy.html');
+    expect(m).toContain('/quote.html');
+  });
+
+  it('every stack line gets the full scrub (the first one repeats the message)', () => {
+    const stack = [
+      'SyntaxError: "Hudson Line" from leo@nyc.com, 7185550199, k9X2mQ7vL4pR8sT1wZ3yB6nD',
+      '    at parseSongFromClipboardTextLong (https://app.bandwith.fun/assets/index-B4xK9q.js:1:1234567)',
+      '    at open (/quote.html?t=k1Lm2Np3Qr4St5Uv6Wx7Yz8:3:9)',
+    ].join('\n');
+    const s = scrubStack(stack)!;
+    expect(s).not.toMatch(/Hudson|leo@|7185550199|k9X2mQ7|k1Lm2|t=/);
+    // What finds the bug stays: function names, files, line and column.
+    expect(s).toContain('parseSongFromClipboardTextLong');
+    expect(s).toContain('index-B4xK9q.js:1:1234567');
+    expect(s).toContain('/quote.html:3:9');
   });
 
   it('cuts long messages and stacks', () => {
@@ -129,7 +180,72 @@ describe('reporting', () => {
   });
 });
 
+describe('switched off: nothing leaves, whatever is in flight', () => {
+  it('off while the app version is being read: that error is not sent', async () => {
+    const g = gate();
+    h.version = () => g.p.then(() => '1.0.14');
+    const p = reportClientError('error', new Error('during lookup'));
+    setCrashReportsEnabled(false);
+    g.open();
+    await p;
+    expect(h.rpc).toHaveLength(0);
+  });
+
+  it('a request that fails after switching off is not kept for later', async () => {
+    const stop = installCrashReports();
+    const g = gate();
+    h.rpcGate = g.p;
+    h.rpcResult = { data: null, error: { message: 'offline' } };
+    const p = reportClientError('error', new Error('in flight'));
+    await flush();
+    setCrashReportsEnabled(false);
+    g.open();
+    await p;
+    h.rpcGate = null;
+    h.rpcResult = { data: true, error: null };
+    setCrashReportsEnabled(true);
+    h.auth?.('SIGNED_IN');
+    await flush();
+    await flush();
+    expect(h.rpc.filter((c) => c.args.p_message === 'Error: in flight')).toHaveLength(1);
+    stop();
+  });
+
+  it('storage blocked: the switch still holds for this run', async () => {
+    const blocked = () => {
+      throw new Error('blocked');
+    };
+    vi.stubGlobal('localStorage', { getItem: blocked, setItem: blocked, removeItem: blocked, clear: blocked, key: blocked, length: 0 });
+    setCrashReportsEnabled(false);
+    expect(readCrashReportsEnabled()).toBe(false);
+    await reportClientError('error', new Error('nope'));
+    expect(h.rpc).toHaveLength(0);
+  });
+
+  it('kept reports go out once each, even with two flushes at the same time', async () => {
+    const stop = installCrashReports();
+    h.rpcResult = { data: null, error: { message: 'not signed in' } };
+    await reportClientError('error', new Error('first'));
+    await reportClientError('error', new Error('second'));
+    h.rpc = [];
+    h.rpcResult = { data: true, error: null };
+    h.auth?.('SIGNED_IN');
+    h.auth?.('TOKEN_REFRESHED');
+    for (let i = 0; i < 5; i++) await flush();
+    expect(h.rpc.map((c) => c.args.p_message)).toEqual(['Error: first', 'Error: second']);
+    stop();
+  });
+});
+
 describe('native: Crashlytics follows the switch', () => {
+  it('off deletes the crash reports not sent yet', async () => {
+    h.native = true;
+    setCrashReportsEnabled(false);
+    await flush();
+    await flush();
+    expect(h.deleted).toBe(1);
+  });
+
   it('on at start, off when the switch goes off', async () => {
     h.native = true;
     const stop = installCrashReports();
