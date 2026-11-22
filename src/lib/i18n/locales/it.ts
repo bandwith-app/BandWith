@@ -3900,6 +3900,7 @@ const dict: Dictionary = {
   "1 setlist · {size} MB": "1 scaletta · {size} MB",
   "{n} setlists · {size} MB": "{n} scalette · {size} MB",
   "Nothing kept on this device": "Niente salvato su questo dispositivo",
+  "Downloading setlists ahead is paused for now. What is already on this device stays readable offline until you delete it.": "Il download anticipato delle scalette è in pausa per ora. Quello che è già su questo dispositivo resta leggibile offline finché non lo elimini.",
   "Lyrics, chords, structures and your own notes for your next gigs, on this device for when there is no signal. No fees, no contracts.": "Testi, accordi, strutture e le tue note per le prossime serate, su questo dispositivo per quando non c’è campo. Niente compensi, niente contratti.",
   "Automatic download": "Download automatico",
   "Every setlist of your next 7 days, updated by itself": "Ogni scaletta dei prossimi 7 giorni, aggiornata da sola",

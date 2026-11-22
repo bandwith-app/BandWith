@@ -66,8 +66,8 @@ import { useBandFlag } from '@/lib/flags';
 import { isFlagOn } from '@/lib/appFlags';
 import { elapsedSeconds, occurrenceDate } from '@/lib/rehearsalSession';
 import { prefetchStageKey } from '@/lib/stageBleNative';
-import { packRowFromItem, songFromRow, type LiveSong } from '@/lib/livePack';
-import { fetchSetlistRows, readPack, readPackBySetlist, refreshPack, savePackSongs } from '@/lib/livePackStore';
+import { isPackReady, packRowFromItem, songFromRow, type LiveSong } from '@/lib/livePack';
+import { fetchSetlistRows, packOpenedEvent, readPack, readPackBySetlist, savePackSongs } from '@/lib/livePackStore';
 import { packAllowed, readChoice } from '@/lib/livePackConsent';
 import { useLivePack, useOnline } from '@/app/components/event/useLivePack';
 import { OfflineReadyRow } from '@/app/components/event/OfflineReadyRow';
@@ -456,7 +456,13 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     onSaved: (songs, savedId) => {
       setSetlistSongs(songs as typeof setlistSongs);
       if (currentUserId && savedId === event.setlistId)
-        void savePackSongs({ userId: currentUserId, event: packRow, occurrenceDate: occurrenceDate(event.date) ?? undefined, songs: songs as LiveSong[] }).catch(() => undefined);
+        void savePackSongs({
+          userId: currentUserId,
+          event: packRow,
+          occurrenceDate: occurrenceDate(event.date) ?? undefined,
+          songs: songs as LiveSong[],
+          partial: !isFlagOn('live_pack'),
+        }).catch(() => undefined);
       setSetlistReloadKey((k) => k + 1);
       // A new setlist was linked to the gig: the events list picks up its id.
       if (savedId !== event.setlistId) onEventUpdated?.();
@@ -603,17 +609,18 @@ export const EventDetail: React.FC<EventDetailProps> = ({
         const songs = rows.map((r: any) => songFromRow(r, t('Unknown Song')));
         setSetlistSongs(songs);
         if (currentUserId && event.band_id && event.eventId) {
-          const occurrence = occurrenceDate(event.date) ?? undefined;
-          if (songs.length === 0) {
-            void refreshPack({ userId: currentUserId, event: packRow, occurrenceDate: occurrence, songs }).catch(() => undefined);
-          } else {
-            await savePackSongs({ userId: currentUserId, event: packRow, occurrenceDate: occurrence, songs }).catch(() => undefined);
-            // My notes and files, band notes, the key: at most every few minutes.
-            if (isFlagOn('live_pack') && fullPackDue(event.eventId)) {
-              const withFiles = packAllowed(readChoice(currentUserId), event.eventId);
-              void refreshPack({ userId: currentUserId, event: packRow, occurrenceDate: occurrence, songs, withFiles }).catch(() => undefined);
-            }
-          }
+          // Songs at once; my notes and files, band notes, the key at most
+          // every few minutes. Switched off (live_pack): tidied, nothing new
+          // downloaded, the pack stays partial (never "Offline ready").
+          void packOpenedEvent({
+            userId: currentUserId,
+            event: packRow,
+            occurrenceDate: occurrenceDate(event.date) ?? undefined,
+            songs,
+            livePackOn: isFlagOn('live_pack'),
+            fullDue: songs.length > 0 && fullPackDue(event.eventId),
+            allowFiles: packAllowed(readChoice(currentUserId), event.eventId),
+          }).catch(() => undefined);
         }
       } catch {
         if (cancelled) return;
@@ -802,7 +809,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
         onAsk={() => setPackSheetOpen(true)}
         pending={packPending}
       />
-      {isAdmin && !!event.eventId && <OfflineMembersRow eventId={event.eventId} members={resolvedMembers} online={online} currentUserId={currentUserId} selfReady={!!livePack} />}
+      {isAdmin && !!event.eventId && <OfflineMembersRow eventId={event.eventId} members={resolvedMembers} online={online} currentUserId={currentUserId} selfReady={isPackReady(livePack)} />}
     </>
   ) : null;
   const rehearsalSession = useRehearsalSession({

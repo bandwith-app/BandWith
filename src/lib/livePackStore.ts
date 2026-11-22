@@ -180,6 +180,8 @@ export async function savePackSongs(args: {
   event: Record<string, unknown>;
   occurrenceDate?: string;
   songs: LiveSong[];
+  /** live_pack off: the pack stays partial (see LivePack.partial). */
+  partial?: boolean;
 }): Promise<LivePack | null> {
   const event = occurrenceEvent(packEventFrom(args.event), args.occurrenceDate);
   if (!event.id || !event.band_id || !event.setlist_id || !event.event_date) return null;
@@ -199,6 +201,8 @@ export async function savePackSongs(args: {
     version: packVersion(args.songs, personal),
     savedAt: new Date().toISOString(),
     expiresAt: packExpiresAt(event),
+    // Partial until a full refresh with the switch on completes it.
+    ...(args.partial || prev?.partial ? { partial: true } : {}),
   };
   await savePack(pack);
   return pack;
@@ -279,6 +283,8 @@ export function refreshPack(args: {
   songs?: LiveSong[];
   withFiles?: boolean;
   unknownTitle?: string;
+  /** live_pack off: tidy and keep, but partial (see LivePack.partial). */
+  partial?: boolean;
 }): Promise<LivePack | null> {
   const id = String(args.event.id ?? '');
   const running = inflight.get(id);
@@ -352,11 +358,39 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
     version: packVersion(songs, personal),
     savedAt: new Date().toISOString(),
     expiresAt: packExpiresAt(event),
+    ...(args.partial ? { partial: true } : {}),
   };
   await savePack(pack);
   // The full pack is on this device: tell the band's admins (native only).
-  void reportPackStatus(pack);
+  if (!pack.partial) void reportPackStatus(pack);
   return pack;
+}
+
+/**
+ * The event was opened online (EventDetail): keep its songs at once, then,
+ * every few minutes (`fullDue`), bring the whole pack up to date. With
+ * live_pack switched off the tidy-up still runs (deleted notes, files and
+ * band notes go, an empty setlist drops the pack) but nothing new is
+ * downloaded and the pack stays partial.
+ */
+export async function packOpenedEvent(args: {
+  userId: string;
+  event: Record<string, unknown>;
+  occurrenceDate?: string;
+  songs: LiveSong[];
+  livePackOn: boolean;
+  fullDue: boolean;
+  /** My files may come down (the person said yes for this event). */
+  allowFiles: boolean;
+}): Promise<void> {
+  const { userId, event, occurrenceDate, songs, livePackOn } = args;
+  const partial = !livePackOn;
+  if (!songs.length) {
+    await refreshPack({ userId, event, occurrenceDate, songs, partial });
+    return;
+  }
+  await savePackSongs({ userId, event, occurrenceDate, songs, partial });
+  if (args.fullDue) await refreshPack({ userId, event, occurrenceDate, songs, withFiles: livePackOn && args.allowFiles, partial });
 }
 
 // ── ahead of time ─────────────────────────────────────────────────────────
@@ -467,7 +501,7 @@ async function prefetchOnce({
   for (const e of candidates) {
     if (!keepGoing()) break;
     const prev = await readPack(userId, e.bandId, e.eventId);
-    const fresh = prev && prev.event.event_date === e.date && now.getTime() - new Date(prev.savedAt).getTime() < FRESH_MS;
+    const fresh = prev && !prev.partial && prev.event.event_date === e.date && now.getTime() - new Date(prev.savedAt).getTime() < FRESH_MS;
     if (fresh && !force.includes(e.eventId)) continue;
     const pack = await refreshPack({ userId, event: e.row, occurrenceDate: e.date, withFiles: true, unknownTitle });
     if (pack) done++;

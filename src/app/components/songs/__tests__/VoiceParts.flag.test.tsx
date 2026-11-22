@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { render, screen, cleanup, fireEvent, act, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, act, waitFor, renderHook } from '@testing-library/react';
 
 // Kill switch `voice_parts` (docs/flags.md): off → the lyrics read as plain
 // lead lines (no markers, colours, legend), no Who sings what, no Voice row.
@@ -38,6 +38,8 @@ vi.mock('@/lib/services/setlistNotify', () => ({ notifySongUpdated: vi.fn() }));
 import { ChordEditor, openChordEditor, closeChordEditor } from '../ChordEditor';
 import { VoiceAssignmentScope, clearVocalPartsCache } from '../WhoSingsWhat';
 import { LyricsText } from '@/app/components/ui/LyricsViewer';
+import { useVoiceSuggestions } from '../useVoiceSuggestions';
+import { VoicePartsKept } from '../VoiceSafeText';
 import { __resetAppFlagsForTest, __setAppFlagsForTest } from '@/lib/appFlags';
 
 const LYRICS = '# Chorus\n[F]Hold the line\n{bv}(ooh, [G]yeah){/bv}\nLead and {v2}echo{/v2}';
@@ -101,5 +103,20 @@ describe('voice_parts off', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'the' }));
     await waitFor(() => expect(screen.getByRole('group', { name: 'Voice' })).toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Mark the voice parts' })).toBeInTheDocument();
+  });
+
+  // Add Song (AddSongModal) uses the same hook: pasting "(ooh)" offers nothing while off.
+  it('Add Song: no "Mark the voice parts" offer for pasted lyrics', () => {
+    const pasted = '# Chorus\nHold the line\n(ooh, yeah)';
+    const on = renderHook(() => useVoiceSuggestions(pasted, false));
+    expect(on.result.current.length).toBeGreaterThan(0);
+    act(() => __setAppFlagsForTest({ voice_parts: false }));
+    expect(on.result.current).toEqual([]);
+  });
+
+  it('no "has a voice part" note under the lyrics field', () => {
+    __setAppFlagsForTest({ voice_parts: false });
+    const { container } = render(<VoicePartsKept lyrics={'# Chorus\n{bv}(ooh){/bv}'} />);
+    expect(container).toBeEmptyDOMElement();
   });
 });

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useFlag } from '@/lib/appFlags';
 import { useT } from '@/lib/i18n';
 import { hasVoiceMarkers, keepVoiceParts, stripVoiceMarkers } from '@/lib/voiceParts';
 
@@ -17,8 +18,10 @@ export function useVoiceSafeText(lyrics: string, setLyrics: (next: string) => vo
 /** Under the box: how many lines have a part, so nobody wonders where they went. */
 export const VoicePartsKept: React.FC<{ lyrics: string | null | undefined; className?: string }> = ({ lyrics, className }) => {
   const t = useT();
+  // voice_parts switched off (docs/flags.md): the markers stay saved, unmentioned.
+  const voicesOn = useFlag('voice_parts');
   const n = React.useMemo(() => (lyrics || '').split('\n').filter((l) => hasVoiceMarkers(l)).length, [lyrics]);
-  if (!n) return null;
+  if (!n || !voicesOn) return null;
   return (
     <span role="status" className={className ?? 'bw-body-sm text-muted-foreground'}>
       {n === 1

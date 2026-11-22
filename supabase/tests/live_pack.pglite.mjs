@@ -96,6 +96,16 @@ DELETE FROM notifications; DELETE FROM live_pack_refresh_queue; DELETE FROM net.
 `);
 ok(true, 'seed (event inserts fired the new-event trigger without errors)');
 
+// ---- Kill switch live_pack (173, docs/flags.md). Without the table (above)
+// the sweep runs; with the row off, no invite, no Remind, no queued download.
+await db.exec(`CREATE TABLE public.app_flags (key text PRIMARY KEY, enabled boolean NOT NULL DEFAULT true);
+  INSERT INTO public.app_flags VALUES ('live_pack', false);`);
+ok((await q(`SELECT public.bw_live_pack_invite_sweep() AS n`)).rows[0].n === 0, 'flag off: the sweep sends nothing');
+ok((await as(ADMIN, () => q(`SELECT public.bw_live_pack_remind($1, $2) r`, [EV, MEM]).then((r) => r.rows[0].r))) === false, 'flag off: Remind sends nothing');
+ok((await q(`SELECT count(*)::int n FROM notifications WHERE type = 'live_pack_ready'`)).rows[0].n === 0, 'flag off: no live_pack_ready rows');
+ok((await q(`SELECT count(*)::int n FROM live_pack_refresh_queue`)).rows[0].n === 0, 'flag off: nothing queued for automatic members');
+await db.exec(`UPDATE public.app_flags SET enabled = true WHERE key = 'live_pack'`);
+
 // ---- invite sweep
 const n1 = (await q(`SELECT public.bw_live_pack_invite_sweep() AS n`)).rows[0].n;
 const inv = (await q(`SELECT user_id, title, body, data FROM notifications WHERE type = 'live_pack_ready' ORDER BY title`)).rows;

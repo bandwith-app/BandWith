@@ -12,6 +12,8 @@ const h = vi.hoisted(() => ({
   reads: [] as string[],
   /** While set, clock reads wait for it (a read in flight). */
   hold: null as Promise<void> | null,
+  /** What the leader plugin reports on start ('off' = Bluetooth off). */
+  startState: 'on',
 }));
 vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => true, getPlatform: () => 'ios' } }));
 vi.mock('@capacitor/app', () => ({ App: { addListener: async () => ({ remove: async () => {} }) } }));
@@ -22,7 +24,7 @@ vi.mock('@/lib/stageBleNative', () => ({
     addListener: async () => ({ remove: async () => {} }),
     start: async (o: Record<string, unknown>) => {
       h.starts.push(o);
-      return { state: 'on' };
+      return { state: h.startState };
     },
     stop: async () => {
       h.stops++;
@@ -98,6 +100,7 @@ beforeEach(() => {
   h.setClock = 0;
   h.reads = [];
   h.hold = null;
+  h.startState = 'on';
 });
 afterEach(() => vi.useRealTimers());
 
@@ -153,19 +156,37 @@ describe('ble_live', () => {
     expect(h.starts).toHaveLength(1);
   });
 
-  it('a restarted leader serves the last song again, not an empty value', async () => {
+  it('Bluetooth restarted during the show: the leader serves the last song again, not an empty value', async () => {
+    h.startState = 'off';
+    const { result } = renderHook(() => useStageBle(opts(true)));
+    await waitFor(() => expect(result.current.status).toBe('bt-off'));
+    await act(async () => {
+      result.current.publish({ seq: 7, from: 'lead', songId: 'r2', order: null });
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    const last = h.updates[h.updates.length - 1];
+    h.startState = 'on';
+    await act(async () => {
+      await result.current.fix();
+    });
+    await waitFor(() => expect(h.starts).toHaveLength(2));
+    await waitFor(() => expect(h.updates).toHaveLength(2));
+    expect(h.updates[1]).toBe(last);
+  });
+
+  it('Stage closed and opened again: the old song is not served (the leader starts from its new screen)', async () => {
     const { result, rerender } = renderHook((o: ReturnType<typeof opts>) => useStageBle(o), { initialProps: opts(true) });
     await waitFor(() => expect(h.starts).toHaveLength(1));
     await act(async () => {
       result.current.publish({ seq: 7, from: 'lead', songId: 'r2', order: null });
       await new Promise((r) => setTimeout(r, 10));
     });
-    const last = h.updates[h.updates.length - 1];
+    expect(h.updates).toHaveLength(1);
     rerender({ ...opts(true), open: false });
     rerender(opts(true));
     await waitFor(() => expect(h.starts).toHaveLength(2));
-    await waitFor(() => expect(h.updates).toHaveLength(2));
-    expect(h.updates[1]).toBe(last);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(h.updates).toHaveLength(1);
   });
 
   it('a clock read still in flight when it is turned off sets no clock', async () => {

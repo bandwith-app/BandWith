@@ -219,7 +219,16 @@ export interface LivePack {
   savedAt: string;
   /** Removed after this (ISO): 24 h after the event ends. */
   expiresAt: string;
+  /**
+   * Kept while live_pack was switched off (docs/flags.md): the songs and a
+   * tidied pack, but not complete. Never fresh for the prefetch, never
+   * "Offline ready", never reported to the admins; completed once it's on.
+   */
+  partial?: boolean;
 }
+
+/** Complete and on the device: "Offline ready", and counts for "N of M members ready". */
+export const isPackReady = (p: LivePack | null | undefined): boolean => !!p && !p.partial && p.songs.length > 0;
 
 /** FNV-1a, 32 bit, as 8 hex digits: a short, stable fingerprint. */
 const fnv = (s: string): string => {

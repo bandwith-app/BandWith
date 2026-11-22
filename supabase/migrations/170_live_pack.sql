@@ -27,6 +27,8 @@
 -- 5. bw_live_pack_remind(event, user): an admin's "Remind" (one push, at most
 --    every 6 hours per member and event).
 -- 6. bw_trg_dispatch_push: as live (133), plus live_pack_ready.
+-- 7. Kill switch: with app_flags live_pack off (173), no invites, no Remind
+--    and no new automatic downloads; held packs keep their silent refresh.
 --
 -- Nothing in the pack itself lives on the server: fees, contracts, quotes and
 -- other members' notes never reach these tables. Safe to run more than once.
@@ -175,6 +177,29 @@ AS $$
 $$;
 REVOKE ALL ON FUNCTION public.bw_live_pack_window_events(uuid) FROM PUBLIC, anon, authenticated;
 
+-- Kill switch live_pack (173_app_flags, docs/flags.md). On unless the row
+-- says off: no table yet, no row or an unreadable row all mean on, like the
+-- app. So 170 and 173 can be applied in either order. min_app_version is the
+-- app's business (the server cannot tell which version a person runs).
+CREATE OR REPLACE FUNCTION public.bw_live_pack_on()
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_on boolean;
+BEGIN
+  IF to_regclass('public.app_flags') IS NULL THEN RETURN true; END IF;
+  EXECUTE 'SELECT enabled FROM public.app_flags WHERE key = $1' INTO v_on USING 'live_pack';
+  RETURN v_on IS DISTINCT FROM false;
+EXCEPTION WHEN OTHERS THEN
+  RETURN true;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_live_pack_on() FROM PUBLIC, anon, authenticated;
+
 -- One invitation row for a person and an event (no checks: callers check).
 CREATE OR REPLACE FUNCTION public.bw_live_pack_invite_row(
   p_user uuid, p_band uuid, p_event uuid, p_date date, p_rehearsal boolean,
@@ -187,6 +212,7 @@ AS $$
 DECLARE
   v_lang text;
 BEGIN
+  IF NOT public.bw_live_pack_on() THEN RETURN; END IF;
   SELECT coalesce(nullif(lower(left(btrim(p.preferred_language), 2)), ''), 'en') INTO v_lang
     FROM public.profiles p WHERE p.id = p_user;
   v_lang := coalesce(v_lang, 'en');
@@ -219,6 +245,9 @@ DECLARE
   r record;
   n int := 0;
 BEGIN
+  -- Kill switch off: no question and no new automatic download. Packs already
+  -- on a device still get the silent refresh (bw_live_pack_refresh_flush).
+  IF NOT public.bw_live_pack_on() THEN RETURN 0; END IF;
   FOR r IN
     SELECT w.*, m.u, coalesce(pr.live_pack_auto, false) AS auto,
            (SELECT count(*) FROM public.notifications o
@@ -479,6 +508,7 @@ DECLARE
   w record;
 BEGIN
   IF auth.uid() IS NULL THEN RAISE EXCEPTION 'not signed in' USING ERRCODE = '42501'; END IF;
+  IF NOT public.bw_live_pack_on() THEN RETURN false; END IF;
   SELECT * INTO w FROM public.bw_live_pack_window_events(p_event_id);
   IF w.event_id IS NULL THEN RETURN false; END IF;
   IF NOT public.bw_is_band_admin(w.band_id) THEN

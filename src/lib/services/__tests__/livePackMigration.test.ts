@@ -59,4 +59,20 @@ describe('170 live pack (plan A2)', () => {
     expect(sql).toMatch(/cron\.schedule\('bw-live-pack-invites', '0 14 \* \* \*'/);
     expect(sql).toMatch(/cron\.schedule\('bw-live-pack-refresh', '\*\/5 \* \* \* \*'/);
   });
+
+  it('kill switch live_pack (173) stops invites and Remind at the server, whatever the apply order', () => {
+    const on = sql.slice(sql.indexOf('FUNCTION public.bw_live_pack_on()'));
+    expect(on).toMatch(/to_regclass\('public\.app_flags'\)/);
+    expect(on).toMatch(/EXECUTE 'SELECT enabled FROM public\.app_flags WHERE key = \$1'/);
+    const body = (name: string) => {
+      const from = sql.indexOf(`FUNCTION public.${name}(`);
+      return sql.slice(from, sql.indexOf('$$;', sql.indexOf('AS $$', from)));
+    };
+    for (const fn of ['bw_live_pack_invite_sweep', 'bw_live_pack_invite_row', 'bw_live_pack_remind']) {
+      expect(body(fn)).toMatch(/NOT public\.bw_live_pack_on\(\)/);
+    }
+    // Packs already on a device still get the silent refresh.
+    expect(body('bw_live_pack_refresh_flush')).not.toMatch(/bw_live_pack_on/);
+    expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.bw_live_pack_on\(\) FROM PUBLIC, anon, authenticated/);
+  });
 });

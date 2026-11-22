@@ -44,8 +44,11 @@ export async function packsSpace(packs: LivePack[]): Promise<number> {
  * sheet, changeable anytime. Automatic follows the account (every device);
  * Wi-Fi only and what is kept are this device's.
  */
-const OfflineLiveSectionInner: React.FC<{ userId?: string }> = ({ userId }) => {
+export const OfflineLiveSection: React.FC<{ userId?: string }> = ({ userId }) => {
   const t = useT();
+  // Switched off (app_flags live_pack, docs/flags.md): nothing is downloaded
+  // ahead, but what is on the device stays: its space and "Delete all" remain.
+  const livePackOn = useFlag('live_pack');
   const [choice, setChoice] = useState<LivePackChoice>(() => readChoice(userId));
   const [kept, setKept] = useState<{ count: number; bytes: number } | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -87,9 +90,12 @@ const OfflineLiveSectionInner: React.FC<{ userId?: string }> = ({ userId }) => {
   return (
     <div className="flex flex-col gap-3">
       <p className="bw-body-sm text-muted-foreground px-1">
-        {t('Lyrics, chords, structures and your own notes for your next gigs, on this device for when there is no signal. No fees, no contracts.')}
+        {livePackOn
+          ? t('Lyrics, chords, structures and your own notes for your next gigs, on this device for when there is no signal. No fees, no contracts.')
+          : t('Downloading setlists ahead is paused for now. What is already on this device stays readable offline until you delete it.')}
       </p>
 
+      {livePackOn && (
       <div className={cn(CARD, ROW)}>
         <Tile>
           <Download />
@@ -102,7 +108,9 @@ const OfflineLiveSectionInner: React.FC<{ userId?: string }> = ({ userId }) => {
           aria-label={t('Automatic download')}
         />
       </div>
+      )}
 
+      {livePackOn && (
       <div className={cn(CARD, ROW)}>
         <Tile>
           <Wifi />
@@ -115,6 +123,7 @@ const OfflineLiveSectionInner: React.FC<{ userId?: string }> = ({ userId }) => {
           aria-label={t('Wi-Fi only')}
         />
       </div>
+      )}
 
       <div className={cn(CARD, 'p-4 flex flex-col gap-3')}>
         <div className="flex items-center gap-3">
@@ -147,5 +156,3 @@ const OfflineLiveSectionInner: React.FC<{ userId?: string }> = ({ userId }) => {
   );
 };
 
-/** Hidden, and nothing runs, while the live pack is switched off (app_flags live_pack, docs/flags.md). */
-export const OfflineLiveSection: React.FC<{ userId?: string }> = (props) => (useFlag('live_pack') ? <OfflineLiveSectionInner {...props} /> : null);

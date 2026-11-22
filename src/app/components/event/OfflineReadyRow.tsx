@@ -6,7 +6,7 @@ import { WaitingChangesTag } from './WaitingChangesTag';
 import { cn } from '@/app/components/ui/utils';
 import { haptic } from '@/lib/haptics';
 import { dateName, useT } from '@/lib/i18n';
-import type { LivePack } from '@/lib/livePack';
+import { isPackReady, type LivePack } from '@/lib/livePack';
 import { chooseThisEvent, hasAnswered, readChoice } from '@/lib/livePackConsent';
 import { downloadPackNow } from './LivePackConsentSheet';
 
@@ -47,7 +47,8 @@ const OfflineReadyRowInner: React.FC<{
   const t = useT();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
-  const ready = !!pack && pack.songs.length > 0;
+  // A pack kept while live_pack was off is partial: not ready until completed.
+  const ready = isPackReady(pack);
   React.useEffect(() => {
     if (!pending) return;
     let alive = true;

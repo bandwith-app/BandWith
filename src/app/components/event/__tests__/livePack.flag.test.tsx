@@ -99,6 +99,17 @@ describe('live_pack off', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it('a pack kept while it was off is partial: on again, the event is not "Offline ready"', () => {
+    const pack = {
+      v: 1, eventId: 'ev-1', bandId: 'b-1', userId: 'u-1', setlistId: 'sl-1',
+      event: { id: 'ev-1', band_id: 'b-1', setlist_id: 'sl-1', event_date: '2026-11-28' },
+      songs: [{ id: 'r1', title: 'Hudson Line', setNumber: 1 }], personal: {}, version: 'x',
+      savedAt: new Date().toISOString(), expiresAt: '2026-11-30T00:00:00Z', partial: true,
+    } as never;
+    render(<OfflineReadyRow pack={pack} userId="u-1" event={EVENT} online />);
+    expect(screen.queryByText(/Offline ready/)).toBeNull();
+  });
+
   it('no consent sheet, even when the push asks for it', () => {
     __setAppFlagsForTest({ live_pack: false });
     render(<LivePackConsentSheet open onClose={() => {}} userId="u-1" event={EVENT} songs={[]} />);

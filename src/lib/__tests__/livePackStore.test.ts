@@ -61,7 +61,9 @@ import {
   runLivePackPrefetch,
   savePackSongs,
   sweepPacks,
+  packOpenedEvent,
 } from '../livePackStore';
+import { isPackReady } from '../livePack';
 import { writeChoice } from '../livePackConsent';
 
 const me = 'u1';
@@ -288,6 +290,61 @@ describe('runLivePackPrefetch with downloads off', () => {
     window.removeEventListener('bw:live-pack-changed', off);
     expect(n).toBe(1);
     expect((await listPacks(me)).map((p) => p.eventId)).toEqual(['e1']);
+  });
+});
+
+// live_pack off (docs/flags.md): opening an event still keeps its songs and
+// tidies the pack (deleted notes, files and band notes go), but such a pack is
+// partial: never "fresh" for the prefetch, never "Offline ready", never
+// reported to the admins. When the switch is on again it is completed.
+describe('packOpenedEvent', () => {
+  const openArgs = (on: boolean, over: Record<string, unknown> = {}) => ({
+    userId: me,
+    event: gig(),
+    songs,
+    livePackOn: on,
+    fullDue: true,
+    allowFiles: true,
+    ...over,
+  });
+
+  it('off: songs kept and the pack tidied, but partial: not ready, not reported', async () => {
+    answers.song_personal_notes = () => ({ data: [{ id: 'n1', song_id: 'song1', anchor: { type: 'song' }, body: 'capo 2' }], error: null });
+    await packOpenedEvent(openArgs(false));
+    const p = await readPack(me, 'b1', 'e1');
+    expect(p?.songs).toHaveLength(2);
+    expect(p?.partial).toBe(true);
+    expect(isPackReady(p)).toBe(false);
+    expect(status.reported).toEqual([]);
+    // My note deleted meanwhile: gone from the pack too, even with the switch off.
+    answers.song_personal_notes = () => ({ data: [], error: null });
+    await packOpenedEvent(openArgs(false));
+    expect((await readPack(me, 'b1', 'e1'))?.personal.song1).toBeUndefined();
+  });
+
+  it('on again: a partial pack is not fresh, the prefetch completes it', async () => {
+    await packOpenedEvent(openArgs(false));
+    writeChoice(me, { auto: true, events: [], wifiOnly: false });
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    const events = [{ eventId: 'e1', bandId: 'b1', date: inDays(3), eventType: 'gig', setlistId: 's1', row: gig() }];
+    expect(await runLivePackPrefetch({ userId: me, bandIds: ['b1'], events, online: true })).toBe(1);
+    const p = await readPack(me, 'b1', 'e1');
+    expect(p?.partial).toBeFalsy();
+    expect(isPackReady(p)).toBe(true);
+  });
+
+  it('on: the full pack as before (ready, reported)', async () => {
+    await packOpenedEvent(openArgs(true));
+    await new Promise((r) => setTimeout(r, 0));
+    const p = await readPack(me, 'b1', 'e1');
+    expect(isPackReady(p)).toBe(true);
+    expect(status.reported).toHaveLength(1);
+  });
+
+  it('an empty setlist drops the pack, switch on or off', async () => {
+    await packOpenedEvent(openArgs(true));
+    await packOpenedEvent(openArgs(false, { songs: [] }));
+    expect(await readPack(me, 'b1', 'e1')).toBeNull();
   });
 });
 

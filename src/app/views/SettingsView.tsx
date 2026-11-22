@@ -44,7 +44,6 @@ import { AcademySheet } from '@/app/components/academy/AcademySheet';
 import { RoleTourModal } from '@/app/components/onboarding/RoleTourModal';
 import type { AcademyTarget } from '@/lib/academy';
 import { useAppVersion } from '@/lib/appVersion';
-import { useFlag } from '@/lib/appFlags';
 import { allowAndroidInstalls, androidInstallMessage, openAndroidUpdate, useAndroidInstallState, useAndroidUpdate } from '@/lib/androidUpdate';
 import { deleteMyAccount } from '@/lib/services/account';
 import { useAuth } from '@/lib/AuthContext';
@@ -109,8 +108,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   const { signOut, user } = useAuth();
   const appVersion = useAppVersion();
-  // Offline & live is the live pack's page: gone while it is switched off (app_flags live_pack).
-  const livePackOn = useFlag('live_pack');
   const androidUpdate = useAndroidUpdate();
   const { state: androidInstall } = useAndroidInstallState();
   const { mode, setMode, resolvedTheme } = useTheme();
@@ -154,7 +151,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   }[] = [
     { id: 'notifications', label: t('Notifications'), hint: t('Push and email'), icon: Bell },
     { id: 'calendar', label: t('Calendar sync'), hint: t('Your events in Apple or Google Calendar'), icon: Calendar },
-    ...(livePackOn ? [{ id: 'offline' as const, label: t('Offline & live'), hint: t('Setlists on this device for no signal'), icon: WifiOff }] : []),
+    // Stays while live_pack is off: what is on the device can still be seen and deleted.
+    { id: 'offline' as const, label: t('Offline & live'), hint: t('Setlists on this device for no signal'), icon: WifiOff },
     ...(planBand ? [{ id: 'plan' as const, label: t('Plan'), hint: t('Your band’s plan'), value: planName(plan), icon: Crown }] : []),
     { id: 'appearance', label: t('Appearance'), hint: t('Light, dark or system'), value: themeLabel, icon: Sun },
     { id: 'units', label: t('Units'), hint: t('Distances in km or miles'), value: distanceUnit === 'mi' ? t('Miles') : t('Kilometres'), icon: Navigation },
@@ -174,10 +172,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [activeSection, setActiveSection] = useState<SettingsSection | null>(
     isKnownSection(initialSection) ? initialSection : null
   );
-  // Switched off while its page is open: back to the list.
-  useEffect(() => {
-    if (!livePackOn && activeSection === 'offline') setActiveSection(null);
-  }, [livePackOn, activeSection]);
 
   // iPhone Duo, open (Figma "Duo · 09"): the list stays on the leading page
   // and the section you are changing is on the trailing page, so one is
@@ -772,7 +766,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {section === null && renderMenu()}
       {section === 'notifications' && renderNotificationsSection()}
       {section === 'calendar' && <CalendarSyncSection />}
-      {section === 'offline' && livePackOn && <OfflineLiveSection userId={user?.id} />}
+      {section === 'offline' && <OfflineLiveSection userId={user?.id} />}
       {section === 'plan' && <PlanSection />}
       {section === 'appearance' && renderAppearanceSection()}
       {section === 'units' && renderUnitsSection()}

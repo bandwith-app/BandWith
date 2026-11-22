@@ -130,10 +130,15 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     [isLeader, push],
   );
 
-  // Another event: its last state isn't this one's.
+  // Replayed only within one Stage session (a Bluetooth restart mid-show).
+  // Stage closed, another event, or no longer the leader: the old state is
+  // not what the leader shows now, so it is never served again.
+  useEffect(() => {
+    if (!open) lastRef.current = null;
+  }, [open]);
   useEffect(() => {
     lastRef.current = null;
-  }, [eventId]);
+  }, [eventId, isLeader]);
 
   // Leader: advertise while Stage mode is open.
   useEffect(() => {
