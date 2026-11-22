@@ -223,6 +223,31 @@ describe('series dates the app shows, in external calendars', () => {
     }
   });
 
+  // Codex review of #298 (M4): #298's app side writes no RRULE of its own;
+  // the calendar feed 182 serves (member-calendar -> memberFeedCalendar) must
+  // put Feb 28 in a monthly series from Jan 31, for the client too.
+  it('the member feed of a monthly series from Jan 31 2027 includes Feb 28 (as served, and expanded by rrule)', () => {
+    const ev: MemberFeedEvent = {
+      id: '11111111-2222-4333-8444-555555555555', type: 'rehearsal', title: 'Month-end rehearsal', band_name: 'Velvet Static',
+      event_date: '2027-01-31', start_time: '19:00:00', end_time: '21:00:00', load_in_time: null, soundcheck_time: null,
+      venue_name: 'Studio B', venue_city: 'Queens', venue_address: null, role: null,
+      recurrence: { frequency: 'monthly', interval: 1 }, updated_at: '2026-11-22T10:00:00Z',
+    };
+    const ics = memberFeedCalendar([ev], { lang: 'en', site: 'https://app.bandwith.fun', now: new Date(Date.UTC(2026, 10, 22)) })!;
+    const lines = ics.split('\r\n');
+    const dtstart = lines.find((l) => l.startsWith('DTSTART'))!;
+    const rrule = lines.find((l) => l.startsWith('RRULE:'))!;
+    expect(dtstart).toBe('DTSTART:20270131T190000');
+    expect(rrule).toContain('BYMONTHDAY=-1');
+    // What a calendar client sees: rrule 2.8.1 over the served lines.
+    const r = RRule.fromString(`DTSTART:20270131T190000Z\n${rrule}`);
+    const seen = r.between(new Date(Date.UTC(2027, 0, 1)), new Date(Date.UTC(2027, 5, 1))).map((d) => d.toISOString().slice(0, 10));
+    expect(seen).toEqual(['2027-01-31', '2027-02-28', '2027-03-31', '2027-04-30', '2027-05-31']);
+    // A plain FREQ=MONTHLY (what the app would write without 182's rule) skips it.
+    const plain = RRule.fromString('DTSTART:20270131T190000Z\nRRULE:FREQ=MONTHLY;INTERVAL=1');
+    expect(plain.between(new Date(Date.UTC(2027, 0, 1)), new Date(Date.UTC(2027, 2, 1))).map((d) => d.toISOString().slice(0, 10))).not.toContain('2027-02-28');
+  });
+
   // Claude review #285 r5 (M1): what a calendar does with the RRULE we
   // write, expanded by a real RFC 5545 engine (rrule, devDependency), gives
   // the shared vectors exactly.
