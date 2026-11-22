@@ -160,6 +160,14 @@ test('@smoke the unsent-changes sheet opens above "Update BandWith" and takes ta
   await app.page.reload();
   const update = app.page.getByTestId('update-required');
   await expect(update).toBeVisible({ timeout: 20_000 });
+  // This screen shows as soon as the version answer is in, while the app
+  // under it is still loading its own chunk and CSS. Cut off mid-load, the
+  // app fails to start and the error screen replaces everything, this screen
+  // included (CI, 11-22). So wait for the app first: Home is there once the
+  // chunk is in (#root is inert and hidden from assistive tech under this
+  // screen, hence includeHidden).
+  await expect(app.page.getByRole('button', { name: app.t('Home'), exact: true, includeHidden: true }).first()).toBeAttached({ timeout: 30_000 });
+  await app.settle();
   // No signal, then a change made on this phone: nothing is sent behind the sheet.
   await context.setOffline(true);
   await app.page.evaluate((id) => {

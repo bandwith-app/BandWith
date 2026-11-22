@@ -3,9 +3,13 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, cleanup, fireEvent, screen, waitFor, act } from '@testing-library/react';
 
 // Codex 11-22, C1: an admin opens Edit on a gig that has a setlist while the
-// connection is bad. The setlist does not load and the section shows empty.
-// Songs added then and saved replaced the whole stored setlist, unchecked
-// (`_setlistExpected: null`). Now that save is refused and says why.
+// connection is bad. The setlist does not load and the section showed empty.
+// Songs added then and saved replaced the whole stored setlist: unchecked
+// (`_setlistExpected: null`) when the load failed, and with a matching
+// baseline when the load was only slow (25 songs became 3).
+// Now the setlist is edited only once it has loaded: while it loads the
+// section says so, and a failed load shows why in place of the editor. A
+// save with songs and no loaded setlist is still refused.
 // Made-up data (New York).
 vi.mock('@/lib/BandContext', () => ({
   useBand: () => ({ selectedBand: { id: 'band-1', name: 'Hudson Five' }, bands: [], isAdmin: true }),
@@ -111,12 +115,18 @@ const saveIsRefused = async (onCreate: ReturnType<typeof vi.fn>) => {
   fireEvent.click(screen.getByText('Save changes'));
   await act(async () => {});
   expect(onCreate.mock.calls.map((c) => ({ songs: songIds(c[0]), expected: (c[0] as any)._setlistExpected }))).toEqual([]);
-  expect(screen.getByRole('alert').textContent).toBe(REFUSED);
+  // Over the Save button (and in the section, when it is open).
+  expect(screen.getAllByRole('alert').map((a) => a.textContent)).toContain(REFUSED);
 };
 const settle = async () => {
   await waitFor(() => expect(getSetlist).toHaveBeenCalledWith('sl-25'));
   await act(async () => {});
 };
+
+const pickSongs = () => screen.getByRole('button', { name: 'Pick songs' }) as HTMLButtonElement;
+const sectionAlert = () => screen.queryAllByRole('alert').map((a) => a.textContent);
+/** The section's own "Loading setlist…" line (other status lines of the form don't count). */
+const loadingShown = () => screen.queryAllByRole('status').some((el) => el.textContent === 'Loading setlist…');
 
 afterEach(() => {
   cleanup();
@@ -124,69 +134,105 @@ afterEach(() => {
   vi.mocked(getSetlist).mockImplementation(async () => ({ data: null, error: null }));
 });
 
-describe('editing a gig whose setlist did not load (Codex C1)', () => {
-  it('the load fails, the admin adds songs: the save is refused and says why', async () => {
-    vi.mocked(getSetlist).mockResolvedValueOnce({ data: null, error: new Error('Failed to fetch') });
+describe('editing a gig whose setlist is slow to load', () => {
+  it('nothing can be added until it loads; then the saved songs are shown and a save sends them plus the additions', async () => {
+    // 25 songs stored; the answer takes its time (a venue with a bad signal).
+    const rows = Array.from({ length: 25 }, (_, i) => ({
+      id: `row-${i + 1}`,
+      song_id: `song-${i + 1}`,
+      position: i,
+      set_number: 1,
+      song: { id: `song-${i + 1}`, title: `Standard ${i + 1}`, artist: 'Hudson Five' },
+    }));
+    let land: (v: { data: any; error: null }) => void = () => {};
+    vi.mocked(getSetlist).mockImplementationOnce(() => new Promise((r) => (land = r)));
     const onCreate = vi.fn(async () => true);
     render(<CreateEventModal onClose={vi.fn()} onCreate={onCreate} editingEvent={gig} currentUserId="me" />);
     await settle();
     openSetlist();
+
+    // Still loading: the section says so, and no song can be added on top of
+    // a setlist nobody has seen yet.
+    expect(loadingShown()).toBe(true);
+    expect(pickSongs().disabled).toBe(true);
+    fireEvent.click(pickSongs());
+    expect(screen.queryByText('picker: add three songs')).toBeNull();
+
+    await act(async () => {
+      land({ data: { id: 'sl-25', name: 'Rooftop Session setlist', songs: rows }, error: null });
+    });
+    expect(loadingShown()).toBe(false);
+    expect(screen.getByText('1 set · 25 songs')).toBeTruthy();
+    expect(pickSongs().disabled).toBe(false);
+
     addThreeSongs();
-    await saveIsRefused(onCreate);
+    fireEvent.click(screen.getByText('Save changes'));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
+    const sent = (onCreate.mock.calls[0] as unknown[])[0] as any;
+    expect(songIds(sent)).toEqual([...rows.map((r) => r.song_id), 'S1', 'S2', 'S3']);
+    expect(sent._setlistExpected).toEqual({ id: 'sl-25', songs: rows.map((r) => ({ id: r.id, song_id: r.song_id, set_number: 1 })) });
+    expect(sent._setlistCleared).toBe(false);
   });
 
-  it('a load that throws is the same', async () => {
-    vi.mocked(getSetlist).mockRejectedValueOnce(new Error('Failed to fetch'));
-    const onCreate = vi.fn(async () => true);
-    render(<CreateEventModal onClose={vi.fn()} onCreate={onCreate} editingEvent={gig} currentUserId="me" />);
-    await settle();
-    openSetlist();
-    addThreeSongs();
-    await saveIsRefused(onCreate);
-  });
-
-  it('the load has not come back yet: songs are not saved over a setlist nobody saw', async () => {
+  it('saving while it still loads leaves the setlist alone', async () => {
     vi.mocked(getSetlist).mockImplementationOnce(() => new Promise(() => {}));
     const onCreate = vi.fn(async () => true);
     render(<CreateEventModal onClose={vi.fn()} onCreate={onCreate} editingEvent={gig} currentUserId="me" />);
     await settle();
     openSetlist();
-    addThreeSongs();
-    await saveIsRefused(onCreate);
-  });
-
-  it('refused, then the added songs are taken off: the rest saves and the stored setlist is left alone', async () => {
-    vi.mocked(getSetlist).mockResolvedValueOnce({ data: null, error: new Error('Failed to fetch') });
-    const onCreate = vi.fn(async () => true);
-    render(<CreateEventModal onClose={vi.fn()} onCreate={onCreate} editingEvent={gig} currentUserId="me" />);
-    await settle();
-    openSetlist();
-    addThreeSongs();
-    await saveIsRefused(onCreate);
-
-    fireEvent.click(screen.getByText('Pick songs'));
-    fireEvent.click(screen.getByText('picker: untick them'));
+    expect(loadingShown()).toBe(true);
+    expect(pickSongs().disabled).toBe(true);
     fireEvent.click(screen.getByText('Save changes'));
     await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
-    expect(screen.queryByRole('alert')).toBeNull();
-    const sent = (onCreate.mock.calls[0] as unknown[])[0] as any;
-    // No songs and not "emptied": the app leaves the gig's setlist as it is
-    // (AuthenticatedApp persistSetlist / offlineExtras, eventExtras saveSetlist).
-    expect(songIds(sent)).toEqual([]);
-    expect(sent._setlistCleared).toBe(false);
-  });
-
-  it('the load fails and no song is added: the gig saves without touching the setlist', async () => {
-    vi.mocked(getSetlist).mockResolvedValueOnce({ data: null, error: new Error('Failed to fetch') });
-    const onCreate = vi.fn(async () => true);
-    render(<CreateEventModal onClose={vi.fn()} onCreate={onCreate} editingEvent={gig} currentUserId="me" />);
-    await settle();
-    fireEvent.click(screen.getByText('Save changes'));
-    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
-    expect(screen.queryByRole('alert')).toBeNull();
     const sent = (onCreate.mock.calls[0] as unknown[])[0] as any;
     expect(songIds(sent)).toEqual([]);
     expect(sent._setlistCleared).toBe(false);
+  });
+});
+
+describe('editing a gig whose setlist did not load (Codex C1)', () => {
+  const failures: [string, () => void][] = [
+    ['the load fails', () => vi.mocked(getSetlist).mockResolvedValueOnce({ data: null, error: new Error('Failed to fetch') })],
+    ['the load throws', () => vi.mocked(getSetlist).mockRejectedValueOnce(new Error('Failed to fetch'))],
+  ];
+  for (const [how, arrange] of failures) {
+    it(`${how}: the section says why in place of the editor, and the gig saves without touching the setlist`, async () => {
+      arrange();
+      const onCreate = vi.fn(async () => true);
+      render(<CreateEventModal onClose={vi.fn()} onCreate={onCreate} editingEvent={gig} currentUserId="me" />);
+      await settle();
+      openSetlist();
+      expect(sectionAlert()).toEqual([REFUSED]);
+      // No way to add songs to a setlist that is not here.
+      expect(screen.queryByRole('button', { name: 'Pick songs' })).toBeNull();
+      expect(loadingShown()).toBe(false);
+
+      // The rest of the gig still saves. No songs and not "emptied": the app
+      // leaves the gig's setlist as it is (AuthenticatedApp persistSetlist /
+      // offlineExtras, eventExtras saveSetlist).
+      fireEvent.click(screen.getByText('Save changes'));
+      await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
+      const sent = (onCreate.mock.calls[0] as unknown[])[0] as any;
+      expect(songIds(sent)).toEqual([]);
+      expect(sent._setlistCleared).toBe(false);
+    });
+  }
+
+  // The save's own check, whatever the screen allowed: songs in the form and
+  // no loaded setlist are never sent. Reached here by handing the open form
+  // another gig whose setlist does not load.
+  it('songs in the form with no loaded setlist: the save is refused and says why', async () => {
+    vi.mocked(getSetlist).mockResolvedValueOnce({ data: stored as any, error: null });
+    const onCreate = vi.fn(async () => true);
+    const view = render(<CreateEventModal onClose={vi.fn()} onCreate={onCreate} editingEvent={gig} currentUserId="me" />);
+    await settle();
+    vi.mocked(getSetlist).mockResolvedValueOnce({ data: null, error: new Error('Failed to fetch') });
+    view.rerender(
+      <CreateEventModal onClose={vi.fn()} onCreate={onCreate} editingEvent={{ ...gig, eventId: 'evt-8', setlistId: 'sl-other' }} currentUserId="me" />,
+    );
+    await waitFor(() => expect(getSetlist).toHaveBeenCalledWith('sl-other'));
+    await act(async () => {});
+    await saveIsRefused(onCreate);
   });
 
   it('the load succeeds: added songs save with the setlist as it loaded', async () => {
@@ -206,6 +252,22 @@ describe('editing a gig whose setlist did not load (Codex C1)', () => {
       songs: [{ id: 'r1', song_id: 'A', set_number: 1 }, { id: 'r2', song_id: 'B', set_number: 1 }],
     });
     expect(sent._setlistCleared).toBe(false);
+  });
+
+  it('a gig with no setlist is editable at once', async () => {
+    const onCreate = vi.fn(async () => true);
+    render(<CreateEventModal onClose={vi.fn()} onCreate={onCreate} editingEvent={{ ...gig, setlistId: undefined }} currentUserId="me" />);
+    await act(async () => {});
+    expect(getSetlist).not.toHaveBeenCalled();
+    openSetlist();
+    expect(loadingShown()).toBe(false);
+    expect(pickSongs().disabled).toBe(false);
+    addThreeSongs();
+    fireEvent.click(screen.getByText('Save changes'));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
+    const sent = (onCreate.mock.calls[0] as unknown[])[0] as any;
+    expect(songIds(sent)).toEqual(['S1', 'S2', 'S3']);
+    expect(sent._setlistExpected).toEqual({ id: null, songs: [] });
   });
 });
 
