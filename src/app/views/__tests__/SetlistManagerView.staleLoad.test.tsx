@@ -75,7 +75,7 @@ describe('SetlistManagerView: a slow load never lands on another setlist', () =>
 
     fireEvent.click(screen.getByRole('button', { name: /save setlist/i }));
     await waitFor(() => expect(svc.replaceSetlistSongs).toHaveBeenCalled());
-    expect(svc.replaceSetlistSongs).toHaveBeenCalledWith('sl-b', [{ song_id: 'song-b', set_number: 1 }], { name: 'Brooklyn Wedding' });
+    expect(svc.replaceSetlistSongs).toHaveBeenCalledWith('sl-b', [{ song_id: 'song-b', set_number: 1 }], expect.objectContaining({ name: 'Brooklyn Wedding' }));
   });
 
   // Round 2 (Codex B5): A, then B, then A again. The first A answer arrives
@@ -99,6 +99,10 @@ describe('SetlistManagerView: a slow load never lands on another setlist', () =>
     expect((screen.getByDisplayValue(/Rooftop Session/) as HTMLInputElement).value).toBe('Rooftop Session · Saturday');
     fireEvent.click(screen.getByRole('button', { name: /save setlist/i }));
     await waitFor(() => expect(svc.replaceSetlistSongs).toHaveBeenCalled());
-    expect(svc.replaceSetlistSongs).toHaveBeenCalledWith('sl-a', [{ song_id: 'song-a', set_number: 1 }], { name: 'Rooftop Session · Saturday' });
+    expect(svc.replaceSetlistSongs).toHaveBeenCalledWith('sl-a', [{ song_id: 'song-a', set_number: 1 }], {
+      name: 'Rooftop Session · Saturday',
+      // Saved only over what the second load showed.
+      expected: { name: 'Rooftop Session', songs: [{ song_id: 'song-a', set_number: 1 }] },
+    });
   });
 });

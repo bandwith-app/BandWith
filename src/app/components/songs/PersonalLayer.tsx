@@ -629,7 +629,9 @@ const Sheets: React.FC = () => {
     const owner = sheetOwner;
     setBusy(true);
     setError(null);
-    const { error: err, queued } = await savePersonalNote(song.id, anchor, body, note?.id);
+    // Written only for the account that opened the sheet (checked again
+    // against the session right before the request).
+    const { error: err, queued } = await savePersonalNote(song.id, anchor, body, note?.id, owner);
     setBusy(false);
     // Another account signed in meanwhile: nothing of this note reaches it.
     if (viewer !== owner) return;

@@ -194,18 +194,78 @@ BEGIN
     SELECT count(*) FROM public.setlist_songs x
      WHERE x.setlist_id = OLD.setlist_id AND x.id <> OLD.id AND x.xmax::text = (txid_current() % 4294967296)::text;
   END IF;
-  RETURN OLD;
+  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
 END $f$;
-CREATE TRIGGER t_lock_seen BEFORE DELETE ON public.setlist_songs FOR EACH ROW EXECUTE FUNCTION public.t_lock_seen();
+CREATE TRIGGER t_lock_seen BEFORE UPDATE OR DELETE ON public.setlist_songs FOR EACH ROW EXECUTE FUNCTION public.t_lock_seen();
 `);
 await save(ADMIN, [{ song_id: S3 }, { song_id: S2 }, { song_id: S1 }]);
 const locked = (await db.query(`SELECT n FROM public.lock_seen`)).rows[0]?.n;
-ok(locked === 2, `the setlist's rows are locked before they are deleted (${locked ?? 'none'} of 2 others locked)`);
+ok(locked === 2, `the setlist's rows are locked before any is changed (${locked ?? 'none'} of 2 others locked)`);
 await db.exec(`DROP TRIGGER t_lock_seen ON public.setlist_songs; DROP FUNCTION public.t_lock_seen(); DROP TABLE public.lock_seen;`);
 const src = (await db.query(`SELECT prosrc FROM pg_proc WHERE proname = 'bw_save_setlist_songs'`)).rows[0]?.prosrc ?? '';
 const lockAt = src.search(/FROM\s+public\.setlist_songs[^;]*FOR\s+UPDATE/i);
 const readAt = src.search(/INTO\s+v_prev/i);
 ok(lockAt >= 0 && readAt > lockAt, 'the lock is taken before the rows are read for the copy');
+
+// Round 3 (Codex B2): rows that stay are updated in place, never deleted and
+// put back. A singer change another admin saves while this save holds the
+// lock waits, then lands on the updated row (Postgres follows an updated row
+// to its new version; a deleted one is skipped and the change is lost while
+// the picker says saved).
+await seed();
+await db.exec(`
+CREATE TABLE public.row_ops (op text, id uuid);
+CREATE FUNCTION public.t_row_ops() RETURNS trigger LANGUAGE plpgsql AS $f$
+BEGIN
+  INSERT INTO public.row_ops VALUES (TG_OP, CASE WHEN TG_OP = 'INSERT' THEN NEW.id ELSE OLD.id END);
+  RETURN NULL;
+END $f$;
+CREATE TRIGGER t_row_ops AFTER INSERT OR UPDATE OR DELETE ON public.setlist_songs FOR EACH ROW EXECUTE FUNCTION public.t_row_ops();
+`);
+const opsOf = async () => (await db.query(`SELECT op, id FROM public.row_ops`)).rows;
+const rr = await save(ADMIN, [{ song_id: S3, set_number: 1 }, { song_id: S1 }, { song_id: S2 }]);
+const reorderOps = await opsOf();
+ok(!rr?.error && reorderOps.every((o) => o.op === 'UPDATE') && reorderOps.length === 3,
+  `a reorder updates the rows in place (${reorderOps.map((o) => o.op).join(',') || 'nothing'})`);
+const reordered = await rows();
+ok(reordered.map((r) => r.id).join() === [R3, R1, R2].join() && reordered.map((r) => r.position).join() === '1,2,3', 'same ids, new positions');
+ok(JSON.stringify(reordered[1].vocal_parts) === JSON.stringify({ bv: [MEMBER] }) && reordered[0].notes === 'encore', 'notes and who sings what untouched');
+await db.exec(`DELETE FROM public.row_ops`);
+await save(ADMIN, [{ song_id: S1 }, { song_id: S4 }, { song_id: S3 }]);
+const swapOps = await opsOf();
+const byOp = (op) => swapOps.filter((o) => o.op === op).map((o) => o.id);
+ok(byOp('DELETE').join() === R2 && byOp('INSERT').length === 1 && !byOp('UPDATE').includes(R2),
+  `only the removed row is deleted, only the new one inserted (${swapOps.map((o) => o.op).join(',')})`);
+await db.exec(`DELETE FROM public.row_ops`);
+await save(ADMIN, [{ song_id: S1 }, { song_id: S4 }, { song_id: S3 }]);
+ok((await opsOf()).length === 0, 'saving the same order again writes nothing');
+await db.exec(`DROP TRIGGER t_row_ops ON public.setlist_songs; DROP FUNCTION public.t_row_ops(); DROP TABLE public.row_ops;`);
+
+// Round 3 (Claude M5): two admins on the same setlist. A save carrying the
+// setlist as its editor loaded it is written only while it is still that;
+// otherwise nothing changes and the save says what is stored now.
+await seed();
+const loaded = { name: 'Rooftop Session', songs: [{ song_id: S1, set_number: 1 }, { song_id: S2, set_number: 1 }, { song_id: S3, set_number: 2 }] };
+const saveExp = (songs, name, expected) =>
+  asCommit(ADMIN, () => db.query(`SELECT public.bw_save_setlist_songs($1, $2::jsonb, $3, $4::jsonb) AS r`, [SL, JSON.stringify(songs), name, JSON.stringify(expected)]))
+    .then((r) => r.rows[0].r, (e) => ({ error: e.message }));
+// Admin B adds a song first.
+await save(ADMIN, [{ song_id: S1 }, { song_id: S2 }, { song_id: S3, set_number: 2 }, { song_id: S4, set_number: 2 }]);
+const stale = await saveExp([{ song_id: S2 }, { song_id: S1 }], 'Rooftop · A', loaded);
+const afterStale = await rows();
+ok(stale?.conflict === true && stale?.saved === false, `a save over a changed setlist is a conflict (${JSON.stringify(stale)?.slice(0, 80)})`);
+ok(afterStale.length === 4 && afterStale.some((r) => r.song_id === S4) && (await setlist())?.name === 'Rooftop Session', 'and B’s song and the name stay');
+ok(JSON.stringify(stale?.current?.songs?.map((x) => x.song_id)) === JSON.stringify([S1, S2, S3, S4]) && stale?.current?.name === 'Rooftop Session', 'the conflict carries what is stored now');
+const mine = await saveExp([{ song_id: S2 }, { song_id: S1 }], 'Rooftop · A', stale?.current);
+ok(!mine?.error && mine?.saved === true && (await rows()).map((r) => r.song_id).join() === [S2, S1].join(), '"save mine instead" (expected = what is stored now) writes');
+await seed();
+const renamedMeanwhile = await (async () => {
+  await asCommit(ADMIN, () => db.query(`UPDATE setlists SET name = 'Renamed by B' WHERE id = $1`, [SL]));
+  return saveExp([{ song_id: S1 }, { song_id: S2 }, { song_id: S3, set_number: 2 }], 'Rooftop Session', loaded);
+})();
+ok(renamedMeanwhile?.conflict === true && (await setlist())?.name === 'Renamed by B', 'a rename meanwhile is a conflict too');
+const overloads = (await db.query(`SELECT count(*)::int AS n FROM pg_proc WHERE proname = 'bw_save_setlist_songs'`)).rows[0].n;
+ok(overloads === 1, `one bw_save_setlist_songs only (no PostgREST overload ambiguity): ${overloads}`);
 
 // Older builds: their own delete + insert keeps working for admins, not for members.
 await seed();

@@ -31,7 +31,8 @@ CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
   SELECT (nullif(current_setting('request.jwt.claims', true), '')::json ->> 'sub')::uuid $$;
 GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated, anon;
 CREATE TABLE public.band_members (band_id uuid, user_id uuid, role text, is_active boolean DEFAULT true);
-CREATE TABLE public.songs (id uuid PRIMARY KEY, band_id uuid, title text, lyrics text, status text);
+CREATE TABLE public.songs (id uuid PRIMARY KEY, band_id uuid, title text, lyrics text, status text,
+  key text, bpm int, chord_chart jsonb, artist text);
 CREATE FUNCTION public.bw_is_band_admin(p_band_id uuid, p_user_id uuid DEFAULT auth.uid()) RETURNS boolean
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $f$
   SELECT EXISTS (SELECT 1 FROM band_members WHERE band_id = p_band_id AND user_id = p_user_id AND role = 'admin' AND COALESCE(is_active, true)); $f$;
@@ -103,6 +104,36 @@ ok((await priv('anon')) === false, 'anon cannot execute');
 ok((await priv('authenticated')) === true, 'authenticated can execute');
 const cfg = (await db.query(`SELECT prosecdef, proconfig FROM pg_proc WHERE proname = 'bw_save_song_lyrics'`)).rows[0];
 ok(cfg?.prosecdef === false && String(cfg?.proconfig).includes('search_path=public'), 'security invoker (RLS applies) with a fixed search_path');
+
+// Round 3 (Codex B3): Transpose writes the lyrics, the key and the chart in
+// one go. Either all of it is saved, or none of it (and never over a
+// bandmate's newer lyrics).
+const head = async () => (await db.query(`SELECT lyrics, key, bpm, chord_chart FROM songs WHERE id = $1`, [SONG])).rows[0];
+const saveWith = (user, lyrics, expected, fields) =>
+  as(user, () => db.query(`SELECT public.bw_save_song_lyrics($1, $2, $3, $4::jsonb) AS r`, [SONG, lyrics, expected, JSON.stringify(fields)]))
+    .then((r) => r.rows[0].r, (e) => ({ error: e.message }));
+const UP = '# Verse 1\n[D]Hello again';
+const chart = { key: 'D', sections: [] };
+await seed();
+const t1 = await saveWith(ADMIN_A, UP, LOADED, { key: 'D', chord_chart: chart, bpm: 96 });
+const h1 = await head();
+ok(t1?.saved === true && h1.lyrics === UP && h1.key === 'D' && h1.bpm === 96 && JSON.stringify(h1.chord_chart) === JSON.stringify(chart),
+  `lyrics, key, tempo and chart are saved together (${t1?.error ?? 'ok'})`);
+await seed();
+const t2 = await saveWith(ADMIN_A, UP, LOADED, { key: 'D', bpm: 'fast' });
+const h2 = await head();
+ok(!!t2?.error && h2.lyrics === LOADED && h2.key === null, 'one field that can’t be saved: nothing is, the lyrics stay as they were');
+await seed();
+await as(ADMIN_B, () => db.query(`UPDATE songs SET lyrics = $1 WHERE id = $2`, [B_SAVED, SONG]));
+const t3 = await saveWith(ADMIN_A, UP, LOADED, { key: 'D' });
+ok(t3?.saved === false && (await head()).key === null && (await stored()) === B_SAVED, 'lyrics changed meanwhile: neither the lyrics nor the key are written');
+await seed();
+const t4 = await saveWith(ADMIN_A, UP, LOADED, { band_id: BAND, key: 'D' });
+ok(!!t4?.error && (await stored()) === LOADED, 'a column the song form never writes (band_id) is refused');
+const t5 = await saveWith(ADMIN_A, UP, LOADED, null);
+ok(t5?.saved === true && (await stored()) === UP, 'no fields: the lyrics alone, as before');
+const fns = (await db.query(`SELECT count(*)::int AS n FROM pg_proc WHERE proname = 'bw_save_song_lyrics'`)).rows[0].n;
+ok(fns === 1, `one bw_save_song_lyrics only (no PostgREST overload ambiguity): ${fns}`);
 
 // Older builds: the direct update still works for admins.
 await seed();

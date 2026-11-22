@@ -625,6 +625,24 @@ export type SetlistSongInput =
 
 type PreviousSetlistRow = { song_id: string; set_number: number | null; position: number };
 
+/**
+ * A setlist as an editor loaded it: its name and its songs in play order.
+ * A save that carries it is written only while the setlist is still that
+ * (188); otherwise it returns what is stored now as `conflict`.
+ */
+export type SetlistState = { name: string; songs: { song_id: string; set_number: number }[] };
+
+/** Stored rows → their running order, as SetlistState has it. */
+export const setlistOrder = (rows: { id?: string; song_id: string; position: number; set_number?: number | null }[]) =>
+  [...rows]
+    .sort((a, b) => (a.set_number ?? 1) - (b.set_number ?? 1) || a.position - b.position || String(a.id ?? '').localeCompare(String(b.id ?? '')))
+    .map((r) => ({ song_id: r.song_id, set_number: r.set_number ?? 1 }));
+
+const sameSetlist = (a: SetlistState, b: SetlistState) =>
+  a.name === b.name &&
+  a.songs.length === b.songs.length &&
+  a.songs.every((x, i) => x.song_id === b.songs[i].song_id && (x.set_number ?? 1) === (b.songs[i].set_number ?? 1));
+
 /** The function from 188 isn't on the server yet (older database). */
 const isMissingFunction = (e: unknown) => {
   const err = e as { code?: string; message?: string } | null;
@@ -659,30 +677,30 @@ const setlistEntry = (entry: SetlistSongInput) => {
 export const replaceSetlistSongs = async (
   setlistId: string,
   songs: SetlistSongInput[],
-  opts?: { name?: string }
-): Promise<{ error: Error | null; previous?: PreviousSetlistRow[] }> => {
+  opts?: { name?: string; expected?: SetlistState }
+): Promise<{ error: Error | null; previous?: PreviousSetlistRow[]; conflict?: SetlistState }> => {
   const entries = songs.map(setlistEntry);
   const name = opts?.name?.trim() || null;
+  const expected = opts?.expected;
   try {
     const res = await supabase.rpc('bw_save_setlist_songs', {
       p_setlist_id: setlistId,
       p_songs: entries,
       p_name: name,
+      ...(expected ? { p_expected: expected } : {}),
     });
     if (!res?.error) {
-      const out = (res?.data ?? {}) as { previous?: PreviousSetlistRow[] };
+      const out = (res?.data ?? {}) as { previous?: PreviousSetlistRow[]; conflict?: boolean; current?: SetlistState };
+      if (out.conflict && out.current) return { error: null, conflict: out.current };
       return { error: null, previous: Array.isArray(out.previous) ? out.previous : [] };
     }
     if (!isMissingFunction(res.error)) return { error: res.error as unknown as Error };
   } catch (error: any) {
     if (!isMissingFunction(error)) return { error };
   }
-  // Database without 188 yet: the step-by-step save older builds use.
-  if (name) {
-    const { error: nameError } = await supabase.from('setlists').update({ name }).eq('id', setlistId);
-    if (nameError) return { error: nameError as unknown as Error };
-  }
-  return replaceSetlistSongsStepwise(setlistId, entries);
+  // Database without 188 yet: the step-by-step save older builds use. The
+  // name goes last, with the count, so a failed save never leaves it renamed.
+  return replaceSetlistSongsStepwise(setlistId, entries, name, expected);
 };
 
 /**
@@ -693,8 +711,10 @@ export const replaceSetlistSongs = async (
  */
 const replaceSetlistSongsStepwise = async (
   setlistId: string,
-  entries: ReturnType<typeof setlistEntry>[]
-): Promise<{ error: Error | null; previous?: PreviousSetlistRow[] }> => {
+  entries: ReturnType<typeof setlistEntry>[],
+  name: string | null = null,
+  expected?: SetlistState
+): Promise<{ error: Error | null; previous?: PreviousSetlistRow[]; conflict?: SetlistState }> => {
   try {
     // Read the current rows first so a failed insert can be undone. Every
     // column, so a database with 172 hands back vocal_parts and one without
@@ -719,6 +739,13 @@ const replaceSetlistSongsStepwise = async (
     const ordered = [...previousRows].sort(
       (a, b) => (a.set_number ?? 1) - (b.set_number ?? 1) || a.position - b.position || String(a.id).localeCompare(String(b.id))
     );
+    // Changed since the editor loaded it: nothing is written.
+    if (expected) {
+      const { data: head, error: headError } = await supabase.from('setlists').select('name').eq('id', setlistId).single();
+      if (headError) throw headError;
+      const current: SetlistState = { name: (head as { name?: string } | null)?.name ?? '', songs: setlistOrder(previousRows) };
+      if (!sameSetlist(current, expected)) return { error: null, conflict: current };
+    }
     const hasVoices = previousRows.some((r) => 'vocal_parts' in r);
     const bySong = new Map<string, StoredRow[]>();
     for (const r of ordered) bySong.set(r.song_id, [...(bySong.get(r.song_id) ?? []), r]);
@@ -774,7 +801,7 @@ const replaceSetlistSongsStepwise = async (
 
     const { error: updateError } = await supabase
       .from('setlists')
-      .update({ song_count: rows.length })
+      .update({ song_count: rows.length, ...(name ? { name } : {}) })
       .eq('id', setlistId);
 
     if (updateError) throw updateError;
@@ -822,13 +849,17 @@ export const saveSetlistOrder = async (
 export const saveSongLyricsIfUnchanged = async (
   songId: string,
   lyrics: string | null,
-  expected: string | null
+  expected: string | null,
+  /** Other song-form columns saved in the same transaction (Transpose: key, chart). */
+  fields?: SongChanges
 ): Promise<{ error: Error | null; conflict?: string | null }> => {
+  const extra = fields && Object.keys(fields).length > 0 ? fields : null;
   try {
     const res = await supabase.rpc('bw_save_song_lyrics', {
       p_song_id: songId,
       p_lyrics: lyrics,
       p_expected: expected,
+      ...(extra ? { p_fields: extra } : {}),
     });
     if (!res?.error) {
       const out = (res?.data ?? {}) as { saved?: boolean; lyrics?: string | null };
@@ -850,7 +881,8 @@ export const saveSongLyricsIfUnchanged = async (
   const now = await read();
   if (now.error) return { error: now.error };
   if (now.lyrics !== expected) return { error: null, conflict: now.lyrics };
-  const write = supabase.from('songs').update({ lyrics }).eq('id', songId);
+  // One update: the lyrics and the other fields land together or not at all.
+  const write = supabase.from('songs').update({ ...(extra ?? {}), lyrics }).eq('id', songId);
   const { data: written, error } = await (now.updatedAt ? write.eq('updated_at', now.updatedAt) : write.is('updated_at', null)).select('id');
   if (error) return { error: error as unknown as Error };
   if (Array.isArray(written) && written.length > 0) return { error: null };

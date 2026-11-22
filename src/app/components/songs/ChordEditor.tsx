@@ -647,8 +647,8 @@ export const ChordEditor: React.FC = () => {
                   </form>
                 </>
               ) : conflict ? (
-                <div role="alert" className="flex flex-col gap-3">
-                  <p className="bw-body-md flex gap-3 items-start">
+                <div className="flex flex-col gap-3">
+                  <p role="alert" className="bw-body-md flex gap-3 items-start">
                     <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" aria-hidden />
                     <span className="min-w-0">
                       {t('Someone else changed these lyrics while you were editing. Your changes are still here, not saved yet.')}

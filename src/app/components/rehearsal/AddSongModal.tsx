@@ -16,6 +16,7 @@ import {
   BookOpen,
   Link as LinkIcon,
   Disc3,
+  AlertTriangle,
 } from '@/app/components/icons';
 import { IconButton, NavBackButton, PillButton, PillField, Selector, FormError } from '@/app/components/bw';
 import { useRailAction } from '@/lib/railActions';
@@ -133,6 +134,11 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
   const openedRef = useRef<SongFormValues | null>(null);
   /** songs.lyrics exactly as stored when the form opened: lyrics are written only over it (189). */
   const storedLyricsRef = useRef<string | null>(null);
+  /** A bandmate saved these lyrics meanwhile: what is stored now (the form keeps the draft). */
+  const [lyricsConflict, setLyricsConflict] = useState<{ stored: string | null } | null>(null);
+  const lyricsWarnId = React.useId();
+  // Over the limit: said once when the text crosses it, not on every keystroke.
+  const [lyricsAnnounce, setLyricsAnnounce] = useState('');
   /** Title of the same song already in the library (asked once before adding a copy). */
   const [duplicateOf, setDuplicateOf] = useState<string | null>(null);
 
@@ -162,6 +168,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
     setExistingChart(song.chart_url || undefined);
     setChartUrl(song.chart_url && !isStoredSongFile(song.chart_url) ? song.chart_url : '');
     storedLyricsRef.current = song.lyrics ?? null;
+    setLyricsConflict(null);
     openedRef.current = {
       title: song.title || '',
       artist: song.artist || '',
@@ -358,16 +365,21 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
           if ('lyrics' in changes) {
             // Written only over the lyrics this form opened (189): a
             // bandmate's chords or verse saved meanwhile are never erased.
-            const saved = await saveSongLyricsIfUnchanged(song.id, newLyrics ?? null, storedLyricsRef.current);
+            // The other changes go in the same request (Transpose: never
+            // the new chords with the old key).
+            const saved = await saveSongLyricsIfUnchanged(song.id, newLyrics ?? null, storedLyricsRef.current, rest);
             if (saved.error) throw saved.error;
             if (saved.conflict !== undefined) {
-              throw new UserError(t('Someone else changed these lyrics while you were editing. Your changes are still here, not saved yet.'));
+              // Nothing saved: this attempt's uploads go (the form keeps the files).
+              if (uploaded.length > 0) await removeSongFiles(uploaded);
+              uploaded.length = 0;
+              setLyricsConflict({ stored: saved.conflict });
+              setStep('extras');
+              return;
             }
             storedLyricsRef.current = newLyrics ?? null;
-            // Saved: a retry after a failure below doesn't write them again.
-            openedRef.current = { ...opened, lyrics };
-          }
-          if (Object.keys(rest).length > 0) {
+            setLyricsConflict(null);
+          } else {
             const { error: songError } = await updateSong(song.id, rest);
             if (songError) throw songError;
           }
@@ -406,6 +418,30 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
       setSaving(false);
     }
   };
+
+  // After a conflict: their version replaces the draft (mine dropped), and
+  // from now on lyrics are saved over it; or the draft is saved over theirs.
+  const loadLatestLyrics = () => {
+    if (!lyricsConflict) return;
+    const latest = lyricsConflict.stored;
+    storedLyricsRef.current = latest;
+    if (openedRef.current) openedRef.current = { ...openedRef.current, lyrics: latest ?? '' };
+    setLyrics(latest ?? '');
+    setLyricsConflict(null);
+    setError(null);
+  };
+  const saveMyLyricsInstead = () => {
+    if (!lyricsConflict) return;
+    storedLyricsRef.current = lyricsConflict.stored;
+    setLyricsConflict(null);
+    void handleSubmit();
+  };
+
+  const tooLongNow = lyricsTooLong(lyrics);
+  useEffect(() => {
+    setLyricsAnnounce(tooLongNow ? lyricsTooLongText(savedLyricsLength(lyrics)) : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when it crosses the limit
+  }, [tooLongNow]);
 
   const handleClose = () => {
     // An upload or save is running: it can't be cancelled halfway.
@@ -799,18 +835,42 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
                 </span>
                 <textarea
                   {...lyricsField}
+                  aria-describedby={tooLongNow ? lyricsWarnId : undefined}
                   placeholder={[`# ${t('Verse 1')}`, t('First line…'), '', `[${t('Chorus')}]`, '…'].join('\n')}
                   rows={6}
                   className="w-full bg-transparent outline-none bw-body-lg text-foreground placeholder:text-muted-foreground/60 min-h-[140px] resize-y font-mono text-[15px]"
                 />
                 <span className="bw-body-sm text-muted-foreground">{t('Read them in the app from the song menu or the player.')}</span>
-                {lyricsTooLong(lyrics) && (
-                  <span className="bw-body-sm text-destructive" role="status">
-                    {lyricsTooLongText(savedLyricsLength(lyrics))}
-                  </span>
-                )}
                 <VoicePartsKept lyrics={lyrics} />
               </label>
+              {/* Outside the label (not part of the field's name); described by it, announced once. */}
+              {tooLongNow && (
+                <p id={lyricsWarnId} className="bw-body-sm text-destructive px-4 -mt-2">
+                  {lyricsTooLongText(savedLyricsLength(lyrics))}
+                </p>
+              )}
+              <span role="status" className="sr-only">{lyricsAnnounce}</span>
+              {lyricsConflict && (
+                <div className="flex flex-col gap-3 p-4 rounded-[24px] bg-card">
+                  <p role="alert" className="bw-body-md flex gap-3 items-start">
+                    <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" aria-hidden />
+                    <span className="min-w-0">
+                      {t('Someone else changed these lyrics while you were editing. Your changes are still here, not saved yet.')}
+                    </span>
+                  </p>
+                  <p className="bw-body-sm text-muted-foreground">
+                    {t('Load the latest version to see their changes (yours are dropped), or save yours over theirs.')}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <PillButton size="md" variant="outline" fullWidth={false} onClick={loadLatestLyrics} disabled={saving}>
+                      {t('Load the latest version')}
+                    </PillButton>
+                    <PillButton size="md" variant="dark" fullWidth={false} onClick={saveMyLyricsInstead} loading={saving}>
+                      {t('Save mine instead')}
+                    </PillButton>
+                  </div>
+                </div>
+              )}
               {voiceHints.length > 0 && (
                 <div className="flex flex-col gap-2 p-4 rounded-[24px] bg-card -mt-2" role="status">
                   <p className="bw-body-md">

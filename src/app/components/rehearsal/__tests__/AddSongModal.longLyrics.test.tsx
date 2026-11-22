@@ -107,3 +107,65 @@ describe('song form: lyrics written only when changed, only over what was opened
     expect(screen.getByDisplayValue('Short, and mine')).toBeTruthy();
   });
 });
+
+// Round 3 (Codex B3 + MINOR, Claude M3).
+describe('song form: one write, a conflict that can be resolved, a quiet length warning', () => {
+  const keyed = { id: 's3', band_id: 'b1', title: 'Hudson Line', artist: 'Hudson Line', status: 'ready', key: 'C', lyrics: '[C]Uptown lights' } as never;
+  const toLyrics = async (s: never) => {
+    render(<AddSongModal isOpen onClose={() => {}} bandId="b1" song={s} />);
+    fireEvent.click(screen.getByRole('button', { name: /next/i }));
+    fireEvent.click(screen.getByRole('button', { name: /next/i }));
+  };
+
+  it('transposed (lyrics and key): saved in one request, never the lyrics without the key', { timeout: 60000 }, async () => {
+    render(<AddSongModal isOpen onClose={() => {}} bandId="b1" song={keyed} />);
+    fireEvent.click(screen.getByRole('button', { name: /next/i }));
+    fireEvent.change(await screen.findByDisplayValue('C'), { target: { value: 'D' } });
+    fireEvent.click(screen.getByRole('button', { name: /next/i }));
+    fireEvent.change(await screen.findByDisplayValue('[C]Uptown lights'), { target: { value: '[D]Uptown lights' } });
+    fireEvent.click(screen.getByRole('button', { name: /save song/i }));
+    await waitFor(() => expect(svc.saveLyrics).toHaveBeenCalledTimes(1));
+    expect(svc.saveLyrics.mock.calls[0]).toEqual(['s3', '[D]Uptown lights', '[C]Uptown lights', { key: 'D' }]);
+    expect(svc.updateSong).not.toHaveBeenCalled();
+  });
+
+  const theirs = '[C]Uptown lights\n\n# Verse 2\nTheir new verse';
+
+  it('after a conflict, "Load the latest version" shows their text and a merge saves over it', { timeout: 60000 }, async () => {
+    svc.saveLyrics.mockImplementationOnce(async () => ({ error: null, conflict: theirs }));
+    await toLyrics(keyed);
+    fireEvent.change(await screen.findByDisplayValue('[C]Uptown lights'), { target: { value: '[C]Uptown lights, mine' } });
+    fireEvent.click(screen.getByRole('button', { name: /save song/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /load the latest version/i }));
+    const field = (await screen.findByDisplayValue(/Their new verse/)) as HTMLTextAreaElement;
+    fireEvent.change(field, { target: { value: `${theirs}\nAnd mine` } });
+    fireEvent.click(screen.getByRole('button', { name: /save song/i }));
+    await waitFor(() => expect(svc.saveLyrics).toHaveBeenCalledTimes(2));
+    expect(svc.saveLyrics.mock.calls[1].slice(1, 3)).toEqual([`${theirs}\nAnd mine`, theirs]);
+  });
+
+  it('after a conflict, "Save mine instead" saves the draft over their version', { timeout: 60000 }, async () => {
+    svc.saveLyrics.mockImplementationOnce(async () => ({ error: null, conflict: theirs }));
+    await toLyrics(keyed);
+    fireEvent.change(await screen.findByDisplayValue('[C]Uptown lights'), { target: { value: '[C]Uptown lights, mine' } });
+    fireEvent.click(screen.getByRole('button', { name: /save song/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /save mine instead/i }));
+    await waitFor(() => expect(svc.saveLyrics).toHaveBeenCalledTimes(2));
+    expect(svc.saveLyrics.mock.calls[1].slice(1, 3)).toEqual(['[C]Uptown lights, mine', theirs]);
+  });
+
+  it('the too-long warning describes the field, outside its label, and is announced once', { timeout: 60000 }, async () => {
+    await toLyrics(song);
+    const field = (await screen.findByDisplayValue('Short')) as HTMLTextAreaElement;
+    const long = `${'Uptown lights over the river\n'.repeat(800)}end`;
+    fireEvent.change(field, { target: { value: long } });
+    const warning = screen.getAllByText(/lyrics are too long/i).find((el) => !el.closest('[role="status"]') || true)!;
+    expect(field.closest('label')?.contains(warning) ?? false).toBe(false);
+    const described = (field.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
+    expect(described.some((id) => document.getElementById(id)?.textContent?.match(/too long/i))).toBe(true);
+    const live = () => [...document.querySelectorAll('[role="status"]')].map((n) => n.textContent).join('|');
+    const once = live();
+    fireEvent.change(field, { target: { value: `${long} and more` } });
+    expect(live()).toBe(once);
+  });
+});

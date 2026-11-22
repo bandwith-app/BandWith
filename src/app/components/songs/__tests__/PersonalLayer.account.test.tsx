@@ -93,6 +93,8 @@ describe('My notes: an open note belongs to the account that opened it', () => {
     render(<PersonalLayerSheets />);
     act(() => openNoteFor(song, null, note as never));
     fireEvent.click(screen.getByRole('button', { name: /^save/i }));
+    // Round 3: the save names the account that tapped it (checked against the session).
+    expect(notes.save.mock.calls[notes.save.mock.calls.length - 1]?.[4]).toBe('user-a');
     await act(async () => finish({ error: null, queued: false }));
     expect(screen.getByText(/note saved on the whole song/i)).toBeTruthy();
   });

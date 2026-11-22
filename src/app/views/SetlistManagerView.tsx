@@ -16,6 +16,7 @@ import {
   GripVertical,
   Check,
   Save,
+  AlertTriangle,
   ChevronRight,
   CheckCircle2,
   FileText,
@@ -47,7 +48,7 @@ import {
 import { setlistDeleteText, songDeleteText } from '@/lib/deleteImpact';
 import { DeleteChatSheet } from '@/app/components/chat/DeleteChatSheet';
 import { parseSongList, SONG_LIST_ACCEPT } from '@/lib/songListImport';
-import type { Song, Setlist } from '@/lib/services/songs';
+import type { Song, Setlist, SetlistState } from '@/lib/services/songs';
 import { AddSongModal } from '@/app/components/rehearsal/AddSongModal';
 import { diffSetlist, entriesFromRows } from '@/lib/setlistChanges';
 import { notifySetlistSaved } from '@/lib/services/setlistNotify';
@@ -522,10 +523,16 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
   // let the first A answer replace what the user typed after the second.
   const editorRequestRef = useRef(0);
   const [editorLoadedId, setEditorLoadedId] = useState<string | null>(null);
+  // The setlist as loaded (saved only over it, 188) and, after a save found
+  // it changed by someone else, what is stored now.
+  const editorLoadedStateRef = useRef<SetlistState | null>(null);
+  const [editorConflict, setEditorConflict] = useState<SetlistState | null>(null);
 
   const openSetlistEditor = useCallback(async (setlistId: string) => {
     const request = ++editorRequestRef.current;
     setEditorLoadedId(null);
+    editorLoadedStateRef.current = null;
+    setEditorConflict(null);
     setEditingSetlistId(setlistId);
     setSetlistEditorLoading(true);
     setSetlistEditorSearch(false);
@@ -543,6 +550,12 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
     if (data && data.id && data.id !== setlistId) return;
     if (data) {
       setEditorLoadedId(setlistId);
+      editorLoadedStateRef.current = {
+        name: data.name,
+        songs: [...data.songs]
+          .sort((a, b) => ((a.set_number ?? 1) - (b.set_number ?? 1)) || (a.position - b.position) || String(a.id).localeCompare(String(b.id)))
+          .map((s) => ({ song_id: s.song_id, set_number: s.set_number ?? 1 })),
+      };
       setEditingSetlistName(data.name);
       const seen = new Set<string>();
       const ordered = [...data.songs]
@@ -593,6 +606,8 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
 
   const closeSetlistEditor = () => {
     editorRequestRef.current += 1;
+    editorLoadedStateRef.current = null;
+    setEditorConflict(null);
     setEditorLoadedId(null);
     setEditingSetlistId(null);
     setSetlistEditorSearch(false);
@@ -614,7 +629,8 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
   // A song row's menu is the top layer: Back and Escape close just the menu.
   useSystemBack(!!actionMenuId, () => setActionMenuId(null));
 
-  const handleSaveSetlist = useCallback(async () => {
+  /** `over`: save over this state instead of the loaded one ("Save mine instead"). */
+  const saveSetlist = useCallback(async (over?: SetlistState) => {
     if (!editingSetlistId || !editingSetlistName.trim() || setlistEditorSaving || editorLoadFailed) return false;
     // Only what was loaded for this very setlist is saved to it.
     if (editorLoadedId !== editingSetlistId) return false;
@@ -627,11 +643,19 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
       // Name, songs and count in one transaction (188): a failure or a lost
       // signal half-way leaves the setlist as it was, never empty.
       const rows = editorItems.map((it, i) => ({ song_id: it.songId, set_number: sets[i] ?? 1 }));
-      const { error: songsError, previous } = await replaceSetlistSongs(editingSetlistId, rows, { name });
+      // Only over the setlist as loaded: another admin's songs are never dropped unseen.
+      const expected = over ?? editorLoadedStateRef.current ?? undefined;
+      const { error: songsError, previous, conflict } = await replaceSetlistSongs(editingSetlistId, rows, { name, ...(expected ? { expected } : {}) });
       if (songsError) {
         setEditorError(errorText(songsError, t('Could not save the setlist')));
         return false;
       }
+      if (conflict) {
+        setEditorConflict(conflict);
+        return false;
+      }
+      setEditorConflict(null);
+      editorLoadedStateRef.current = { name, songs: rows };
       const renamed = name !== (setlists.find(sl => sl.id === editingSetlistId)?.name ?? name);
       setSetlists(prev => prev.map(sl =>
         sl.id === editingSetlistId ? { ...sl, name, song_count: editorItems.length } : sl
@@ -648,6 +672,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
       setSetlistEditorSaving(false);
     }
   }, [editingSetlistId, editorLoadedId, editingSetlistName, editorItems, editorSets, setlistEditorSaving, editorLoadFailed, setlists, t]);
+  const handleSaveSetlist = useCallback(() => saveSetlist(), [saveSetlist]);
 
   const requestDeleteSetlist = async () => {
     if (!editingSetlistId) return;
@@ -1400,6 +1425,39 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
                 {canEditSetlists && <div className="shrink-0 px-4 pt-3 bg-background" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}>
                   <div className="max-w-2xl mx-auto w-full flex flex-col gap-3">
                     {editorError && <FormError>{editorError}</FormError>}
+                    {editorConflict ? (
+                      <div className="flex flex-col gap-3">
+                        <p role="alert" className="bw-body-md flex gap-3 items-start">
+                          <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" aria-hidden />
+                          <span className="min-w-0">
+                            {t('Someone else changed this setlist while you were editing. Your changes are still here, not saved yet.')}
+                          </span>
+                        </p>
+                        <p className="bw-body-sm text-muted-foreground">
+                          {t('Load the latest version to see their changes (yours are dropped), or save yours over theirs.')}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <PillButton
+                            size="md"
+                            variant="outline"
+                            fullWidth={false}
+                            disabled={setlistEditorSaving}
+                            onClick={() => editingSetlistId && void openSetlistEditor(editingSetlistId)}
+                          >
+                            {t('Load the latest version')}
+                          </PillButton>
+                          <PillButton
+                            size="md"
+                            variant="dark"
+                            fullWidth={false}
+                            loading={setlistEditorSaving}
+                            onClick={() => void saveSetlist(editorConflict)}
+                          >
+                            {t('Save mine instead')}
+                          </PillButton>
+                        </div>
+                      </div>
+                    ) : (
                     <PillButton
                       onClick={handleSaveSetlist}
                       loading={setlistEditorSaving}
@@ -1408,6 +1466,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
                     >
                       {t('Save setlist')}
                     </PillButton>
+                    )}
                   </div>
                 </div>}
               </>

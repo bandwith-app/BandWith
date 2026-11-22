@@ -77,6 +77,10 @@ describe('chord editor: no lost lyrics', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save chords' }));
 
     await waitFor(() => expect(screen.getByText(/someone else changed these lyrics/i)).toBeTruthy());
+    // Round 3 (Claude M4): the alert is the message only, not the buttons.
+    const alert = screen.getByText(/someone else changed these lyrics/i).closest('[role="alert"]') as HTMLElement;
+    expect(alert).toBeTruthy();
+    expect(alert.querySelectorAll('button').length).toBe(0);
     expect(server.lyrics).toContain('Uptown lights');
     // A's chord is still on screen, not saved and not lost.
     expect(screen.getByRole('button', { name: 'again, chord G' })).toBeTruthy();

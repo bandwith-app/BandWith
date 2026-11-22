@@ -74,12 +74,55 @@ describe('replaceSetlistSongs, one transaction (188, audit 09 #3)', () => {
     expect(calls.some((c) => c.table === 'setlist_songs' && c.op === 'delete')).toBe(false);
   });
 
-  it('before 188 is on the server: renames, then the old step-by-step save', async () => {
+  it('before 188 is on the server: the old step-by-step save, the name last with the count', async () => {
     const { error } = await replaceSetlistSongs('sl', ['a'], { name: 'Gig' });
     expect(error).toBeNull();
     const writes = calls.filter((c) => c.op !== 'select').map((c) => `${c.table}.${c.op}`);
-    expect(writes).toEqual(['setlists.update', 'setlist_songs.delete', 'setlist_songs.insert', 'setlists.update']);
-    expect(calls.find((c) => c.table === 'setlists' && c.op === 'update')?.payload).toEqual({ name: 'Gig' });
+    expect(writes).toEqual(['setlist_songs.delete', 'setlist_songs.insert', 'setlists.update']);
+    expect(calls.find((c) => c.table === 'setlists' && c.op === 'update')?.payload).toEqual({ song_count: 1, name: 'Gig' });
+  });
+
+  // Round 3 (Codex MINOR): the rename committed before the songs, so a failed
+  // save still left the new name.
+  it('before 188: songs that fail to save leave the name as it was', async () => {
+    handler = (c) => (c.table === 'setlist_songs' && c.op === 'insert' ? { error: { message: 'boom' } } : {});
+    const { error } = await replaceSetlistSongs('sl', ['a'], { name: 'Gig' });
+    expect(error).toMatchObject({ message: 'boom' });
+    expect(calls.some((c) => c.table === 'setlists' && c.op === 'update')).toBe(false);
+  });
+});
+
+// Round 3 (Claude M5): two admins saving the same setlist. The save carries
+// the setlist as the editor loaded it; changed meanwhile → a conflict, nothing written.
+describe('replaceSetlistSongs: only over the setlist as loaded', () => {
+  const expected = { name: 'Rooftop Session', songs: [{ song_id: 'a', set_number: 1 }] };
+
+  it('sends what was loaded and reports the conflict the server found', async () => {
+    const current = { name: 'Rooftop Session', songs: [{ song_id: 'a', set_number: 1 }, { song_id: 'z', set_number: 1 }] };
+    rpc.mockImplementation(() => Promise.resolve({ data: { saved: false, conflict: true, current }, error: null }));
+    const res = await replaceSetlistSongs('sl', ['b'], { name: 'Gig', expected });
+    expect(rpc).toHaveBeenCalledWith('bw_save_setlist_songs', {
+      p_setlist_id: 'sl',
+      p_songs: [{ song_id: 'b', set_number: 1 }],
+      p_name: 'Gig',
+      p_expected: expected,
+    });
+    expect(res).toEqual({ error: null, conflict: current });
+  });
+
+  it('before 188: changed meanwhile → a conflict and no write', async () => {
+    handler = (c) => {
+      if (c.table === 'setlist_songs' && c.op === 'select')
+        return { data: [
+          { id: 'r1', setlist_id: 'sl', song_id: 'a', position: 1, set_number: 1, notes: null },
+          { id: 'r9', setlist_id: 'sl', song_id: 'z', position: 2, set_number: 1, notes: null },
+        ] };
+      if (c.table === 'setlists' && c.op === 'select') return { data: { name: 'Rooftop Session' } };
+      return {};
+    };
+    const res = await replaceSetlistSongs('sl', ['b'], { name: 'Gig', expected });
+    expect(res.conflict).toEqual({ name: 'Rooftop Session', songs: [{ song_id: 'a', set_number: 1 }, { song_id: 'z', set_number: 1 }] });
+    expect(calls.filter((c) => c.op !== 'select')).toEqual([]);
   });
 });
 
@@ -179,6 +222,27 @@ describe('saveSongLyricsIfUnchanged, before 189 (round 2, Codex B2)', () => {
     };
     const res = await saveSongLyricsIfUnchanged('s1', '[C]Verse 1', 'Verse 1');
     expect(res).toEqual({ error: null });
+  });
+});
+
+// Round 3 (Codex B3): Transpose saves lyrics, key and chart in one request.
+describe('saveSongLyricsIfUnchanged with other song fields', () => {
+  it('sends them with the lyrics, in the same call (189 p_fields)', async () => {
+    rpc.mockImplementation(() => Promise.resolve({ data: { saved: true }, error: null }));
+    await saveSongLyricsIfUnchanged('s1', '[D]Hi', '[C]Hi', { key: 'D', chord_chart: null });
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenCalledWith('bw_save_song_lyrics', { p_song_id: 's1', p_lyrics: '[D]Hi', p_expected: '[C]Hi', p_fields: { key: 'D', chord_chart: null } });
+  });
+
+  it('before 189: one update carries the lyrics and the fields', async () => {
+    handler = (c) => {
+      if (c.table === 'songs' && c.op === 'select') return { data: { lyrics: '[C]Hi', updated_at: 't1' } };
+      if (c.table === 'songs' && c.op === 'update') return { data: [{ id: 's1' }] };
+      return {};
+    };
+    expect(await saveSongLyricsIfUnchanged('s1', '[D]Hi', '[C]Hi', { key: 'D' })).toEqual({ error: null });
+    const updates = calls.filter((c) => c.table === 'songs' && c.op === 'update');
+    expect(updates.map((u) => u.payload)).toEqual([{ key: 'D', lyrics: '[D]Hi' }]);
   });
 });
 

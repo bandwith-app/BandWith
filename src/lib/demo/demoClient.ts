@@ -1721,6 +1721,17 @@ const rpc = (fn: string, args: Row = {}) => {
       const before = all
         .filter((r) => r.setlist_id === id)
         .sort((a, b) => (a.set_number ?? 1) - (b.set_number ?? 1) || a.position - b.position);
+      // Changed since the editor loaded it (188 p_expected): nothing is written.
+      const exp = args.p_expected as { name?: string; songs?: Row[] } | null | undefined;
+      if (exp && typeof exp === 'object') {
+        const sl = table('setlists').find((r) => r.id === id);
+        const now = before.map((r) => ({ song_id: r.song_id, set_number: r.set_number ?? 1 }));
+        const want = (Array.isArray(exp.songs) ? exp.songs : []).map((r) => ({ song_id: r.song_id, set_number: r.set_number ?? 1 }));
+        if (('name' in exp && exp.name !== sl?.name) || ('songs' in exp && JSON.stringify(now) !== JSON.stringify(want))) {
+          data = { saved: false, conflict: true, current: { name: sl?.name ?? '', songs: now } };
+          break;
+        }
+      }
       const left = [...before];
       const list: Row[] = Array.isArray(args.p_songs) ? args.p_songs : [];
       const now = new Date().toISOString();
@@ -1747,6 +1758,7 @@ const rpc = (fn: string, args: Row = {}) => {
       }
       persist();
       data = {
+        saved: true,
         song_count: next.length,
         previous: before.map((r) => ({ song_id: r.song_id, set_number: r.set_number ?? 1, position: r.position })),
       };
@@ -1764,6 +1776,7 @@ const rpc = (fn: string, args: Row = {}) => {
         data = { saved: false, lyrics: current };
         break;
       }
+      if (args.p_fields && typeof args.p_fields === 'object') Object.assign(song, args.p_fields);
       song.lyrics = args.p_lyrics;
       song.updated_at = new Date().toISOString();
       persist();

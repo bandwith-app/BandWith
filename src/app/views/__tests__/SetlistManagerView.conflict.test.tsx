@@ -1,0 +1,92 @@
+import React from 'react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react';
+
+// Round 3 (Claude M5): two admins on the same setlist. Admin B added a song
+// while A was editing: A's save must not silently drop it. A sees it and
+// chooses: load the latest version, or save theirs over it.
+// Made-up band and setlists (New York).
+
+vi.mock('@/lib/BandContext', () => ({
+  useBand: () => ({ selectedBand: { id: 'band-1', name: 'Hudson Line' }, isAdmin: true }),
+}));
+vi.mock('@/lib/supabase', () => ({ supabase: {} }));
+vi.mock('@/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'me' } }) }));
+vi.mock('@/lib/haptics', () => ({
+  haptic: { tap: vi.fn(), medium: vi.fn(), confirm: vi.fn(), delete: vi.fn(), selection: vi.fn(), success: vi.fn(), error: vi.fn() },
+}));
+vi.mock('@/lib/services/setlistNotify', () => ({ notifySetlistSaved: vi.fn(), notifySongUpdated: vi.fn() }));
+
+const songs = [
+  { id: 'song-a', band_id: 'band-1', title: 'Empire State of Mind', artist: 'Jay-Z', duration_seconds: 200, status: 'ready', genre: null },
+  { id: 'song-b', band_id: 'band-1', title: 'Brooklyn Bridge', artist: 'Trad.', duration_seconds: 180, status: 'ready', genre: null },
+];
+const current = { name: 'Rooftop Session', songs: [{ song_id: 'song-a', set_number: 1 }, { song_id: 'song-b', set_number: 1 }] };
+const svc = vi.hoisted(() => ({
+  replaceSetlistSongs: vi.fn(),
+  getSetlist: vi.fn(async (id: string) => ({
+    data: { id, band_id: 'band-1', name: 'Rooftop Session', song_count: 1, songs: [{ id: 'row-1', setlist_id: id, song_id: 'song-a', position: 1, set_number: 1 }] },
+    error: null,
+  })),
+}));
+vi.mock('@/lib/services/songs', () => ({
+  getSongs: vi.fn(async () => ({ data: songs, error: null })),
+  getSetlists: vi.fn(async () => ({ data: [{ id: 'sl-a', band_id: 'band-1', name: 'Rooftop Session', song_count: 1 }], error: null })),
+  getSetlist: svc.getSetlist,
+  createSong: vi.fn(), deleteSong: vi.fn(), updateSong: vi.fn(),
+  createSetlist: vi.fn(), updateSetlist: vi.fn(), deleteSetlist: vi.fn(),
+  replaceSetlistSongs: svc.replaceSetlistSongs, seedRepertoireSongs: vi.fn(), bulkCreateSongs: vi.fn(),
+}));
+
+globalThis.ResizeObserver = class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof ResizeObserver;
+
+import { SetlistManagerView } from '../SetlistManagerView';
+
+afterEach(() => {
+  cleanup();
+  svc.replaceSetlistSongs.mockReset();
+  svc.getSetlist.mockClear();
+});
+
+const openAndSave = async () => {
+  render(<SetlistManagerView onClose={() => {}} />);
+  fireEvent.click(await screen.findByRole('button', { name: /^setlists/i }));
+  fireEvent.click(await screen.findByText('Rooftop Session'));
+  const name = (await screen.findByDisplayValue('Rooftop Session')) as HTMLInputElement;
+  fireEvent.change(name, { target: { value: 'Rooftop Session · Saturday' } });
+  fireEvent.click(screen.getByRole('button', { name: /save setlist/i }));
+};
+
+describe('SetlistManagerView: saved only over the setlist as loaded', () => {
+  it('sends what it loaded; changed meanwhile → says so and keeps the edits', async () => {
+    svc.replaceSetlistSongs.mockResolvedValueOnce({ error: null, conflict: current });
+    await openAndSave();
+    await waitFor(() => expect(svc.replaceSetlistSongs).toHaveBeenCalledTimes(1));
+    expect(svc.replaceSetlistSongs.mock.calls[0][2]).toEqual({
+      name: 'Rooftop Session · Saturday',
+      expected: { name: 'Rooftop Session', songs: [{ song_id: 'song-a', set_number: 1 }] },
+    });
+    expect(await screen.findByText(/someone else changed this setlist/i)).toBeTruthy();
+    expect(screen.getByDisplayValue('Rooftop Session · Saturday')).toBeTruthy();
+  });
+
+  it('"Save mine instead" saves over what is stored now', async () => {
+    svc.replaceSetlistSongs.mockResolvedValueOnce({ error: null, conflict: current }).mockResolvedValueOnce({ error: null, previous: [] });
+    await openAndSave();
+    fireEvent.click(await screen.findByRole('button', { name: /save mine instead/i }));
+    await waitFor(() => expect(svc.replaceSetlistSongs).toHaveBeenCalledTimes(2));
+    expect(svc.replaceSetlistSongs.mock.calls[1][2]).toEqual({ name: 'Rooftop Session · Saturday', expected: current });
+  });
+
+  it('"Load the latest version" reloads the setlist', async () => {
+    svc.replaceSetlistSongs.mockResolvedValueOnce({ error: null, conflict: current });
+    await openAndSave();
+    fireEvent.click(await screen.findByRole('button', { name: /load the latest version/i }));
+    await waitFor(() => expect(svc.getSetlist).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(/someone else changed this setlist/i)).toBeNull();
+  });
+});

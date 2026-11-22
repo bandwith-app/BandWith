@@ -19,6 +19,14 @@ vi.mock('@/lib/services/pricing', async (orig) => {
   const real = (await orig()) as Record<string, unknown>;
   return { ...real, getBandPricing: vi.fn(async () => (pricing.load ? pricing.load() : real.DEFAULT_BAND_PRICING)) };
 });
+// The time wheel: its value settles from scrolling, with no input event.
+const picker = vi.hoisted(() => ({ props: [] as Array<{ value: string; onChange: (v: string) => void }> }));
+vi.mock('@/app/components/ui/TimePicker', () => ({
+  TimePicker: (p: { value: string; onChange: (v: string) => void }) => {
+    picker.props.push(p);
+    return null;
+  },
+}));
 vi.mock('@/lib/services/location', () => ({ calculateTravelDistance: vi.fn(async () => null), venueFields: () => ({}) }));
 
 globalThis.ResizeObserver = class {
@@ -104,5 +112,26 @@ describe('editing a quote: Android Back', () => {
     expect(handled).toBe(true);
     expect(screen.queryByText('Save your changes?')).toBeNull();
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  // Round 3 (Codex MINOR): only the start time changed, from the wheel (no
+  // input event at all): Back still asks.
+  it('a new start time from the wheel: Back asks first', async () => {
+    picker.props = [];
+    const { onClose } = await renderEdit();
+    fireEvent.click(screen.getByRole('button', { name: /date & venue/i }));
+    // Let the form settle (pricing loaded).
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 400));
+    });
+    const start = [...picker.props].reverse().find((p) => p.value === '19:00');
+    expect(start).toBeTruthy();
+    act(() => start!.onChange('21:30'));
+
+    act(() => {
+      handleBackFromStack();
+    });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(await screen.findByText('Save your changes?')).toBeTruthy();
   });
 });

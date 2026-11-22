@@ -697,6 +697,8 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
 
   // Smart Initialization on Load
   const hasInitializedPricingRef = useRef(false);
+  // The band's pricing has arrived (what the form settles on load follows it).
+  const [pricingReady, setPricingReady] = useState(false);
 
   useEffect(() => {
     const effectiveBandId = selectedBand?.id || 'default';
@@ -705,6 +707,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
     getBandPricing(effectiveBandId).then(settings => {
       if (isCancelled) return;
       setPricingSettings(settings);
+      setPricingReady(true);
 
       if (
         !hasInitializedPricingRef.current &&
@@ -3136,42 +3139,48 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
 
   // Editing a saved quote: Back, X and Cancel ask first when something
   // changed (audit 10 #5: Back went past the editor and dropped the edits).
-  // Only a change made by the user's own input counts: the baseline follows
-  // the quote through what the form settles by itself (band pricing and its
-  // currency, extras), even after a tap that changed nothing, like opening
-  // a section.
-  const editChangedRef = useRef(false); // the user's input changed the quote
-  const editInputRef = useRef(false); // a tap or keystroke is being handled
-  const editBaselineRef = useRef<string | null>(null);
-  const editLastRef = useRef<string | null>(null);
+  // Decided by the values, never by input events (a time wheel changes the
+  // time with none). Two groups:
+  // - what only the user sets (client, date and times, venue, notes…) is
+  //   compared with the quote as it opened;
+  // - what the form also settles by itself from the band's pricing (fees,
+  //   totals, currency, extras, deposit…) is compared with the form once
+  //   settled: its baseline follows it until a moment after the pricing has
+  //   arrived (at the latest 3 s after opening), then stays.
+  const SETTLED_BY_FORM = [
+    'currency', 'baseFee', 'musicianCount', 'musicians', 'performanceType',
+    'travelIncluded', 'travelFee', 'travelDistanceKm', 'travelMode',
+    'accommodationFee', 'mealsFee', 'lightsFee', 'backlineFee',
+    'productionTier', 'soundIncluded', 'soundFee', 'customItems', 'quoteOptions',
+    'depositAmount', 'depositRequired', 'depositPercentage', 'validityDays', 'validUntil',
+    'subtotal', 'discountAmount', 'netAmount', 'vatAmount', 'total', 'totalWithVat',
+  ];
+  const editBaselineRef = useRef<{ own: string; settled: string } | null>(null);
+  const editSettledRef = useRef(false);
   const editSnapshot = isEditing
     ? (() => {
-        const { createdAt: _c, updatedAt: _u, ...rest } = buildQuoteData();
-        return JSON.stringify(rest);
+        const { createdAt: _c, updatedAt: _u, ...rest } = buildQuoteData() as Record<string, unknown>;
+        const own: Record<string, unknown> = {};
+        const settled: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(rest)) (SETTLED_BY_FORM.includes(k) ? settled : own)[k] = v;
+        return { own: JSON.stringify(own), settled: JSON.stringify(settled) };
       })()
-    : '';
-  if (isEditing) {
-    if (editBaselineRef.current === null) editBaselineRef.current = editSnapshot;
-    else if (editSnapshot !== editLastRef.current) {
-      if (editInputRef.current) editChangedRef.current = true;
-      else if (!editChangedRef.current) editBaselineRef.current = editSnapshot;
-    }
-    editLastRef.current = editSnapshot;
-    // This render answers the input (if any): later changes are the form's own.
-    editInputRef.current = false;
+    : null;
+  if (editSnapshot) {
+    if (!editBaselineRef.current) editBaselineRef.current = editSnapshot;
+    else if (!editSettledRef.current) editBaselineRef.current = { ...editBaselineRef.current, settled: editSnapshot.settled };
   }
-  const editDirty = isEditing && editChangedRef.current && editSnapshot !== editBaselineRef.current;
-  // A tap re-renders in the same batch as its own changes (so a tap that
-  // changes nothing is answered at once); a key press is followed by its
-  // input event, which renders anyway.
-  const [, setEditInputTick] = useState(0);
-  const markEditInput = () => {
-    editInputRef.current = true;
-    setEditInputTick((n) => n + 1);
-  };
-  const markEditKey = () => {
-    editInputRef.current = true;
-  };
+  React.useEffect(() => {
+    if (!isEditing || editSettledRef.current) return;
+    const id = window.setTimeout(() => {
+      editSettledRef.current = true;
+    }, pricingReady ? 300 : 3000);
+    return () => window.clearTimeout(id);
+  }, [isEditing, pricingReady]);
+  const editDirty =
+    !!editSnapshot &&
+    !!editBaselineRef.current &&
+    (editSnapshot.own !== editBaselineRef.current.own || editSnapshot.settled !== editBaselineRef.current.settled);
   const [editLeaveOpen, setEditLeaveOpen] = useState(false);
   const requestEditClose = () => (editDirty ? setEditLeaveOpen(true) : onClose());
   useSystemBack(isEditing, () => {
@@ -3210,10 +3219,6 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
         exit={{ opacity: 0, y: 20 }}
         style={{ '--wizard-accent': activeAccentColor } as React.CSSProperties}
         className="bw-pane-detail fixed inset-0 z-[100] bg-background text-foreground flex flex-col h-full overflow-hidden"
-        onChangeCapture={markEditInput}
-        onInputCapture={markEditInput}
-        onClickCapture={markEditInput}
-        onKeyDownCapture={markEditKey}
       >
         <header className="shrink-0 px-4 pb-4 bg-background" style={headerPadTop}>
           <div className="max-w-xl mx-auto w-full flex items-start gap-3">
