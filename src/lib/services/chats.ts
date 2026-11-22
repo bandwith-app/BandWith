@@ -76,6 +76,10 @@ export interface Message {
   reply_to?: Message; // The quoted message
   /** This device only: sending it failed; the bubble offers Try again. */
   failed?: boolean;
+  /** This device only: came by Realtime; no page has confirmed what came before it. */
+  live?: boolean;
+  /** Set by the sending device (192): Try again never saves a second copy. */
+  client_id?: string | null;
   sender?: {
     id: string;
     full_name?: string;
@@ -872,11 +876,17 @@ export const getMessages = async (
   }
 };
 
+/** A database without 192's messages.client_id (or its unique index): send as before. */
+const isMissingClientId = (e: { code?: string; message?: string }) =>
+  e.code === 'PGRST204' || e.code === '42703' || e.code === '42P10'
+  || /client_id|no unique or exclusion constraint/i.test(e.message || '');
+
 export const sendMessage = async (
   chatId: string,
   content: string,
   messageType: string = 'text',
-  replyToId?: string // Optional: ID of message being replied to
+  replyToId?: string, // Optional: ID of message being replied to
+  clientId?: string, // This bubble's id on the device: Try again never saves a second copy
 ): Promise<{ data: Message | null; error: Error | null }> => {
   try {
     const { data: { user } } = await getSafeUser();
@@ -1041,19 +1051,46 @@ export const sendMessage = async (
       }
     }
 
-    const { data, error } = await supabase
-      .from('messages')
-      .insert({
-        chat_id: chatId,
-        sender_id: user.id,
-        content,
-        band_id: chat.band_id,
-        reply_to_id: replyToId || null,
-      })
-      .select('*')
-      .single();
+    const row = {
+      chat_id: chatId,
+      sender_id: user.id,
+      content,
+      band_id: chat.band_id,
+      reply_to_id: replyToId || null,
+    };
+    const insertPlain = () => supabase.from('messages').insert(row).select('*').single();
+    let data: Message | null = null;
+    let error: unknown = null;
+    if (clientId) {
+      // One copy per bubble (Claude review #291 r4): a send that timed out
+      // after the insert landed, then Try again, saved it twice. The unique
+      // (sender_id, client_id) index (192) skips the copy; the saved one is
+      // read back and the rest runs again (send-push announces it once).
+      const up = await supabase
+        .from('messages')
+        .upsert({ ...row, client_id: clientId }, { onConflict: 'sender_id,client_id', ignoreDuplicates: true })
+        .select('*');
+      if (up.error && isMissingClientId(up.error)) {
+        ({ data, error } = await insertPlain());
+      } else if (up.error) {
+        error = up.error;
+      } else if (Array.isArray(up.data) && up.data.length > 0) {
+        data = up.data[0] as Message;
+      } else {
+        ({ data, error } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('sender_id', user.id)
+          .eq('client_id', clientId)
+          .maybeSingle());
+        if (!error && !data) error = new Error('Message not saved');
+      }
+    } else {
+      ({ data, error } = await insertPlain());
+    }
 
     if (error) throw error;
+    if (!data) throw new Error('Message not saved');
 
     // Update chat's updated_at
     await supabase

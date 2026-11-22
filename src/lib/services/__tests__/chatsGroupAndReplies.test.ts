@@ -151,6 +151,53 @@ describe('sending to a gig chat restores the lineup', () => {
   });
 });
 
+// Claude review #291 r4: a send that timed out after the insert landed,
+// then Try again, saved the message twice.
+describe('sending with a client id', () => {
+  const chatRow = { band_id: null, type: 'direct', event_id: null, name: null, created_by: 'me' };
+  const base = (over: (table: string, calls: Call[]) => { data: unknown; error: unknown } | undefined): Resolver => (table, calls) => {
+    const o = over(table, calls);
+    if (o) return o;
+    const has = (m: string) => calls.some(([c]) => c === m);
+    if (table === 'chats' && has('single')) return { data: chatRow, error: null };
+    if (table === 'chat_participants' && !has('upsert')) return { data: [{ user_id: 'me' }, { user_id: 'u2' }], error: null };
+    if (table === 'band_members') return { data: [{ band_id: 'b1', role: 'admin', user_id: 'me' }, { band_id: 'b1', role: 'member', user_id: 'u2' }], error: null };
+    return { data: null, error: null };
+  };
+  const messageChains = () => h.chains.filter((c) => c.table === 'messages');
+
+  it('the insert names the client id and skips a copy already saved', async () => {
+    const existing = { id: 'm-saved', chat_id: 'dm', sender_id: 'me', content: 'see you at 8', client_id: 'cid-1' };
+    h.resolve = base((table, calls) => {
+      if (table !== 'messages') return undefined;
+      if (calls.some(([m]) => m === 'upsert')) return { data: [], error: null };
+      if (calls.some(([m, col]) => m === 'eq' && col === 'client_id')) return { data: existing, error: null };
+      return undefined;
+    });
+    const { data, error } = await sendMessage('dm', 'see you at 8', 'text', undefined, 'cid-1');
+    expect(error).toBeNull();
+    expect(data?.id).toBe('m-saved');
+    const up = messageChains().flatMap((c) => c.calls).find(([m]) => m === 'upsert');
+    expect(up?.[1]).toMatchObject({ client_id: 'cid-1', content: 'see you at 8' });
+    expect(up?.[2]).toEqual({ onConflict: 'sender_id,client_id', ignoreDuplicates: true });
+    expect(messageChains().some((c) => c.calls.some(([m]) => m === 'insert'))).toBe(false);
+  });
+
+  it('a database without the column: a plain insert, as before', async () => {
+    h.resolve = base((table, calls) => {
+      if (table !== 'messages') return undefined;
+      if (calls.some(([m]) => m === 'upsert')) return { data: null, error: { code: 'PGRST204', message: "Could not find the 'client_id' column of 'messages'" } };
+      if (calls.some(([m]) => m === 'insert')) return { data: { id: 'm-new', chat_id: 'dm', sender_id: 'me', content: 'hi' }, error: null };
+      return undefined;
+    });
+    const { data, error } = await sendMessage('dm', 'hi', 'text', undefined, 'cid-2');
+    expect(error).toBeNull();
+    expect(data?.id).toBe('m-new');
+    const ins = messageChains().flatMap((c) => c.calls).find(([m]) => m === 'insert');
+    expect(ins?.[1]).not.toHaveProperty('client_id');
+  });
+});
+
 describe('reply quotes (07 #11)', () => {
   const at = (min: number) => new Date(Date.UTC(2026, 10, 20, 18, min)).toISOString();
   const original = { id: 'm1', chat_id: 'c1', sender_id: 'u1', content: 'Can you bring the long XLR?', created_at: at(0) };

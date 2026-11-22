@@ -209,6 +209,32 @@ describe('ChatDetailModal', () => {
     expect(screen.queryByText(/permission denied/)).toBeNull();
   });
 
+  // Claude review #291 r4: the text went back into the composer after a
+  // timeout; sending it again must not make a second copy.
+  it('resending the same text from the composer reuses its client id', async () => {
+    openComposer();
+    svc.sendMessage.mockResolvedValueOnce({ data: null, error: new Error('Failed to fetch') });
+    render(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+    await settle();
+    const input = () => screen.getByRole('textbox', { name: 'Message' }) as HTMLInputElement;
+    fireEvent.change(input(), { target: { value: 'see you at 8' } });
+    fireEvent.keyDown(input(), { key: 'Enter' });
+    await settle();
+    expect(input().value).toBe('see you at 8');
+    svc.sendMessage.mockResolvedValueOnce({ data: { ...msg(201, 'me'), content: 'see you at 8' }, error: null });
+    fireEvent.keyDown(input(), { key: 'Enter' });
+    await settle();
+    const calls = svc.sendMessage.mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls[1][4]).toBe(calls[0][4]);
+    // A different message gets a new one.
+    svc.sendMessage.mockResolvedValueOnce({ data: { ...msg(202, 'me'), content: 'and bring the cables' }, error: null });
+    fireEvent.change(input(), { target: { value: 'and bring the cables' } });
+    fireEvent.keyDown(input(), { key: 'Enter' });
+    await settle();
+    expect(svc.sendMessage.mock.calls[2][4]).not.toBe(calls[0][4]);
+  });
+
   // Codex review #291: a bubble not saved yet (sending, or "Not sent") had
   // Reply, and replying sent its temp id as reply_to_id (not a UUID).
   it('a message that is not saved cannot be replied to', async () => {
@@ -345,7 +371,12 @@ describe('ChatDetailModal', () => {
       svc.sendMessage.mockResolvedValueOnce({ data: saved, error: null });
       fireEvent.click(screen.getByRole('button', { name: /^Try again: / }));
       await settle();
-      expect(svc.sendMessage).toHaveBeenLastCalledWith('c1', 'message A', 'text', undefined);
+      expect(svc.sendMessage).toHaveBeenLastCalledWith('c1', 'message A', 'text', undefined, expect.any(String));
+      // Claude review #291 r4: the insert may have landed before the timeout;
+      // Try again sends the same client id, so the server keeps one copy.
+      const calls = svc.sendMessage.mock.calls;
+      expect(calls[calls.length - 1][4]).toBe(calls[0][4]);
+      expect(calls[0][4]).toMatch(/^[0-9a-f-]{36}$/);
       expect(screen.queryByText('Not sent')).toBeNull();
       expect(screen.getByText('message A')).toBeTruthy();
       expect(input().value).toBe('message B, half typed');

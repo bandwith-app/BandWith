@@ -106,6 +106,38 @@ describe('appendIncoming (realtime)', () => {
     const prev = range(0, 3);
     expect(appendIncoming(prev, msg(1))).toBe(prev);
   });
+
+  // Codex review #291 r4: each arrival is fetched in full, so two quick
+  // messages could land out of order.
+  it('puts a message in its place by time, not by arrival', () => {
+    const temp = msg(99, { id: 'temp-1', content: 'sending…', sender_id: 'me' });
+    const next = appendIncoming([msg(0), msg(2), temp], msg(1));
+    expect(ids(next)).toEqual(['m0', 'm1', 'm2', 'temp-1']);
+  });
+
+  it('marks it as come by Realtime (not yet confirmed by a page)', () => {
+    expect(appendIncoming([msg(0)], msg(1)).find((m) => m.id === 'm1')?.live).toBe(true);
+  });
+});
+
+// Codex review #291 r4: a refresh compared only the quote's id, so a quote
+// whose message was deleted (or edited) since kept its old text.
+describe('refresh compares the quote', () => {
+  it('a quoted message deleted since: the list updates', () => {
+    const quote = { ...msg(0), content: 'Can you bring the XLR?' };
+    const prev = [msg(0), msg(1, { reply_to_id: 'm0', reply_to: quote })];
+    const page = [msg(0), msg(1, { reply_to_id: 'm0', reply_to: { ...quote, content: 'Message deleted', deleted: true } })];
+    const next = mergeLatestPage(prev, page);
+    expect(next).not.toBe(prev);
+    expect(next[1].reply_to?.content).toBe('Message deleted');
+  });
+
+  it('a quoted message edited since: the list updates', () => {
+    const quote = { ...msg(0), content: 'at 8' };
+    const prev = [msg(0), msg(1, { reply_to_id: 'm0', reply_to: quote })];
+    const next = mergeLatestPage(prev, [msg(0), msg(1, { reply_to_id: 'm0', reply_to: { ...quote, content: 'at 9' } })]);
+    expect(next[1].reply_to?.content).toBe('at 9');
+  });
 });
 
 describe('prependOlder', () => {
@@ -162,6 +194,20 @@ describe('catchUpPage', () => {
 
   // Codex review #291: one Realtime arrival (69) before the refresh made the
   // latest page look connected, and 10–19 never came.
+  // Codex review #291 r4: the first message of the latest page had come by
+  // Realtime, so the page looked connected and 10–19 never came.
+  it('the page starting at a message that came by Realtime is not proof of overlap', async () => {
+    const prev = [...range(0, 10), msg(20, { live: true })];
+    const { page, complete } = await catchUpPage(prev, range(20, 70), after);
+    expect(complete).toBe(true);
+    expect(ids(mergeLatestPage(prev, page))).toEqual(ids(history));
+  });
+
+  it('a page merged in confirms its messages (no longer marked Realtime)', () => {
+    const next = mergeLatestPage([msg(0, { live: true })], [msg(0)]);
+    expect(next[0].live).toBeUndefined();
+  });
+
   it('a message that arrived by Realtime does not hide the gap', async () => {
     const prev = [...range(0, 10), msg(69)];
     const { page, complete } = await catchUpPage(prev, range(20, 70), after);

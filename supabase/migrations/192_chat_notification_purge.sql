@@ -22,7 +22,11 @@
 --     old notice goes: losing an old notice is harmless, showing text the
 --     chat no longer has is not);
 --   * a chat left with no live message (a deleted DM, a deleted chat)
---     loses every chat notice, whatever its text.
+--     loses every chat notice, whatever its text;
+--   * (round 4) every delete applies the backfill rule to its chat: an
+--     older notice matching no live message as it reads now goes (an
+--     edited-then-deleted message kept its first text). Accepted cost: an
+--     older unread notice of a message edited since loses its badge once.
 --
 -- Round 2 (Codex + Claude review #291):
 --   * a message marked deleted (messages.deleted = true, deleteMessage in
@@ -39,11 +43,23 @@
 --     sent within the minute after it. Deleting either of two "OK"s, even
 --     seconds apart, takes only its own notice.
 --
+-- Round 4: messages.client_id (nullable) + unique (sender_id, client_id):
+-- Try again after a timeout never saves a second copy.
+--
 -- Older app builds: nothing they call changes. Idempotent; one transaction.
 -- Independent of 175/181 (uses no function they redefine).
 -- ============================================================================
 
 BEGIN;
+
+-- One copy per bubble (round 4, Claude review): a send that timed out
+-- after its insert landed, then Try again, saved the message twice. Apps
+-- from this release send a client id per bubble and insert with
+-- ON CONFLICT (sender_id, client_id) DO NOTHING. Nullable, and NULLs never
+-- collide: older builds (no client id) and every existing row are untouched.
+ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS client_id uuid;
+CREATE UNIQUE INDEX IF NOT EXISTS messages_sender_client_once
+  ON public.messages (sender_id, client_id);
 
 -- Lookups by message and by chat for chat notifications only.
 CREATE INDEX IF NOT EXISTS idx_notifications_chat_message_id
@@ -166,6 +182,24 @@ BEGIN
           AND NOT coalesce((to_jsonb(m2) ->> 'deleted')::boolean, false)
           AND public.bw_chat_notice_shows(n.body, n.data, m2.content)
           AND public.bw_chat_notice_closer(n.created_at, m2.created_at, m2.id, g.created_at, g.id)
+     );
+
+  -- Round 4: the backfill rule on every delete. In these chats an older
+  -- notice (no message_id) that matches no live message as it reads now
+  -- goes: a message edited after this migration and then deleted no longer
+  -- matches its first text above, and kept it.
+  DELETE FROM notifications n
+   USING (SELECT DISTINCT g.chat_id FROM jsonb_to_recordset(p_gone) AS g(chat_id uuid)) AS e
+   WHERE n.type IN ('chat_message', 'chat_mention')
+     AND n.data ->> 'message_id' IS NULL
+     AND coalesce(n.data ->> 'chat_id', n.data ->> 'chatId') = e.chat_id::text
+     AND NOT EXISTS (
+       SELECT 1 FROM messages m
+        WHERE m.chat_id = e.chat_id
+          AND m.created_at <= n.created_at + interval '1 minute'
+          AND m.created_at > n.created_at - interval '1 hour'
+          AND NOT coalesce((to_jsonb(m) ->> 'deleted')::boolean, false)
+          AND public.bw_chat_notice_shows(n.body, n.data, m.content)
      );
 
   -- A chat left with no live message (a deleted DM: every message, for both

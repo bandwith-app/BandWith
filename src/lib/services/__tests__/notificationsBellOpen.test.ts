@@ -90,14 +90,23 @@ describe('bell: unread items it would not show', () => {
     h.pages.push([invite(0, false), invite(1, false), invite(2, true), row(3)]);
     const { data } = await getNotifications({ limit: 20, excludeChat: true, withOlderUnread: 100 });
     expect(data?.filter((n) => n.type === 'event_invite')).toHaveLength(1);
-    expect(unreadInboxIds(data || [])).toEqual(['n0', 'n1', 'n3']);
+    // Codex review #291 r4: every copy and the kept invite, read or not.
+    expect(unreadInboxIds(data || [])).toEqual(['n0', 'n1', 'n2', 'n3']);
   });
 
-  it('a read invite shown, an unread duplicate hidden: still marked', async () => {
+  it('a read invite shown, an unread duplicate hidden: shown unread, and all marked', async () => {
     const invite = (i: number, read: boolean) => ({ ...row(i, read, 'event_invite'), data: { event_id: 'gig-1' } });
     h.pages.push([invite(0, true), invite(1, false)]);
     const { data } = await getNotifications({ limit: 20, excludeChat: true, withOlderUnread: 100 });
-    expect(unreadInboxIds(data || [])).toEqual(['n1']);
+    expect(data?.[0].read).toBe(false);
+    expect(unreadInboxIds(data || [])).toEqual(['n0', 'n1']);
+  });
+
+  it('every copy read: nothing to mark', async () => {
+    const invite = (i: number) => ({ ...row(i, true, 'event_invite'), data: { event_id: 'gig-1' } });
+    h.pages.push([invite(0), invite(1)]);
+    const { data } = await getNotifications({ limit: 20, excludeChat: true, withOlderUnread: 100 });
+    expect(unreadInboxIds(data || [])).toEqual([]);
   });
 
   it('the app marks the shown ids, not every unread row', () => {

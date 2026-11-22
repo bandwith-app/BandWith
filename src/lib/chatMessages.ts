@@ -24,7 +24,11 @@ const sameMessage = (a: Message, b: Message) =>
   a.created_at === b.created_at &&
   a.sender?.full_name === b.sender?.full_name &&
   a.sender?.avatar_url === b.sender?.avatar_url &&
-  a.reply_to?.id === b.reply_to?.id;
+  a.live === b.live &&
+  // The quote too (Codex review #291 r4): deleted or edited since.
+  a.reply_to?.id === b.reply_to?.id &&
+  a.reply_to?.content === b.reply_to?.content &&
+  a.reply_to?.deleted === b.reply_to?.deleted;
 
 const sameList = (a: Message[], b: Message[]) => a.length === b.length && a.every((m, i) => sameMessage(m, b[i]));
 
@@ -75,7 +79,9 @@ export const mergeLatestPage = (prev: Message[], page: Message[], known?: Readon
     .filter((d) => !copies.has(d.id))
     .map((d) => {
       const had = mine.get(d.id);
-      return had && editedLater(had, d) ? had : d;
+      if (!had || !editedLater(had, d)) return d;
+      const { live: _live, ...confirmed } = had;
+      return confirmed as Message;
     });
   const meanwhile = known
     ? prev.filter((m) => !isTemp(m) && !pageIds.has(m.id) && !known.has(m.id))
@@ -115,7 +121,13 @@ export const appendIncoming = (prev: Message[], message: Message): Message[] => 
   const i = prev.findIndex((m) => isTemp(m) && m.sender_id === message.sender_id && m.content === message.content);
   const rest = i === -1 ? prev : [...prev.slice(0, i), ...prev.slice(i + 1)];
   const settled = rest.filter((m) => !isTemp(m));
-  return [...settled, message, ...rest.filter(isTemp)];
+  // In its place by time: arrivals are fetched one by one and can land out
+  // of order (Codex review #291 r4). Marked live: no page has confirmed what
+  // came before it (catchUpPage).
+  const at = settled.findIndex((m) => m.created_at > message.created_at);
+  const live = { ...message, live: true };
+  const placed = at === -1 ? [...settled, live] : [...settled.slice(0, at), live, ...settled.slice(at)];
+  return [...placed, ...rest.filter(isTemp)];
 };
 
 /** How far a message is dragged sideways (px) before it is answered (swipe to reply on touch). */
@@ -180,10 +192,13 @@ export const catchUpPage = async (
   // newest one on screen proves nothing: it may have come by Realtime just
   // before the refresh, with the missed ones still in between (Codex #291).
   // So catch up from the newest message on screen older than the page.
-  if (page.length < CHAT_PAGE_SIZE || prev.some((m) => !isTemp(m) && m.id === page[0].id)) {
+  // Round 4: page[0] counts only if a page brought it (a Realtime arrival,
+  // `live`, may have missed ones right before it), and the catch-up starts
+  // from the newest message a page brought.
+  if (page.length < CHAT_PAGE_SIZE || prev.some((m) => !isTemp(m) && !m.live && m.id === page[0].id)) {
     return { page, complete: true };
   }
-  const last = newestSettled(prev.filter((m) => m.created_at < page[0].created_at));
+  const last = newestSettled(prev.filter((m) => !m.live && m.created_at < page[0].created_at));
   if (!last) return { page, complete: true };
   const pageIds = new Set(page.map((m) => m.id));
   const forward: Message[] = [];
@@ -204,6 +219,21 @@ export const catchUpPage = async (
     cursor = next;
   }
   return { page, complete: false };
+};
+
+/** A new client id for a message being sent (Try again reuses it). */
+export const newClientId = (): string => {
+  const c = (globalThis as { crypto?: Crypto }).crypto;
+  // messages.client_id is a uuid column: anything else would fail the insert.
+  const u = c && typeof c.randomUUID === 'function' ? c.randomUUID() : '';
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(u)) return u;
+  const b = new Uint8Array(16);
+  if (c && typeof c.getRandomValues === 'function') c.getRandomValues(b);
+  else for (let i = 0; i < 16; i++) b[i] = Math.floor(Math.random() * 256);
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 };
 
 /** Saved on the server (not a bubble still sending or "Not sent"): only these can be replied to. */

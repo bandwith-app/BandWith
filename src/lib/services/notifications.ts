@@ -92,8 +92,8 @@ export interface Notification {
   read: boolean;
   read_at?: string;
   archived?: boolean;
-  /** This device only: unread copies of this invite the list hides (opening the bell marks them too). */
-  unread_duplicate_ids?: string[];
+  /** This device only: the copies of this invite the list hides (opening the bell marks them all read too). */
+  duplicate_ids?: string[];
   
   // Actions
   action_url?: string;
@@ -269,8 +269,9 @@ export const getNotifications = async (options?: {
     }
 
     // Deduplicate notifications (e.g. if push edge function and app both inserted an invite for the same event)
-    // A hidden copy still counts in the badge: the one shown carries its id
-    // so opening the bell marks it read too (Codex review #291 r3).
+    // A hidden copy still counts in the badge: the one shown carries every
+    // copy's id, shows unread while any copy is, and opening the bell marks
+    // them all read (Codex review #291 r3, r4).
     const deduped: Notification[] = [];
     const seenEventInvites = new Map<string, Notification>();
 
@@ -279,7 +280,8 @@ export const getNotifications = async (options?: {
       if (notif.type === 'event_invite' && eventId) {
         const kept = seenEventInvites.get(eventId);
         if (kept) {
-          if (!notif.read) kept.unread_duplicate_ids = [...(kept.unread_duplicate_ids ?? []), notif.id];
+          kept.duplicate_ids = [...(kept.duplicate_ids ?? []), notif.id];
+          if (!notif.read) kept.read = false;
           continue;
         }
         const own = { ...notif };
@@ -340,10 +342,10 @@ export const markAsRead = async (notificationId: string): Promise<{ error: Error
 };
 
 /** Unread inbox items (not chat rows) among those loaded: what opening the bell shows. */
-export const unreadInboxIds = (list: Array<{ id: string; type: string; read: boolean; unread_duplicate_ids?: string[] }>): string[] =>
+export const unreadInboxIds = (list: Array<{ id: string; type: string; read: boolean; duplicate_ids?: string[] }>): string[] =>
   [...new Set(list
-    .filter((n) => !isChatNotificationType(n.type))
-    .flatMap((n) => [...(n.read ? [] : [n.id]), ...(n.unread_duplicate_ids ?? [])]))];
+    .filter((n) => !n.read && !isChatNotificationType(n.type))
+    .flatMap((n) => [n.id, ...(n.duplicate_ids ?? [])]))];
 
 /**
  * Marks these notifications read (the ones the bell just showed). Opening

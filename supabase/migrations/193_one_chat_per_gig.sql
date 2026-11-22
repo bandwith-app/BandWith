@@ -12,6 +12,8 @@
 --     band or gig chat? Band chat: active member of the band. Gig chat: may
 --     take part in the gig (bw_is_event_participant: creator, band admin, on
 --     the lineup and not declined) and is an active member of its band.
+--     The app may ask about itself, or a band admin about someone in the
+--     band (round 4); the rule itself is bw_chat_joinable_rule, server only.
 --   * chats_select_joinable: those people can see the chat row (not its
 --     messages: the messages policies still need participation, 175/181).
 --     This alone fixes older app builds: their lookup finds the chat and
@@ -41,7 +43,9 @@
 BEGIN;
 
 -- ── Who may join a band or gig chat ─────────────────────────────────────────
-CREATE OR REPLACE FUNCTION public.bw_chat_joinable(p_type text, p_band_id uuid, p_event_id uuid, p_user_id uuid DEFAULT auth.uid())
+-- The rule itself, about anyone: for 193's own trigger and get-or-join
+-- (security definer), never callable by the app.
+CREATE OR REPLACE FUNCTION public.bw_chat_joinable_rule(p_type text, p_band_id uuid, p_event_id uuid, p_user_id uuid)
 RETURNS boolean
 LANGUAGE sql
 STABLE SECURITY DEFINER
@@ -60,6 +64,25 @@ AS $$
       ), false)
     ELSE false
   END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_chat_joinable_rule(text, uuid, uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.bw_chat_joinable_rule(text, uuid, uuid, uuid) TO service_role;
+
+-- For the app and the read policy: about yourself, or (band admins) about
+-- someone in your band. Anyone else asking about someone else gets false
+-- (Claude review #291 r4: it told a member who may join which gig chat).
+CREATE OR REPLACE FUNCTION public.bw_chat_joinable(p_type text, p_band_id uuid, p_event_id uuid, p_user_id uuid DEFAULT auth.uid())
+RETURNS boolean
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT (auth.uid() IS NULL
+          OR p_user_id = auth.uid()
+          OR (p_band_id IS NOT NULL AND public.bw_is_band_admin(p_band_id, auth.uid()))
+          OR coalesce((SELECT e.band_id IS NOT NULL AND public.bw_is_band_admin(e.band_id, auth.uid())
+                         FROM events e WHERE e.id = p_event_id), false))
+     AND public.bw_chat_joinable_rule(p_type, p_band_id, p_event_id, p_user_id);
 $$;
 REVOKE ALL ON FUNCTION public.bw_chat_joinable(text, uuid, uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_chat_joinable(text, uuid, uuid, uuid) TO authenticated, service_role;
@@ -173,7 +196,7 @@ BEGIN
   SELECT c.type::text, c.band_id, c.event_id INTO v_type, v_band, v_event
     FROM chats c WHERE c.id = NEW.chat_id;
   IF (v_type = 'band' AND v_band IS NOT NULL) OR (v_type = 'event' AND v_event IS NOT NULL) THEN
-    IF NOT public.bw_chat_joinable(v_type, v_band, v_event, NEW.user_id) THEN
+    IF NOT public.bw_chat_joinable_rule(v_type, v_band, v_event, NEW.user_id) THEN
       RETURN NULL;
     END IF;
   END IF;
@@ -221,7 +244,7 @@ BEGIN
     RAISE EXCEPTION 'Only band and event chats' USING ERRCODE = '22023';
   END IF;
 
-  IF NOT public.bw_chat_joinable(p_type, v_band, p_event_id, v_uid) THEN
+  IF NOT public.bw_chat_joinable_rule(p_type, v_band, p_event_id, v_uid) THEN
     RAISE EXCEPTION 'Not allowed to open this chat' USING ERRCODE = '42501';
   END IF;
 

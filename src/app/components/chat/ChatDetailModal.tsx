@@ -37,7 +37,7 @@ import { createPortal } from 'react-dom';
 import { useRailLayout } from '@/lib/deviceRegions';
 import { useLineupSoFar } from '@/app/hooks/useLineupSoFar';
 import { ChatEventContextPane } from '@/app/components/chat/ChatEventContextPane';
-import { CHAT_PAGE_SIZE, mergeLatestPage, restartFromLatest, prependOlder, appendIncoming, normalizeChatType, isReplySwipe, catchUpPage, markSendFailed, canReplyTo, firstWords, type ChatKind } from '@/lib/chatMessages';
+import { CHAT_PAGE_SIZE, mergeLatestPage, restartFromLatest, prependOlder, appendIncoming, normalizeChatType, isReplySwipe, catchUpPage, markSendFailed, canReplyTo, firstWords, newClientId, type ChatKind } from '@/lib/chatMessages';
 import { isOfflineError } from '@/lib/offline/networkErrors';
 import { haptic } from '@/lib/haptics';
 
@@ -189,6 +189,8 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
   draftRef.current = newMessage;
   const replyingToRef = useRef<Message | null>(replyingTo);
   replyingToRef.current = replyingTo;
+  // A message whose send failed went back into the composer: its client id.
+  const returnedRef = useRef<{ chatId: string; content: string; replyToId?: string; clientId: string } | null>(null);
 
   useEffect(() => {
     if (chat.name && chat.name !== 'New Chat') {
@@ -605,7 +607,7 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
     const sentFrom = pending.chat_id;
     setSending(true);
     setSendError('');
-    const { data, error } = await sendMessage(sentFrom, pending.content, 'text', pending.reply_to_id);
+    const { data, error } = await sendMessage(sentFrom, pending.content, 'text', pending.reply_to_id, pending.client_id ?? undefined);
     // Another chat is on screen now: its composer is not this one.
     if (chatIdRef.current !== sentFrom) {
       setSending(false);
@@ -620,6 +622,9 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
         setMessages(prev => prev.filter(m => m.id !== pending.id));
         setNewMessage(pending.content);
         setReplyingTo(pending.reply_to ?? null);
+        // Sent again as it is: same client id (the first insert may have
+        // landed before the error), so the server keeps one copy.
+        returnedRef.current = { chatId: sentFrom, content: pending.content, replyToId: pending.reply_to_id, clientId: pending.client_id ?? newClientId() };
       } else {
         // A new draft is in the composer: never overwrite it (07 #5). The
         // message stays as a "Not sent" bubble with Try again.
@@ -647,8 +652,14 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
     draftRef.current = '';
     replyingToRef.current = null;
 
+    const back = returnedRef.current;
+    returnedRef.current = null;
+    const clientId = back && back.chatId === chat.id && back.content === messageText && back.replyToId === replyToMessage?.id
+      ? back.clientId
+      : newClientId();
     const optimisticMessage: Message = {
       id: `temp-${Date.now()}`,
+      client_id: clientId,
       chat_id: chat.id,
       sender_id: user?.id || '',
       content: messageText,
@@ -1000,15 +1011,16 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
                           </p>
                         </div>
 
+                        {/* Not sent: Try again / Delete are 44 px touch targets (Claude review #291 r4). */}
                         {message.failed ? (
-                          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+                          <div className="flex flex-wrap items-center justify-end gap-x-1 gap-y-1">
                             <span role="status" aria-live="polite" className="bw-label-xs text-destructive">{t('Not sent')}</span>
                             <button
                               type="button"
                               aria-label={t('Try again: {text}', { text: firstWords(message.content) })}
                               onClick={() => retrySend(message)}
                               disabled={sending}
-                              className="relative after:absolute after:-inset-2 after:content-[''] bw-label-xs text-foreground underline underline-offset-2 disabled:opacity-50 cursor-pointer"
+                              className="inline-flex items-center justify-center min-h-11 min-w-11 px-2 bw-label-xs text-foreground underline underline-offset-2 disabled:opacity-50 cursor-pointer"
                             >
                               {t('Try again')}
                             </button>
@@ -1016,7 +1028,7 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
                               type="button"
                               aria-label={t('Delete unsent message: {text}', { text: firstWords(message.content) })}
                               onClick={() => discardFailed(message)}
-                              className="relative after:absolute after:-inset-2 after:content-[''] bw-label-xs text-muted-foreground underline underline-offset-2 cursor-pointer"
+                              className="inline-flex items-center justify-center min-h-11 min-w-11 px-2 bw-label-xs text-muted-foreground underline underline-offset-2 cursor-pointer"
                             >
                               {t('Delete')}
                             </button>

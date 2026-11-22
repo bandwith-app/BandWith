@@ -211,6 +211,24 @@ for (const m of MIGS) {
   await db.exec(readFileSync(m, 'utf8')); // idempotent
 }
 ok(true, 'migrations run twice');
+let r0;
+let r;
+
+// ── 192 · one copy per bubble (Claude review #291 r4): Try again after a
+// timeout whose insert landed must not save the message twice.
+const CID = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+const sendOnce = (content) => as(ADMIN, `INSERT INTO messages (chat_id, sender_id, content, client_id) VALUES ('${BANDCHAT}','${ADMIN}','${content}','${CID}')
+  ON CONFLICT (sender_id, client_id) DO NOTHING RETURNING id`);
+r0 = await sendOnce('client id test');
+ok(!r0.error && r0.rows.length === 1, `first send saves it (${r0.error ?? r0.rows.length})`);
+r0 = await sendOnce('client id test');
+ok(!r0.error && r0.rows.length === 0, `Try again with the same client id saves nothing new (${r0.error ?? r0.rows.length})`);
+ok(await count(`SELECT count(*)::int AS n FROM messages WHERE client_id = '${CID}'`) === 1, 'one copy');
+r0 = await as(MEM, `INSERT INTO messages (chat_id, sender_id, content, client_id) VALUES ('${BANDCHAT}','${MEM}','same id, other sender','${CID}') ON CONFLICT (sender_id, client_id) DO NOTHING RETURNING id`);
+ok(!r0.error && r0.rows.length === 1, `another sender's id never collides (${r0.error ?? r0.rows.length})`);
+r0 = await as(ADMIN, `INSERT INTO messages (chat_id, sender_id, content) VALUES ('${BANDCHAT}','${ADMIN}','older build'), ('${BANDCHAT}','${ADMIN}','older build')`);
+ok(!r0.error, `older builds (no client id) insert as before (${r0.error ?? 'ok'})`);
+await db.exec(`DELETE FROM messages WHERE content IN ('client id test', 'same id, other sender', 'older build')`);
 
 // ── 192 · orphans from before
 ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE body IN ('old secret','older secret')`) === 0,
@@ -230,7 +248,7 @@ ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE body = 'see y
 await db.exec(`INSERT INTO notifications (user_id, type, title, body, data, action_url, created_at) VALUES
   ('${LINE}','chat_message','Ava Admin','see you at 7 instead', jsonb_build_object('chat_id','${DM}','content','see you at 7 instead'), '/chat/${DM}', now() - interval '100 minutes'),
   ('${LINE}','chat_mention','Ava Admin mentioned you','Leo, bring the cables', jsonb_build_object('chatId','${DM}','content','Leo, bring the cables'), '/chat/${DM}', now() - interval '3 days')`);
-let r = await as(LINE, `SELECT public.bw_delete_chat_history('${DM}') AS n`);
+r = await as(LINE, `SELECT public.bw_delete_chat_history('${DM}') AS n`);
 ok(!r.error && r.rows[0].n === 2, `delete chat removed the DM (${r.error ?? r.rows[0].n})`);
 ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'chat_id' = '${DM}' OR data->>'chatId' = '${DM}'`) === 0,
   'no notification keeps the deleted DM text (short by message_id, long by preview)');
@@ -266,6 +284,22 @@ ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'messa
 await db.exec(`DELETE FROM messages WHERE id = '${M_YES2}'`);
 r = await db.query(`SELECT data->>'tag' AS tag FROM notifications WHERE data->>'chat_id' = '${TWINCHAT}' AND body = 'Yes'`);
 ok(r.rows.length === 1 && r.rows[0].tag === 'yes-1', `deleting the second "Yes" keeps the first one's notice (${JSON.stringify(r.rows)})`);
+// Codex #291 r4 (192:159): a message edited after the migration, then
+// deleted: its older notice still showed the first text (matched nothing).
+// Every delete applies the backfill rule to the chat.
+const M_EDIT2 = id(56);
+await db.exec(`INSERT INTO messages (id, chat_id, sender_id, content, created_at) VALUES ('${M_EDIT2}','${TWINCHAT}','${MEM}','meet at 6', now() - interval '2 minutes');
+  INSERT INTO notifications (user_id, type, title, body, data, action_url, created_at) VALUES
+  ('${ADMIN}','chat_message','Mia Member','meet at 6', jsonb_build_object('chat_id','${TWINCHAT}','content','meet at 6'), '/chat/${TWINCHAT}', now() - interval '2 minutes' + interval '1 second');
+  UPDATE messages SET content = 'meet at 7', edited = true WHERE id = '${M_EDIT2}';`);
+const othersBefore = await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'chat_id' = '${TWINCHAT}' AND body <> 'meet at 6'`);
+await db.exec(`DELETE FROM messages WHERE id = '${M_EDIT2}'`);
+ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE body = 'meet at 6'`) === 0,
+  'edited, then deleted: the older notice with its first text goes too');
+ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'chat_id' = '${TWINCHAT}' AND body <> 'meet at 6'`) === othersBefore,
+  `the chat's other notices (live messages) stay (${othersBefore})`);
+r = await db.query(`SELECT data->>'tag' AS tag FROM notifications WHERE data->>'chat_id' = '${TWINCHAT}' AND body = 'Yes'`);
+ok(r.rows.length === 1 && r.rows[0].tag === 'yes-1', `the other "Yes" keeps its notice (${JSON.stringify(r.rows)})`);
 // (A notice for a message deleted before it is written: 194's bw_write_chat_notices, tested with 194.)
 
 // ── 193 · a band admin outside the lineup finds the gig chat
@@ -306,6 +340,17 @@ ok(!!r.error && /already has a chat/.test(r.error), `older build, duplicate gig 
 await db.exec(`UPDATE profiles SET preferred_language = 'it' WHERE id = '${EX}'`);
 r = await as(EX, `INSERT INTO chats (type, name, band_id, event_id, created_by) VALUES ('event','Rooftop Session',NULL,'${GIG}','${EX}')`);
 ok(!!r.error && /ha già una chat/.test(r.error), `in their language (${r.error})`);
+
+// Claude review #291 r4: bw_chat_joinable answers about others only for the
+// band's admins (it must not tell a member who may join which gig chat).
+r = await as(MEM, `SELECT public.bw_chat_joinable('event', '${BAND}', '${GIG}', '${LINE}') AS j`);
+ok(!r.error && r.rows[0].j === false, `a member asking about someone else gets no answer (${r.error ?? r.rows[0].j})`);
+r = await as(LINE, `SELECT public.bw_chat_joinable('event', '${BAND}', '${GIG}', '${LINE}') AS j`);
+ok(!r.error && r.rows[0].j === true, `about themselves: yes (${r.error ?? r.rows[0].j})`);
+r = await as(ADMIN, `SELECT public.bw_chat_joinable('event', '${BAND}', '${GIG}', '${LINE}') AS j`);
+ok(!r.error && r.rows[0].j === true, `the band's admin may ask about a member (${r.error ?? r.rows[0].j})`);
+r = await as(ADMIN, `SELECT public.bw_chat_joinable('event', '${BAND}', '${GIG}', '${EX}') AS j`);
+ok(!r.error && r.rows[0].j === false, `and gets the real answer (${r.error ?? r.rows[0].j})`);
 
 // Not on the lineup, not an admin: cannot see or open it.
 r = await as(MEM, `SELECT id FROM chats WHERE type = 'event' AND event_id = '${GIG}'`);
