@@ -115,12 +115,15 @@ export async function removeObjects(server: ObjectServer, bucket: string, prefix
   // remove() has no versionId); prod has no versioned bucket, and none may
   // become versioned until a versionId delete is proven for account
   // deletion. Archived rows left are logged, never a reason to stop.
+  // Round 15: checked only once the live files are gone. A failed removal
+  // makes the step not ready; it runs again, and the check with it.
+  if (!files) return false;
   try {
     await warnArchivedVersions(server, bucket, prefix);
   } catch (e) {
     console.warn('account-deletion: archived versions not checked', bucket, e);
   }
-  return files;
+  return true;
 }
 
 /** The files themselves (live rows), removed by name. */

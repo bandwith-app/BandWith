@@ -1162,9 +1162,10 @@ nm = await names8('personal-files', X1);
 const nmAv = await names8('avatars', X1);
 ok(!d.error && rel9?.personal_left === 1, `round 9 (Claude 1): archived rows and delete markers don't count (${d.error ?? JSON.stringify(rel9)})`);
 // Round 11 (Claude r10 F6): Storage's remove by name deletes only the
-// current row, so names are the files (live rows); every old version and
-// marker is listed by version, to purge by version. A name with only
-// archived rows is never removed by name.
+// current row, so names are the files (live rows). Every old version and
+// marker is listed by version, a check only (round 14): delete-account
+// logs how many remain and never deletes them. A name with only archived
+// rows is never removed by name.
 const vers = async (b, p, an = null, av = null, lim = 1000) =>
   q(`SELECT name, version FROM public.bw_account_storage_versions('${b}', '${p}', ${an ? `'${an}'` : 'NULL'}, ${av ? `'${av}'` : 'NULL'}, ${lim})`);
 const vPf = await vers('personal-files', X1), vAv = await vers('avatars', X1);
@@ -1173,7 +1174,7 @@ ok(!nm.error && JSON.stringify(nm.rows.map((r) => r.n)) === JSON.stringify([`${X
 ok(!vPf.error && !vAv.error
    && JSON.stringify(vPf.rows.map((r) => [r.name, r.version])) === JSON.stringify([[`${X1}/live.m4a`, 'v-live-0'], [`${X1}/old.m4a`, 'v-old']])
    && JSON.stringify(vAv.rows.map((r) => [r.name, r.version])) === JSON.stringify([[`${X1}/me.png`, 'v-marker']]),
-  `round 11 (Claude r10 F6): their archived versions and delete markers are listed by version for the purge (${vPf.error ?? vAv.error ?? JSON.stringify({ vPf: vPf.rows, vAv: vAv.rows })})`);
+  `round 11 (Claude r10 F6): their archived versions and delete markers are listed by version, for the check delete-account logs (${vPf.error ?? vAv.error ?? JSON.stringify({ vPf: vPf.rows, vAv: vAv.rows })})`);
 const vPage = await vers('personal-files', X1, `${X1}/live.m4a`, 'v-live-0', 1);
 ok(!vPage.error && JSON.stringify(vPage.rows.map((r) => r.version)) === JSON.stringify(['v-old']), `round 11: keyset pages by (name, version) (${vPage.error ?? JSON.stringify(vPage.rows)})`);
 const vEmpty = await q(`SELECT * FROM public.bw_account_storage_versions('personal-files', '')`);
