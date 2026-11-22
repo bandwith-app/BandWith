@@ -4681,6 +4681,14 @@ const dict: Dictionary = {
   "This quote now goes to {name}. Nothing was sent: close this and open the quote again.": "Ce devis va maintenant à {name}. Rien n’a été envoyé : ferme ceci et rouvre le devis.",
   "The quote changed meanwhile, so this send was not recorded. Close this and open the quote again.": "Entre-temps, le devis a changé : cet envoi n’a donc pas été enregistré. Ferme et rouvre le devis.",
   "The client link changed meanwhile. Your reply was not sent: check it and send it again.": "Le lien du client a changé entre-temps. Ta réponse n’a pas été envoyée : vérifie-la et renvoie-la.",
+  // Money audit (383f15b)
+  "Quote saved, but the lineup was not": "Devis enregistré, mais pas le line-up",
+  "Quote saved, but the lineup was not: {error}": "Devis enregistré, mais pas le line-up : {error}",
+  "Not saved. Check your connection and try again.": "Non enregistré. Vérifiez la connexion et réessayez.",
+  "Enter an amount, like {example}.": "Saisissez un montant, par exemple {example}.",
+  "The preview could not be opened. Try again.": "Impossible d’ouvrir l’aperçu. Réessayez.",
+  "The fees could not be loaded, so the lineup cannot be saved yet. Try again when you are back online.": "Les cachets n’ont pas pu être chargés, le line-up ne peut donc pas encore être enregistré. Réessayez une fois de nouveau en ligne.",
+  "The fees could not be loaded, so they cannot be changed yet. Try again when you are back online.": "Les cachets n’ont pas pu être chargés, ils ne peuvent donc pas encore être modifiés. Réessayez une fois de nouveau en ligne.",
 };
 
 export default dict;

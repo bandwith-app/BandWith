@@ -333,6 +333,41 @@ export const updateQuote = async (
   }
 };
 
+const isMissingRpc = (err: { code?: string; message?: string } | null): boolean =>
+  !!err && (err.code === 'PGRST202' || err.code === '42883' || /could not find the function/i.test(err.message || ''));
+
+/**
+ * Saves an edited quote's lineup (its `quote_musicians` rows) in one
+ * transaction (bw_quote_save_musicians, migration 185) and returns the rows
+ * saved, so the edit screens show what is stored. Editing a quote used to
+ * write only the `quotes` row: the old names and fees came back on reload
+ * and went into the gig made from the quote.
+ */
+export const saveQuoteMusicians = async (
+  quoteId: string,
+  musicians: Omit<QuoteMusician, 'id' | 'quote_id' | 'created_at'>[],
+): Promise<{ data: QuoteMusician[] | null; error: Error | null }> => {
+  const payload = musicians.map((m) => ({
+    user_id: m.user_id ?? null,
+    name: m.name,
+    instrument: m.instrument ?? null,
+    fee: roundCents(Number(m.fee) || 0),
+    is_external: !!m.is_external,
+    is_available: m.is_available !== false,
+  }));
+  const { data, error } = await supabase.rpc('bw_quote_save_musicians', { p_quote_id: quoteId, p_musicians: payload });
+  if (error && isMissingRpc(error)) {
+    // Database before 185: the same rows, written directly (admins only by RLS).
+    const del = await supabase.from('quote_musicians').delete().eq('quote_id', quoteId);
+    if (del.error) return { data: null, error: new Error(del.error.message) };
+    if (payload.length === 0) return { data: [], error: null };
+    const ins = await supabase.from('quote_musicians').insert(payload.map((m) => ({ ...m, quote_id: quoteId }))).select();
+    return ins.error ? { data: null, error: new Error(ins.error.message) } : { data: (ins.data || []) as QuoteMusician[], error: null };
+  }
+  if (error) return { data: null, error: new Error(error.message) };
+  return { data: (Array.isArray(data) ? data : []) as QuoteMusician[], error: null };
+};
+
 /**
  * Deletes a quote and the tentative calendar event that holds its date (made
  * with the quote: converted_to_event_id, or events.quote_id). Only while that

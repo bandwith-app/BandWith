@@ -4,12 +4,13 @@ import { BwSheet, Tag } from '@/app/components/bw/Screen';
 import { PillButton, PillField, Selector } from '@/app/components/bw/Form';
 import { Toggle } from '@/app/components/bw/Toggle';
 import { cn } from '@/app/components/ui/utils';
-import { useT, intlLocale, LANGUAGES, loadLocale, useLocaleReady, type Locale } from '@/lib/i18n';
+import { useT, intlLocale, LANGUAGES, loadLocale, localDecimal, useLocaleReady, type Locale } from '@/lib/i18n';
+import { amountField, amountKeys } from '@/lib/amount';
 import { docLanguageFor } from '@/lib/i18n/docLanguage';
 import { openExternal } from '@/lib/nativeFiles';
 import { todayLocal, parseLocalDate } from '@/lib/dates';
 import { currencySymbol } from '@/lib/currency';
-import { formatQuoteMoney, roundCents } from '@/lib/services/quoteMath';
+import { formatQuoteMoney } from '@/lib/services/quoteMath';
 import { getBandPricing, maskedBankAccount, type BandPricingSettings } from '@/lib/services/pricing';
 import type { Quote } from '@/app/data/quotes';
 import type { ClientBalance } from '@/quote/types';
@@ -21,6 +22,7 @@ import {
   buildClientBalance,
   defaultDueRule,
   planBalance,
+  previousOtherReceived,
   type BalanceDueRule,
   type BalanceIssue,
   type BalanceWay,
@@ -31,6 +33,7 @@ import {
   getQuoteLinkState,
   markQuoteBalancePaid,
   markQuoteBalanceSent,
+  previewQuoteBalance,
   publishQuoteBalance,
   publishQuoteLink,
   quoteLinkUrl,
@@ -189,12 +192,15 @@ export const BalanceRequestSheet: React.FC<BalanceRequestSheetProps> = ({
   const gigFee = gig?.fee != null && gig.fee > 0 ? gig.fee : null;
   const total = basis === 'gig' && gigFee != null ? gigFee : snapshot.total;
   const deposit = gig?.deposit_amount && gig.deposit_amount > 0 ? gig.deposit_amount : snapshot.deposit?.amount ?? 0;
-  const otherNum = Math.max(0, Number(String(other).replace(',', '.')) || 0);
+  // 10 #2/#3: the amount as the admin writes it ("1.250,00"); text that is no amount blocks sending.
+  const otherField = amountField(other);
+  const otherNum = otherField.value ?? 0;
   const gigDate = gig?.event_date || quote.eventDate || null;
   const dueDate = balanceDueDate(rule, gigDate, today, customDate);
   const setup = balanceSetup(settings);
   const accepted = String(quote.status || '').toUpperCase() === 'ACCEPTED' || link?.status === 'accepted';
-  const prev = link?.balance ?? null;
+  // What the client has: the balance sent (185), else the last one published.
+  const prev = (link?.balance_sent_at ? link?.balance_sent ?? link?.balance : link?.balance) ?? null;
 
   const facts = {
     total,
@@ -228,6 +234,7 @@ export const BalanceRequestSheet: React.FC<BalanceRequestSheetProps> = ({
     today,
   };
   const plan = planBalance(facts);
+  const canSend = plan.canSend && !otherField.invalid;
 
   // Other payments: what the client was told before, unless typed again.
   const otherSeeded = useRef(false);
@@ -239,8 +246,10 @@ export const BalanceRequestSheet: React.FC<BalanceRequestSheetProps> = ({
     if (!loaded || otherSeeded.current) return;
     otherSeeded.current = true;
     if (prev) {
-      const was = roundCents(prev.total - prev.amount - (gig?.deposit_paid ? deposit : 0));
-      if (was > 0) setOther(String(was));
+      // 08 #6: the other payments the client was told about, kept apart from
+      // the deposit (a deposit recorded since then no longer eats them).
+      const was = previousOtherReceived(prev, link?.lang ?? lang);
+      if (was > 0) setOther(localDecimal(String(was)));
       if (gigFee != null && Math.abs(prev.total - gigFee) < 0.01 && Math.abs(prev.total - snapshot.total) >= 0.01) setBasis('gig');
     } else {
       setOther('');
@@ -293,7 +302,7 @@ export const BalanceRequestSheet: React.FC<BalanceRequestSheetProps> = ({
       : '';
 
   const sendEmail = async () => {
-    if (!plan.canSend || !plan.canEmail || busy) return;
+    if (!canSend || !plan.canEmail || busy) return;
     setBusy('email');
     try {
       const pub = await publishQuoteBalance(quoteId, clientBalance());
@@ -330,7 +339,7 @@ export const BalanceRequestSheet: React.FC<BalanceRequestSheetProps> = ({
 
   // WhatsApp and Copy run inside the tap (iOS blocks popups and the clipboard after an await).
   const sendVia = (channel: 'whatsapp' | 'copy') => {
-    if (!plan.canSend || !link || link.revoked_at || busy) return;
+    if (!canSend || !link || link.revoked_at || busy) return;
     const text = message();
     if (channel === 'copy') {
       try {
@@ -350,22 +359,25 @@ export const BalanceRequestSheet: React.FC<BalanceRequestSheetProps> = ({
     void publishAndRecord('whatsapp').then((ok) => ok && say(plan.mode === 'remind' ? t('Reminder sent') : t('Balance request shared')));
   };
 
+  // 08 #8: the preview shows the draft with its own key; nothing reaches the
+  // client until a send (the page shows the balance sent, 185/187).
   const preview = async () => {
     if (!link || busy) return;
-    if (plan.canSend) {
+    let key: string | null = null;
+    if (canSend) {
       setBusy('preview');
-      const pub = await publishQuoteBalance(quoteId, clientBalance());
+      const res = await previewQuoteBalance(quoteId, clientBalance());
       setBusy(null);
-      if (pub.error) {
-        say(t('The client page could not be updated. Try again.'), 'error');
+      if (res.error) {
+        say(t('The preview could not be opened. Try again.'), 'error');
         return;
       }
-      const state = await getQuoteLinkState(quoteId);
-      if (state.data?.link) setLink(state.data.link);
+      key = res.data;
     }
-    void openExternal(quoteLinkUrl(link.token, { preview: true }));
+    void openExternal(quoteLinkUrl(link.token, { preview: true, previewKey: key }));
   };
 
+  const depositBeforePaid = useRef<boolean | null>(null);
   const setPaid = async (paid: boolean) => {
     if (busy) return;
     setBusy(paid ? 'paid' : 'undo');
@@ -378,12 +390,12 @@ export const BalanceRequestSheet: React.FC<BalanceRequestSheetProps> = ({
     const [state, g] = await Promise.all([getQuoteLinkState(quoteId), getBalanceGig(quoteId, gig?.id ?? eventId ?? null)]);
     if (state.data) setLink(state.data.link);
     if (g.data) setGig(g.data);
-    else if (gig)
-      setGig({
-        ...gig,
-        payment_status: paid ? 'paid' : gig.deposit_paid ? 'partial' : 'pending',
-        deposit_paid: paid || gig.deposit_paid,
-      });
+    else if (gig) {
+      // 08 #7: Undo gives back the deposit as it was before "Mark as paid".
+      const deposit = paid ? true : depositBeforePaid.current ?? gig.deposit_paid;
+      if (paid) depositBeforePaid.current = !!gig.deposit_paid;
+      setGig({ ...gig, payment_status: paid ? 'paid' : deposit ? 'partial' : 'pending', deposit_paid: deposit });
+    }
     onChanged?.();
     say(paid ? t('Balance marked as received') : t('Balance open again'));
   };
@@ -501,11 +513,11 @@ export const BalanceRequestSheet: React.FC<BalanceRequestSheetProps> = ({
         {t('Mark as paid')}
       </PillButton>
     ) : asking && plan.canEmail ? (
-      <PillButton variant="primary" loading={busy === 'email'} disabled={!plan.canSend} icon={<Mail className="w-4 h-4" />} onClick={() => void sendEmail()}>
+      <PillButton variant="primary" loading={busy === 'email'} disabled={!canSend} icon={<Mail className="w-4 h-4" />} onClick={() => void sendEmail()}>
         {plan.mode === 'remind' ? t('Send a reminder') : primaryLabel}
       </PillButton>
     ) : asking ? (
-      <PillButton variant="primary" disabled={!plan.canSend} icon={<MessageCircle className="w-4 h-4" />} onClick={() => sendVia('whatsapp')}>
+      <PillButton variant="primary" disabled={!canSend} icon={<MessageCircle className="w-4 h-4" />} onClick={() => sendVia('whatsapp')}>
         {t('Share on WhatsApp')}
       </PillButton>
     ) : undefined;
@@ -556,7 +568,8 @@ export const BalanceRequestSheet: React.FC<BalanceRequestSheetProps> = ({
                     inputMode="decimal"
                     placeholder="0"
                     value={other}
-                    onChange={(e) => setOther(e.target.value.replace(/[^0-9.,]/g, ''))}
+                    onChange={(e) => setOther(amountKeys(e.target.value))}
+                    error={otherField.invalid ? t('Enter an amount, like {example}.', { example: localDecimal('1250.50') }) : undefined}
                     trailing={<span className="bw-label-sm text-muted-foreground">{currency}</span>}
                   />
                 )}
@@ -693,7 +706,7 @@ export const BalanceRequestSheet: React.FC<BalanceRequestSheetProps> = ({
                       <PillButton
                         size="md"
                         variant="outline"
-                        disabled={!plan.canSend}
+                        disabled={!canSend}
                         icon={<MessageCircle className="w-4 h-4" />}
                         onClick={() => sendVia('whatsapp')}
                       >
@@ -703,7 +716,7 @@ export const BalanceRequestSheet: React.FC<BalanceRequestSheetProps> = ({
                     <PillButton
                       size="md"
                       variant="outline"
-                      disabled={!plan.canSend || !link}
+                      disabled={!canSend || !link}
                       icon={<Copy className="w-4 h-4" />}
                       onClick={() => sendVia('copy')}
                     >

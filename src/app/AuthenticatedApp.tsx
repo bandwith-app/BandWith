@@ -118,6 +118,9 @@ import type { ContractPrefill } from "@/app/views/ContractsView";
 const TaskTemplatesView = lazyLayer(() => import("@/app/views/TaskTemplatesView").then(m => ({ default: m.TaskTemplatesView })));
 const CreateEventModal = lazyLayer(() => import("@/app/components/dashboard/CreateEventModal").then(m => ({ default: m.CreateEventModal })));
 const QuoteCreationWizard = lazyLayer(() => import("@/app/components/quotes/QuoteCreationWizard").then(m => ({ default: m.QuoteCreationWizard })));
+type NewQuoteCreate = import("@/app/components/quotes/QuoteCreationWizard").QuoteCreationWizardProps['onCreate'];
+type NewQuoteInput = Parameters<NewQuoteCreate>[0];
+type NewQuoteOptions = Parameters<NewQuoteCreate>[1];
 const BandPricingModal = lazyLayer(() => import("@/app/components/quotes/BandPricingModal").then(m => ({ default: m.BandPricingModal })));
 const QuoteShareModal = lazyLayer(() => import("@/app/components/quotes/QuoteShareModal").then(m => ({ default: m.QuoteShareModal })));
 /** A quote save that found no connection (nothing saved, nothing queued). */
@@ -139,7 +142,7 @@ import {
 
 import { RoleTourModal, markRoleTourSeen, roleTourSeen } from "@/app/components/onboarding/RoleTourModal";
 import { Quote } from "@/app/data/quotes";
-import { createQuote as createQuoteDB, updateQuote as updateQuoteDB, appQuoteToDbRecord, quoteUpdateRecord, appMusiciansToDb, dbQuoteToAppQuote } from "@/lib/services/quotes";
+import { createQuote as createQuoteDB, updateQuote as updateQuoteDB, appQuoteToDbRecord, quoteUpdateRecord, appMusiciansToDb, dbQuoteToAppQuote, saveQuoteMusicians } from "@/lib/services/quotes";
 import { republishClientQuote } from "@/lib/services/quoteLinks";
 import type { Quote as AppQuote } from "@/app/data/quotes";
 import { quoteMusicianFee } from "@/lib/services/quoteMath";
@@ -2735,6 +2738,160 @@ export default function AuthenticatedApp() {
     setIsCreateEventOpen(true);
   };
 
+  /**
+   * A new quote, from the calendar or from Quotes (08 #10: both take this
+   * path): the tentative event that holds the date, the lineup, the quote,
+   * the to-do list and, when asked, the lineup's availability request. The
+   * wizard stays open until the quote is saved: on an error the user keeps
+   * everything typed and can try again.
+   */
+  const saveNewQuote = async (
+    q: NewQuoteInput,
+    opts: NewQuoteOptions,
+    ctx: { close: () => void; templateTasks?: { title: string; templateId?: string; dueOffset?: number }[]; openShare?: (quote: NewQuoteInput, autoSend: boolean) => void },
+  ) => {
+    if (quoteSaveRunningRef.current) return;
+    const templateTasks = ctx.templateTasks;
+    // The share sheet / PDF opens only after the quote is saved, so it
+    // carries the number assigned by the database.
+    const wantsShare = !!opts?.share;
+    if (!realBand?.id) {
+      setSaveToast({ message: t('Select a band before creating a quote.'), type: 'error' });
+      return;
+    }
+    quoteSaveRunningRef.current = true;
+    try {
+    if (realBand?.id) {
+      // One id for this save: a create that only timed out on the
+      // client and its queued retry are the same row, never two.
+      const clientEventId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : undefined;
+      const createdEventId = q.eventId || (await (async () => {
+        const evD: Record<string, any> = {
+          ...(clientEventId ? { id: clientEventId } : {}),
+          band_id: realBand.id,
+          title: q.eventName || q.clientName || t('Quote Event'),
+          event_type: q.eventType || 'other',
+          status: 'tentative' as const,
+          event_date: q.eventDate || todayLocal(),
+          start_time: q.eventTimeStart || '20:00',
+          end_time: q.eventTimeEnd || null,
+          venue_name: q.venueName || 'TBD',
+          venue: q.venueName || 'TBD',
+          venue_city: q.venueCity || null,
+          venue_address: q.venueAddress || null,
+          indoor_outdoor: q.indoorOutdoor || null,
+          fee: q.total || 0,
+          client_name: q.clientName || null,
+        };
+        const memberRows = Array.isArray(q.musicians)
+          ? q.musicians
+              .map((m: any) => {
+                const bandMember = realBand.members?.find((bm: any) => bm.id === m.id || bm.user_id === m.id);
+                const resolvedUserId = bandMember?.user_id || m.user_id || null;
+                if (!resolvedUserId) return null;
+                return {
+                  user_id: resolvedUserId,
+                  status: resolvedUserId === user?.id ? 'confirmed' : 'pending',
+                  fee: quoteMusicianFee(m),
+                  role: m.instrument || bandMember?.role || 'Musician',
+                };
+              })
+              .filter(Boolean)
+          : [];
+
+        // Quotes need a database number, so they can't be queued
+        // offline; their tentative event isn't queued either (it would
+        // hold the date with no quote behind it).
+        const saveQuoteEventOffline = async () => {
+          reportNetworkStatus(false);
+          return QUOTE_NEEDS_CONNECTION;
+        };
+
+        if (!isOnline || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+          return await saveQuoteEventOffline();
+        }
+
+        const creating = createEvent(evD);
+        try {
+          const { data: ev, error: evErr } = await Promise.race([
+            creating,
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('offline_timeout')), 4500)),
+          ]);
+          if (evErr && isOfflineError(evErr)) {
+            return await saveQuoteEventOffline();
+          }
+          if (ev?.id && memberRows.length > 0) {
+            await saveEventLineup(ev.id, memberRows as LineupRow[]);
+          }
+          return ev?.id || null;
+        } catch (err) {
+          if (isOfflineError(err)) {
+            // Timed out: if the event still lands, take it back (no quote holds it).
+            void creating
+              .then(({ data: late }) => (late?.id ? supabase.from('events').delete().eq('id', late.id) : null))
+              .catch(() => {});
+            return await saveQuoteEventOffline();
+          }
+          return null;
+        }
+      })());
+
+      const stillOnline = isOnline && (typeof navigator === 'undefined' || navigator.onLine);
+      if (createdEventId === QUOTE_NEEDS_CONNECTION || !stillOnline) {
+        // Nothing saved: the wizard stays open with the quote as typed.
+        // An event saved just before the connection dropped goes too.
+        if (createdEventId && createdEventId !== QUOTE_NEEDS_CONNECTION && !q.eventId) {
+          void Promise.resolve(supabase.from('events').delete().eq('id', createdEventId)).catch(() => {});
+        }
+        setSaveToast({ message: t('You’re offline. Quotes need a connection: nothing was saved, try again when you’re back online.'), type: 'error' });
+      } else {
+        const { data: savedQuote, error: quoteErr } = await createQuoteDB(
+          { ...appQuoteToDbRecord(q, realBand.id), converted_to_event_id: createdEventId || undefined },
+          appMusiciansToDb(q.musicians)
+        );
+        if (quoteErr || !savedQuote) {
+          // Don't leave a tentative event without its quote.
+          if (createdEventId && !q.eventId) {
+            await supabase.from('events').delete().eq('id', createdEventId);
+          }
+          // The wizard stays open with the quote as typed.
+          console.warn('[quotes] quote not saved:', quoteErr);
+          setSaveToast({ message: t('Quote not saved. Check your connection and try again.'), type: 'error' });
+        } else {
+          ctx.close();
+          setSaveToast({ message: t('Quote {number} saved', { number: savedQuote.quote_number }), type: 'success' });
+          // Started from a to-do list: the quote's event gets its tasks.
+          if (templateTasks?.length && createdEventId) {
+            const { error: taskErr } = await syncEventTasks(
+              createdEventId,
+              templateTasks.map((t) => ({ title: t.title, dueOffset: t.dueOffset })),
+              q.eventDate || todayLocal(),
+              [],
+            );
+            if (taskErr) setSaveToast({ message: t('Quote saved, but the to-do list was not added: {error}', { error: taskErr.message }), type: 'error' });
+          }
+          // Members get the hold card from the server (178): day, time
+          // and place only, never the client or the fee.
+          if (wantsShare) {
+            const toShare = { ...q, id: savedQuote.id, quoteNumber: savedQuote.quote_number, status: 'DRAFT' } as typeof q;
+            if (ctx.openShare) ctx.openShare(toShare, !!opts?.send);
+            else {
+              setSharingAutoSend(!!opts?.send);
+              setSharingQuote(toShare);
+            }
+          }
+          refetchExpandedQuotes();
+        }
+      }
+      setMembersRefreshKey(prev => prev + 1);
+      refetchEvents().catch(() => {});
+      if (refetchDashboard) refetchDashboard().catch(() => {});
+    }
+    } finally {
+      quoteSaveRunningRef.current = false;
+    }
+  };
+
   /** Saves the quote edited from its event, and keeps the event in step. */
   const handleLinkedQuoteSave = async (q: Partial<AppQuote>, opts?: { share?: boolean }) => {
     const editing = editingLinkedQuote;
@@ -2748,6 +2905,17 @@ export default function AuthenticatedApp() {
         // The wizard stays open with what was typed.
         setSaveToast({ message: t('Quote not saved: {error}', { error: error?.message || t('unknown error') }), type: 'error' });
         return;
+      }
+      // The lineup is saved with the quote (185): what is stored is what shows.
+      let roster = editing.quote.musicians;
+      if (q.musicians) {
+        const lineup = await saveQuoteMusicians(editing.quote.id, appMusiciansToDb(q.musicians));
+        if (lineup.error || !lineup.data) {
+          // The wizard stays open: saving again saves the lineup.
+          setSaveToast({ message: t('Quote saved, but the lineup was not: {error}', { error: lineup.error?.message || t('unknown error') }), type: 'error' });
+          return;
+        }
+        roster = dbQuoteToAppQuote({ ...(data as any), musicians: lineup.data }).musicians;
       }
       // The event shows the quote's date, time, place, client and fee, as
       // saved (round 6: the row the database returns, with its own totals
@@ -2766,7 +2934,7 @@ export default function AuthenticatedApp() {
         fee: Number((data as any)?.total) || 0,
         client_name: merged.clientName || null,
       } as any);
-      const saved = { ...q, ...dbQuoteToAppQuote(data as any), musicians: q.musicians || editing.quote.musicians } as AppQuote;
+      const saved = { ...q, ...dbQuoteToAppQuote(data as any), musicians: roster } as AppQuote;
       setEditingLinkedQuote(null);
       setSaveToast(eventErr
         ? { message: t('Quote updated, but the event was not: {error}', { error: eventErr.message }), type: 'error' }
@@ -4223,7 +4391,7 @@ export default function AuthenticatedApp() {
         <AnimatePresence>
           {expandedCard === "finance" && <FinanceExpanded key="finance-expanded" bandId={realBand?.id || selectedBand.id.toString()} onClose={() => setExpandedCard(null)} financialStats={financeData.financialStats} transactions={financeData.recentTransactions} loading={financeLoading} onTransactionAdded={() => { refetchFinance(); refetchDashboard?.(); }} />}
           {expandedCard === "pending" && <PendingExpanded key="pending-expanded" bandId={realBand?.id || selectedBand.id.toString()} onClose={() => setExpandedCard(null)} eventFilter={eventFilter} setEventFilter={setEventFilter} events={pendingEvents} loading={pendingEventsLoading} />}
-          {isAdmin && expandedCard === "quotes" && <QuotesExpanded key="quotes-expanded" bandId={realBand?.id || selectedBand.id.toString()} onClose={() => setExpandedCard(null)} realQuotes={realQuotes} quoteStats={quotesStats} loading={quotesLoading} onShowToast={(msg, type) => setSaveToast({ message: msg, type })} onQuotesChanged={() => { refetchExpandedQuotes(); refetchDashboard?.(); }} onOpenBandSettings={() => { setPricingModalInitialTab('branding'); setPricingReturnTo(null); setShowPricingModal(true); }} onOpenEvent={(eventId) => { setExpandedCard(null); navigateToEvent(eventId); }} onPrepareContract={(prefill) => { if (!realBand || !isAdminOfBand(realBand.id)) return; setExpandedCard(null); setContractPrefill(prefill); setShowContracts(true); }} focusQuoteId={quoteFocus} onFocusConsumed={() => setQuoteFocus(null)} />}
+          {isAdmin && expandedCard === "quotes" && <QuotesExpanded key="quotes-expanded" bandId={realBand?.id || selectedBand.id.toString()} onClose={() => setExpandedCard(null)} onCreateNew={(q, opts, close, openShare) => saveNewQuote(q, opts, { close, openShare })} realQuotes={realQuotes} quoteStats={quotesStats} loading={quotesLoading} onShowToast={(msg, type) => setSaveToast({ message: msg, type })} onQuotesChanged={() => { refetchExpandedQuotes(); refetchDashboard?.(); }} onOpenBandSettings={() => { setPricingModalInitialTab('branding'); setPricingReturnTo(null); setShowPricingModal(true); }} onOpenEvent={(eventId) => { setExpandedCard(null); navigateToEvent(eventId); }} onPrepareContract={(prefill) => { if (!realBand || !isAdminOfBand(realBand.id)) return; setExpandedCard(null); setContractPrefill(prefill); setShowContracts(true); }} focusQuoteId={quoteFocus} onFocusConsumed={() => setQuoteFocus(null)} />}
           {expandedCard === "confirmed" && <ConfirmedExpanded key="confirmed-expanded" bandId={realBand?.id || selectedBand.id.toString()} onClose={() => setExpandedCard(null)} events={myConfirmedEvents} loading={confirmedEventsLoading} />}
           {expandedCard === "rehearsal" && currentRehearsal ? (
             <RehearsalExpanded key="rehearsal-expanded" upcomingRehearsals={upcomingRehearsals} currentRehearsal={currentRehearsal} rehearsalIndex={rehearsalIndex} setRehearsalIndex={setRehearsalIndex} rehearsalViewMode={rehearsalViewMode} setRehearsalViewMode={setRehearsalViewMode} onGoLive={() => { const id = currentRehearsal.eventId; setExpandedCard(null); if (id) handleGoLive(id); }} onClose={() => setExpandedCard(null)} onDecline={handleRehearsalDecline} />
@@ -4549,151 +4717,14 @@ export default function AuthenticatedApp() {
               setSaveToast({ message: t('Draft deleted'), type: 'success' });
             }}
           />
-          <AnimatePresence key="nested-presence-2">{isCreateEventOpen && createEventType === "quote" && !editingEventData && <QuoteCreationWizard bandMembers={memoizedBandMembers} initialData={createEventInitialDate ? { eventDate: createEventInitialDate } : undefined} onClose={() => { setIsCreateEventOpen(false); setCreateEventInitialDate(null); setCreateEventInitialTasks(undefined); }} onCreate={async (q, opts) => {
-            // The wizard stays open until the quote is saved: on an error the
-            // user keeps everything typed and can try again.
-            if (quoteSaveRunningRef.current) return;
-            const closeQuoteWizard = () => {
+          <AnimatePresence key="nested-presence-2">{isCreateEventOpen && createEventType === "quote" && !editingEventData && <QuoteCreationWizard bandMembers={memoizedBandMembers} initialData={createEventInitialDate ? { eventDate: createEventInitialDate } : undefined} onClose={() => { setIsCreateEventOpen(false); setCreateEventInitialDate(null); setCreateEventInitialTasks(undefined); }} onCreate={(q, opts) => saveNewQuote(q, opts, {
+            close: () => {
               setIsCreateEventOpen(false);
               setCreateEventInitialDate(null);
               setCreateEventInitialTasks(undefined);
-            };
-            const templateTasks = createEventInitialTasks;
-            // The share sheet / PDF opens only after the quote is saved, so it
-            // carries the number assigned by the database.
-            const wantsShare = !!opts?.share;
-            if (!realBand?.id) {
-              setSaveToast({ message: t('Select a band before creating a quote.'), type: 'error' });
-              return;
-            }
-            quoteSaveRunningRef.current = true;
-            try {
-            if (realBand?.id) {
-              // One id for this save: a create that only timed out on the
-              // client and its queued retry are the same row, never two.
-              const clientEventId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : undefined;
-              const createdEventId = q.eventId || (await (async () => {
-                const evD: Record<string, any> = {
-                  ...(clientEventId ? { id: clientEventId } : {}),
-                  band_id: realBand.id,
-                  title: q.eventName || q.clientName || t('Quote Event'),
-                  event_type: q.eventType || 'other',
-                  status: 'tentative' as const,
-                  event_date: q.eventDate || todayLocal(),
-                  start_time: q.eventTimeStart || '20:00',
-                  end_time: q.eventTimeEnd || null,
-                  venue_name: q.venueName || 'TBD',
-                  venue: q.venueName || 'TBD',
-                  venue_city: q.venueCity || null,
-                  venue_address: q.venueAddress || null,
-                  indoor_outdoor: q.indoorOutdoor || null,
-                  fee: q.total || 0,
-                  client_name: q.clientName || null,
-                };
-                const memberRows = Array.isArray(q.musicians)
-                  ? q.musicians
-                      .map((m: any) => {
-                        const bandMember = realBand.members?.find((bm: any) => bm.id === m.id || bm.user_id === m.id);
-                        const resolvedUserId = bandMember?.user_id || m.user_id || null;
-                        if (!resolvedUserId) return null;
-                        return {
-                          user_id: resolvedUserId,
-                          status: resolvedUserId === user?.id ? 'confirmed' : 'pending',
-                          fee: quoteMusicianFee(m),
-                          role: m.instrument || bandMember?.role || 'Musician',
-                        };
-                      })
-                      .filter(Boolean)
-                  : [];
-
-                // Quotes need a database number, so they can't be queued
-                // offline; their tentative event isn't queued either (it would
-                // hold the date with no quote behind it).
-                const saveQuoteEventOffline = async () => {
-                  reportNetworkStatus(false);
-                  return QUOTE_NEEDS_CONNECTION;
-                };
-
-                if (!isOnline || (typeof navigator !== 'undefined' && !navigator.onLine)) {
-                  return await saveQuoteEventOffline();
-                }
-
-                const creating = createEvent(evD);
-                try {
-                  const { data: ev, error: evErr } = await Promise.race([
-                    creating,
-                    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('offline_timeout')), 4500)),
-                  ]);
-                  if (evErr && isOfflineError(evErr)) {
-                    return await saveQuoteEventOffline();
-                  }
-                  if (ev?.id && memberRows.length > 0) {
-                    await saveEventLineup(ev.id, memberRows as LineupRow[]);
-                  }
-                  return ev?.id || null;
-                } catch (err) {
-                  if (isOfflineError(err)) {
-                    // Timed out: if the event still lands, take it back (no quote holds it).
-                    void creating
-                      .then(({ data: late }) => (late?.id ? supabase.from('events').delete().eq('id', late.id) : null))
-                      .catch(() => {});
-                    return await saveQuoteEventOffline();
-                  }
-                  return null;
-                }
-              })());
-
-              const stillOnline = isOnline && (typeof navigator === 'undefined' || navigator.onLine);
-              if (createdEventId === QUOTE_NEEDS_CONNECTION || !stillOnline) {
-                // Nothing saved: the wizard stays open with the quote as typed.
-                // An event saved just before the connection dropped goes too.
-                if (createdEventId && createdEventId !== QUOTE_NEEDS_CONNECTION && !q.eventId) {
-                  void Promise.resolve(supabase.from('events').delete().eq('id', createdEventId)).catch(() => {});
-                }
-                setSaveToast({ message: t('You’re offline. Quotes need a connection: nothing was saved, try again when you’re back online.'), type: 'error' });
-              } else {
-                const { data: savedQuote, error: quoteErr } = await createQuoteDB(
-                  { ...appQuoteToDbRecord(q, realBand.id), converted_to_event_id: createdEventId || undefined },
-                  appMusiciansToDb(q.musicians)
-                );
-                if (quoteErr || !savedQuote) {
-                  // Don't leave a tentative event without its quote.
-                  if (createdEventId && !q.eventId) {
-                    await supabase.from('events').delete().eq('id', createdEventId);
-                  }
-                  // The wizard stays open with the quote as typed.
-                  console.warn('[quotes] quote not saved:', quoteErr);
-                  setSaveToast({ message: t('Quote not saved. Check your connection and try again.'), type: 'error' });
-                } else {
-                  closeQuoteWizard();
-                  setSaveToast({ message: t('Quote {number} saved', { number: savedQuote.quote_number }), type: 'success' });
-                  // Started from a to-do list: the quote's event gets its tasks.
-                  if (templateTasks?.length && createdEventId) {
-                    const { error: taskErr } = await syncEventTasks(
-                      createdEventId,
-                      templateTasks.map((t) => ({ title: t.title, dueOffset: t.dueOffset })),
-                      q.eventDate || todayLocal(),
-                      [],
-                    );
-                    if (taskErr) setSaveToast({ message: t('Quote saved, but the to-do list was not added: {error}', { error: taskErr.message }), type: 'error' });
-                  }
-                  // Members get the hold card from the server (178): day, time
-                  // and place only, never the client or the fee.
-                  if (wantsShare) {
-                    setSharingAutoSend(!!opts?.send);
-                    setSharingQuote({ ...q, id: savedQuote.id, quoteNumber: savedQuote.quote_number, status: 'DRAFT' });
-                  }
-                  refetchExpandedQuotes();
-                }
-              }
-              setMembersRefreshKey(prev => prev + 1);
-              refetchEvents().catch(() => {});
-              if (refetchDashboard) refetchDashboard().catch(() => {});
-            }
-            } finally {
-              quoteSaveRunningRef.current = false;
-            }
-          }} />}</AnimatePresence>
+            },
+            templateTasks: createEventInitialTasks,
+          })} />}</AnimatePresence>
 
           <AnimatePresence key="nested-presence-edit-quote">
             {editingLinkedQuote && (

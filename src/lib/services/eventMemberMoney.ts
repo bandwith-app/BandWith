@@ -110,7 +110,7 @@ export async function saveEventLineup(eventId: string, rows: LineupRow[]): Promi
   return { error: error ? new Error(error.message) : null };
 }
 
-/** Admins: stamps paid_at on every non-declined member still unpaid. */
+/** Admins: stamps paid_at on everyone owed (confirmed, a fee above 0, unpaid: 186). */
 export async function markEventPaid(
   eventId: string,
 ): Promise<{ data: { user_id: string; paid_at: string }[]; error: Error | null }> {
@@ -121,7 +121,8 @@ export async function markEventPaid(
       .update({ paid_at: new Date().toISOString() })
       .eq('event_id', eventId)
       .is('paid_at', null)
-      .neq('status', 'declined')
+      .eq('status', 'confirmed')
+      .gt('fee', 0)
       .select('user_id, paid_at');
     if (legacy.error) return { data: [], error: new Error(legacy.error.message) };
     return { data: (legacy.data || []) as { user_id: string; paid_at: string }[], error: null };

@@ -1,7 +1,7 @@
 import { supabase } from '../supabase';
 import { attachEventPrivate } from './eventPrivate';
 import { parseLocalDate, toLocalDateString, todayLocal } from '../dates';
-import { t, translate, intlLocale, type Locale } from '@/lib/i18n';
+import { t, translate, intlLocale, LANGUAGES, type Locale } from '@/lib/i18n';
 import { planRefusal } from '@/lib/userError';
 import { channelLabel, stageSize, type StageData } from '../stagePlot';
 
@@ -252,6 +252,21 @@ const STANDARD_TERM_LINES: Record<ContractType, string[]> = {
 /** Standard terms / rider in a given language (the form inserts them in the app language). */
 export const standardTerms = (type: ContractType, lang: Locale = 'en'): string =>
   STANDARD_TERM_LINES[type].map((line) => translate(lang, line)).join('\n\n');
+
+/**
+ * The contract's "Notes & terms" in the document's language (08 #12). The
+ * form inserts the standard terms in the app's language; sent in another
+ * language, the PDF printed them verbatim under translated headings. Text
+ * that is exactly the standard terms (in any language) is written in `lang`;
+ * anything the band edited stays as typed.
+ */
+export const contentInLanguage = (content: string | null | undefined, type: ContractType, lang: Locale): string => {
+  const text = (content ?? '').trim();
+  if (!text) return text;
+  const norm = (v: string) => v.replace(/\r\n/g, '\n').trim();
+  const isStandard = LANGUAGES.some((l) => norm(standardTerms(type, l.id)) === norm(text));
+  return isStandard ? standardTerms(type, lang) : text;
+};
 
 export const STANDARD_TERMS: Record<ContractType, string> = {
   contract: standardTerms('contract'),
@@ -737,12 +752,13 @@ export const buildContractPdfBytes = (c: Contract, opts: PdfOptions = {}): Uint8
     }
   }
 
-  // Notes & terms.
-  if (c.content && c.content.trim()) {
+  // Notes & terms (standard terms in the document's language, 08 #12).
+  const content = contentInLanguage(c.content, rider ? 'rider' : 'contract', lang);
+  if (content) {
     if (rider) {
       heading(tr('REQUIREMENTS & NOTES'), '', 3 * 15);
       y -= 11;
-      for (const line of wrapText(toWinAnsi(c.content.trim()), 10.5, CONTENT_W)) {
+      for (const line of wrapText(toWinAnsi(content), 10.5, CONTENT_W)) {
         ensure(15);
         if (line) text(line, MARGIN, 10.5);
         y -= 15;
@@ -754,7 +770,7 @@ export const buildContractPdfBytes = (c: Contract, opts: PdfOptions = {}): Uint8
       y -= 26;
       text(toWinAnsi(tr('NOTES & TERMS')), MARGIN, 10, true, 0.35);
       y -= 22;
-      for (const line of wrapText(toWinAnsi(c.content.trim()), 11.5, CONTENT_W)) {
+      for (const line of wrapText(toWinAnsi(content), 11.5, CONTENT_W)) {
         ensure(16);
         if (line) text(line, MARGIN, 11.5);
         y -= 16;

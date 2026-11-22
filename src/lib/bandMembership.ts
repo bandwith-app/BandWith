@@ -4,6 +4,7 @@
  * default fee are read and edited.
  */
 import { canUse, type Entitlements } from '@/lib/plans';
+import { parseAmount } from '@/lib/amount';
 
 /**
  * Whether one more admin fits the band's plan (paid plans, limit `admins`).
@@ -47,9 +48,10 @@ export function memberInstrument(member: {
 export function parseFeeInput(text: string): { value: number | null; invalid: boolean } {
   const s = text.trim();
   if (!s) return { value: null, invalid: false };
-  const n = Number(s.replace(',', '.'));
-  if (!Number.isFinite(n) || n < 0) return { value: null, invalid: true };
-  return { value: Math.round(n * 100) / 100, invalid: false };
+  // The amount as the user writes it ("1.250,50" in German): src/lib/amount.ts.
+  const n = parseAmount(s);
+  if (n == null) return { value: null, invalid: true };
+  return { value: n, invalid: false };
 }
 
 /** Notices the database sends the band when its roster changes (migration 046). */

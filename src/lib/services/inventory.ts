@@ -1,6 +1,7 @@
 import { supabase } from '../supabase';
 import { t } from '@/lib/i18n';
 import { planRefusal } from '@/lib/userError';
+import { parseAmount } from '@/lib/amount';
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Gear / inventory (table `inventory`, migration 006).
@@ -159,10 +160,11 @@ export const sameCategory = (a: string | null | undefined, b: string | null | un
   canonicalCategory(a).toLowerCase() === canonicalCategory(b).toLowerCase();
 
 export const parsePrice = (raw?: string): { value: number | null; error: string | null } => {
-  const cleaned = (raw ?? '').trim().replace(/\s/g, '').replace(',', '.');
+  // The price as the user writes it ("1.250,50" in German): src/lib/amount.ts.
+  const cleaned = (raw ?? '').trim();
   if (!cleaned) return { value: null, error: null };
-  const v = Number(cleaned);
-  if (!Number.isFinite(v) || v < 0) return { value: null, error: t('Enter a valid purchase price.') };
+  const v = parseAmount(cleaned);
+  if (v == null) return { value: null, error: t('Enter a valid purchase price.') };
   return { value: Math.round(v * 100) / 100, error: null };
 };
 

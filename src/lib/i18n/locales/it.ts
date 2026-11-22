@@ -4681,6 +4681,14 @@ const dict: Dictionary = {
   "This quote now goes to {name}. Nothing was sent: close this and open the quote again.": "Questo preventivo ora va a {name}. Non è stato inviato nulla: chiudi e riapri il preventivo.",
   "The quote changed meanwhile, so this send was not recorded. Close this and open the quote again.": "Nel frattempo il preventivo è cambiato, quindi questo invio non è stato registrato. Chiudi e riapri il preventivo.",
   "The client link changed meanwhile. Your reply was not sent: check it and send it again.": "Nel frattempo il link del cliente è cambiato. La tua risposta non è stata inviata: controllala e inviala di nuovo.",
+  // Money audit (383f15b)
+  "Quote saved, but the lineup was not": "Preventivo salvato, ma la formazione no",
+  "Quote saved, but the lineup was not: {error}": "Preventivo salvato, ma la formazione no: {error}",
+  "Not saved. Check your connection and try again.": "Non salvato. Controlla la connessione e riprova.",
+  "Enter an amount, like {example}.": "Scrivi un importo, per esempio {example}.",
+  "The preview could not be opened. Try again.": "Non è stato possibile aprire l’anteprima. Riprova.",
+  "The fees could not be loaded, so the lineup cannot be saved yet. Try again when you are back online.": "Non è stato possibile caricare i compensi, quindi la formazione non si può ancora salvare. Riprova quando sei di nuovo online.",
+  "The fees could not be loaded, so they cannot be changed yet. Try again when you are back online.": "Non è stato possibile caricare i compensi, quindi non si possono ancora modificare. Riprova quando sei di nuovo online.",
 };
 
 export default dict;

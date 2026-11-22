@@ -25,6 +25,7 @@ import {
 import { springs } from '@/styles/motion';
 import { EventData } from './EventCard';
 import { WeatherWidget } from '@/app/components/ui/WeatherWidget';
+import { isOwedPayout } from '@/lib/payoutsDue';
 import { supabase } from '@/lib/supabase';
 import { useBand } from '@/lib/BandContext';
 import { cn } from '@/app/components/ui/utils';
@@ -1186,7 +1187,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   const depositAmount = Number(event.depositAmount) || 0;
   const depositDue = depositAmount > 0 && !event.depositPaid;
   const depositPct = bandFeeNum > 0 && depositAmount > 0 ? Math.round((depositAmount / bandFeeNum) * 100) : null;
-  const allPaid = activeMembers.length > 0 && activeMembers.every((m) => !!m.paidAt);
+  // "Mark all as paid" pays who is owed (confirmed, a fee): the button goes once nobody is (05 #9, 186).
+  const allPaid = activeMembers.length > 0 && !activeMembers.some((m) => isOwedPayout(m));
 
   // iPad gig workspace (Figma "iPad · 03"): Overview · Setlist · Rider & stage
   // · Money (admins). Tablets only; phones and the Duo keep one scroll.

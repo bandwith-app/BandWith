@@ -49,6 +49,14 @@ export function useEventMembers({
   const [reloadKey, setReloadKey] = useState(0);
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
   const shownForRef = useRef<string | undefined>(undefined);
+  const [moneyFailed, setMoneyFailed] = useState(false);
+  // The fees failed to load: try again once the device is back online.
+  useEffect(() => {
+    if (!moneyFailed) return;
+    const again = () => setReloadKey((k) => k + 1);
+    window.addEventListener('online', again);
+    return () => window.removeEventListener('online', again);
+  }, [moneyFailed]);
 
   useEffect(() => {
     if (!eventId || disabled) {
@@ -78,6 +86,10 @@ export function useEventMembers({
       }
       const money = await getEventMemberMoney([eventId]);
       if (cancelled) return;
+      // 05 #5: no fees loaded is not "every fee is 0": the edit sheets stay
+      // off until the real fees are in (reloaded when the connection is back).
+      const feesUnknown = !!money.error;
+      setMoneyFailed(feesUnknown);
       const moneyOf = new Map(money.data.map((m) => [m.user_id, m]));
       const rows = (res.data || []).map((r: any) => ({ ...r, fee: moneyOf.get(r.user_id)?.fee, paid_at: moneyOf.get(r.user_id)?.paid_at ?? null, hasMoney: moneyOf.has(r.user_id) })) as any[];
 
@@ -123,6 +135,7 @@ export function useEventMembers({
           fee: em.fee != null ? Number(em.fee) : em.hasMoney ? info?.defaultFee || 0 : 0,
           status,
           paidAt: withPaid ? em.paid_at ?? null : undefined,
+          ...(feesUnknown ? { feeUnknown: true } : {}),
         };
       });
 
@@ -141,7 +154,7 @@ export function useEventMembers({
     };
   }, [eventId, bandId, createdBy, currentUserId, disabled, bands, selectedBand, t, reloadKey]);
 
-  /** Admins: stamp paid_at on every non-declined member still unpaid. */
+  /** Admins: stamp paid_at on everyone owed (confirmed, a fee above 0, unpaid: 186). */
   const markAllPaid = useCallback(async () => {
     if (!eventId || !paidSupported || markingPaid) return;
     setMarkingPaid(true);

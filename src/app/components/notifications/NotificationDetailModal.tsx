@@ -28,7 +28,8 @@ import { HeaderAction, IconButton, NavBackButton, Card, Tag } from '@/app/compon
 import { RailCover } from '@/lib/railActions';
 import { useRailLayout } from '@/lib/deviceRegions';
 import { PillButton, Selector } from '@/app/components/bw/Form';
-import { getActiveSymbol as sym, useCurrency } from '@/lib/currency';
+import { currencySymbol, useCurrency } from '@/lib/currency';
+import { useOptionalBand } from '@/lib/BandContext';
 import { findCalendarEvent, findEventConflicts, type CalendarEventLike } from '@/lib/eventConflicts';
 import { notificationBandId, notificationTarget, notificationTargetLabel } from '@/lib/notificationRouting';
 import { SwipeRow } from '@/app/components/bw/SwipeRow';
@@ -41,7 +42,7 @@ import { localizePushLabel, pushLanguage } from '@/lib/pushLabels';
 /** The row's subtitle ("Gig Alert · Summer Fest") with its label in the app language. */
 const subtitleOf = (data?: Record<string, unknown> | null): string | null =>
   data?.subtitle ? localizePushLabel(String(data.subtitle), pushLanguage(getLocale())) ?? null : null;
-import { inviteFeeToShow } from '@/lib/inviteFee';
+import { inviteFeeCurrency, inviteFeeToShow } from '@/lib/inviteFee';
 import { notificationTypeLine } from '@/lib/notificationTypeLine';
 import { useAuth } from '@/lib/AuthContext';
 import { useLineupSoFar } from '@/app/hooks/useLineupSoFar';
@@ -243,7 +244,8 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
   const [openRowId, setOpenRowId] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const t = useT();
-  useCurrency(); // re-render money labels when the band currency changes
+  const { code: activeCurrency } = useCurrency(); // re-render money labels when the band currency changes
+  const bandsForCurrency = useOptionalBand()?.bands;
   /** Band a notification comes from, when the user is in several. */
   const bandOf = (n: NotificationData): string | null => {
     const id = bandNames ? notificationBandId(n) : undefined;
@@ -645,7 +647,7 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
                               {inviteFeeToShow(d) != null && (
                                 <KV
                                   k={t('Allocated fee')}
-                                  v={`${sym()}${inviteFeeToShow(d)!.toLocaleString(intlLocale())}`}
+                                  v={`${currencySymbol(inviteFeeCurrency(d, detailNotif ? notificationBandId(detailNotif) : null, bandsForCurrency as { id?: string; pricing_currency?: string }[] | undefined, activeCurrency))}${inviteFeeToShow(d)!.toLocaleString(intlLocale())}`}
                                 />
                               )}
                             </>

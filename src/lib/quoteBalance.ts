@@ -250,6 +250,7 @@ export function buildClientBalance(
     currency,
     total: roundCents(Math.max(0, num(facts.total))),
     received,
+    other,
     amount: plan.due,
     amountLabel: moneyIn(lang, currency)(plan.due),
     dueDate: facts.dueDate || null,
@@ -260,6 +261,22 @@ export function buildClientBalance(
     note: clip(opts.note, 1000),
     ...(opts.pdfUrl ? { pdfUrl: opts.pdfUrl } : {}),
   };
+}
+
+/**
+ * The other payments a balance already on the client's page counted (not
+ * the deposit), to start the next request from. Balances from 185 on keep
+ * them as `other`; older ones only have the "Already paid" line, in the
+ * page's language. The deposit received since then is not one of them.
+ */
+export function previousOtherReceived(prev: ClientBalance | null | undefined, lang: Locale): number {
+  if (!prev) return 0;
+  if (typeof prev.other === 'number' && Number.isFinite(prev.other)) return roundCents(Math.max(0, prev.other));
+  const label = translate(lang, 'Already paid');
+  const deposit = translate(lang, 'Deposit received');
+  const lines = Array.isArray(prev.received) ? prev.received : [];
+  const line = lines.find((r) => r?.label === label) ?? (lines.length === 2 ? lines[1] : lines.length === 1 && lines[0]?.label !== deposit ? lines[0] : null);
+  return line ? roundCents(Math.max(0, num(line.amount))) : 0;
 }
 
 /** The text that goes with the link (WhatsApp, SMS, copy), in the client's language. */

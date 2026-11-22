@@ -2,11 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Check, Info, RotateCcw } from '@/app/components/icons';
 import { BwSheet, Tag } from '@/app/components/bw/Screen';
 import { PillButton, PillField, Selector } from '@/app/components/bw/Form';
-import { useT, intlLocale } from '@/lib/i18n';
+import { useT, intlLocale, localDecimal } from '@/lib/i18n';
 import { currencySymbol } from '@/lib/currency';
 import { calculateDepositAmount, formatQuoteMoney, quoteDepositPercent, roundCents, totalsForQuote } from '@/lib/services/quoteMath';
 import type { Quote } from '@/app/data/quotes';
 import { getBalanceGig, type BalanceGigRow } from '@/lib/services/quoteLinks';
+import { amountKeys, parseAmount } from '@/lib/amount';
 import { recordQuoteDeposit, type DepositMethod, type QuoteDepositResult } from '@/lib/services/quotes';
 
 /**
@@ -27,11 +28,6 @@ export interface DepositReceivedSheetProps {
   zIndex?: number;
 }
 
-const parseAmount = (s: string): number | null => {
-  const clean = s.replace(/\s/g, '').replace(/,(?=\d{1,2}$)/, '.').replace(/,/g, '');
-  const n = Number(clean);
-  return clean && Number.isFinite(n) && n >= 0 ? roundCents(n) : null;
-};
 
 export const DepositReceivedSheet: React.FC<DepositReceivedSheetProps> = ({ open, onClose, quote, onChanged, zIndex = 140 }) => {
   const t = useT();
@@ -66,7 +62,7 @@ export const DepositReceivedSheet: React.FC<DepositReceivedSheetProps> = ({ open
       const g = res.data ?? null;
       setGig(g);
       const start = g?.deposit_amount && g.deposit_amount > 0 ? g.deposit_amount : quoteDeposit;
-      setAmount(start > 0 ? String(start) : '');
+      setAmount(start > 0 ? localDecimal(String(roundCents(start))) : '');
       setLoaded(true);
     });
     return () => {
@@ -156,7 +152,8 @@ export const DepositReceivedSheet: React.FC<DepositReceivedSheetProps> = ({ open
                   label={t('Amount received')}
                   inputMode="decimal"
                   value={amount}
-                  onChange={(e) => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
+                  onChange={(e) => setAmount(amountKeys(e.target.value))}
+                  error={amount.trim() && value == null ? t('Enter an amount, like {example}.', { example: localDecimal('1250.50') }) : undefined}
                   trailing={<span className="bw-label-sm text-muted-foreground">{currency}</span>}
                 />
                 <section className="flex flex-col gap-2">

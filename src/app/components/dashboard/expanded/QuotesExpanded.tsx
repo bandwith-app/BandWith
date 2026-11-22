@@ -40,6 +40,7 @@ import {
   quoteUpdateRecord,
   appMusiciansToDb,
   dbQuoteToAppQuote,
+  saveQuoteMusicians,
   isUuid,
   gigFromAcceptedQuote,
 } from '@/lib/services/quotes';
@@ -79,6 +80,17 @@ interface QuotesExpandedProps {
   /** A quote to open right away (from a notification), then cleared. */
   focusQuoteId?: string | null;
   onFocusConsumed?: () => void;
+  /**
+   * 08 #10: a new quote takes the app's own save path (the tentative event
+   * holding the date, the lineup, the availability request when asked),
+   * as from the calendar. Without it, the quote alone is created here.
+   */
+  onCreateNew?: (
+    quote: Partial<Quote>,
+    opts: { share?: boolean; askAvailability?: boolean; send?: boolean } | undefined,
+    close: () => void,
+    openShare: (quote: Partial<Quote>, autoSend: boolean) => void,
+  ) => Promise<void>;
 }
 
 export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
@@ -94,6 +106,7 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
   onPrepareContract,
   focusQuoteId,
   onFocusConsumed,
+  onCreateNew,
 }) => {
   const t = useT();
   useCurrency(); // re-render money labels when the band currency changes
@@ -154,6 +167,7 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
   const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
   const [sharingQuote, setSharingQuote] = useState<Partial<Quote> | null>(null);
+  const [sharingAutoSend, setSharingAutoSend] = useState(false);
   
   const [creatingGig, setCreatingGig] = useState(false);
 
@@ -181,7 +195,7 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
   const activeQuotes = quotes.filter(q => shownStatus(q) !== 'DECLINED' && shownStatus(q) !== 'EXPIRED');
 
   // Handlers (all persist through src/lib/services/quotes.ts; optimistic changes are reverted on failure)
-  const handleCreateQuote = async (quoteData: Partial<Quote>, opts?: { share?: boolean }) => {
+  const handleCreateQuote = async (quoteData: Partial<Quote>, opts?: { share?: boolean; askAvailability?: boolean; send?: boolean }) => {
     if (isSaving) return;
     if (!currentBandId) {
       notify(t('No band selected — cannot save the quote'), 'error');
@@ -189,6 +203,26 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
     }
 
     const existing = quoteData.id ? quotes.find(q => q.id === quoteData.id) : undefined;
+    if (!existing && onCreateNew) {
+      setIsSaving(true);
+      try {
+        await onCreateNew(
+          quoteData,
+          opts,
+          () => {
+            setIsCreating(false);
+            setEditingQuote(null);
+          },
+          (q, autoSend) => {
+            setSharingAutoSend(autoSend);
+            setSharingQuote(q);
+          },
+        );
+      } finally {
+        setIsSaving(false);
+      }
+      return;
+    }
     const record = appQuoteToDbRecord(quoteData, currentBandId);
     setIsSaving(true);
 
@@ -212,7 +246,18 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
           return; // keep the wizard open so nothing is lost
         }
 
-        const saved = { ...quoteData, ...dbQuoteToAppQuote(data), musicians: quoteData.musicians || existing.musicians } as MockQuote;
+        // The lineup is saved with the quote (185): the screens show what is stored.
+        let roster = existing.musicians;
+        if (quoteData.musicians) {
+          const lineup = await saveQuoteMusicians(existing.id, appMusiciansToDb(quoteData.musicians));
+          if (lineup.error || !lineup.data) {
+            setQuotes(prev => prev.map(q => (q.id === existing.id ? ({ ...existing, ...dbQuoteToAppQuote(data), musicians: existing.musicians } as MockQuote) : q)));
+            notify(errorText(lineup.error, t('Quote saved, but the lineup was not')), 'error');
+            return; // keep the wizard open: saving again saves the lineup
+          }
+          roster = dbQuoteToAppQuote({ ...data, musicians: lineup.data }).musicians;
+        }
+        const saved = { ...quoteData, ...dbQuoteToAppQuote(data), musicians: roster } as MockQuote;
         setQuotes(prev => prev.map(q => (q.id === existing.id ? saved : q)));
         setIsCreating(false);
         setEditingQuote(null);
@@ -618,7 +663,9 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
                 onCreate={handleCreateQuote}
                 initialData={editingQuote || undefined}
                 initialClientName={editingQuote?.clientName}
-                holdsDate={false}
+                // A new quote saved through the app (onCreateNew) holds its
+                // date with a tentative event; the bare create does not.
+                holdsDate={!!onCreateNew}
               />
             )}
           </AnimatePresence>
@@ -666,8 +713,12 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
             {sharingQuote && (
               <QuoteShareModal
                 isOpen={!!sharingQuote}
-                onClose={() => setSharingQuote(null)}
+                onClose={() => {
+                  setSharingQuote(null);
+                  setSharingAutoSend(false);
+                }}
                 quote={sharingQuote}
+                autoSendEmail={sharingAutoSend}
                 bandId={currentBandId || bandId || 'default'}
                 bandName={selectedBand?.name || 'Band'}
                 onOpenBandSettings={onOpenBandSettings}

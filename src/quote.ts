@@ -5,7 +5,8 @@
 // conversation. The client accepts (typed name + "I accept", recorded
 // with the time, on the version they saw), declines (optional reason) or
 // writes to the band; the band answers from the app and the reply shows
-// up here. `&preview=1` is the admin's own preview: nothing is recorded.
+// up here. `&preview=1` is the admin's own preview: nothing is recorded
+// (`&k=` adds the draft balance the admin is looking at, 185).
 //
 // 168: once the band asks for the final balance, the same page shows the
 // balance due, by when, and how to pay it (bank details with Copy buttons,
@@ -23,6 +24,8 @@ const PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string 
 const params = new URL(window.location.href).searchParams;
 const token = (params.get('t') ?? '').toLowerCase();
 const preview = params.get('preview') === '1';
+// 185: the admin's draft balance (Preview in the app), shown only with its key.
+const previewKey = preview && /^[0-9a-f]{64}$/.test(params.get('k') ?? '') ? (params.get('k') as string) : '';
 const forcedLang = params.get('l') ?? '';
 let lang: QuoteLang = pickQuoteLang([forcedLang, ...(navigator.languages ?? []), navigator.language ?? '']);
 let S: QuoteStrings = QUOTE_STRINGS[lang];
@@ -111,7 +114,10 @@ async function rpc<T>(fn: string, body: Record<string, unknown>): Promise<T> {
 
 const remoteApi: Api = {
   seen: () => rpc('bw_quote_link_seen', { p_token: token }),
-  view: () => rpc('bw_quote_link_view', { p_token: token }),
+  view: () =>
+    previewKey
+      ? rpc('bw_quote_link_preview', { p_token: token, p_key: previewKey })
+      : rpc('bw_quote_link_view', { p_token: token }),
   respond: (action, name, reason, version) =>
     rpc('bw_quote_link_respond', { p_token: token, p_action: action, p_name: name, p_reason: reason, p_version: version }),
   message: (body) => rpc('bw_quote_link_message', { p_token: token, p_body: body }),
