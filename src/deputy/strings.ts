@@ -368,13 +368,31 @@ export function pickDeputyLang(preferred: readonly string[]): DeputyLang {
  * request was withdrawn, the deputy was removed from the band (182 closes
  * that page without the offer or the calendar keys; Claude review #285 r7),
  * or the gig is over.
+ *
+ * "Removed" only when the server sent the calendar keys, empty: a server
+ * before 182 sends no keys at all, and gets the neutral wording (closed, or
+ * over once the date has passed; Codex #285 M3).
  */
 export function closedCopy(
-  v: { event_cancelled: boolean; status: string; fee: number | null; calendar_token?: string | null; gig_calendar_token?: string | null },
+  v: {
+    event_cancelled: boolean;
+    status: string;
+    fee: number | null;
+    calendar_token?: string | null;
+    gig_calendar_token?: string | null;
+    event_date?: string | null;
+  },
   S: DeputyStrings,
 ): [string, string] {
   if (v.event_cancelled) return [S.cancelledTitle, S.cancelledBody];
   if (v.status === 'cancelled') return [S.closedTitle, S.closedBody];
+  const keysSent = 'calendar_token' in v || 'gig_calendar_token' in v;
+  if (!keysSent) {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const day = (v.event_date ?? '').slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(day) && day < today ? [S.pastTitle, S.pastBody] : [S.closedTitle, S.closedBody];
+  }
   if (v.fee == null && !v.calendar_token && !v.gig_calendar_token) return [S.removedTitle, S.removedBody];
   return [S.pastTitle, S.pastBody];
 }

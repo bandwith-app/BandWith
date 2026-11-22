@@ -21,6 +21,20 @@ describe('the closed reply page says why', () => {
     expect(closedCopy({ ...base, fee: null }, S)).toEqual([S.pastTitle, S.pastBody]);
   });
 
+  // Codex #285 @ 6ab65eb9 M3: a server before 182 sends no calendar keys at
+  // all. Their absence is not "removed": the neutral wording (closed, or
+  // over once the date has passed), never "You're no longer on this gig."
+  it('a server before 182 (no calendar keys in the view): neutral wording, never removed', () => {
+    const { calendar_token: _c, gig_calendar_token: _g, ...pre182 } = base;
+    const upcoming = { ...pre182, fee: null, event_date: '2999-06-01' };
+    expect(closedCopy(upcoming, S)).toEqual([S.closedTitle, S.closedBody]);
+    expect(closedCopy({ ...upcoming, event_date: null }, S)).toEqual([S.closedTitle, S.closedBody]);
+    expect(closedCopy({ ...upcoming, event_date: '2001-06-01' }, S)).toEqual([S.pastTitle, S.pastBody]);
+    for (const v of [upcoming, { ...upcoming, event_date: null }, { ...upcoming, event_date: '2001-06-01' }]) {
+      expect(closedCopy(v, S)[0]).not.toBe(S.removedTitle);
+    }
+  });
+
   it('every language has the new copy', () => {
     for (const [lang, s] of Object.entries(DEPUTY_STRINGS)) {
       expect(s.removedTitle, lang).toBeTruthy();

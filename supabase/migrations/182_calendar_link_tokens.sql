@@ -48,9 +48,11 @@
 --   - A cancelled event in either spelling ('cancelled', 'canceled', any
 --     case): bw_event_status_cancelled, used by every check here.
 --   - A date deleted from its series since (skip_dates, #297;
---     bw_event_date_deleted): both deputy calendars show it cancelled,
---     without the address. The member feed writes an EXDATE per deleted
---     date (edge function, from the rule's skip_dates).
+--     bw_event_date_deleted): both deputy calendars and the reply page
+--     show it cancelled, without the address (a request is on the series'
+--     first date, so deleting that date is the case). The member feed
+--     writes an EXDATE per deleted date (edge function, from the rule's
+--     skip_dates).
 --   - A gig reverted to a private quote (#294's 178, bw_event_deputy_hidden):
 --     out of both calendars and the old feed, and the reply page closed,
 --     without detail, offer (fee, currency), note or calendar keys; the
@@ -309,8 +311,14 @@ DECLARE
   k text;
 BEGIN
   IF p_token IS NULL OR p_token !~ '^[0-9a-f]{64}$' THEN RETURN NULL; END IF;
+  -- Cancelled: the gig cancelled, or its date deleted from the series
+  -- (skip_dates, #297). A request is on the series row, so its date is the
+  -- series' first date (Codex review #285 @ 6ab65eb9, B2): the same as the
+  -- calendars (bw_event_date_deleted).
   SELECT r.answer_snapshot, r.status, public.bw_deputy_event_snapshot(r.event_id),
-         public.bw_event_status_cancelled(e.status::text), public.bw_event_deputy_hidden(r.event_id),
+         public.bw_event_status_cancelled(e.status::text)
+           OR public.bw_event_date_deleted(e.recurrence_rule, coalesce(e.event_date, e.date)),
+         public.bw_event_deputy_hidden(r.event_id),
          r.deputy_id IS NULL
     INTO v_snap, v_status, v_now, v_cancelled, v_hidden, v_orphan
     FROM public.deputy_requests r
@@ -341,7 +349,7 @@ BEGIN
            'responded_at', r.responded_at,
            'band_name', b.name,
            'event_title', e.title,
-           'event_type', e.event_type,
+           'event_type', e.event_type::text,
            'event_date', coalesce(e.event_date, e.date),
            'start_time', coalesce(e.start_time, e.time),
            'end_time', e.end_time,
@@ -351,8 +359,8 @@ BEGIN
            'venue_city', e.venue_city,
            -- The street address only after they said yes, and while the
            -- gig is on (review of #285, round 2).
-           'venue_address', CASE WHEN r.status = 'available' AND NOT public.bw_event_status_cancelled(e.status::text) THEN e.venue_address END,
-           'event_cancelled', public.bw_event_status_cancelled(e.status::text),
+           'venue_address', CASE WHEN r.status = 'available' AND NOT v_cancelled THEN e.venue_address END,
+           'event_cancelled', v_cancelled,
            'event_updated_at', e.updated_at,
            'changes', v_changes,
            'before', v_before,
@@ -361,7 +369,7 @@ BEGIN
            'calendar_token', r.calendar_token,
            'gig_calendar_token', r.gig_calendar_token,
            -- A day of slack for time zones.
-           'closed', r.status = 'cancelled' OR public.bw_event_status_cancelled(e.status::text)
+           'closed', r.status = 'cancelled' OR v_cancelled
                      OR coalesce(e.event_date, e.date) < current_date - 1
          )
     INTO v
@@ -528,8 +536,13 @@ DECLARE
   v jsonb := public.bw_deputy_calendar_feed(p_token);
 BEGIN
   IF v IS NULL THEN RETURN NULL; END IF;
+  -- The keys of 084 / 178's body: band_name, deputy_name, gigs (the
+  -- request the key opens, as bw_deputy_calendar_feed finds it).
   RETURN jsonb_build_object(
     'band_name', v->'band_name',
+    'deputy_name', coalesce(
+      (SELECT r.deputy_name FROM public.deputy_requests r WHERE r.calendar_token = p_token),
+      (SELECT r.deputy_name FROM public.deputy_requests r WHERE r.token = p_token)),
     'gigs', coalesce((
       SELECT jsonb_agg((g - 'mine') || jsonb_build_object('token', NULL))
         FROM jsonb_array_elements(v->'gigs') g

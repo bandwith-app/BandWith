@@ -143,10 +143,12 @@ const mig = readFileSync(MIG, 'utf8');
 
 // 178 (#294) comes first, hard (Codex review #285 round 5): 182 stops when
 // its bw_event_deputy_hidden is missing. 178's helpers come from #294's
-// branch head, or the repo once merged.
+// branch head (BW_178_REF pins another commit of it), or the repo once merged.
 let m178 = null;
+const REF178 = /^[\w./-]+$/.test(process.env.BW_178_REF ?? '') ? process.env.BW_178_REF : 'origin/feat/date-on-hold';
 try {
-  m178 = execSync('git show origin/feat/date-on-hold:supabase/migrations/178_date_on_hold.sql', { cwd: REPO, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  m178 = execSync(`git show ${REF178}:supabase/migrations/178_date_on_hold.sql`, { cwd: REPO, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  console.log(`178 from ${REF178}`);
 } catch {
   const local = `${REPO}/supabase/migrations/178_date_on_hold.sql`;
   m178 = existsSync(local) ? readFileSync(local, 'utf8') : null;
@@ -1071,6 +1073,77 @@ await check('#297 B4: deputy calendars show a deleted date as cancelled, without
   const live = (await one(`SELECT public.bw_deputy_calendar_feed($1) AS f`, [cal])).f.gigs.find((x) => x.id === RA);
   return f?.cancelled === true && f.venue_address == null && g?.cancelled === true && g.venue_address == null
     && old?.cancelled === true && old.venue_address == null && live?.cancelled === false && live.venue_address === '12 Water St';
+});
+
+// ------------------------------------------- round 9 (Codex @ 6ab65eb9) --
+console.log('-- round 9');
+// B2: a deputy request is on the series row, so its date is the series'
+// first date. Deleted on its own (skip_dates), the reply page still gave
+// the street address and stayed open; the calendars already showed it
+// cancelled. The page treats it as a cancelled gig too: closed, no address,
+// no address in "changes" or "before".
+const [EV_R9, R9, EV_R9B, R9B] = [105, 106, 107, 108].map(id);
+await q(`INSERT INTO events (id, band_id, title, event_type, status, event_date, start_time, venue_name, venue_address, is_recurring, recurrence_rule, created_by, fee) VALUES
+  ($1, $3, 'First date gone', 'rehearsal', 'confirmed', current_date + 4, '19:00', 'Studio G', '9 Hidden Rd', true,
+   jsonb_build_object('frequency', 'weekly', 'interval', 1, 'skip_dates', jsonb_build_array(to_char(current_date + 4, 'YYYY-MM-DD'))), $4, 0),
+  ($2, $3, 'Later date gone', 'rehearsal', 'confirmed', current_date + 4, '19:00', 'Studio H', '3 Open Rd', true,
+   jsonb_build_object('frequency', 'weekly', 'interval', 1, 'skip_dates', jsonb_build_array(to_char(current_date + 11, 'YYYY-MM-DD'))), $4, 0)`,
+  [EV_R9, EV_R9B, BAND, ADMIN]);
+await q(`INSERT INTO deputy_requests (id, band_id, event_id, deputy_id, deputy_name, role, status, answer_snapshot) VALUES
+  ($1, $3, $4, $5, 'Leo', 'Bass', 'available', jsonb_build_object('address', '1 Former Rd', 'venue', 'Studio G')),
+  ($2, $3, $6, $5, 'Leo', 'Bass', 'available', jsonb_build_object('address', '3 Open Rd', 'venue', 'Studio H'))`,
+  [R9, R9B, BAND, EV_R9, DEPUTY, EV_R9B]);
+await check('Codex r9 B2: first date deleted: the reply page is closed, shows it cancelled, no street address (old or new)', async () => {
+  const v = await view(R9);
+  const s = JSON.stringify(v);
+  return v?.closed === true && v.event_cancelled === true && v.venue_address == null
+    && !(v.changes ?? []).includes('address') && !('address' in (v.before ?? {})) && !/Hidden Rd|Former Rd/.test(s);
+});
+await check('Codex r9 B2: a later date deleted leaves the request open, with its address', async () => {
+  const v = await view(R9B);
+  return v?.closed === false && v.event_cancelled === false && v.venue_address === '3 Open Rd';
+});
+await check('Codex r9 B2: and the deputy in-app list (bw_my_deputy_gigs) shows that page: closed, no address', async () => {
+  const [DEP9, U9] = [109, 110].map(id);
+  await q(`INSERT INTO auth.users VALUES ($1)`, [U9]);
+  await q(`INSERT INTO profiles (id, preferred_language) VALUES ($1, 'en')`, [U9]);
+  await q(`INSERT INTO band_deputies (id, band_id, name, user_id) VALUES ($1, $2, 'Ines', $3)`, [DEP9, BAND, U9]);
+  await q(`UPDATE deputy_requests SET deputy_id = $2 WHERE id = $1`, [R9, DEP9]);
+  await as(U9);
+  const mine = (await one(`SELECT public.bw_my_deputy_gigs() AS g`)).g;
+  await db.exec('RESET ROLE');
+  const g = mine.gigs.find((x) => x.id === R9);
+  return g?.closed === true && g.venue_address == null && !/Hidden Rd|Former Rd/.test(JSON.stringify(mine));
+});
+
+// Function rule (main, #294 @ 979641c3): 178 redefines the reply page and
+// the 084 feed, and 182 redefines them after it, so 182 starts from 178's
+// body: every key 178's version returns, 182's returns too (old builds and
+// the live deputy-calendar function read them), and 178's hidden check
+// stays (the #294 checks above). 178's bodies run here under another name.
+if (m178) {
+  for (const name of ['bw_deputy_request_view', 'bw_deputy_feed']) {
+    if (!m178.includes(`CREATE OR REPLACE FUNCTION public.${name}(`)) continue;
+    await db.exec(fn(m178, name).replace(`FUNCTION public.${name}(`, `FUNCTION public.bw178_${name.slice(3)}(`));
+  }
+}
+const has178 = async (name) => !!(await one(`SELECT to_regprocedure($1) AS p`, [`public.bw178_${name.slice(3)}(text)`])).p;
+await check('function rule: the reply page keeps every key of 178\'s body (top level)', async () => {
+  if (!(await has178('bw_deputy_request_view'))) return true; // 178 without its own body: 084's keys, checked above
+  const t = await tok(R9B);
+  const a = (await one(`SELECT public.bw178_deputy_request_view($1) AS v`, [t])).v;
+  const b = (await one(`SELECT public.bw_deputy_request_view($1) AS v`, [t])).v;
+  return !!a && !!b && Object.keys(a).every((k) => k in b) && a.event_type === b.event_type;
+});
+await check('function rule: the 084 feed keeps every key of 178\'s body (deputy_name too), per gig as well', async () => {
+  if (!(await has178('bw_deputy_feed'))) return true;
+  const t = await tok(R9B);
+  const a = (await one(`SELECT public.bw178_deputy_feed($1) AS v`, [t])).v;
+  const b = (await one(`SELECT public.bw_deputy_feed($1) AS v`, [t])).v;
+  const ga = a?.gigs?.find((g) => g.id === R9B);
+  const gb = b?.gigs?.find((g) => g.id === R9B);
+  return !!a && !!b && Object.keys(a).every((k) => k in b) && b.deputy_name === 'Leo'
+    && !!ga && !!gb && Object.keys(ga).every((k) => k in gb);
 });
 
 console.log(fails ? `\n${fails} FAILED` : '\nall ok');
