@@ -155,3 +155,23 @@ describe('send-push wiring, round 4', () => {
     expect(loop).toMatch(/if \(create_in_app === false\) \{[\s\S]*ringIds = targetUserIds;[\s\S]*done = true;[\s\S]*break;/);
   });
 });
+
+describe('send-push wiring, round 5 (Codex)', () => {
+  it('every device failing for now releases those claims, so a retry within the window delivers', () => {
+    const tail = sendPush.slice(sendPush.indexOf('const settled = pushSettledUsers('));
+    expect(tail).toMatch(/await markPushed\(settled\);/);
+    expect(tail).toMatch(/await releaseClaims\(ringIds\.filter\(\(uid\) => !settledSet\.has\(uid\)\)\);/);
+    const release = sendPush.slice(sendPush.indexOf('const releaseClaims = async'), sendPush.indexOf('if (chatPush) {'));
+    expect(release).toMatch(/only\.has\(String\(c\.user_id\)\)/);
+  });
+
+  it('a push-only call is recorded per message and recipient: a retry never rings twice', () => {
+    const loop = sendPush.slice(sendPush.indexOf('if (create_in_app === false) {'), sendPush.indexOf('const notifications = noticeRows();'));
+    expect(loop).toMatch(/rpc\('bw_claim_chat_push_only', \{ p_message_id: current\.id, p_user_ids: targetUserIds \}\)/);
+    expect(loop).toMatch(/if \(got\.size === 0\) continue;/);
+    expect(loop).toMatch(/ringIds = targetUserIds\.filter\(\(uid\) => got\.has\(uid\)\);/);
+    expect(sendPush).toMatch(/rpc\('bw_settle_chat_push_only'/);
+    const mark = sendPush.slice(sendPush.indexOf('const markPushed = async'), sendPush.indexOf('const releaseClaims = async'));
+    expect(mark).toMatch(/await settlePushOnly\(userIds, \[\]\);/);
+  });
+});

@@ -46,6 +46,12 @@
 -- whose push could not be attempted is released
 -- (bw_release_chat_notice_claims), so a retry delivers at once.
 --
+-- Round 5 (Codex review #284): a push-only call (create_in_app false, no
+-- inbox row) is recorded too, per message and recipient
+-- (chat_push_only_log, service role only): a retry after a lost reply never
+-- rings twice. Same claim rule as the notices (10 minutes, released when
+-- every device failed for now or the push could not be attempted).
+--
 -- Deploy order: apply 194 before deploying send-push (send-push falls back
 -- to a plain insert while the function is missing).
 --
@@ -231,5 +237,74 @@ AS $function$
 $function$;
 REVOKE ALL ON FUNCTION public.bw_release_chat_notice_claims(uuid[]) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.bw_release_chat_notice_claims(uuid[]) TO service_role;
+
+-- ── Push-only calls (round 5) ──────────────────────────────────────────────
+-- No inbox row to hold the claim: one row per message and recipient here.
+-- Gone with the message.
+CREATE TABLE IF NOT EXISTS public.chat_push_only_log (
+  message_id uuid NOT NULL REFERENCES public.messages(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL,
+  claimed_at timestamptz,
+  pushed_at timestamptz,
+  PRIMARY KEY (message_id, user_id)
+);
+ALTER TABLE public.chat_push_only_log ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.chat_push_only_log FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.chat_push_only_log TO service_role;
+
+-- Claims the recipients to push now for this message: never pushed, and
+-- nobody else is pushing it (a claim older than 10 minutes has lapsed).
+-- Nothing for a message that is gone or marked deleted.
+CREATE OR REPLACE FUNCTION public.bw_claim_chat_push_only(p_message_id uuid, p_user_ids uuid[])
+RETURNS SETOF uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+#variable_conflict use_column
+BEGIN
+  PERFORM 1 FROM messages m
+   WHERE m.id = p_message_id
+     AND NOT coalesce((to_jsonb(m) ->> 'deleted')::boolean, false)
+     FOR SHARE;
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+  INSERT INTO chat_push_only_log AS l (message_id, user_id)
+  SELECT p_message_id, u FROM (SELECT DISTINCT unnest(coalesce(p_user_ids, '{}'::uuid[])) AS u) x
+   WHERE u IS NOT NULL
+   ORDER BY u
+  ON CONFLICT (message_id, user_id) DO NOTHING;
+  RETURN QUERY
+  UPDATE chat_push_only_log l
+     SET claimed_at = now()
+   WHERE l.message_id = p_message_id
+     AND l.user_id = ANY (coalesce(p_user_ids, '{}'::uuid[]))
+     AND l.pushed_at IS NULL
+     AND coalesce(l.claimed_at, '-infinity'::timestamptz) < now() - interval '10 minutes'
+  RETURNING l.user_id;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.bw_claim_chat_push_only(uuid, uuid[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.bw_claim_chat_push_only(uuid, uuid[]) TO service_role;
+
+-- After the attempt: p_pushed are done for good; p_released can be retried
+-- right away (every device failed for now, or nothing was attempted).
+CREATE OR REPLACE FUNCTION public.bw_settle_chat_push_only(p_message_id uuid, p_pushed uuid[], p_released uuid[])
+RETURNS void
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+  UPDATE chat_push_only_log l
+     SET pushed_at = now(), claimed_at = NULL
+   WHERE l.message_id = p_message_id AND l.user_id = ANY (coalesce(p_pushed, '{}'::uuid[]));
+  UPDATE chat_push_only_log l
+     SET claimed_at = NULL
+   WHERE l.message_id = p_message_id AND l.user_id = ANY (coalesce(p_released, '{}'::uuid[]))
+     AND l.pushed_at IS NULL;
+$function$;
+REVOKE ALL ON FUNCTION public.bw_settle_chat_push_only(uuid, uuid[], uuid[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.bw_settle_chat_push_only(uuid, uuid[], uuid[]) TO service_role;
 
 COMMIT;

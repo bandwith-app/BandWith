@@ -734,7 +734,18 @@ Deno.serve(async (req: Request) => {
     // Chat notices this call claimed (id → recipient): marked pushed once a
     // device took them or there was nothing to deliver to.
     let claimed: { id: string; user_id: string }[] = [];
+    // Push-only call (no inbox row): the message whose recipients this call
+    // claimed in chat_push_only_log (194 round 5), or null.
+    let pushOnlyMessage: string | null = null;
+    const settlePushOnly = async (pushed: string[], released: string[]) => {
+      if (!pushOnlyMessage || (pushed.length === 0 && released.length === 0)) return;
+      const { error: settleError } = await supabase.rpc('bw_settle_chat_push_only', {
+        p_message_id: pushOnlyMessage, p_pushed: pushed, p_released: released,
+      });
+      if (settleError) console.warn('Push-only settle failed:', settleError.message);
+    };
     const markPushed = async (userIds: string[]) => {
+      await settlePushOnly(userIds, []);
       const done = new Set(userIds);
       const ids = claimed.filter((c) => done.has(String(c.user_id))).map((c) => String(c.id));
       if (ids.length === 0) return;
@@ -742,9 +753,13 @@ Deno.serve(async (req: Request) => {
       if (markError) console.warn('Pushed mark failed:', markError.message);
     };
     // The push could not be attempted: give the claims back (Codex r4).
-    const releaseClaims = async () => {
-      if (claimed.length === 0) return;
-      const { error: releaseError } = await supabase.rpc('bw_release_chat_notice_claims', { p_ids: claimed.map((c) => String(c.id)) });
+    // userIds: only theirs (every device failed for now, Codex r5); none: all.
+    const releaseClaims = async (userIds?: string[]) => {
+      const only = userIds ? new Set(userIds) : null;
+      await settlePushOnly([], userIds ?? ringIds);
+      const ids = claimed.filter((c) => !only || only.has(String(c.user_id))).map((c) => String(c.id));
+      if (ids.length === 0) return;
+      const { error: releaseError } = await supabase.rpc('bw_release_chat_notice_claims', { p_ids: ids });
       if (releaseError) console.warn('Claim release failed:', releaseError.message);
     };
 
@@ -760,8 +775,21 @@ Deno.serve(async (req: Request) => {
         for (const p of pendingAnnouncements(chunk, allowedIds, existing)) {
           const current = announce(p.message, p.recipients);
           if (create_in_app === false) {
-            // Push only, no inbox row (Codex review #284 r4).
-            ringIds = targetUserIds;
+            // Push only, no inbox row (Codex review #284 r4), recorded per
+            // message and recipient so a retry never rings twice (r5).
+            const { data: mine, error: claimError } = await supabase
+              .rpc('bw_claim_chat_push_only', { p_message_id: current.id, p_user_ids: targetUserIds });
+            if (claimError && claimError.code === 'PGRST202') {
+              console.warn('bw_claim_chat_push_only missing (apply 194):', claimError.message);
+              ringIds = targetUserIds;
+              done = true;
+              break;
+            }
+            if (claimError) throw claimError;
+            const got = new Set(((mine || []) as unknown[]).map((x) => String(typeof x === 'object' && x !== null ? Object.values(x)[0] : x)));
+            if (got.size === 0) continue; // pushed, or another call is pushing it
+            pushOnlyMessage = current.id;
+            ringIds = targetUserIds.filter((uid) => got.has(uid));
             done = true;
             break;
           }
@@ -892,11 +920,16 @@ Deno.serve(async (req: Request) => {
     // Pushed = a device took it, or nothing could ever take it (dead
     // tokens, no device). All devices failing for now (503, timeout): not
     // marked, the claim lapses and a retry delivers (Codex review #284 r3).
-    await markPushed(pushSettledUsers(ringIds, results.map((r: any, i: number) => ({
+    const settled = pushSettledUsers(ringIds, results.map((r: any, i: number) => ({
       userId: String(tokens[i].user_id),
       success: r.status === 'fulfilled' && !!r.value.success,
       error: r.status === 'fulfilled' ? r.value.error : 'promise_rejected',
-    }))));
+    })));
+    await markPushed(settled);
+    // Every device failed for now: their claims go back, so a retry within
+    // the 10 minutes delivers (Codex review #284 r5).
+    const settledSet = new Set(settled);
+    await releaseClaims(ringIds.filter((uid) => !settledSet.has(uid)));
     const successful = results.filter((r: any) => r.status === 'fulfilled' && r.value.success).length;
 
     // A chat push that Apple or Google accepted reached the recipient's phone:

@@ -182,5 +182,23 @@ ok(/ORDER BY r\.user_id/.test(def) && /ORDER BY n2\.user_id[\s\S]*FOR UPDATE/.te
 const asUser = await db.exec(`BEGIN; SET LOCAL ROLE authenticated; SELECT public.bw_write_chat_notices('${LIVE}', '[]'::jsonb); COMMIT;`).then(() => 'ran', async (e) => { await db.exec('ROLLBACK'); return e.message; });
 ok(asUser !== 'ran', `app users cannot call it (${asUser})`);
 
+// Codex review #284 r5: a push-only call (no inbox row) is recorded per
+// message and recipient: a retry after a lost reply never rings twice.
+const MSG5 = id(905);
+await db.exec(`INSERT INTO messages (id, chat_id, sender_id, content) VALUES ('${MSG5}', '${id(900)}', '${MEM}', 'push only')`);
+const claimPO = (...users) => db.query(`SELECT u::text AS u FROM public.bw_claim_chat_push_only('${MSG5}', $1::uuid[]) u ORDER BY 1`, [users])
+  .then((r) => r.rows.map((x) => x.u), (e) => `error: ${e.message}`);
+ok(JSON.stringify(await claimPO(ALICE, CAROL)) === JSON.stringify([ALICE, CAROL].sort()), 'push only: the first call claims both');
+ok(JSON.stringify(await claimPO(ALICE, CAROL)) === '[]', 'push only: a retry right away rings nobody (claimed)');
+await db.query(`SELECT public.bw_settle_chat_push_only('${MSG5}', $1::uuid[], $2::uuid[])`, [[ALICE], [CAROL]]).catch(() => {});
+ok(JSON.stringify(await claimPO(ALICE, CAROL)) === JSON.stringify([CAROL]), 'push only: pushed stays pushed, a released one is retried at once');
+ok(await db.query(`SELECT count(*)::int AS n FROM notifications WHERE data->>'message_id' = '${MSG5}'`).then((r) => r.rows[0].n) === 0,
+  'push only: no inbox row');
+await db.exec(`UPDATE messages SET deleted = true WHERE id = '${MSG5}'`);
+await db.query(`SELECT public.bw_settle_chat_push_only('${MSG5}', '{}'::uuid[], $1::uuid[])`, [[CAROL]]).catch(() => {});
+ok(JSON.stringify(await claimPO(CAROL)) === '[]', 'push only: nothing for a deleted message');
+const poAsUser = await db.exec(`BEGIN; SET LOCAL ROLE authenticated; SELECT public.bw_claim_chat_push_only('${MSG5}', '{}'::uuid[]); COMMIT;`).then(() => 'ran', async (e) => { await db.exec('ROLLBACK'); return e.message; });
+ok(poAsUser !== 'ran', `app users cannot claim push-only (${poAsUser})`);
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);
