@@ -166,6 +166,10 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
         e.preventDefault();
         setIsOpen(false);
         break;
+      case 'Tab':
+        // Leaving the field closes the list; focus moves on as usual.
+        setIsOpen(false);
+        break;
     }
   };
 

@@ -53,6 +53,93 @@ const PORTALS: Record<string, Kind> = {
   },
 };
 
+/**
+ * Layers rendered in place (no portal): full-screen modals, the band invite
+ * cards and confirm cards inside a card. The trap takes over a modal one only
+ * when it is shown above the top layer; it ignores aria-modal="false" cards
+ * (an invite arriving under a sheet's scrim) and counts what sits inside a
+ * trapped layer as part of it.
+ */
+type InPlace = 'modal' | { nonModal: string } | { inline: string };
+const IN_PLACE: Record<string, InPlace> = {
+  '/src/app/components/composer/Composer.tsx': 'modal',
+  '/src/app/components/ui/LyricsViewer.tsx': 'modal',
+  '/src/app/components/chat/NewChatModal.tsx': 'modal',
+  '/src/app/components/modals/PersonalGigModal.tsx': 'modal',
+  '/src/app/components/modals/ChooseBandProposalModal.tsx': 'modal',
+  '/src/app/components/modals/NoBandRehearsalModal.tsx': 'modal',
+  '/src/app/components/rehearsal/RehearsalPollVoteSheet.tsx': 'modal',
+  '/src/app/components/rehearsal/ProposeRehearsalModal.tsx': 'modal',
+  '/src/app/components/rehearsal/AddSongModal.tsx': 'modal',
+  '/src/app/components/rehearsal/RehearsalPollModal.tsx': 'modal',
+  '/src/app/components/dashboard/RehearsalSession.tsx': 'modal',
+  '/src/app/components/dashboard/StageRegia.tsx': 'modal',
+  '/src/app/components/dashboard/StageMode.tsx': 'modal',
+  '/src/app/components/deputy/DeputyGigsScreen.tsx': 'modal',
+  '/src/app/components/event/rider/RiderStage.tsx': 'modal',
+  '/src/app/components/notifications/EventRSVPSheet.tsx': 'modal',
+  '/src/app/components/onboarding/WelcomeScreen.tsx': 'modal',
+  '/src/app/components/onboarding/SignInScreen.tsx': 'modal',
+  '/src/app/components/onboarding/RoleTourModal.tsx': 'modal',
+  '/src/app/components/onboarding/OnboardingChrome.tsx': 'modal',
+  '/src/app/views/SettingsView.tsx': 'modal',
+  '/src/app/components/notifications/PendingInvitesPrompt.tsx': { nonModal: 'band invite card: can arrive while a sheet is open' },
+  '/src/app/components/notifications/InviteLinkNotice.tsx': { nonModal: 'invite link card: can arrive while a sheet is open' },
+  '/src/app/components/quotes/QuoteClientLink.tsx': { inline: 'confirm card inside the quote detail' },
+  '/src/app/components/rehearsal/RehearsalPollCard.tsx': { inline: 'withdraw confirm inside the poll card' },
+  '/src/app/components/rehearsal/ProposalDeclinePanel.tsx': { inline: 'decline confirm inside the proposal' },
+};
+
+/**
+ * Menus and lists rendered inside the screen or layer that opens them: for
+ * the trap they belong to that layer (a list on <body> belongs to it through
+ * aria-controls), so they never switch its Tab cycle off.
+ */
+const POPOVERS: Record<string, { inline: string; controls?: true }> = {
+  '/src/app/components/ui/VenueAutocomplete.tsx': { inline: 'venue suggestions under the field', controls: true },
+  '/src/app/components/band/PendingInvitesSection.tsx': { inline: 'invite row actions' },
+  '/src/app/components/event/rider/StagePlotView.tsx': { inline: '"Add here" on the stage' },
+  '/src/app/views/BandMembersView.tsx': { inline: 'member row actions' },
+  '/src/app/views/ContractsView.tsx': { inline: 'document row menu' },
+  '/src/app/views/SetlistManagerView.tsx': { inline: 'setlist row menu' },
+  '/src/app/views/TaskTemplatesView.tsx': { inline: 'to-do list row menu' },
+};
+
+describe('layers rendered in place and the focus trap', () => {
+  it('every dialog without a portal is listed', () => {
+    const files = Object.entries(SOURCES)
+      .filter(([, text]) => !text.includes('createPortal(') && /role="(?:alert)?dialog"|aria-modal/.test(text))
+      .map(([f]) => f)
+      .sort();
+    expect(files).toEqual(Object.keys(IN_PLACE).sort());
+  });
+
+  for (const [file, kind] of Object.entries(IN_PLACE)) {
+    it(`${file.replace('/src/', '')}: ${kind === 'modal' ? 'modal' : 'nonModal' in kind ? 'not modal' : 'inline'}`, () => {
+      const text = SOURCES[file];
+      if (kind === 'modal') expect(text).toContain('aria-modal="true"');
+      else if ('nonModal' in kind) {
+        expect(text).toContain('aria-modal="false"');
+        expect(text).not.toContain('aria-modal="true"');
+      } else expect(text).not.toMatch(/aria-modal/);
+    });
+  }
+
+  it('every menu and list is listed', () => {
+    const files = Object.entries(SOURCES)
+      .filter(([, text]) => /role="(?:listbox|menu)"/.test(text))
+      .map(([f]) => f)
+      .sort();
+    expect(files).toEqual(Object.keys(POPOVERS).sort());
+  });
+
+  for (const [file, kind] of Object.entries(POPOVERS))
+    if (kind.controls)
+      it(`${file.replace('/src/', '')}: the field points at its list`, () => {
+        expect(SOURCES[file]).toMatch(/aria-controls=/);
+      });
+});
+
 describe('portal layers and the focus trap', () => {
   it('every createPortal is listed', () => {
     const files = Object.entries(SOURCES)

@@ -37,6 +37,32 @@ test('@smoke Tab and Shift+Tab stay inside the Create sheet', async ({ app }) =>
   await expect(sheet).toBeHidden();
 });
 
+test('@smoke a card arriving under the Create sheet (a band invite) leaves focus in the sheet', async ({ app }) => {
+  await app.tab('Create');
+  const sheet = app.page.getByRole('dialog').last();
+  await expect(sheet).toBeVisible();
+  await expect.poll(() => focusInside(sheet)).toBe(true);
+  // Like PendingInvitesPrompt, but modal: only the page can tell it is under the
+  // sheet (z-65, inside the sheet's area: on the Duo the other pane has no scrim).
+  const box = (await sheet.boundingBox())!;
+  const before = await app.page.evaluate((r) => {
+    const was = document.activeElement?.outerHTML;
+    const card = document.createElement('div');
+    card.setAttribute('role', 'dialog');
+    card.setAttribute('aria-modal', 'true');
+    card.setAttribute('aria-label', 'Band invite');
+    card.style.cssText = `position:fixed;left:${r.x + 16}px;top:${r.y + 16}px;width:${Math.max(r.width - 32, 40)}px;height:120px;z-index:65;background:#fff`;
+    card.innerHTML = '<button type="button">Join</button><button type="button">Not now</button>';
+    // First in the page, so the sheet stays the last dialog for the locator.
+    document.body.prepend(card);
+    return was;
+  }, box);
+  await app.page.waitForTimeout(150);
+  expect(await app.page.evaluate(() => document.activeElement?.outerHTML), 'focus did not move').toBe(before);
+  await cycle(app, sheet, 'Tab', (await tabStops(sheet)) + 2);
+  await app.page.evaluate(() => document.querySelector('[aria-label="Band invite"]')?.remove());
+});
+
 test('@smoke Tab stays inside the iPad composer', async ({ app }) => {
   test.skip(!(await isWide(app)), 'the composer is the tablet layout');
   await openCreate(app, 'New gig');
