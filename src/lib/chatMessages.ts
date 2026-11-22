@@ -265,7 +265,3 @@ export const markSendFailed = (
   prev.map((m) =>
     m.id === tempId ? { ...m, failed: true, queued: !!opts.queued, fail_reason: opts.reason || undefined } : m,
   );
-
-/** Bubbles waiting for the network, oldest first (they go out in that order). */
-export const queuedToSend = (list: Message[], chatId: string): Message[] =>
-  list.filter((m) => m.queued && m.chat_id === chatId);

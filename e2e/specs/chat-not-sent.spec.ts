@@ -80,4 +80,30 @@ test.describe('a message that was not sent', () => {
     await expect(page.getByText(app.t('Waiting for connection'))).toHaveCount(0);
     await expect(page.getByText(text)).toHaveCount(1);
   });
+
+  // Main (#291 r4): the text is kept on the device. Closed offline, the
+  // chat's message is sent with the chat closed once back online, once.
+  test('closed offline, the waiting message is sent with the chat closed, once', async ({ app }) => {
+    const { page } = app;
+    await openChatTab(app);
+    const row = page.getByRole('button', { name: /^Velvet Static(,|$)/ }).first();
+    await row.click();
+    await expect(composer(app)).toBeVisible();
+    await expect(page.getByText('+1, then straight into September').first()).toBeVisible();
+    await app.settle();
+
+    const text = 'Doors moved to 7:30';
+    await page.context().setOffline(true);
+    await composer(app).fill(text);
+    await page.getByRole('button', { name: app.t('Send message'), exact: true }).click();
+    await expect(page.getByText(app.t('Waiting for connection'))).toBeVisible();
+    await page.getByRole('button', { name: app.t('Back'), exact: true }).first().click();
+    await expect(composer(app)).toHaveCount(0);
+
+    await page.context().setOffline(false);
+    await app.settle();
+    await row.click();
+    await expect(page.getByText(text)).toHaveCount(1);
+    await expect(page.getByText(app.t('Waiting for connection'))).toHaveCount(0);
+  });
 });

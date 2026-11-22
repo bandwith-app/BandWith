@@ -182,6 +182,7 @@ import { useAudioPrefetch } from "@/app/hooks/useAudioPrefetch";
 import { useLivePackPrefetch } from "@/app/hooks/useLivePackPrefetch";
 import { findPack } from "@/lib/livePackStore";
 import { useLiveOutboxFlush } from "@/app/hooks/useLiveOutbox";
+import { useChatOutboxFlush } from "@/app/hooks/useChatOutbox";
 
 const mapEventStatus = (event: Event): EventStatus => {
   // event_type is the primary classifier
@@ -1231,6 +1232,8 @@ export default function AuthenticatedApp() {
 
   // Changes made with no signal (notes, suggestions, the leader's order): sent when back online.
   useLiveOutboxFlush(user?.id);
+  // Chat messages written offline (chatOutbox): sent with the chat closed too.
+  useChatOutboxFlush(user?.id);
 
   // The live_pack_ready push: open the event with the offline consent sheet.
   const [livePackOnOpen, setLivePackOnOpen] = useState<string | null>(null);

@@ -3807,7 +3807,7 @@ const dict: Dictionary = {
   // Chat thread: load and send errors, lost access
   "Could not load the messages": "Impossibile caricare i messaggi",
   "Message not sent. Check your connection and try again.": "Messaggio non inviato. Controlla la connessione e riprova.",
-  "No connection. It’s sent when you’re back online, as long as this chat stays open.": "Nessuna connessione. Viene inviato quando torni online, se questa chat resta aperta.",
+  "No connection. It’s sent when you’re back online.": "Nessuna connessione. Viene inviato quando torni online.",
   "Message not sent. Try again.": "Messaggio non inviato. Riprova.",
   "You no longer have access to this chat.": "Non hai più accesso a questa chat.",
   // RSVP from a notification: removed from the event

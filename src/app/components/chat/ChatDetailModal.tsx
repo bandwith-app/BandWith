@@ -37,9 +37,10 @@ import { createPortal } from 'react-dom';
 import { useRailLayout } from '@/lib/deviceRegions';
 import { useLineupSoFar } from '@/app/hooks/useLineupSoFar';
 import { ChatEventContextPane } from '@/app/components/chat/ChatEventContextPane';
-import { CHAT_PAGE_SIZE, mergeLatestPage, restartFromLatest, prependOlder, appendIncoming, normalizeChatType, isReplySwipe, catchUpPage, markSendFailed, canReplyTo, firstWords, newClientId, queuedToSend, type ChatKind } from '@/lib/chatMessages';
+import { CHAT_PAGE_SIZE, mergeLatestPage, restartFromLatest, prependOlder, appendIncoming, normalizeChatType, isReplySwipe, catchUpPage, markSendFailed, canReplyTo, firstWords, newClientId, type ChatKind } from '@/lib/chatMessages';
 import { isOfflineError } from '@/lib/offline/networkErrors';
 import { offlinePermission, readChatPermission, saveChatPermission, type ChatPermission } from '@/lib/chatPermission';
+import { CHAT_OUTBOX_EVENT, dropChatOutbox, flushChatOutbox, putChatOutbox, readChatOutbox, type ChatOutboxResult } from '@/lib/chatOutbox';
 import { haptic } from '@/lib/haptics';
 
 /**
@@ -607,12 +608,49 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
     el.scrollTop = anchor.top + (el.scrollHeight - anchor.height);
   }, [messages]);
 
+  // This account's messages for this chat still on the device (outbox):
+  // waiting ones and "Not sent" ones, as bubbles after the history.
+  const withOutbox = (list: Message[], chatId: string): Message[] => {
+    const uid = user?.id;
+    if (!uid) return list;
+    const onScreen = new Set(list.map((m) => m.client_id).filter(Boolean) as string[]);
+    const bubbles: Message[] = [];
+    for (const o of readChatOutbox(uid)) {
+      if (o.chatId !== chatId) continue;
+      // Saved already (a reply that was lost): nothing waits any more.
+      if (onScreen.has(o.clientId)) {
+        if (list.some((m) => m.client_id === o.clientId && !m.id.startsWith('temp-'))) dropChatOutbox(uid, o.clientId);
+        continue;
+      }
+      bubbles.push({
+        id: `temp-${o.clientId}`,
+        client_id: o.clientId,
+        chat_id: o.chatId,
+        sender_id: uid,
+        content: o.body,
+        message_type: 'text',
+        edited: false,
+        deleted: false,
+        created_at: o.createdAt,
+        reply_to_id: o.replyToId ?? undefined,
+        failed: true,
+        queued: o.refused === undefined,
+        fail_reason: o.refused || undefined,
+        sender: { id: uid, full_name: t('You') },
+      });
+    }
+    return bubbles.length ? [...list, ...bubbles] : list;
+  };
+
   const loadMessages = async () => {
     const id = chat.id;
     setLoading(true);
     const { data } = await getMessages(id, { limit: CHAT_PAGE_SIZE });
     if (chatIdRef.current !== id) return;
-    if (data) setMessages(data);
+    if (data) setMessages(withOutbox(data, id));
+    else setMessages(prev => withOutbox(prev, id));
+    // Opened online: what waited goes now.
+    if (data) void flushRef.current();
     setLoadError(!data);
     setHasOlder((data?.length ?? 0) >= CHAT_PAGE_SIZE);
     setLoading(false);
@@ -650,16 +688,28 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
     if (error) {
       const offline = (typeof navigator !== 'undefined' && !navigator.onLine) || isOfflineError(error);
       const refused = chatErrorMessage(error, '');
+      const keep = (refusedReason?: string) =>
+        putChatOutbox(user?.id, {
+          chatId: sentFrom,
+          clientId: pending.client_id ?? '',
+          body: pending.content,
+          createdAt: pending.created_at,
+          replyToId: pending.reply_to_id ?? null,
+          refused: refusedReason,
+        });
       if (offline) {
-        // No connection: the bubble waits and goes out by itself when the
-        // network is back, with the same client id (main, #291 r4).
+        // No connection: the bubble waits, kept on this device (chatOutbox:
+        // closing the chat or the app loses nothing), and goes out by itself
+        // when the network is back, with the same client id (main, #291 r4).
         outcome = 'queued';
-        setSendError(t('No connection. It’s sent when you’re back online, as long as this chat stays open.'));
+        if (pending.client_id) keep();
+        setSendError(t('No connection. It’s sent when you’re back online.'));
         setMessages(prev => markSendFailed(prev, pending.id, { queued: true }));
       } else if (opts.fromQueue) {
-        // It waited, and the server said no: "Not sent" with the reason;
-        // the text stays in its bubble.
+        // A bubble already on screen (Try again) and the server said no, or
+        // a hiccup: "Not sent" with the reason; the text stays, kept too.
         outcome = 'failed';
+        if (pending.client_id) keep(refused);
         setSendError(refused || t('Message not sent. Try again.'));
         setMessages(prev => markSendFailed(prev, pending.id, { reason: refused }));
       } else {
@@ -673,13 +723,16 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
         // Sent again as it is: same client id (the first insert may have
         // landed before the error), so the server keeps one copy.
         returnedRef.current = { chatId: sentFrom, content: pending.content, replyToId: pending.reply_to_id, clientId: pending.client_id ?? newClientId() };
+        dropChatOutbox(user?.id, pending.client_id);
       } else {
         // A new draft is in the composer: never overwrite it (07 #5). The
-        // message stays as a "Not sent" bubble with Try again.
+        // message stays as a "Not sent" bubble with Try again (kept).
+        if (pending.client_id) keep(refused);
         setMessages(prev => markSendFailed(prev, pending.id, { reason: refused }));
       }
       }
     } else if (data) {
+      dropChatOutbox(user?.id, pending.client_id);
       // Keep the quote on screen if the saved row came back without it.
       const saved = data.reply_to_id && !data.reply_to?.content && pending.reply_to ? { ...data, reply_to: pending.reply_to } : data;
       setMessages(prev => prev.map(m => m.id === pending.id ? saved : m));
@@ -690,30 +743,49 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
     return outcome;
   };
 
-  // Back online: the bubbles that waited go out, oldest first. Still no
-  // connection: stop, they keep waiting.
-  const flushingRef = useRef(false);
+  // Back online (or the chat opened): what waits in this account's outbox
+  // goes out, oldest first (chatOutbox, one flush at a time on the device;
+  // useChatOutboxFlush does the same with the chat closed). The result comes
+  // back as an event, also from that hook: saved bubbles become the message,
+  // refused ones "Not sent" with the reason.
   const flushQueued = async () => {
-    if (flushingRef.current) return;
-    flushingRef.current = true;
-    try {
-      for (const m of queuedToSend(messagesRef.current, chatIdRef.current)) {
-        if (typeof navigator !== 'undefined' && !navigator.onLine) break;
-        const again = { ...m, failed: false, queued: false, fail_reason: undefined };
-        setMessages(prev => prev.map(x => x.id === m.id ? again : x));
-        if ((await deliver(again, { fromQueue: true })) === 'queued') break;
-      }
-    } finally {
-      flushingRef.current = false;
-    }
+    if (!user?.id) return;
+    await flushChatOutbox(user.id);
   };
   const flushRef = useRef(flushQueued);
   flushRef.current = flushQueued;
   useEffect(() => {
     const onOnline = () => void flushRef.current();
+    const onResult = (e: Event) => {
+      const r = (e as CustomEvent<ChatOutboxResult>).detail;
+      if (!r || r.userId !== user?.id) return;
+      const here = chatIdRef.current;
+      const sent = new Map(r.sent.filter((x) => x.chatId === here).map((x) => [x.clientId, x.message]));
+      const refused = new Map(r.refused.filter((x) => x.chatId === here).map((x) => [x.clientId, x.reason]));
+      if (!sent.size && !refused.size) return;
+      if (refused.size) setSendError([...refused.values()].find(Boolean) || t('Message not sent. Try again.'));
+      setMessages(prev => {
+        const ids = new Set(prev.map((m) => m.id));
+        return prev.flatMap((m) => {
+          const cid = m.client_id ?? '';
+          if (m.id.startsWith('temp-') && sent.has(cid)) {
+            const saved = sent.get(cid)!;
+            return ids.has(saved.id) ? [] : [{ ...saved, reply_to: saved.reply_to ?? m.reply_to }];
+          }
+          if (m.id.startsWith('temp-') && refused.has(cid)) {
+            return [{ ...m, failed: true, queued: false, fail_reason: refused.get(cid) || undefined }];
+          }
+          return [m];
+        });
+      });
+    };
     window.addEventListener('online', onOnline);
-    return () => window.removeEventListener('online', onOnline);
-  }, []);
+    window.addEventListener(CHAT_OUTBOX_EVENT, onResult);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener(CHAT_OUTBOX_EVENT, onResult);
+    };
+  }, [user?.id]);
 
   const handleSend = async () => {
     if (!canText) return;
@@ -754,10 +826,11 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
     if (sending || !canText) return;
     const again = { ...message, failed: false, queued: false, fail_reason: undefined };
     setMessages(prev => prev.map(m => m.id === message.id ? again : m));
-    void deliver(again);
+    void deliver(again, { fromQueue: true });
   };
 
   const discardFailed = (message: Message) => {
+    dropChatOutbox(user?.id, message.client_id);
     setMessages(prev => prev.filter(m => m.id !== message.id));
     setSendError('');
   };

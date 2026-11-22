@@ -43,7 +43,7 @@ vi.mock('@/lib/supabase', () => {
     },
     apply: () => b,
   });
-  return { supabase: new Proxy({}, { get: () => () => b }) };
+  return { supabase: new Proxy({}, { get: () => () => b }), getSafeUser: async () => ({ data: { user: { id: 'me' } } }) };
 });
 vi.mock('@/lib/services/notifications', () => ({ markChatNotificationsAsRead: vi.fn() }));
 vi.mock('@/lib/services/activeChatTracker', () => ({ setActiveChat: vi.fn() }));
@@ -549,5 +549,70 @@ describe('ChatDetailModal offline: who may write', () => {
     await settle();
     expect(composer()).toBeTruthy();
     expect(await readChatPermission('me', 'c1')).toEqual({ permitted: true, reason: '' });
+  });
+
+  // Main (#291 r4): the text is kept on the device, so closing the chat
+  // offline loses nothing; reopened online, it is sent once.
+  it('closed offline, reopened online: the waiting message is sent once', async () => {
+    bandChat();
+    offline();
+    svc.sendMessage.mockResolvedValueOnce({ data: null, error: new Error('Failed to fetch') });
+    const first = render(<ChatDetailModal chat={bandProp} onClose={() => {}} />);
+    await settle();
+    fireEvent.change(composer()!, { target: { value: 'Running 10 min late' } });
+    fireEvent.keyDown(composer()!, { key: 'Enter' });
+    await settle();
+    expect(screen.getByText('Waiting for connection')).toBeTruthy();
+    first.unmount();
+
+    sb.result = { data: [{ id: 'bm1', user_id: 'me' }], error: null };
+    svc.sendMessage.mockResolvedValueOnce({ data: { ...msg(400, 'me'), content: 'Running 10 min late' }, error: null });
+    render(<ChatDetailModal chat={bandProp} onClose={() => {}} />);
+    await settle();
+    await settle();
+    const calls = svc.sendMessage.mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls[1][4]).toBe(calls[0][4]);
+    expect(screen.queryByText('Waiting for connection')).toBeNull();
+    expect(screen.getAllByText('Running 10 min late')).toHaveLength(1);
+  });
+
+  it('closed offline, reopened while still offline: the message is still there, waiting', async () => {
+    bandChat();
+    offline();
+    svc.sendMessage.mockResolvedValue({ data: null, error: new Error('Failed to fetch') });
+    svc.getMessages.mockResolvedValue({ data: null, error: new Error('Failed to fetch') });
+    const first = render(<ChatDetailModal chat={bandProp} onClose={() => {}} />);
+    await settle();
+    fireEvent.change(composer()!, { target: { value: 'Bring the long cables' } });
+    fireEvent.keyDown(composer()!, { key: 'Enter' });
+    await settle();
+    first.unmount();
+    render(<ChatDetailModal chat={bandProp} onClose={() => {}} />);
+    await settle();
+    expect(screen.getByText('Bring the long cables')).toBeTruthy();
+    expect(screen.getByText('Waiting for connection')).toBeTruthy();
+  });
+
+  it('a refused message stays "Not sent" with its reason after the chat is reopened', async () => {
+    bandChat();
+    offline();
+    svc.sendMessage.mockResolvedValueOnce({ data: null, error: new Error('Failed to fetch') });
+    const first = render(<ChatDetailModal chat={bandProp} onClose={() => {}} />);
+    await settle();
+    fireEvent.change(composer()!, { target: { value: 'Soundcheck at 6' } });
+    fireEvent.keyDown(composer()!, { key: 'Enter' });
+    await settle();
+    svc.sendMessage.mockResolvedValueOnce({ data: null, error: new rule.Err(bandRule) });
+    await act(async () => { window.dispatchEvent(new Event('online')); });
+    await settle();
+    first.unmount();
+    render(<ChatDetailModal chat={bandProp} onClose={() => {}} />);
+    await settle();
+    expect(screen.getByText('Soundcheck at 6')).toBeTruthy();
+    expect(screen.getByText('Not sent')).toBeTruthy();
+    expect(screen.getAllByText(bandRule).length).toBeGreaterThan(0);
+    // Not sent again by itself.
+    expect(svc.sendMessage).toHaveBeenCalledTimes(2);
   });
 });
