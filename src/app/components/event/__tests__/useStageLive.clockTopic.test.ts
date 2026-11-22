@@ -393,6 +393,25 @@ describe("useStageLive: an ordinary member measures the leader's clock (audit #9
     }
   });
 
+  it("the leader's stage channel dropped (Realtime reconnecting): a ping gets no pong, so nothing goes over HTTP, and the cap isn't used up (Claude on #283)", () => {
+    const leader = phone(true);
+    const boss = leader.result.current.clientId;
+    const clock = phones.find((p) => p.topic === 'stage-clock:event:gig-1')!;
+    const stage = phones.find((p) => p.topic === 'stage:event:gig-1' && p.key === boss)!;
+    stage.joined = false;
+    act(() => stage.status?.('CHANNEL_ERROR'));
+    net.tries = [];
+    const ping = (t0: number) =>
+      act(() => clock.handlers.filter((h) => h.event === PING_EVENT).forEach((h) => h.cb({ payload: { from: 'drummer', to: boss, t0 } })));
+    for (let i = 0; i < 5; i++) ping(i);
+    expect(net.tries.filter((t) => isPong(t.event))).toEqual([]);
+    // Back in: the next ping is answered (the dropped ones used up nothing).
+    stage.joined = true;
+    act(() => stage.status?.('SUBSCRIBED'));
+    ping(100);
+    expect(net.log.filter((m) => isPong(m.event) && m.from === boss).length).toBe(1);
+  });
+
   it("the server's \"new band key\" message on the stage topic reaches Stage's Bluetooth (191, Codex on 642676fc)", () => {
     phone(false);
     const heard: string[] = [];

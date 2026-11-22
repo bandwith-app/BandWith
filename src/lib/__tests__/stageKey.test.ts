@@ -137,6 +137,19 @@ describe('stageKey: the server first, the kept copy offline', () => {
     expect(localStorage.getItem('bw-stage-key:e1')).toBe('bmV3');
   });
 
+  it('an older ask answered after a newer one returns the kept (newer) key, not its own (Claude on #283)', async () => {
+    Object.assign(db, { slow: true, key: 'b2xk' });
+    const older = fetchStageKey('e1');
+    await Promise.resolve();
+    const releaseOlder = db.held.splice(0);
+    Object.assign(db, { slow: false, key: 'bmV3' });
+    expect((await fetchStageKey('e1')).key).toBe('bmV3');
+    releaseOlder.forEach((go) => go());
+    // Within the wait: the caller gets what is kept, never the stale key (the pack keeps what it's told).
+    expect(await older).toEqual({ key: 'bmV3', denied: false });
+    expect(localStorage.getItem('bw-stage-key:e1')).toBe('bmV3');
+  });
+
   it("tells a no from the server apart from no answer (Claude on #283: the live pack doesn't keep a refused key)", async () => {
     expect(await fetchStageKey('e1')).toEqual({ key: 'a2V5MQ==', denied: false });
     db.offline = true;

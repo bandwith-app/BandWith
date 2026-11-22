@@ -147,6 +147,8 @@ export async function fetchStageKey(eventId: string): Promise<{ key: string | nu
     clearTimeout(timer);
   }
   if (!answer || answer.error) return { key: cachedKey(eventId), denied: false };
+  // A newer ask's answer was kept first: what's kept stands, not this older answer (Claude on #283).
+  if (ask < (keyKept.get(eventId) ?? 0)) return { key: cachedKey(eventId), denied: false };
   const key = typeof answer.data === 'string' && answer.data ? answer.data : null;
   return { key, denied: key === null };
 }

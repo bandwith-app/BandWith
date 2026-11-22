@@ -366,6 +366,9 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     const answerPing = (raw: unknown, fromAdmin: boolean) => {
       const p = raw as { from?: unknown; to?: unknown; t0?: unknown } | undefined;
       if (!p || p.to !== clientId || typeof p.from !== 'string' || typeof p.t0 !== 'number') return;
+      // Answers go on the stage topic: not joined (Realtime reconnecting), supabase-js would post
+      // them over HTTP. None is sent, and none counts against the caps (Claude on #283).
+      if (!stageJoined.current) return;
       const now = nowMs();
       const ping = `${p.from}|${p.t0}`;
       if (seen.has(ping)) return;
