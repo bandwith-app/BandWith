@@ -359,8 +359,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
         expandedList.push(e);
       }
 
-      // If recurring rehearsal, generate its future weekly occurrences
-      if (isRehearsal && isRecurring && d) {
+      // If recurring rehearsal, generate its future weekly occurrences. Only
+      // from the series row: a date AuthenticatedApp already expanded
+      // (`<id>-occ-<date>`) is not a new series start (Codex #285 M1:
+      // Jan 31 monthly showed a phantom Mar 28).
+      if (isRehearsal && isRecurring && d && !String(e.id ?? '').includes('-occ-')) {
         const rule = e.recurrence_rule || {};
         const freq = (rule.freq || rule.frequency || e.recurrence || 'weekly').toLowerCase();
         const until = rule.until ? new Date(rule.until) : new Date(now.getFullYear(), now.getMonth() + 4, 0);
