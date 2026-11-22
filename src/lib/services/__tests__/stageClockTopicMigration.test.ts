@@ -64,6 +64,14 @@ describe('191 the stage clock topic', () => {
     expect(sql).toMatch(/GRANT EXECUTE ON FUNCTION public\.bw_stage_key\(uuid\) TO authenticated;/);
   });
 
+  it("with 178 applied first, its rule (a quote is the admins' only) is spelled out in all three helpers (main session on #283; behaviour: supabase/tests/stage_topic_quote.pglite.mjs)", () => {
+    expect(sql).toMatch(/IF to_regprocedure\('public\.bw_event_quote_hidden\(uuid, uuid\)'\) IS NULL THEN\s+RETURN;/);
+    expect(sql).toContain('OR NOT public.bw_can_view_event(p_event_id) OR public.bw_event_quote_hidden(p_event_id) THEN');
+    expect(sql.match(/AND NOT public\.bw_event_quote_hidden\(ev::uuid\);/g)?.length).toBe(2);
+    for (const f of ['bw_stage_key(uuid)', 'bw_stage_topic_allowed(text, boolean)', 'bw_stage_clock_topic_allowed(text)'])
+      expect(sql).toContain(`pg_get_functiondef('public.${f}'::regprocedure)`);
+  });
+
   it('the strict pattern takes UUIDs and nothing else', () => {
     const re = new RegExp(`^stage-clock:event:(${STRICT_UUID})$`);
     expect(re.test('stage-clock:event:0f8fad5b-d9cb-469f-a165-70867728950e')).toBe(true);

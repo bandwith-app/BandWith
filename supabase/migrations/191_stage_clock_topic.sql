@@ -140,3 +140,42 @@ END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.bw_stage_key(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_stage_key(uuid) TO authenticated;
+
+-- With 178 (date on hold) applied first: its rule spelled out in all three
+-- functions too, not only inherited through its stricter bw_can_view_event
+-- (a quote event is the band admins' only; members on its lineup included).
+-- Without 178 (no bw_event_quote_hidden), nothing changes. Built from the
+-- bodies above, like 178 does for 175's.
+DO $do$
+DECLARE
+  v_def text;
+  v_new text;
+BEGIN
+  IF to_regprocedure('public.bw_event_quote_hidden(uuid, uuid)') IS NULL THEN
+    RETURN;
+  END IF;
+  v_def := pg_get_functiondef('public.bw_stage_key(uuid)'::regprocedure);
+  v_new := replace(v_def, 'OR NOT public.bw_can_view_event(p_event_id) THEN',
+                          'OR NOT public.bw_can_view_event(p_event_id) OR public.bw_event_quote_hidden(p_event_id) THEN');
+  IF v_new = v_def AND position('bw_event_quote_hidden' IN v_def) = 0 THEN
+    RAISE EXCEPTION '191: bw_stage_key is not the body this migration expects';
+  END IF;
+  EXECUTE v_new;
+
+  v_def := pg_get_functiondef('public.bw_stage_topic_allowed(text, boolean)'::regprocedure);
+  v_new := replace(v_def, 'RETURN public.bw_is_band_member(band) AND public.bw_can_view_event(ev::uuid);',
+                          'RETURN public.bw_is_band_member(band) AND public.bw_can_view_event(ev::uuid) AND NOT public.bw_event_quote_hidden(ev::uuid);');
+  IF v_new = v_def AND position('bw_event_quote_hidden' IN v_def) = 0 THEN
+    RAISE EXCEPTION '191: bw_stage_topic_allowed is not the body this migration expects';
+  END IF;
+  EXECUTE v_new;
+
+  v_def := pg_get_functiondef('public.bw_stage_clock_topic_allowed(text)'::regprocedure);
+  v_new := replace(v_def, 'RETURN public.bw_is_band_member(band) AND public.bw_can_view_event(ev::uuid);',
+                          'RETURN public.bw_is_band_member(band) AND public.bw_can_view_event(ev::uuid) AND NOT public.bw_event_quote_hidden(ev::uuid);');
+  IF v_new = v_def AND position('bw_event_quote_hidden' IN v_def) = 0 THEN
+    RAISE EXCEPTION '191: bw_stage_clock_topic_allowed is not the body this migration expects';
+  END IF;
+  EXECUTE v_new;
+END
+$do$;
