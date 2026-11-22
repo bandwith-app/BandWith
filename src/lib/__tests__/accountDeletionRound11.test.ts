@@ -179,10 +179,12 @@ describe('round 11: old versions are purged by version', () => {
     expect(removed.flat().filter((e) => typeof e === 'string')).not.toContain('u/old.m4a');
   });
 
-  it('an older 180 without the listing: nothing to purge; a failed purge is not ready', async () => {
+  it('an older 180 without the listing: nothing to purge; a failed purge is logged, never not ready (round 12)', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect(await removeObjects(server([{ data: null, error: { code: 'PGRST202' } }]).s, 'avatars', 'u')).toBe(true);
-    expect(await removeObjects(server([{ data: [{ name: 'u/a', version: 'v' }], error: null }], { message: 'denied' }).s, 'avatars', 'u')).toBe(false);
+    expect(warn).not.toHaveBeenCalled();
+    expect(await removeObjects(server([{ data: [{ name: 'u/a', version: 'v' }], error: null }], { message: 'denied' }).s, 'avatars', 'u')).toBe(true);
+    expect(warn).toHaveBeenCalled();
     warn.mockRestore();
   });
 });

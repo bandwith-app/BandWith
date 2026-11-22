@@ -115,9 +115,15 @@ export async function removeObjects(server: ObjectServer, bucket: string, prefix
   const files = await removeCurrentFiles(server, bucket, prefix);
   // Round 11 (Claude r10 F6): Storage's remove by name deletes only the
   // current row, never the archived versions or delete markers under it:
-  // those are purged by version. Both run; either failing is not ready.
-  const versions = await purgeOldVersions(server, bucket, prefix);
-  return files && versions;
+  // those are purged by version. Round 12 (main): defensive only (prod has
+  // no versioned bucket), so a purge that fails, is refused or throws is
+  // logged and never blocks the deletion: only the live files count.
+  try {
+    await purgeOldVersions(server, bucket, prefix);
+  } catch (e) {
+    console.warn('account-deletion: old versions not purged', bucket, e);
+  }
+  return files;
 }
 
 /** The files themselves (live rows), removed by name. */
@@ -149,9 +155,10 @@ async function removeCurrentFiles(server: ObjectServer, bucket: string, prefix: 
  * through the Storage API (direct deletes on storage.objects are refused,
  * storage.protect_delete). Names and versions from
  * bw_account_storage_versions (180 round 11). A 180 without it (an older
- * deploy order) has nothing to purge: true. Other failures: false.
+ * deploy order) is skipped quietly; any other failure is logged and the
+ * purge stops (round 12: never a reason the deletion is not ready).
  */
-async function purgeOldVersions(server: ObjectServer, bucket: string, prefix: string): Promise<boolean> {
+async function purgeOldVersions(server: ObjectServer, bucket: string, prefix: string): Promise<void> {
   const store = server.store(bucket);
   let after: { name: string; version: string } | null = null;
   for (;;) {
@@ -164,13 +171,16 @@ async function purgeOldVersions(server: ObjectServer, bucket: string, prefix: st
     });
     if (error) {
       const code = (error as { code?: string } | null)?.code ?? '';
-      if (code === 'PGRST202' || code === '42883') return true;
+      if (code === 'PGRST202' || code === '42883') return;
       console.warn('account-deletion: old versions not listed', bucket, error);
-      return false;
+      return;
     }
     // No rows: PostgREST answers []; nothing at all is nothing to purge too.
-    if (data == null) return true;
-    if (!Array.isArray(data)) return false;
+    if (data == null) return;
+    if (!Array.isArray(data)) {
+      console.warn('account-deletion: old versions listing unreadable', bucket);
+      return;
+    }
     const rows = (data as { name?: unknown; version?: unknown }[])
       .filter((r) => typeof r?.name === 'string' && typeof r?.version === 'string')
       .map((r) => ({ name: r.name as string, version: r.version as string }));
@@ -179,10 +189,10 @@ async function purgeOldVersions(server: ObjectServer, bucket: string, prefix: st
       const { error: removeError } = await store.remove(chunk);
       if (removeError) {
         console.warn('account-deletion: old versions not purged', bucket, removeError);
-        return false;
+        return;
       }
     }
-    if (rows.length === 0) return true;
+    if (rows.length === 0) return;
     after = rows[rows.length - 1];
   }
 }
