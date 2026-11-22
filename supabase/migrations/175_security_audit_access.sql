@@ -34,7 +34,8 @@
 --        being an admin takes the person out of the chats the rule now
 --        refuses. Round 4: their participant row is KEPT (a record goes to
 --        chat_participants_removed_175) and the rule refuses it everywhere:
---        reads, roster (chat_participants read policy), receipts, push,
+--        reads, roster and own row (chat_participants read policies),
+--        receipts, push (send-push via bw_chat_recipient_ids),
 --        "shares a chat" (bw_shares_chat), "delete chat". Coming back, the
 --        same row works again: same chat, cleared_at and read times as they
 --        were, so no app can miss the chat and start a second one;
@@ -577,6 +578,12 @@ CREATE POLICY chat_participants_select_same_chat ON public.chat_participants
   AS PERMISSIVE FOR SELECT TO authenticated
   USING (chat_id = ANY (public.bw_my_chat_ids())
          AND public.bw_chat_scope_ok_for(chat_id, user_id));
+-- And their own kept row: not shown to them either (no chat list, unread
+-- count or badge in any app build counts a chat the rule refuses).
+DROP POLICY IF EXISTS chat_participants_select_own ON public.chat_participants;
+CREATE POLICY chat_participants_select_own ON public.chat_participants
+  AS PERMISSIVE FOR SELECT TO public
+  USING (user_id = auth.uid() AND public.bw_chat_scope_ok_for(chat_id, user_id));
 
 -- "Shares a chat" (042: profiles read policy, chat notices): a band or gig
 -- chat counts only while both may still use it (a former member's kept row

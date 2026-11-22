@@ -150,12 +150,27 @@ export async function allowedRecipients(
 
   const remaining = unique.filter((id) => !allowed.has(id));
   if (remaining.length > 0) {
+    // Round 4 (#281): rows are kept when someone leaves the band or the
+    // lineup (175), so who shares a chat comes from bw_chat_recipient_ids
+    // (the rule), one chat at a time, never from the raw roster. Before 175
+    // (function missing) the old roster; any other error adds nobody.
     const { data: myChats } = await admin
       .from("chat_participants")
       .select("chat_id")
       .eq("user_id", callerId);
-    const chatIds = (myChats ?? []).map((r: { chat_id: string }) => r.chat_id);
-    if (chatIds.length > 0) {
+    const chatIds = [...new Set((myChats ?? []).map((r: { chat_id: string }) => r.chat_id))];
+    let legacy = false;
+    for (const chatId of chatIds) {
+      if (remaining.every((id) => allowed.has(id))) break;
+      const { data: ok, error } = await admin.rpc("bw_chat_recipient_ids", { p_chat_id: chatId, p_sender: callerId });
+      if (error) {
+        if (isMissingRpc(error)) legacy = true;
+        else console.error("allowedRecipients: bw_chat_recipient_ids failed", error.message);
+        break;
+      }
+      if (Array.isArray(ok)) (ok as string[]).forEach((id) => remaining.includes(id) && allowed.add(id));
+    }
+    if (legacy && chatIds.length > 0) {
       const { data } = await admin
         .from("chat_participants")
         .select("user_id")

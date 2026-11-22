@@ -617,6 +617,11 @@ ok(r.rows[0]?.a === true, `members still share the band chat (${r.error ?? r.row
 r = await as(NEWM, `SELECT user_id FROM chat_participants WHERE chat_id = '${EVCHAT3}'`);
 ok(r.rows.length > 0 && ![staleUsers.LEFT, staleUsers.DEACT, DEMOTED, DECL, DROP, REMOVED, MIXD].some((u) => r.rows.some((x) => x.user_id === u)),
   `roster (chat_participants policy) leaves out kept rows the rule refuses (${r.rows.length})`);
+// A kept row is not even listed to its owner (app chat lists, unread counts, badges).
+r = await as(staleUsers.LEFT, `SELECT chat_id FROM chat_participants WHERE user_id = '${staleUsers.LEFT}'`);
+ok(!r.error && ![BANDCHAT, EVCHAT3].some((c) => r.rows.some((x) => x.chat_id === c)), `a kept row is hidden from its owner too (${r.error ?? r.rows.length})`);
+r = await as(NEWM, `SELECT chat_id FROM chat_participants WHERE user_id = '${NEWM}'`);
+ok(r.rows.some((x) => x.chat_id === EVCHAT3), `an active member still lists their own rows (${r.rows.length})`);
 // BLOCKER (b): the app's fallback asks before creating a band / gig chat.
 r = await as(NEWM, `SELECT public.bw_group_chat_exists('band', '${BAND}', NULL) AS a, public.bw_group_chat_exists('event', NULL, '${GIG3}') AS b,
   public.bw_group_chat_exists('event', NULL, '${GIGQ}') AS c`);
