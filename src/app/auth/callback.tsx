@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase, RECOVERY_FLAG } from '@/lib/supabase';
-import { clearRecoveryProof, hasRecoveryProofForLink } from '@/lib/recoveryProof';
+import { clearRecoveryProof, hasRecoveryProofForLink, pageLinkCode } from '@/lib/recoveryProof';
 import { Loader2 } from '@/app/components/icons';
 import { t, useT } from '@/lib/i18n';
 import { AuthScreen, Kicker, PillButton } from '@/app/components/bw/Form';
@@ -34,6 +34,9 @@ export default function AuthCallback() {
   const [status, setStatus] = useState<'processing' | 'redirecting'>('processing');
   const [problem, setProblem] = useState<AuthCallbackProblem | null>(null);
   const isRecovery = new URLSearchParams(window.location.search).get(RECOVERY_FLAG) === '1';
+  // Read before any await (Codex review #287 round 3): the auth library
+  // removes `code` from the URL after its exchange, maybe before this renders.
+  const [linkCode] = useState(() => pageLinkCode());
 
   useEffect(() => {
     let cancelled = false;
@@ -112,7 +115,7 @@ export default function AuthCallback() {
           // For this link only, exchanged by this tab: an older proof here
           // (someone's unfinished reset) or a reset finished in another tab
           // (the library broadcasts its event) says nothing about this link.
-          if (!hasRecoveryProofForLink(now?.user?.id, code)) {
+          if (!hasRecoveryProofForLink(now?.user?.id, code ?? linkCode)) {
             console.warn('[AuthCallback] Reset link not exchanged here');
             clearRecoveryProof();
             fail({ code: 'pkce_code_verifier_not_found' });

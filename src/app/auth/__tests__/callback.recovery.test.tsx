@@ -5,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { callbackProblemText } from '@/lib/authCallback';
 import { clearRecoveryProof, noteOwnExchange, noteRecovery, resetOwnExchange } from '@/lib/recoveryProof';
 
+// The page as it loads, before the auth library exchanges (and strips) the code.
+vi.hoisted(() => window.history.replaceState(null, '', '/auth/callback?code=alice-code&bw_recovery=1'));
+
 const BOB = '00000000-0000-0000-0000-00000000b0b0';
 const auth = vi.hoisted(() => ({
   initialize: vi.fn(async () => ({ error: null })),
@@ -41,6 +44,19 @@ describe('reset link callback', () => {
     noteRecovery(BOB); // the broadcast event, in this tab
     render(<AuthCallback />);
     await waitFor(() => expect(screen.getByText(problemTitle)).toBeTruthy());
+  });
+
+  // Codex review #287 round 3 (B1): the library removes `code` from the URL
+  // once it has exchanged it. When the callback renders only after that
+  // (the locale was still loading), the link is the one this page opened with.
+  it('the link still counts when the library stripped its code before the callback ran', async () => {
+    noteOwnExchange('alice-code', BOB);
+    noteRecovery(BOB);
+    window.history.replaceState(null, '', '/auth/callback?bw_recovery=1');
+    render(<AuthCallback />);
+    await waitFor(() => expect(auth.getSession).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByText(problemTitle)).toBeNull();
   });
 
   it('opens the reset when the link really signed this account in here', async () => {

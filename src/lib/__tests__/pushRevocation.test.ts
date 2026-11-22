@@ -46,10 +46,19 @@ describe('push revocation on sign-out', () => {
     expect(readPendingRevocations(store)).toEqual([]);
   });
 
-  it('no known registration: the device stops, nothing is queued for the server', async () => {
+  // Round 3 (B4): no stamp known still queues, for that token and account.
+  it('no known stamp: the device stops and the revocation waits, without a stamp', async () => {
     const store = mem();
     const unregisterDevice = vi.fn(async () => {});
-    expect(await revokeOnSignOut(TOKEN, 'alice', null, { store, revokeOnServer: async () => false, unregisterDevice })).toBe('device');
+    expect(await revokeOnSignOut(TOKEN, 'alice', null, { store, revokeOnServer: async () => false, unregisterDevice, now: () => new Date(0) })).toBe('queued');
+    expect(unregisterDevice).toHaveBeenCalledOnce();
+    expect(readPendingRevocations(store)).toEqual([{ token: TOKEN, userId: 'alice', registeredAt: null, at: '1970-01-01T00:00:00.000Z' }]);
+  });
+
+  it('no account known: the device stops, nothing is queued for the server', async () => {
+    const store = mem();
+    const unregisterDevice = vi.fn(async () => {});
+    expect(await revokeOnSignOut(TOKEN, '', null, { store, revokeOnServer: async () => false, unregisterDevice })).toBe('device');
     expect(unregisterDevice).toHaveBeenCalledOnce();
     expect(readPendingRevocations(store)).toEqual([]);
   });
@@ -99,7 +108,7 @@ describe('push revocation on sign-out', () => {
   it('the app wires it: sign-out, token save and the online flush', () => {
     expect(push).toMatch(/revokeOnSignOut\(token, owner, registeredAt,/);
     // A sign-out before the native token arrives still knows the token.
-    expect(push).toMatch(/const token = cachedToken \?\? remembered\?\.token/);
+    expect(push).toMatch(/const known = cachedToken \?\? remembered\?\.token/);
     expect(push).not.toMatch(/if \(!isNative\(\) \|\| !cachedToken\) return;/);
     expect(push).toMatch(/await PushNotifications\.unregister\(\)/);
     expect(push).toMatch(/rememberPushToken\(revokeStore\(\), \{ token, userId, registeredAt/);

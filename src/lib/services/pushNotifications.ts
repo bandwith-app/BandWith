@@ -11,7 +11,7 @@ import { getActiveChat } from './activeChatTracker';
 import { getLocale } from '@/lib/i18n';
 import { localizePushLabel, pushLanguage } from '@/lib/pushLabels';
 import { LIVE_PACK_REFRESH_EVENT } from '@/lib/livePack';
-import { flushPushRevocations, forgetRevocation, rememberPushToken, rememberedPushToken, revokeOnSignOut } from '@/lib/pushRevocation';
+import { flushPushRevocations, forgetRevocation, forgetRevocationsOf, rememberPushToken, rememberedPushToken, revokeOnSignOut } from '@/lib/pushRevocation';
 
 const revokeStore = (): Storage | null => {
   try {
@@ -228,6 +228,7 @@ export const subscribeToPush = async (userId: string): Promise<{ success: boolea
 const afterSave = async (userId: string, token: string, stamp: string | null = null) => {
   savedToken = token;
   savedAt = Date.now();
+  // Saved for this account now: no other account's revocation for it either.
   forgetRevocation(revokeStore(), token);
   let registeredAt: string | null = stamp;
   if (!registeredAt) {
@@ -252,6 +253,12 @@ const isMissingFunction = (error: { code?: string; message?: string } | null | u
 
 const saveTokenToDatabase = async (userId: string, token: string): Promise<{ success: boolean; error: Error | null }> => {
   const platform = Capacitor.getPlatform();
+  // This account's own waiting revocation for this token goes before the
+  // save, and a flush already on its way finishes first: a revocation
+  // without a stamp must never land after the new registration (Codex
+  // review #287 round 3).
+  forgetRevocation(revokeStore(), token, userId);
+  await flushing?.catch(() => undefined);
 
   try {
     // 184: the same save as bw_register_push_token (046, which older builds
@@ -308,12 +315,17 @@ export const unregisterPushToken = async (userId?: string | null): Promise<void>
   // After an offline cold start the native token may not be back yet: the
   // one last saved for this account is (Codex review #287).
   const remembered = rememberedPushToken(revokeStore(), owner);
-  const token = cachedToken ?? remembered?.token ?? null;
+  const known = cachedToken ?? remembered?.token ?? null;
   rememberPushToken(revokeStore(), null);
+  // Android built without Firebase never registered, and the plugin's
+  // unregister() would crash on an uninitialised Firebase (Codex review
+  // #287 round 3): nothing to stop on this device.
+  if (!isRemotePushConfigured()) return;
+  // No token known (the first start after an upgrade, offline, before the
+  // native callback): the plugin still has it (Codex review #287 round 3).
+  const token = known ?? (await tokenFromPlugin());
   if (!token) {
-    // No token known at all (a registration made by an older build, signed
-    // out before the native token came back): the server row can't be
-    // named, so delivery stops on the device itself (Codex review #287).
+    // Not even the plugin: delivery stops on the device itself.
     cachedToken = null;
     try {
       await PushNotifications.unregister();
@@ -348,14 +360,67 @@ export const unregisterPushToken = async (userId?: string | null): Promise<void>
 };
 
 /**
+ * The device's token from the plugin, when nothing remembers it: register()
+ * answers with the token the system already holds (also offline, as a
+ * rule). Waits a moment at most; null when it doesn't come.
+ */
+const tokenFromPlugin = async (waitMs = 2500): Promise<string | null> => {
+  try {
+    const perm = await PushNotifications.checkPermissions();
+    if (perm.receive !== 'granted') return null;
+  } catch {
+    return null;
+  }
+  let handle: { remove: () => Promise<void> } | null = null;
+  try {
+    return await new Promise<string | null>((resolve) => {
+      const timer = setTimeout(() => resolve(null), waitMs);
+      void PushNotifications.addListener('registration', (t) => {
+        clearTimeout(timer);
+        resolve(typeof t?.value === 'string' && t.value ? t.value : null);
+      })
+        .then((h) => {
+          handle = h;
+          return PushNotifications.register();
+        })
+        .catch(() => {
+          clearTimeout(timer);
+          resolve(null);
+        });
+    });
+  } finally {
+    await (handle as { remove: () => Promise<void> } | null)?.remove().catch(() => undefined);
+  }
+};
+
+/**
+ * Someone signed in on this device: their own waiting revocations are
+ * dropped at once, before any token save (iOS keeps the same token, and a
+ * save may fail offline; Claude review #287 round 3).
+ */
+export const forgetQueuedPushRevocationsFor = (userId: string): void => {
+  forgetRevocationsOf(revokeStore(), userId);
+};
+
+/** The flush on its way, if any: a token save waits for it. */
+let flushing: Promise<number> | null = null;
+
+/**
  * Revocations queued by an offline sign-out (audit 04 #6), sent once online.
  * Works signed out: migration 184 needs only the token and its account.
  */
 export const flushQueuedPushRevocations = async (): Promise<number> => {
   if (!isNative()) return 0;
-  return flushPushRevocations(revokeStore(), async (p) =>
+  if (flushing) return flushing;
+  const run = flushPushRevocations(revokeStore(), async (p) =>
     supabase.rpc('bw_revoke_push_token', { p_token: p.token, p_user_id: p.userId, p_registered_at: p.registeredAt }),
   );
+  flushing = run;
+  try {
+    return await run;
+  } finally {
+    if (flushing === run) flushing = null;
+  }
 };
 
 /**

@@ -51,6 +51,29 @@ export function linkFingerprint(code: string | null | undefined): string | null 
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
 }
 
+/**
+ * The auth code in the URL this page opened with, read when this module
+ * loads: supabase.ts imports it before it creates the auth client, which
+ * removes `code` from the URL once it has exchanged it (Codex review #287
+ * round 3). The callback may render only after that.
+ */
+const PAGE_LINK_CODE: string | null = (() => {
+  try {
+    return typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('code') : null;
+  } catch {
+    return null;
+  }
+})();
+
+/** The reset link of this page: the code in the URL now, else the one it opened with. */
+export function pageLinkCode(): string | null {
+  try {
+    return new URLSearchParams(window.location.search).get('code') ?? PAGE_LINK_CODE;
+  } catch {
+    return PAGE_LINK_CODE;
+  }
+}
+
 /** The code exchange this tab made itself, on this page load (memory only). */
 let ownExchange: { link: string; userId: string; accessToken: string | null } | null = null;
 
@@ -154,6 +177,35 @@ export function hasAnyRecoveryProof(store: Store | null = sessionStore(), now = 
   } catch {
     return false;
   }
+}
+
+/**
+ * The reset form's password change (Codex review #287 round 3): the auth
+ * library changes the password of the session in shared storage, which
+ * another tab may have switched to someone else while React still shows the
+ * account the link signed in. Right before the change, that stored session
+ * must be the proven account; otherwise nothing is changed.
+ */
+export async function updatePasswordForProvenAccount<E>(
+  newPassword: string,
+  expectedUserId: string | null | undefined,
+  deps: {
+    sessionUserId: () => Promise<string | null | undefined>;
+    update: (password: string) => Promise<{ error: E | null }>;
+    store?: Store | null;
+  },
+): Promise<{ error: E | Error | null }> {
+  const store = deps.store === undefined ? sessionStore() : deps.store;
+  const refused = () => ({ error: Object.assign(new Error('recovery_not_verified'), { code: 'recovery_not_verified' }) });
+  if (!expectedUserId || !hasRecoveryProof(expectedUserId, store)) return refused();
+  let current: string | null | undefined = null;
+  try {
+    current = await deps.sessionUserId();
+  } catch {
+    current = null;
+  }
+  if (current !== expectedUserId) return refused();
+  return deps.update(newPassword);
 }
 
 export function clearRecoveryProof(store: Store | null = sessionStore()) {

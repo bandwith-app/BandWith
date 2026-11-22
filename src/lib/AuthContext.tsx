@@ -12,8 +12,8 @@ import { Capacitor } from '@capacitor/core';
 import { cleanupPresence } from './services/presence';
 import { clearOfflineCache, getOfflineItem, setOfflineItem, getCacheKey } from './offline/storage';
 import { clearStageCache } from './stageBleNative';
-import { flushQueuedPushRevocations, unregisterPushToken } from './services/pushNotifications';
-import { clearRecoveryProof, hasAnyRecoveryProof, hasRecoveryProof } from './recoveryProof';
+import { flushQueuedPushRevocations, forgetQueuedPushRevocationsFor, unregisterPushToken } from './services/pushNotifications';
+import { clearRecoveryProof, hasAnyRecoveryProof, hasRecoveryProof, updatePasswordForProvenAccount } from './recoveryProof';
 import { syncAppBadge } from './services/appBadge';
 import { realName } from '@/lib/personName';
 
@@ -220,6 +220,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return { error: err };
     }
   };
+
+  // Signed in again on this device: this account's own waiting revocations
+  // must not switch off its registration later (Claude review #287 round 3).
+  useEffect(() => {
+    if (user?.id) forgetQueuedPushRevocationsFor(user.id);
+  }, [user?.id]);
 
   // Push revocations left by an offline sign-out (audit 04 #6): now, and
   // whenever the network comes back.
@@ -479,11 +485,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // The flag stays on until "Continue", so the "Password updated" screen shows.
   const completePasswordRecovery = async (newPassword: string) => {
-    // Only the account the reset link signed in (audit 04 #2).
-    if (!hasRecoveryProof(user?.id)) {
+    // Only the account the reset link signed in (audit 04 #2), and only while
+    // the stored session the change goes to is still that account: another
+    // tab may have signed someone else in (Codex review #287 round 3).
+    const { error } = await updatePasswordForProvenAccount(newPassword, user?.id, {
+      sessionUserId: async () => (await supabase.auth.getSession()).data.session?.user?.id,
+      update: updatePassword,
+    });
+    if (error && !(error instanceof AuthError)) {
       return { error: new AuthError(callbackProblemText('other_browser', true).body, 403, 'recovery_not_verified') };
     }
-    const { error } = await updatePassword(newPassword);
     if (!error) stripRecoveryFlag();
     return { error };
   };

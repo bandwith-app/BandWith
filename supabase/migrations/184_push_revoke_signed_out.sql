@@ -16,6 +16,14 @@
 --     Any newer registration (a new sign-in, by the same or another
 --     account) changes updated_at, so a late or replayed call never undoes
 --     it. No device clock is compared with the server's (Codex review #287).
+--   * p_registered_at NULL (Codex review #287 round 3): the device never
+--     learned its stamp (a registration made by an older build, then the
+--     first start after the upgrade offline; or a save whose reply was
+--     lost). Then the exact token and account must match. The token is the
+--     key: only that device and the server hold it (push_tokens is readable
+--     by its owner only). The app drops such a revocation before it saves
+--     the token again for the same account, and waits for a flush on its
+--     way, so it never lands after a new registration from that device.
 -- It can only switch a token off, never on, and returns whether it did.
 --
 -- bw_register_push_token_stamped (Codex review #287 round 2): the same save
@@ -47,7 +55,7 @@ DECLARE
   v_count integer;
 BEGIN
   IF p_token IS NULL OR length(p_token) < 16 OR length(p_token) > 4096
-     OR p_user_id IS NULL OR p_registered_at IS NULL THEN
+     OR p_user_id IS NULL THEN
     RETURN false;
   END IF;
 
@@ -57,7 +65,7 @@ BEGIN
    WHERE token = p_token
      AND user_id = p_user_id
      AND coalesce(is_active, true)
-     AND updated_at = p_registered_at;
+     AND (p_registered_at IS NULL OR updated_at = p_registered_at);
   GET DIAGNOSTICS v_count = ROW_COUNT;
   RETURN v_count > 0;
 END;

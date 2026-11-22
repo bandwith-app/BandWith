@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   RECOVERY_PROOF_TTL_MS,
   clearRecoveryProof,
@@ -9,6 +9,7 @@ import {
   noteRecovery,
   recoveryExchangeFetch,
   resetOwnExchange,
+  updatePasswordForProvenAccount,
 } from '../recoveryProof';
 import callback from '../../app/auth/callback.tsx?raw';
 import sb from '../supabase.ts?raw';
@@ -42,7 +43,7 @@ describe('recovery proof (audit 04 #2)', () => {
   it('the app records it on PASSWORD_RECOVERY and checks it before changing a password', () => {
     expect(sb).toMatch(/event === 'PASSWORD_RECOVERY'\) noteRecovery\(session\?\.user\?\.id, undefined, undefined, session\?\.access_token\)/);
     expect(sb).toMatch(/fetch: planAwareFetch\(recoveryExchangeFetch\(fetch/);
-    expect(ctx).toMatch(/if \(!hasRecoveryProof\(user\?\.id\)\) \{\s*return \{ error:/);
+    expect(ctx).toMatch(/await updatePasswordForProvenAccount\(newPassword, user\?\.id, \{\s*sessionUserId: async \(\) => \(await supabase\.auth\.getSession\(\)\)/);
     expect(ctx).toMatch(/isPasswordRecovery: isPasswordRecovery && \(user \? hasRecoveryProof\(user\.id\)/);
   });
 
@@ -55,7 +56,7 @@ describe('recovery proof (audit 04 #2)', () => {
     expect(forLink('bob', 'bob-code', s, 3000)).toBe(true);
     expect(forLink('bob', 'alice-code', s, 3000)).toBe(false);
     expect(forLink('alice', 'bob-code', s, 3000)).toBe(false);
-    expect(callback).toMatch(/hasRecoveryProofForLink\(now\?\.user\?\.id, code\)/);
+    expect(callback).toMatch(/hasRecoveryProofForLink\(now\?\.user\?\.id, code \?\? linkCode\)/);
     expect(callback).toMatch(/clearRecoveryProof\(\);\s*fail\(\{ code: 'pkce_code_verifier_not_found' \}\)/);
   });
 
@@ -95,5 +96,26 @@ describe('recovery proof (audit 04 #2)', () => {
     expect(((await res.json()) as { user: { id: string } }).user.id).toBe('alice'); // body still readable by the library
     noteRecovery('alice', s, 1000, 'at');
     expect(forLink('alice', 'alice-code', s, 2000)).toBe(true);
+  });
+
+  // Codex review #287 round 3 (B2): the password goes to the session in
+  // shared storage, which another tab may have switched to Bob.
+  it('changes the password only while the stored session is the proven account', async () => {
+    const s = mem();
+    exchanged('alice-code', 'alice');
+    noteRecovery('alice', s, Date.now());
+    const update = vi.fn(async () => ({ error: null }));
+    // Bob signed in from another tab; React still shows Alice.
+    const r1 = await updatePasswordForProvenAccount('n3w-pass', 'alice', { sessionUserId: async () => 'bob', update, store: s });
+    expect(r1.error).toBeTruthy();
+    expect(update).not.toHaveBeenCalled();
+    // No proof for the account React shows: refused too.
+    const r2 = await updatePasswordForProvenAccount('n3w-pass', 'bob', { sessionUserId: async () => 'bob', update, store: s });
+    expect(r2.error).toBeTruthy();
+    expect(update).not.toHaveBeenCalled();
+    const r3 = await updatePasswordForProvenAccount('n3w-pass', 'alice', { sessionUserId: async () => 'alice', update, store: s });
+    expect(r3.error).toBeNull();
+    expect(update).toHaveBeenCalledWith('n3w-pass');
+    expect(ctx).toMatch(/updatePasswordForProvenAccount\(newPassword, user\?\.id/);
   });
 });

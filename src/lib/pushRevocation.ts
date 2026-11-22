@@ -30,8 +30,13 @@ export const PUSH_REVOKE_MAX_QUEUED = 20;
 export interface PendingRevocation {
   token: string;
   userId: string;
-  /** The registration to switch off: push_tokens.updated_at as the server stored it. */
-  registeredAt: string;
+  /**
+   * The registration to switch off: push_tokens.updated_at as the server
+   * stored it. null: this device never learned it (a registration made by an
+   * older build, or a save whose reply was lost); 184 then matches the token
+   * and account only (Codex review #287 round 3).
+   */
+  registeredAt: string | null;
   /** When it was queued (device clock): only for dropping very old ones. */
   at: string;
 }
@@ -52,7 +57,7 @@ export function readPendingRevocations(store: Store | null): PendingRevocation[]
     return Array.isArray(v)
       ? v.filter(
           (p): p is PendingRevocation =>
-            !!p && typeof p.token === 'string' && typeof p.userId === 'string' && typeof p.registeredAt === 'string' && typeof p.at === 'string',
+            !!p && typeof p.token === 'string' && typeof p.userId === 'string' && (typeof p.registeredAt === 'string' || p.registeredAt === null) && typeof p.at === 'string',
         )
       : [];
   } catch {
@@ -70,10 +75,22 @@ function writePending(store: Store | null, list: PendingRevocation[]) {
   }
 }
 
-/** Remember (or, with null, forget) the token this device last saved. */
+/**
+ * Remember (or, with null, forget) the token this device last saved. Two
+ * saves of the same token can answer in either order: the newer stamp is
+ * kept (Codex review #287 round 3).
+ */
 export function rememberPushToken(store: Store | null, saved: SavedPushToken | null) {
   if (!store) return;
   try {
+    if (saved) {
+      const prev = rememberedPushToken(store, saved.userId);
+      if (prev?.token === saved.token) {
+        const a = stampMicros(prev.registeredAt);
+        const b = stampMicros(saved.registeredAt);
+        if (a !== null && (b === null || a > b)) return;
+      }
+    }
     if (saved) store.setItem(PUSH_TOKEN_KEY, JSON.stringify(saved));
     else store.removeItem(PUSH_TOKEN_KEY);
   } catch {
@@ -93,11 +110,31 @@ export function rememberedPushToken(store: Store | null, userId: string | null |
   }
 }
 
-/** A token saved again (someone signed in on this device): nothing to revoke. */
-export function forgetRevocation(store: Store | null, token: string) {
+/**
+ * A token saved again (someone signed in on this device): nothing to revoke.
+ * With `userId`, only that account's revocation (another account's must
+ * still go until the save has moved the token).
+ */
+export function forgetRevocation(store: Store | null, token: string, userId?: string) {
   const list = readPendingRevocations(store);
-  const kept = list.filter((p) => p.token !== token);
+  const kept = list.filter((p) => p.token !== token || (userId !== undefined && p.userId !== userId));
   if (kept.length !== list.length) writePending(store, kept);
+}
+
+/** The account signed in again on this device: none of its revocations may go. */
+export function forgetRevocationsOf(store: Store | null, userId: string) {
+  const list = readPendingRevocations(store);
+  const kept = list.filter((p) => p.userId !== userId);
+  if (kept.length !== list.length) writePending(store, kept);
+}
+
+/** push_tokens.updated_at as microseconds, for comparing two stamps (null if unreadable). */
+export function stampMicros(stamp: string | null | undefined): number | null {
+  if (!stamp) return null;
+  const ms = Date.parse(stamp);
+  if (Number.isNaN(ms)) return null;
+  const frac = /\.(\d+)/.exec(stamp)?.[1] ?? '';
+  return Math.floor(ms) * 1000 + Number((frac + '000000').slice(3, 6));
 }
 
 export interface SignOutRevokeDeps {
@@ -112,8 +149,9 @@ export interface SignOutRevokeDeps {
 /**
  * Run while the session is still valid. 'server' when the server switched
  * the token off; 'queued' when it couldn't (offline): delivery stopped on
- * the device and the revocation waits for the network; 'device' when the
- * registration isn't known (no stamp): delivery stopped on the device only.
+ * the device and the revocation waits for the network (with the stamp when
+ * known, else token and account only); 'device' when the account isn't
+ * known: delivery stopped on the device only.
  */
 export async function revokeOnSignOut(
   token: string,
@@ -131,11 +169,11 @@ export async function revokeOnSignOut(
     forgetRevocation(deps.store, token);
     return 'server';
   }
-  const queue = !!registeredAt && !!userId;
+  const queue = !!userId;
   if (queue) {
     const at = (deps.now?.() ?? new Date()).toISOString();
     const list = readPendingRevocations(deps.store).filter((p) => p.token !== token);
-    writePending(deps.store, [...list, { token, userId, registeredAt: registeredAt as string, at }]);
+    writePending(deps.store, [...list, { token, userId, registeredAt: registeredAt ?? null, at }]);
   }
   try {
     await deps.unregisterDevice();

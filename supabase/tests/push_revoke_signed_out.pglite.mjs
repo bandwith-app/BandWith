@@ -89,6 +89,16 @@ ok(typeof again === 'string' && !again.startsWith('ERR') && again !== stamp, 'a 
 ok(await revoke('anon', TOK3, ALICE, stamp) === false && await active(TOK3) === true, "Alice's old stamp can't touch Bob's registration");
 ok(String(await register(null, TOK3)).startsWith('ERR'), 'needs a session');
 ok(String(await register(ALICE, 'short')).startsWith('ERR'), 'malformed token refused');
+// Codex review #287 round 3 (B4): a device that never learned its stamp (a
+// registration by an older build, or a lost reply) revokes by token and
+// account; another account, or a malformed token, still does nothing.
+const TOK4 = 'beefcafe'.repeat(8);
+await db.exec(`INSERT INTO push_tokens (user_id, token, platform, updated_at) VALUES ('${ALICE}', '${TOK4}', 'android', '2026-11-01T10:00:00Z')`);
+ok(await revoke('anon', TOK4, BOB, null) === false && await active(TOK4) === true, 'no stamp: another account cannot switch it off');
+ok(await revoke('anon', 'short', ALICE, null) === false, 'no stamp: malformed token, nothing');
+ok(await revoke('anon', TOK4, ALICE, null) === true && await active(TOK4) === false, 'no stamp: the device switches its own token off');
+ok(await revoke('anon', TOK4, ALICE, null) === false, 'no stamp, twice: nothing more to do');
+
 const anonReg = (await db.query(`SELECT has_function_privilege('anon', 'public.bw_register_push_token_stamped(text,text)', 'EXECUTE') AS x`).catch(() => ({ rows: [{ x: null }] }))).rows[0].x;
 ok(anonReg === false, 'the stamped save is not open to anon');
 
