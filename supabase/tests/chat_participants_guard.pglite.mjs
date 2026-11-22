@@ -20,7 +20,7 @@
 // skipped; 002 v2's DROP TYPE ... CASCADE is skipped so chats.type survives),
 // which gives exactly prod's 7 chat_participants policies (073) and 9 of the
 // 10 functions main lists on prod. get_user_chat_ids exists only on prod (no
-// migration): a stand-in is added, see its allowlist entry.
+// migration): it is created as it is there (175 revokes it).
 //
 // Then the chain, each file whole, in the release order (main's fn-rule.md):
 //   175 (this repo) -> 178 (BW_178_REF, origin/feat/date-on-hold)
@@ -104,11 +104,11 @@ SET check_function_bodies = off;`);
 for (const f of readdirSync(MIGS).filter((f) => /^\d{3}_.*\.sql$/.test(f) && f < '175').sort()) {
   await replay(readFileSync(`${MIGS}/${f}`, 'utf8'));
 }
-// Prod-only (no migration defines it; main's prod list). Stand-in with the
-// obvious body; see the allowlist entry.
-await db.exec(`CREATE OR REPLACE FUNCTION public.get_user_chat_ids(p_user_id uuid) RETURNS SETOF uuid
-  LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $$
-  SELECT chat_id FROM chat_participants WHERE user_id = p_user_id $$;`);
+// Prod-only (no migration defines it; main's prod list), as it is on prod:
+// SECURITY DEFINER, any user's chat ids, EXECUTE for PUBLIC, anon, authenticated.
+await db.exec(`CREATE OR REPLACE FUNCTION public.get_user_chat_ids(user_uuid uuid) RETURNS SETOF uuid
+  LANGUAGE sql SECURITY DEFINER AS $$ SELECT chat_id FROM chat_participants WHERE user_id = user_uuid $$;
+  GRANT EXECUTE ON FUNCTION public.get_user_chat_ids(uuid) TO PUBLIC, anon, authenticated, service_role;`);
 const readers = async () => (await db.query(`SELECT DISTINCT p.proname FROM pg_proc p
   WHERE p.pronamespace = 'public'::regnamespace AND p.prosrc ILIKE '%chat_participants%' ORDER BY 1`)).rows.map((x) => x.proname);
 const PROD_TODAY = ['bw_can_add_chat_participant', 'bw_chat_participants_immutable_keys', 'bw_delete_chat_history',
@@ -293,16 +293,24 @@ const FN_ROUTED = {
   bw_quote_event_confirmed: "#294 (178): lineup compared raw (coalesce(em.status, 'invited') NOT IN ...): use lower(btrim()); its insert is still filtered by 175's scope trigger",
 };
 Object.assign(FN_ALLOW, Object.fromEntries(Object.entries(FN_ROUTED).map(([k, v]) => [k, `ROUTED ${v}`])));
-// Prod-only, no migration: its real body must be checked on prod by main.
-const FN_ALLOW_UNVERIFIED = {
-  get_user_chat_ids: 'PROD-ONLY (no migration defines it; no app build or edge function calls it). Stand-in here; main to check prod\'s body: if it returns raw rows to authenticated, revoke it or add bw_chat_scope_ok_for',
+// Revoked by 175 (prod-only, unused): only service_role may run it (asserted below).
+const FN_REVOKED = {
+  get_user_chat_ids: "prod-only (no migration), unused: 175 revokes EXECUTE from PUBLIC, anon and authenticated; service_role only",
 };
 const now = await readers();
-const unknown = now.filter((f) => !(f in FN_ALLOW) && !(f in FN_ALLOW_UNVERIFIED));
+const unknown = now.filter((f) => !(f in FN_ALLOW) && !(f in FN_REVOKED));
 ok(unknown.length === 0, `every function that reads chat_participants is on the allowlist (${unknown.join(', ') || 'all'})`);
-for (const f of now) console.log(`     ${f}: ${FN_ALLOW[f] ?? FN_ALLOW_UNVERIFIED[f] ?? 'NOT ON THE LIST'}`);
+for (const f of now) console.log(`     ${f}: ${FN_ALLOW[f] ?? (FN_REVOKED[f] ? `REVOKED ${FN_REVOKED[f]}` : 'NOT ON THE LIST')}`);
 for (const f of Object.keys(FN_ALLOW)) if (!now.includes(f)) warn(`allowlisted ${f} not defined here (its head skipped, or it no longer reads chat_participants)`);
-for (const f of Object.keys(FN_ALLOW_UNVERIFIED)) if (now.includes(f)) warn(`${f}: ${FN_ALLOW_UNVERIFIED[f]}`);
+for (const f of Object.keys(FN_REVOKED)) {
+  const priv = (await db.query(`SELECT r, has_function_privilege(r, 'public.${f}(uuid)', 'EXECUTE') AS x
+    FROM unnest(ARRAY['public', 'anon', 'authenticated', 'service_role']) r`)).rows;
+  const by = Object.fromEntries(priv.map((x) => [x.r, x.x]));
+  ok(by.public === false && by.anon === false && by.authenticated === false && by.service_role === true,
+    `${f} is revoked: no EXECUTE for PUBLIC, anon, authenticated; service_role keeps it (${JSON.stringify(by)})`);
+  r = await as(MEM, `SELECT count(*) FROM public.${f}('${LEFT}')`);
+  ok(/permission denied/.test(r.error ?? ''), `${f}: a member can't list another user's chats (${r.error ?? 'ran'})`);
+}
 for (const f of Object.keys(FN_ROUTED)) if (now.includes(f)) warn(`ROUTE ${f}: ${FN_ROUTED[f]}`);
 
 // ── 3. Cost: 50 chats x 10 participants ──────────────────────────────────────
