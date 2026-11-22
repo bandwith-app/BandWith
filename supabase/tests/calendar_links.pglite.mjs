@@ -1171,5 +1171,47 @@ await check('Claude r9: a deputy deleted from the band: removed: true (and only 
   return o?.removed === true && o.closed === true && !!on && !('removed' in on);
 });
 
+// #294 @ 4a60181a: 182's hidden page is 178's, key by key (182 may add
+// keys, here the two calendar keys, but never drops or changes one of
+// 178's). Hidden requests: a plain one (back to tentative), then the same
+// gig released while on hold (status cancelled, never confirmed: 178 still
+// hides it, and 182 alone counts it cancelled), with a date in skip_dates
+// (182 alone counts that as cancelled too), and one whose deputy was
+// deleted (182 alone says removed).
+await check('#294 4a60181a: the hidden page is 178\'s, key by key (plain, released hold, date deleted, deputy deleted)', async () => {
+  if (!(await has178('bw_deputy_request_view'))) return true;
+  const [EV_K, DEPK1, DEPK2, RK1, RK2, RK3] = [114, 115, 116, 117, 118, 119].map(id);
+  await q(`INSERT INTO events (id, band_id, title, event_type, status, event_date, start_time, venue_name, venue_city, venue_address, is_recurring, recurrence_rule, created_by, fee)
+    VALUES ($1, $2, 'Harbor Benefit', 'gig', 'confirmed', current_date + 9, '20:00', 'Harbor Hall', 'Jersey City', '2 Dock St', false,
+            jsonb_build_object('frequency', 'weekly', 'interval', 1), $3, 1500)`, [EV_K, BAND, ADMIN]);
+  await q(`INSERT INTO band_deputies (id, band_id, name, user_id) VALUES ($1, $3, 'Ava', NULL), ($2, $3, 'Ben', NULL)`, [DEPK1, DEPK2, BAND]);
+  await q(`INSERT INTO deputy_requests (id, band_id, event_id, deputy_id, deputy_name, role, fee_offered, currency, reply_note, status, answer_snapshot) VALUES
+    ($1, $4, $5, $6, 'Ava', 'Bass', 250, 'USD', 'Sure', 'available', jsonb_build_object('address', '1 Old Rd')),
+    ($2, $4, $5, $7, 'Ben', 'Drums', 260, 'USD', NULL, 'maybe', '{}'),
+    ($3, $4, $5, $6, 'Ava', 'Keys', 270, 'USD', NULL, 'available', '{}')`, [RK1, RK2, RK3, BAND, EV_K, DEPK1, DEPK2]);
+  await q(`UPDATE events SET status = 'tentative' WHERE id = $1`, [EV_K]); // back to a quote
+  const same = async (r) => {
+    const t = await tok(r);
+    const a = (await one(`SELECT public.bw178_deputy_request_view($1) AS v`, [t])).v;
+    const b = (await one(`SELECT public.bw_deputy_request_view($1) AS v`, [t])).v;
+    const want = { event_title: null, event_type: null, event_date: null, start_time: null, end_time: null, load_in_time: null,
+      soundcheck_time: null, venue_name: null, venue_city: null, venue_address: null, event_updated_at: null, fee: null, currency: null,
+      reply_note: null, changes: [], before: {}, closed: true, status: 'cancelled', event_cancelled: false };
+    return !!a && !!b && Object.keys(a).every((k) => JSON.stringify(a[k]) === JSON.stringify(b[k]))
+      && Object.entries(want).every(([k, w]) => JSON.stringify(b[k]) === JSON.stringify(w)) && !('removed' in b)
+      && b.calendar_token === null && b.gig_calendar_token === null;
+  };
+  const plain = await same(RK1);
+  await q(`INSERT INTO event_date_holds (event_id, band_id) VALUES ($1, $2)`, [EV_K, BAND]);
+  await q(`UPDATE events SET status = 'cancelled' WHERE id = $1`, [EV_K]); // the hold released, never confirmed
+  const hidden = (await one(`SELECT public.bw_event_deputy_hidden($1) AS h`, [EV_K])).h;
+  const released = hidden === true && await same(RK1);
+  await q(`UPDATE events SET recurrence_rule = recurrence_rule || jsonb_build_object('skip_dates', jsonb_build_array(to_char(current_date + 9, 'YYYY-MM-DD'))) WHERE id = $1`, [EV_K]);
+  const dateGone = await same(RK1) && await same(RK3);
+  await q(`DELETE FROM band_deputies WHERE id = $1`, [DEPK2]);
+  const orphan = (await one(`SELECT deputy_id FROM deputy_requests WHERE id = $1`, [RK2])).deputy_id === null && await same(RK2);
+  return plain && released && dateGone && orphan;
+});
+
 console.log(fails ? `\n${fails} FAILED` : '\nall ok');
 process.exit(fails ? 1 : 0);

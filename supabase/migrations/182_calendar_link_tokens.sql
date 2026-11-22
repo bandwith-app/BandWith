@@ -395,12 +395,14 @@ BEGIN
       'load_in_time', NULL, 'soundcheck_time', NULL, 'venue_name', NULL, 'venue_city', NULL,
       'venue_address', NULL, 'event_updated_at', NULL, 'changes', '[]'::jsonb, 'before', '{}'::jsonb,
       'fee', NULL, 'currency', NULL, 'reply_note', NULL, 'calendar_token', NULL, 'gig_calendar_token', NULL,
-      'status', 'cancelled', 'closed', true);
+      'status', 'cancelled', 'event_cancelled', false, 'closed', true);
   END IF;
   -- The deputy was deleted from the band (deputy_id NULL; Codex review #285
   -- round 7): closed, without the offer, the address or the calendar keys.
   -- 'removed' (only here) is what the page keys "took you off this gig" on.
-  IF v IS NOT NULL AND coalesce(v_orphan, false) THEN
+  -- A hidden gig stays 178's page exactly (no 'removed'): it says nothing
+  -- of the gig, and the closed wording fits both.
+  IF v IS NOT NULL AND coalesce(v_orphan, false) AND NOT coalesce(v_hidden, false) THEN
     v := v || jsonb_build_object(
       'fee', NULL, 'currency', NULL, 'reply_note', NULL, 'venue_address', NULL,
       'calendar_token', NULL, 'gig_calendar_token', NULL, 'closed', true, 'removed', true);
