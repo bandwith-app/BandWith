@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft,
@@ -27,6 +27,7 @@ import { parseLocalDate } from '@/lib/dates';
 import { HeaderAction, IconButton, NavBackButton, Card, Tag } from '@/app/components/bw/Screen';
 import { RailCover } from '@/lib/railActions';
 import { useRailLayout } from '@/lib/deviceRegions';
+import { useFocusTrap } from '@/lib/focusTrap';
 import { PillButton, Selector } from '@/app/components/bw/Form';
 import { getActiveSymbol as sym, useCurrency } from '@/lib/currency';
 import { findCalendarEvent, findEventConflicts, type CalendarEventLike } from '@/lib/eventConflicts';
@@ -272,6 +273,10 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
   // page is shown until you pick another.
   const { twoPane } = useRailLayout();
   const split = twoPane && !notification;
+  // Two pages: the list and the detail are one modal dialog with one focus
+  // trap, so the keyboard moves between them.
+  const splitRef = useRef<HTMLDivElement | null>(null);
+  useFocusTrap(splitRef, isOpen && split);
 
   // Filtered notifications
   const displayedNotifications = filter === 'unread'
@@ -813,16 +818,25 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
         </motion.div>
       )}
       {isOpen && split && (
+        <div
+          key={"notifications-split"}
+          ref={splitRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('Notifications')}
+          tabIndex={-1}
+          // Holds both pages (each placed by its own pane class); touches go
+          // to them, not to this frame.
+          className="outline-none"
+          style={{ position: 'fixed', inset: 0, zIndex: 101, pointerEvents: 'none' }}
+        >
         <motion.div
           key={"notifications-list"}
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 12 }}
           transition={{ duration: durations.normal, ease: easings.smooth }}
-          role="dialog"
-          aria-modal="true"
-          aria-label={t('Notifications')}
-          className="bw-pane-hub fixed inset-0 z-[101] flex flex-col bg-background text-foreground overflow-x-hidden"
+          className="bw-pane-hub pointer-events-auto fixed inset-0 z-[101] flex flex-col bg-background text-foreground overflow-x-hidden"
           style={{ overscrollBehaviorX: 'none' }}
         >
           {/* ═══ HEADER ═══ */}
@@ -835,18 +849,17 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
             </div>
           </div>
         </motion.div>
-      )}
-      {isOpen && split && detailNotif && (
+        <AnimatePresence>
+      {detailNotif && (
         <motion.div
           key={"notifications-detail"}
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 12 }}
           transition={{ duration: durations.normal, ease: easings.smooth }}
-          role="dialog"
-          aria-modal="true"
+          role="region"
           aria-label={cleanNotificationTitle(detailNotif.title)}
-          className="bw-pane-detail fixed inset-0 z-[101] flex flex-col bg-background text-foreground overflow-x-hidden"
+          className="bw-pane-detail pointer-events-auto fixed inset-0 z-[101] flex flex-col bg-background text-foreground overflow-x-hidden"
           style={{ overscrollBehaviorX: 'none' }}
         >
           {/* ═══ HEADER ═══ */}
@@ -866,6 +879,9 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
             </div>
           </div>
         </motion.div>
+      )}
+        </AnimatePresence>
+        </div>
       )}
     </AnimatePresence>
   );

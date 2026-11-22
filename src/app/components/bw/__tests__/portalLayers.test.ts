@@ -60,7 +60,7 @@ const PORTALS: Record<string, Kind> = {
  * (an invite arriving under a sheet's scrim) and counts what sits inside a
  * trapped layer as part of it.
  */
-type InPlace = 'modal' | { nonModal: string } | { inline: string };
+type InPlace = 'modal' | { nonModal: string } | { inline: string } | { pane: string };
 const IN_PLACE: Record<string, InPlace> = {
   '/src/app/components/composer/Composer.tsx': 'modal',
   '/src/app/components/ui/LyricsViewer.tsx': 'modal',
@@ -85,7 +85,7 @@ const IN_PLACE: Record<string, InPlace> = {
   '/src/app/views/SettingsView.tsx': 'modal',
   '/src/app/components/profile/CreateBandModal.tsx': 'modal',
   '/src/app/components/notifications/NotificationDetailModal.tsx': 'modal',
-  '/src/app/components/gear/KitDetail.tsx': 'modal',
+  '/src/app/components/gear/KitDetail.tsx': { pane: 'kit page: covers the gear hub on one page, beside the kit list on two' },
   '/src/app/components/notifications/UrgentNotificationPopup.tsx': 'modal',
   '/src/app/components/notifications/PendingInvitesPrompt.tsx': { nonModal: 'band invite card: can arrive while a sheet is open' },
   '/src/app/components/notifications/InviteLinkNotice.tsx': { nonModal: 'invite link card: can arrive while a sheet is open' },
@@ -154,10 +154,11 @@ describe('every layer says what it is to the focus trap', () => {
     expect(stale).toEqual([]);
   });
 
-  it('the inbox (every layout) and a kit page are modal dialogs: the bell can open them over a sheet', () => {
-    const modal = /role="dialog"\s+aria-modal="true"/g;
-    expect(SOURCES['/src/app/components/notifications/NotificationDetailModal.tsx'].match(modal)).toHaveLength(3);
-    expect(SOURCES['/src/app/components/gear/KitDetail.tsx'].match(modal)).toHaveLength(1);
+  it('the inbox is a modal dialog in both layouts (the bell can open it over a sheet); on two pages the detail is a region in it', () => {
+    const inbox = SOURCES['/src/app/components/notifications/NotificationDetailModal.tsx'];
+    expect(inbox.match(/role="dialog"\s+aria-modal="true"/g)).toHaveLength(2);
+    expect(inbox).toContain('role="region"');
+    expect(inbox).toContain('useFocusTrap(splitRef, isOpen && split)');
   });
 
   it('the urgent pop-up is a modal alert dialog marked data-bw-urgent (#271 leaves it out, so it never waits for itself)', () => {
@@ -181,10 +182,15 @@ describe('layers rendered in place and the focus trap', () => {
   });
 
   for (const [file, kind] of Object.entries(IN_PLACE)) {
-    it(`${file.replace('/src/', '')}: ${kind === 'modal' ? 'modal' : 'nonModal' in kind ? 'not modal' : 'inline'}`, () => {
+    const label = kind === 'modal' ? 'modal' : 'nonModal' in kind ? 'not modal' : 'pane' in kind ? 'modal on one page' : 'inline';
+    it(`${file.replace('/src/', '')}: ${label}`, () => {
       const text = SOURCES[file];
       if (kind === 'modal') expect(text).toContain('aria-modal="true"');
-      else if ('nonModal' in kind) {
+      else if ('pane' in kind) {
+        // A modal dialog on one page; a region beside the list on two.
+        expect(text).toMatch(/role=\{twoPane \? 'region' : 'dialog'\}/);
+        expect(text).toMatch(/aria-modal=\{twoPane \? undefined : 'true'\}/);
+      } else if ('nonModal' in kind) {
         expect(text).toContain('aria-modal="false"');
         expect(text).not.toContain('aria-modal="true"');
       } else expect(text).not.toMatch(/aria-modal/);
