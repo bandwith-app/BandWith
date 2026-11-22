@@ -10,13 +10,16 @@ const fn = (name: string) => {
 };
 
 describe('190 the stage signing keys', () => {
-  it("190 and 191 take the same per-band advisory lock: one key shape, shared only in bw_stage_set_signer (Claude round 8)", () => {
+  it("190 and 191 take the same per-band advisory lock: one key shape, shared only where a key row is first written (Claude round 8, round 10)", () => {
     const both = sql + sql191.replace(/--.*$/gm, '');
-    const locks = both.match(/pg_advisory_xact_lock(_shared)?\([^;]*;/g) ?? [];
-    // 190: set_signer (shared), rotate_signer, event_moved. 191: lineup_left, event_hidden, member_left twice.
-    expect(locks).toHaveLength(7);
-    for (const l of locks) expect(l).toMatch(/^pg_advisory_xact_lock(_shared)?\(hashtextextended\('bw-stage-band:' \|\| .+::text, 0\)\);$/);
-    expect(locks.filter((l) => l.startsWith('pg_advisory_xact_lock_shared'))).toHaveLength(1);
+    const locks = both.match(/pg_(try_)?advisory_xact_lock(_shared)?\(.*?::text, 0\)\)/g) ?? [];
+    // 190: set_signer (shared, tried), rotate_signer, event_moved.
+    // 191: bw_stage_key's first use (shared), lineup_left, event_hidden, member_left twice.
+    expect(locks).toHaveLength(8);
+    for (const l of locks) expect(l).toMatch(/^pg_(try_)?advisory_xact_lock(_shared)?\(hashtextextended\('bw-stage-band:' \|\| .+::text, 0\)\)$/);
+    expect(locks.filter((l) => l.includes('_shared'))).toHaveLength(2);
+    // The only one never waited for: set_signer, which already holds an admin row and the gig's row.
+    expect(locks.filter((l) => l.startsWith('pg_try_'))).toHaveLength(1);
     // No trigger or function locks the band's row for more than KEY SHARE: a band delete can't be part of a cycle.
     expect(both).not.toMatch(/FROM public\.bands[^;]*FOR (NO KEY UPDATE|UPDATE|SHARE)\b/);
   });
@@ -71,7 +74,7 @@ describe('190 the stage signing keys', () => {
     expect(trig.search(/UPDATE public\.stage_keys/)).toBeGreaterThan(tLock);
     const f = fn('bw_stage_set_signer');
     const admin = f.search(/AND bm\.role = 'admin' AND COALESCE\(bm\.is_active, true\)\s+FOR SHARE;/);
-    const band = f.search(/PERFORM pg_advisory_xact_lock_shared\(hashtextextended\('bw-stage-band:' \|\| band::text, 0\)\);/);
+    const band = f.search(/IF NOT pg_try_advisory_xact_lock_shared\(hashtextextended\('bw-stage-band:' \|\| band::text, 0\)\) THEN/);
     expect(f).not.toMatch(/FROM public\.bands b WHERE b\.id = band FOR SHARE;/);
     // The gig's own row, locked and its band re-checked under the lock (Codex on #288): a move
     // waiting on this call, or committed just before, can't leave a pair on the new band's gig.
@@ -105,13 +108,26 @@ describe('190 the stage signing keys', () => {
     expect(sql).toMatch(/DROP FUNCTION IF EXISTS public\.bw_stage_verify_key\(uuid\);/);
   });
 
+  it("set_signer never waits for the band's advisory lock: busy, it asks the app to try again (Claude round 10)", () => {
+    const f = fn('bw_stage_set_signer');
+    expect(f).toMatch(/IF NOT pg_try_advisory_xact_lock_shared\([^;]*\) THEN\s+RAISE EXCEPTION '[^']+' USING ERRCODE = '40001';\s+END IF;/);
+    expect(f).not.toMatch(/PERFORM pg_advisory_xact_lock/);
+  });
+
+  it('a band being deleted takes no advisory lock in the pair trigger either (Claude round 10)', () => {
+    const trig = fn('bw_stage_rotate_signer');
+    const gone = trig.search(/IF NOT EXISTS \(SELECT 1 FROM public\.bands b WHERE b\.id = OLD\.band_id\) THEN\s+RETURN NULL;/);
+    expect(gone).toBeGreaterThan(0);
+    expect(trig.search(/pg_advisory_xact_lock\(/)).toBeGreaterThan(gone);
+  });
+
   it("set_signer takes the band row FOR KEY SHARE before any other lock: a band being deleted can't deadlock with it, a demotion still can't (Claude on #288)", () => {
     const f = fn('bw_stage_set_signer');
     const at = (re: RegExp) => f.search(re);
     const keyShare = at(/FROM public\.bands b WHERE b\.id = band FOR KEY SHARE;/);
     const admin = at(/AND bm\.role = 'admin' AND COALESCE\(bm\.is_active, true\)\s+FOR SHARE;/);
     const gig = at(/e\.band_id = band FOR SHARE;/);
-    const bandShare = at(/pg_advisory_xact_lock_shared\(hashtextextended\('bw-stage-band:' \|\| band::text, 0\)\);/);
+    const bandShare = at(/pg_try_advisory_xact_lock_shared\(hashtextextended\('bw-stage-band:' \|\| band::text, 0\)\)/);
     expect(keyShare).toBeGreaterThan(0);
     expect(keyShare).toBeLessThan(admin);
     expect(admin).toBeLessThan(gig);

@@ -266,7 +266,7 @@ async function locksAfter(uid, sql) {
   try {
     await db.query(sql);
     await db.exec('RESET ROLE');
-    return (await db.query(`SELECT mode FROM pg_locks WHERE locktype = 'advisory' AND granted ORDER BY mode`)).rows.map((r) => r.mode);
+    return (await db.query(`SELECT mode FROM pg_locks WHERE locktype = 'advisory' AND objsubid = 1 AND granted ORDER BY mode`)).rows.map((r) => r.mode);
   } finally {
     await db.exec('ROLLBACK');
   }
@@ -377,7 +377,7 @@ ok(json(await as(LINEUP, set(GIG, await pair(), p4.public))) === null, 'a member
   await db.exec('BEGIN');
   try {
     await db.exec(`UPDATE band_members SET role = 'member' WHERE user_id = '${A9}'`);
-    const held = (await db.query(`SELECT mode FROM pg_locks WHERE locktype = 'advisory' AND granted`)).rows.map((r) => r.mode);
+    const held = (await db.query(`SELECT mode FROM pg_locks WHERE locktype = 'advisory' AND objsubid = 1 AND granted`)).rows.map((r) => r.mode);
     ok(held.includes('ExclusiveLock'), `a demotion takes the band's advisory lock, exclusive (got ${JSON.stringify(held)})`);
   } finally {
     await db.exec('ROLLBACK');
@@ -403,6 +403,35 @@ if (with191) {
   ok(q1.key !== q0.key, "with 191: an admin made a member changes the coming quote gig's band key");
   ok(g1.key === g0.key, "with 191: an admin made a member keeps a normal gig's band key");
   ok(g0.sign_public === null || g1.sign_version === g0.sign_version + 1, `with 191: an admin made a member rotates the pair (${JSON.stringify([g0.sign_version, g1.sign_version])})`);
+}
+
+// A band being deleted takes no advisory lock (Claude round 10): the pair trigger (and 191's key
+// trigger, when it is there) skip a band that is going, so the delete can't cross with a rotation.
+{
+  const [B8, A8, G8] = [47, 48, 49].map(id);
+  await db.exec(`INSERT INTO auth.users (id) VALUES ('${A8}'); INSERT INTO bands VALUES ('${B8}', 'Queens Quartet');
+    INSERT INTO band_members (band_id, user_id, role, is_active) VALUES ('${B8}','${A8}','admin',true);
+    INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date) VALUES ('${G8}','${B8}','Saturday at Terraza 7','confirmed','gig','${A8}', current_date + 3);
+    INSERT INTO stage_keys (event_id, key, sign_public, sign_private, sign_version) VALUES ('${G8}', 'k8', 'pub8', 'priv8', 1);`);
+  await db.exec('BEGIN');
+  await db.exec(`
+    ALTER TABLE events ADD CONSTRAINT t_events_band FOREIGN KEY (band_id) REFERENCES bands(id) ON DELETE CASCADE NOT VALID;
+    ALTER TABLE band_members ADD CONSTRAINT t_members_band FOREIGN KEY (band_id) REFERENCES bands(id) ON DELETE CASCADE NOT VALID;
+    ALTER TABLE stage_keys ADD CONSTRAINT t_keys_event FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE NOT VALID;
+    DELETE FROM bands WHERE id = '${B8}';`);
+  const gone = (await db.query(`SELECT (SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND objsubid = 1 AND granted)::int AS locks,
+    (SELECT count(*) FROM band_members WHERE band_id = '${B8}')::int AS members,
+    (SELECT count(*) FROM stage_keys WHERE event_id = '${G8}')::int AS keys`)).rows[0];
+  await db.exec('ROLLBACK');
+  ok(gone.members === 0 && gone.keys === 0, 'a band delete cascades through its admins, gigs and pairs with the triggers in place');
+  ok(gone.locks === 0, `a band delete takes no advisory lock (got ${gone.locks})`);
+  // Outside a band delete the same admin leaving still rotates under the lock.
+  await db.exec('BEGIN');
+  await db.exec(`DELETE FROM band_members WHERE user_id = '${A8}'`);
+  const left = (await db.query(`SELECT (SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND objsubid = 1 AND mode = 'ExclusiveLock' AND granted)::int AS locks,
+    (SELECT sign_public FROM stage_keys WHERE event_id = '${G8}') AS pub, (SELECT sign_version FROM stage_keys WHERE event_id = '${G8}') AS ver`)).rows[0];
+  await db.exec('ROLLBACK');
+  ok(left.locks === 1 && left.pub === null && left.ver === 2, `an admin removed (the band stays) still rotates the pair under the lock (${JSON.stringify(left)})`);
 }
 
 // 178's own rule is spelled out in 190's public-key function, not only inherited through bw_can_view_event.

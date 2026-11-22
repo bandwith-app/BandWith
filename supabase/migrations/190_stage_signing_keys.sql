@@ -195,12 +195,16 @@ BEGIN
   -- slip past it unseen (READ COMMITTED skips a row whose committed pair is
   -- still empty). An advisory lock, not the band's row (Claude round 8): a
   -- band delete holds that row and cascades into the members' and gigs' rows
-  -- the triggers fire on; no delete takes this lock. This order (band KEY
-  -- SHARE, admin row, gig row, advisory) can't deadlock: a demotion holds the
-  -- admin row then wants the advisory lock, which this takes only after the
-  -- admin row; a move holds the gig's row then the advisory lock, the same; a
-  -- band delete holds the band's row first, which KEY SHARE waits for.
-  PERFORM pg_advisory_xact_lock_shared(hashtextextended('bw-stage-band:' || band::text, 0));
+  -- the triggers fire on; no delete takes this lock (191's
+  -- bw_stage_member_left has the whole order).
+  -- Tried, never waited for (Claude round 10): this already holds the admin
+  -- row and the gig's row, and whoever holds the lock exclusive may need one
+  -- of them next (an account being deleted: its membership first, then its
+  -- gigs' rows), which would be a cycle. Busy for a moment: the app is told
+  -- to ask again (40001; stageBleNative's ask does).
+  IF NOT pg_try_advisory_xact_lock_shared(hashtextextended('bw-stage-band:' || band::text, 0)) THEN
+    RAISE EXCEPTION 'stage keys are changing, try again' USING ERRCODE = '40001';
+  END IF;
   -- The row (and the band key) are made on first use.
   PERFORM public.bw_stage_key(p_event_id);
   UPDATE public.stage_keys
@@ -224,7 +228,7 @@ GRANT EXECUTE ON FUNCTION public.bw_stage_set_signer(uuid, text, text, text) TO 
 -- never had one (a band whose admins are all on 383f15b, which never makes
 -- one) stays as it was, so members keep following its band-key state
 -- instead of waiting for a pair nobody makes. The band's advisory lock is
--- taken first (bw_stage_set_signer takes it shared): a pair being stored meanwhile is
+-- taken first (bw_stage_set_signer needs it shared): a pair being stored meanwhile is
 -- either committed before this looks (and cleared) or stored after the
 -- demotion is (when the demoted admin can't fetch it).
 -- Note for older apps: after an admin's role change, a gig that had a pair
@@ -236,13 +240,19 @@ SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
 BEGIN
+  -- The band itself going (its members go with it): its gigs and their pairs
+  -- go too, nothing to clear and no lock to take (Claude round 10; see 191's
+  -- bw_stage_member_left).
+  IF NOT EXISTS (SELECT 1 FROM public.bands b WHERE b.id = OLD.band_id) THEN
+    RETURN NULL;
+  END IF;
   IF OLD.role = 'admin' AND COALESCE(OLD.is_active, true)
      AND (TG_OP = 'DELETE'
           OR NEW.role IS DISTINCT FROM 'admin'
           OR NOT COALESCE(NEW.is_active, true)
           OR NEW.band_id IS DISTINCT FROM OLD.band_id
           OR NEW.user_id IS DISTINCT FROM OLD.user_id) THEN
-    -- The band's advisory lock, exclusive: waits for bw_stage_set_signer's shared one (see there).
+    -- The band's advisory lock, exclusive: waits for a shared one held (bw_stage_set_signer, bw_stage_key's first use).
     PERFORM pg_advisory_xact_lock(hashtextextended('bw-stage-band:' || OLD.band_id::text, 0));
     UPDATE public.stage_keys s
        SET sign_public = NULL, sign_private = NULL, sign_version = s.sign_version + 1

@@ -25,6 +25,8 @@ const db = vi.hoisted(() => ({
   gate: null as Promise<void> | null,
   /** bw_stage_set_signer fails (the network drops between the two calls). */
   failSet: false,
+  /** bw_stage_set_signer answers "busy, try again" (40001) this many times (190: the band's keys are changing). */
+  busy: 0,
   /** The account may see the gig (else the server's no: SQL NULL). */
   member: true,
   /** Answers worked out when asked, held back until the test releases them (overlapping fetches). */
@@ -51,6 +53,7 @@ vi.mock('../supabase', () => ({
       if (fn === 'bw_stage_signer') return later({ data: db.admin ? withVersion(db.pair) : null, error: null });
       if (fn === 'bw_stage_set_signer') {
         if (db.failSet) throw new TypeError('Failed to fetch');
+        if (db.busy-- > 0) return { data: null, error: { code: '40001', message: 'stage keys are changing, try again' } };
         if (!db.admin) return { data: null, error: null };
         db.replaced.push(args.p_replace_public);
         if (db.pair && args.p_replace_public === db.pair.public) {
@@ -89,6 +92,7 @@ beforeEach(() => {
   db.replaced = [];
   db.gate = null;
   db.failSet = false;
+  db.busy = 0;
   db.member = true;
   db.slow = false;
   db.held = [];
@@ -228,6 +232,29 @@ describe('stageSigner / stageVerifyKey (migration 190)', () => {
     } finally {
       native_.mockRestore();
     }
+  });
+
+  it("the server's no on the band key is one account's: another account on this phone isn't told no for that gig (Claude round 10 on #288)", async () => {
+    db.member = false;
+    expect(await native.fetchStageKey('gig')).toEqual({ key: null, denied: true });
+    db.offline = true;
+    expect(await native.fetchStageKey('gig')).toEqual({ key: null, denied: true });
+    native.setStageCacheUser('u2');
+    expect(await native.fetchStageKey('gig')).toEqual({ key: null, denied: false });
+  });
+
+  it("the server busy for a moment (40001: the band's keys are changing) is asked again, and the pair is made (Claude round 10 on #288)", async () => {
+    db.busy = 1;
+    const signer = await stageSigner('gig');
+    expect(signer).not.toBeNull();
+    expect(db.calls.filter((c) => c === 'bw_stage_set_signer')).toHaveLength(2);
+  });
+
+  it('still busy after the retries: no pair this time, as offline, and nothing stored (Claude round 10 on #288)', async () => {
+    db.busy = 99;
+    expect(await stageSigner('gig')).toBeNull();
+    expect(db.calls.filter((c) => c === 'bw_stage_set_signer')).toHaveLength(3);
+    expect(native.signerRefused('gig')).toBe(false);
   });
 
   it('overlapping fetches: an older answer arriving last never replaces a newer key (Codex on #288)', async () => {
