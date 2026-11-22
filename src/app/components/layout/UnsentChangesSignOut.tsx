@@ -65,7 +65,7 @@ export const UnsentChangesSignOut: React.FC = () => {
   useEffect(
     () =>
       setSignOutGate(
-        (userId, chatMessages) =>
+        (userId, chatMessages, again) =>
           new Promise<SignOutChoice>((resolve) => {
             answer.current?.('cancel');
             answer.current = resolve;
@@ -75,12 +75,16 @@ export const UnsentChangesSignOut: React.FC = () => {
             setRefusedOnly(waitingChanges(userId) + chatMessages === 0);
             refusedAtAsk.current = refusedChanges(userId);
             notesAtAsk.current = refusedRehearsalNotes(userId);
-            setError(null);
+            setError(again?.cantKeep ? cantKeepRef.current : null);
             setAsk({ userId });
           }),
       ),
     [],
   );
+
+  const cantKeepText = t('Some of these changes can’t be kept on this phone. Unlock to send them before you sign out.');
+  const cantKeepRef = useRef(cantKeepText);
+  cantKeepRef.current = cantKeepText;
 
   const done = (c: SignOutChoice) => {
     answer.current?.(c);
@@ -263,7 +267,7 @@ export const UnsentChangesSignOut: React.FC = () => {
               onClick={() => {
                 if (copy?.queued === QUEUED_KEPT) return done('signout');
                 if (ask && queuedNotKeptOnSignOut(ask.userId) > 0) {
-                  setError(t('Some of these changes can’t be kept on this phone. Unlock to send them before you sign out.'));
+                  setError(cantKeepText);
                   return;
                 }
                 done('keep-queued');

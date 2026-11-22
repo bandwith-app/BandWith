@@ -30,6 +30,8 @@ vi.mock('../services/presence', () => ({ cleanupPresence: vi.fn() }));
 vi.mock('../services/pushNotifications', () => ({ unregisterPushToken: vi.fn(async () => {}) }));
 vi.mock('../services/appBadge', () => ({ syncAppBadge: vi.fn() }));
 vi.mock('../stageBleNative', () => ({ clearStageCache: vi.fn() }));
+// #296's sign-out steps (audio on this device): no-ops here.
+vi.mock('../regiaAudio', () => ({ clearDownloadedAudio: async () => {}, finishPendingAudioCleanup: async () => {}, legacyAudioSignedIn: async () => {} }));
 // The account's offline queue, as stored (deleting the account must not write it back).
 vi.mock('../offline/syncQueue', async () => {
   const st = await import('../offline/storage');
@@ -55,10 +57,13 @@ import { queueLiveOp, readRefusedLiveOps, writeLiveOutbox } from '../liveOutbox'
 import { UnsentChangesSignOut } from '@/app/components/layout/UnsentChangesSignOut';
 
 let result: unknown = undefined;
+// The sign-out a test started: finished before the next test starts (its
+// clear would otherwise run then and remove that test's queue).
+let inFlight: Promise<unknown> = Promise.resolve();
 const SignOutButton = () => {
   const { signOut, user } = useAuth();
   return (
-    <button type="button" disabled={!user} onClick={async () => (result = await signOut())}>
+    <button type="button" disabled={!user} onClick={() => (inFlight = signOut().then((r) => (result = r)))}>
       sign me out
     </button>
   );
@@ -89,7 +94,10 @@ beforeEach(() => {
   sendWaitingNowMock.mockClear();
   result = undefined;
 });
-afterEach(cleanup);
+afterEach(async () => {
+  await Promise.race([inFlight, new Promise((r) => setTimeout(r, 400))]);
+  cleanup();
+});
 
 describe('signing out with changes not sent yet', () => {
   it('asks first; "Sign out anyway" signs out', async () => {
@@ -316,18 +324,31 @@ describe('signing out with changes not sent yet', () => {
     expect(JSON.parse(localStorage.getItem('bw:live_outbox:u-a') || '[]')).toMatchObject([{ id: 'n1' }]);
   });
 
-  it('kept-as-refused finds no room after all (another tab filled the list): the sign-out is called off, nothing wiped', async () => {
+  // Round 9 (Claude r8 nit): another tab fills the refused list between the
+  // sheet's check and the move. Before, some changes moved and the sign-out
+  // was called off without a word; now the room is checked before anything
+  // moves, and the sheet opens again saying why.
+  it('another tab fills the refused list meanwhile: nothing moves, the sheet says unlock to send, not signed out', async () => {
+    const refused = (n: number) => JSON.stringify(Array.from({ length: n }, (_, i) => ({ ...note(`r${i}`), rid: `rid-${i}` })));
+    localStorage.setItem('bw:live_refused:u-a', refused(97));
     queueLiveOp('u-a', note('n1'));
+    queueLiveOp('u-a', note('n2'));
     auth.locked = true;
     await renderApp();
     fireEvent.click(screen.getByText('sign me out'));
-    // Filled between the sheet's check and the move (AuthContext's session re-check).
-    auth.beforeSession = () =>
-      localStorage.setItem('bw:live_refused:u-a', JSON.stringify(Array.from({ length: 100 }, (_, i) => ({ ...note(`r${i}`), rid: `rid-${i}` }))));
+    // Room for 1 left once the sheet's check passed (AuthContext's session re-check).
+    auth.beforeSession = () => {
+      auth.beforeSession = null;
+      localStorage.setItem('bw:live_refused:u-a', refused(99));
+    };
     fireEvent.click(await screen.findByRole('button', { name: /^sign out$/i }));
+    expect(await screen.findByText(/Unlock to send them before you sign out/)).toBeTruthy();
+    expect(auth.signOut).not.toHaveBeenCalled();
+    expect(JSON.parse(localStorage.getItem('bw:live_outbox:u-a') || '[]')).toMatchObject([{ id: 'n1' }, { id: 'n2' }]);
+    expect(readRefusedLiveOps('u-a')).toHaveLength(99);
+    fireEvent.click(screen.getByRole('button', { name: /unlock to send/i }));
     await waitFor(() => expect(result).toMatchObject({ cancelled: true }));
     expect(auth.signOut).not.toHaveBeenCalled();
-    expect(JSON.parse(localStorage.getItem('bw:live_outbox:u-a') || '[]')).toMatchObject([{ id: 'n1' }]);
   });
 
   it('refused only, from the lock screen: "Sign out" keeps them, no Erase', async () => {

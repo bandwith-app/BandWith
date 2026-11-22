@@ -91,6 +91,9 @@ const SONGS: RegiaSong[] = [
 
 const jumpTo = vi.fn();
 const clearPendingOrder = vi.fn();
+// useStageLive's pending order save (ids of the last move not saved yet).
+const pending = { ids: null as string[] | null };
+const pendingOrder = () => pending.ids;
 const setup = (live: RegiaSong[] = SONGS, stored?: RegiaSong[]) =>
   renderHook(() =>
     useStageRegia({
@@ -103,7 +106,7 @@ const setup = (live: RegiaSong[] = SONGS, stored?: RegiaSong[]) =>
       send: vi.fn(),
       bridge: { current: {} } as { current: StageRegiaBridge },
       songs: live,
-      ...(stored ? { savedSongs: stored, clearPendingOrder } : {}),
+      ...(stored ? { savedSongs: stored, clearPendingOrder, pendingOrder } : {}),
       currentId: 'r1',
       select: vi.fn(),
       jumpTo,
@@ -119,6 +122,7 @@ beforeEach(() => {
   db.n = 0;
   jumpTo.mockClear();
   clearPendingOrder.mockClear();
+  pending.ids = null;
 });
 
 describe('Regia: a song off the setlist added on stage', () => {
@@ -183,6 +187,28 @@ describe('Regia: a song off the setlist added on stage', () => {
     expect(db.rows.map((r) => r.id)).toEqual(['r2', 'r1', 'new-1', 'r3']);
     expect(jumpTo).toHaveBeenCalledWith('new-1', ['r2', 'r1', 'new-1', 'r3']);
     expect(clearPendingOrder).toHaveBeenCalledTimes(1);
+  });
+
+  // Round 9 (Claude r8 nit): the pending order was dropped after the save's
+  // await, so a move made while the add was in flight was lost too.
+  it('a move made while the add is in flight survives: only the order pending when the add started is dropped', async () => {
+    const live = [SONGS[1], SONGS[0], SONGS[2]];
+    const before = ['r2', 'r1', 'r3'];
+    pending.ids = before;
+    const { supabase } = await import('@/lib/supabase');
+    const rpc = supabase.rpc as unknown as ReturnType<typeof vi.fn>;
+    const real = rpc.getMockImplementation() as (...a: unknown[]) => unknown;
+    rpc.mockImplementationOnce(async (...a: unknown[]) => {
+      pending.ids = ['r3', 'r2', 'r1']; // the leader moves a song meanwhile
+      return real(...a);
+    });
+    const { result } = setup(live, SONGS);
+    act(() => result.current.turnOn());
+    await act(async () => {
+      await result.current.playExtra({ id: 'd', title: 'Juicy', audio: 'sb://song-files/b/audio/d.mp3' });
+    });
+    expect(clearPendingOrder).toHaveBeenCalledTimes(1);
+    expect(clearPendingOrder.mock.calls[0][0]).toBe(before);
   });
 
   it('changed meanwhile on another device, with a local move too: still a change, the pending order is kept', async () => {

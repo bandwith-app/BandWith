@@ -555,8 +555,15 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     [isLeader, send],
   );
 
-  /** The order was saved another way (the Regia's added song): no pending order save. */
-  const dropPendingOrder = useCallback(() => {
+  /** The last move's order not saved yet (null: none). */
+  const pendingOrderNow = useCallback(() => pendingOrder.current, []);
+  /**
+   * The order was saved another way (the Regia's added song): its pending
+   * save is dropped, only if it is still `ids` (what was pending when that
+   * save started); a move made since is still saved.
+   */
+  const dropPendingOrder = useCallback((ids: string[] | null) => {
+    if (!ids || pendingOrder.current !== ids) return;
     clearTimeout(saveTimer.current);
     pendingOrder.current = null;
     setSaveState((s) => (s === 'saving' ? 'saved' : s));
@@ -582,6 +589,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     songs: ordered,
     /** The setlist as stored (its saved order). */
     savedSongs: songs,
+    pendingOrder: pendingOrderNow,
     dropPendingOrder,
     sendSession,
     /** This app's id on the channel (one per Stage mode session). */

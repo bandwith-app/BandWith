@@ -84,8 +84,10 @@ interface Options {
    * move not saved yet, an order from Bluetooth). Defaults to `songs`.
    */
   savedSongs?: RegiaSong[];
-  /** useStageLive: the live order was just saved with the added song, drop the pending order save. */
-  clearPendingOrder?: () => void;
+  /** useStageLive: the last move's order not saved yet, as it is now. */
+  pendingOrder?: () => string[] | null;
+  /** useStageLive: the live order was saved with the added song: drop the order save pending when it started (`ids`). */
+  clearPendingOrder?: (ids: string[] | null) => void;
   currentId: string | null;
   skipped?: ReadonlySet<string>;
   /** useStageLive: make song `i` current (everyone follows). */
@@ -134,6 +136,7 @@ export function useStageRegia({
   bridge,
   songs,
   savedSongs,
+  pendingOrder,
   clearPendingOrder,
   currentId,
   skipped,
@@ -160,8 +163,8 @@ export function useStageRegia({
   const [error, setError] = useState<RegiaError | null>(null);
 
   const stored = savedSongs ?? songs;
-  const ctx = useRef({ songs, stored, clearPendingOrder, currentId, setlistId, myName, select, jumpTo, send, clientId, skipped });
-  ctx.current = { songs, stored, clearPendingOrder, currentId, setlistId, myName, select, jumpTo, send, clientId, skipped };
+  const ctx = useRef({ songs, stored, pendingOrder, clearPendingOrder, currentId, setlistId, myName, select, jumpTo, send, clientId, skipped });
+  ctx.current = { songs, stored, pendingOrder, clearPendingOrder, currentId, setlistId, myName, select, jumpTo, send, clientId, skipped };
 
   // ── Sending ──────────────────────────────────────────────────────────
   const publish = useCallback((next: Partial<RegiaState> & { on: boolean }) => {
@@ -418,9 +421,11 @@ export function useStageRegia({
    */
   const playExtra = useCallback(
     async (song: RegiaExtraSong): Promise<boolean | 'changed'> => {
-      const { setlistId: list, songs: ordered, stored, clearPendingOrder: dropPending, currentId: cur, jumpTo: jump } = ctx.current;
+      const { setlistId: list, songs: ordered, stored, pendingOrder: pendingNow, clearPendingOrder: dropPending, currentId: cur, jumpTo: jump } = ctx.current;
       if (!on || !list) return false;
       setError(null);
+      // The order save pending now is the one this save includes; a move made while it runs isn't.
+      const pendingAtStart = pendingNow?.() ?? null;
       const asStored = stored
         .filter((s) => s.id && s.songId)
         .map((s) => ({ id: s.id!, song_id: s.songId!, set_number: s.setNumber ?? 1 }));
@@ -450,8 +455,8 @@ export function useStageRegia({
         reload();
         return 'changed';
       }
-      // The live order is saved now (with the new song): a pending order save would only conflict.
-      dropPending?.();
+      // The live order is saved now (with the new song): its pending order save would only conflict.
+      dropPending?.(pendingAtStart);
       const known = new Set(saved.map((s) => s.id));
       const added = res.rows?.find((r) => !known.has(r.id) && r.song_id === song.id);
       reload();

@@ -16,8 +16,15 @@ import { readChatOutboxCount, signOutKeeps } from './offline/storage';
  * check passed, never before.
  */
 export type SignOutChoice = 'signout' | 'cancel' | 'erase' | 'keep-queued';
-/** `messages`: chat messages not sent (readChatOutboxCount), counted by the caller. */
-type Gate = (userId: string, messages: number) => Promise<SignOutChoice>;
+/**
+ * `messages`: chat messages not sent (readChatOutboxCount), counted by the
+ * caller. `again.cantKeep`: asked again because the waiting changes can't
+ * all be kept on this phone (the sheet says unlock to send).
+ */
+export interface AskAgain {
+  cantKeep?: boolean;
+}
+type Gate = (userId: string, messages: number, again?: AskAgain) => Promise<SignOutChoice>;
 
 let gate: Gate | null = null;
 
@@ -39,11 +46,11 @@ export async function askBeforeSignOut(userId: string | null | undefined): Promi
 }
 
 /** The person's answer ('signout' when nothing needed asking). */
-export async function askSignOutChoice(userId: string | null | undefined): Promise<SignOutChoice> {
+export async function askSignOutChoice(userId: string | null | undefined, again?: AskAgain): Promise<SignOutChoice> {
   if (!userId || !gate) return 'signout';
   const messages = await readChatOutboxCount(userId);
   if (!gate || waitingChanges(userId) + messages + refusedChanges(userId) === 0) return 'signout';
-  return gate(userId, messages);
+  return gate(userId, messages, again);
 }
 
 /** A sign-out the person called off in that sheet: still signed in. */

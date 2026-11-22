@@ -99,9 +99,23 @@ describe('Stage mode: the leader reorders online', () => {
     act(() => result.current.move(2, 0));
     expect(result.current.songs.map((s) => s.id)).toEqual(['r3', 'r1', 'r2']);
     expect(result.current.savedSongs.map((s) => s.id)).toEqual(['r1', 'r2', 'r3']);
-    act(() => result.current.dropPendingOrder());
+    act(() => result.current.dropPendingOrder(result.current.pendingOrder()));
     await new Promise((r) => setTimeout(r, 1500));
     expect(db.rpcs).toHaveLength(0);
     expect(result.current.saveState).not.toBe('saving');
+  });
+
+  // Round 9 (Claude r8 nit): only the order pending when the add started is
+  // dropped; a move made since is still saved.
+  it('a move made after the add started is still saved', async () => {
+    const { result } = renderHook(() => useStageLive({ setlistId: 'sl', songs, open: false, isLeader: true }));
+    act(() => result.current.move(2, 0));
+    const atStart = result.current.pendingOrder();
+    expect(atStart).toEqual(['r3', 'r1', 'r2']);
+    act(() => result.current.move(1, 2));
+    act(() => result.current.dropPendingOrder(atStart));
+    await waitFor(() => expect(result.current.saveState).toBe('saved'), { timeout: 3000 });
+    expect(db.rpcs).toHaveLength(1);
+    expect(db.rows.map((r) => r.id)).toEqual(['r3', 'r2', 'r1']);
   });
 });

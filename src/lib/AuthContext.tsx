@@ -488,14 +488,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // asked first, "Send now" or "Sign out anyway" (signOutGate.ts); closed,
   // still signed in. A deleted account is not asked: all it left on this
   // device goes first (accountWrites.ts), so nothing is sent or written back.
-  const signOutAfterAsking = async (opts?: { discardPendingWrites?: boolean }) => {
+  const signOutAfterAsking = async (opts?: { discardPendingWrites?: boolean }, again?: { cantKeep?: boolean }): Promise<Awaited<ReturnType<typeof handleSignOut>> & { cancelled?: true }> => {
     if (opts?.discardPendingWrites) {
       const { discardAccountWrites } = await import('./accountWrites');
       await discardAccountWrites(user?.id);
     } else {
       const asked = user?.id ?? null;
       const { askSignOutChoice } = await import('./signOutGate');
-      const choice = await askSignOutChoice(asked);
+      const choice = await askSignOutChoice(asked, again);
       if (choice === 'cancel') return { error: null, cancelled: true as const };
       // Answered for the account it was asked about only: another tab signed
       // someone else in meanwhile → no sign-out, nothing cleared. Can't tell
@@ -517,10 +517,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           discardRefusedChanges(asked);
         }
         if (choice === 'keep-queued') {
-          const { keepQueuedAsRefused, waitingChanges } = await import('./liveOutbox');
+          const { keepQueuedAsRefused, queuedNotKeptOnSignOut, waitingChanges } = await import('./liveOutbox');
+          // Room checked before anything moves (another tab may have filled
+          // the list since the sheet's check); not all kept: asked again, the
+          // sheet says unlock to send. The wipe never deletes what waits.
+          if (queuedNotKeptOnSignOut(asked) > 0) return signOutAfterAsking(opts, { cantKeep: true });
           keepQueuedAsRefused(asked);
-          // Something found no room (the sheet checked; another tab filled the list since): the wipe would delete it.
-          if (waitingChanges(asked) > 0) return { error: null, cancelled: true as const };
+          if (waitingChanges(asked) > 0) return signOutAfterAsking(opts, { cantKeep: true });
         }
       }
     }
