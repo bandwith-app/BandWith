@@ -22,8 +22,9 @@ export interface Quote {
   
   // Client Info
   client_name: string;
-  client_email?: string;
-  client_phone?: string;
+  /** null clears it (183: an UPDATE drops undefined, so the old client's address stayed). */
+  client_email?: string | null;
+  client_phone?: string | null;
   client_company?: string;
   
   // Event Info
@@ -798,6 +799,8 @@ export const isUuid = (value: unknown): value is string => typeof value === 'str
 const DB_STATUSES: QuoteStatus[] = ['draft', 'sent', 'viewed', 'accepted', 'declined', 'expired', 'negotiating', 'archived'];
 
 const textOrUndefined = (v?: string | null): string | undefined => (v && String(v).trim() ? String(v) : undefined);
+/** A field the wizard can clear: null, so an UPDATE clears it too (supabase-js drops undefined). */
+const textOrNull = (v?: string | null): string | null => textOrUndefined(v) ?? null;
 const intOrUndefined = (v?: number | null): number | undefined =>
   typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : undefined;
 const num = (v?: number | null): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
@@ -828,8 +831,9 @@ export const appQuoteToDbRecord = (q: Partial<AppQuote>, bandId: string): Partia
     band_id: bandId,
     status: dbStatus,
     client_name: textOrUndefined(q.clientName) || 'Client',
-    client_email: textOrUndefined(q.clientEmail),
-    client_phone: textOrUndefined(q.clientPhone),
+    // Who the quote goes to: a cleared contact must reach the database (183).
+    client_email: textOrNull(q.clientEmail),
+    client_phone: textOrNull(q.clientPhone),
     client_company: textOrUndefined(q.clientCompany),
     event_name: textOrUndefined(q.eventName || q.eventTitle),
     event_type: textOrUndefined(q.eventType),
@@ -904,6 +908,17 @@ export const appQuoteToDbRecord = (q: Partial<AppQuote>, bandId: string): Partia
   };
 };
 
+/**
+ * The columns an edit of an existing quote writes: as appQuoteToDbRecord,
+ * without the band, the status and the send time. The wizard only echoes
+ * the status it was opened with; writing it back could restore the old
+ * client's status after the server moved the quote on (183: new recipient).
+ */
+export const quoteUpdateRecord = (q: Partial<AppQuote>, bandId: string): Partial<Quote> => {
+  const { band_id: _band, status: _status, sent_at: _sentAt, ...rest } = appQuoteToDbRecord(q, bandId);
+  return rest;
+};
+
 /** Maps the wizard's musicians to `quote_musicians` rows (user_id only when it is a real profile id). */
 export const appMusiciansToDb = (
   musicians?: AppQuoteMusician[]
@@ -930,7 +945,7 @@ export const dbQuoteToAppQuote = (q: Quote & { musicians?: QuoteMusician[] }): A
   status: (q.status?.toUpperCase() || 'DRAFT') as AppQuoteStatus,
   clientName: q.client_name,
   clientEmail: q.client_email || '',
-  clientPhone: q.client_phone,
+  clientPhone: q.client_phone ?? undefined,
   clientCompany: q.client_company,
   eventName: q.event_name || '',
   eventType: (q.event_type || 'other') as AppQuote['eventType'],

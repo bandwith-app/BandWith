@@ -37,6 +37,7 @@ import {
   acceptQuote as acceptQuoteDB,
   declineQuote as declineQuoteDB,
   appQuoteToDbRecord,
+  quoteUpdateRecord,
   appMusiciansToDb,
   dbQuoteToAppQuote,
   isUuid,
@@ -197,7 +198,8 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
         const optimistic = { ...existing, ...quoteData, quoteNumber: existing.quoteNumber } as MockQuote;
         setQuotes(prev => prev.map(q => (q.id === existing.id ? optimistic : q)));
 
-        const { band_id: _bandId, ...updates } = record;
+        // Not the status the wizard was opened with: the server may have moved it on (183).
+        const updates = quoteUpdateRecord(quoteData, currentBandId);
         const { data, error } = await updateQuoteDB(existing.id, updates);
         if (error || !data) {
           setQuotes(previous);

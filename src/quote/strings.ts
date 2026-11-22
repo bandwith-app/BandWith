@@ -95,6 +95,7 @@ const en = {
   depositRow: "Deposit",
   depositPaidTitle: "Deposit received. Thank you!",
   depositPaidBody: "{band} recorded your deposit of {amount}. The date is confirmed.",
+  depositPaidBodyNoAmount: "{band} recorded your deposit. The date is confirmed.",
 };
 
 export type QuoteStrings = typeof en;
@@ -191,6 +192,7 @@ const it: QuoteStrings = {
   depositRow: "Acconto",
   depositPaidTitle: "Acconto ricevuto. Grazie!",
   depositPaidBody: "{band} ha registrato il tuo acconto di {amount}. La data è confermata.",
+  depositPaidBodyNoAmount: "{band} ha registrato il tuo acconto. La data è confermata.",
 };
 
 const es: QuoteStrings = {
@@ -285,6 +287,7 @@ const es: QuoteStrings = {
   depositRow: "Anticipo",
   depositPaidTitle: "Anticipo recibido. ¡Gracias!",
   depositPaidBody: "{band} ha registrado tu anticipo de {amount}. La fecha está confirmada.",
+  depositPaidBodyNoAmount: "{band} ha registrado tu anticipo. La fecha está confirmada.",
 };
 
 const fr: QuoteStrings = {
@@ -379,6 +382,7 @@ const fr: QuoteStrings = {
   depositRow: "Acompte",
   depositPaidTitle: "Acompte reçu. Merci !",
   depositPaidBody: "{band} a enregistré votre acompte de {amount}. La date est confirmée.",
+  depositPaidBodyNoAmount: "{band} a enregistré votre acompte. La date est confirmée.",
 };
 
 const de: QuoteStrings = {
@@ -473,6 +477,7 @@ const de: QuoteStrings = {
   depositRow: "Anzahlung",
   depositPaidTitle: "Anzahlung erhalten. Danke!",
   depositPaidBody: "{band} hat eure Anzahlung von {amount} erfasst. Der Termin ist bestätigt.",
+  depositPaidBodyNoAmount: "{band} hat eure Anzahlung erfasst. Der Termin ist bestätigt.",
 };
 
 const pt: QuoteStrings = {
@@ -567,6 +572,7 @@ const pt: QuoteStrings = {
   depositRow: "Sinal",
   depositPaidTitle: "Sinal recebido. Obrigado!",
   depositPaidBody: "{band} registrou o seu sinal de {amount}. A data está confirmada.",
+  depositPaidBodyNoAmount: "{band} registrou o seu sinal. A data está confirmada.",
 };
 
 export const QUOTE_STRINGS: Record<QuoteLang, QuoteStrings> = { en, it, es, fr, de, pt };

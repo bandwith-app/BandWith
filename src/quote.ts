@@ -65,11 +65,12 @@ const stampTime = (iso: string) =>
 const stamp = (iso: string) =>
   new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso));
 let currency = 'EUR';
-const money = (n: number) => {
+/** `cur`: another currency than the quote's (183: the deposit in the gig's currency). */
+const money = (n: number, cur = currency) => {
   try {
-    return new Intl.NumberFormat(lang, { style: 'currency', currency, maximumFractionDigits: n % 1 ? 2 : 0 }).format(n);
+    return new Intl.NumberFormat(lang, { style: 'currency', currency: cur, maximumFractionDigits: n % 1 ? 2 : 0 }).format(n);
   } catch {
-    return `${n} ${currency}`;
+    return `${n} ${cur}`;
   }
 };
 
@@ -463,14 +464,17 @@ function depositCard(v: QuoteLinkView, q: ClientQuoteSnapshot) {
   const amount = money(q.deposit.amount);
   const kicker = h('div', { class: 'kicker' }, `${v.band_name} · ${S.depositKicker}${q.ref ? ` ${q.ref}` : ''}`);
   if (v.deposit_paid) {
-    // 183: what the band recorded (€300 on a €500 deposit says €300); before 183, what was asked.
-    const received = v.deposit_paid_amount != null && v.deposit_paid_amount > 0 ? money(v.deposit_paid_amount) : amount;
+    // 183: what the band recorded, in the gig's currency ($300 on a €500
+    // deposit says $300). No amount recorded (or a server before 183): no
+    // amount, never the one asked.
+    const cur = v.deposit_paid_currency && /^[A-Z]{3}$/.test(v.deposit_paid_currency) ? v.deposit_paid_currency : currency;
+    const got = v.deposit_paid_amount != null && v.deposit_paid_amount > 0 ? money(v.deposit_paid_amount, cur) : null;
     return h(
       'section',
       { class: 'card', role: 'status', 'data-testid': 'deposit-paid' },
       kicker,
       h('h2', { style: 'margin-top:12px' }, S.depositPaidTitle),
-      h('p', {}, fill(S.depositPaidBody, { ...vars(v), amount: received })),
+      h('p', {}, got ? fill(S.depositPaidBody, { ...vars(v), amount: got }) : fill(S.depositPaidBodyNoAmount, vars(v))),
     );
   }
   const pay = q.pay;
@@ -654,8 +658,8 @@ function poll() {
       const next = await api.view();
       // A new version counts too, with or without a message (183).
       const changed = (a: QuoteLinkView, b: QuoteLinkView) =>
-        JSON.stringify([a.version, a.messages, a.balance, a.balance_paid, a.deposit_paid, a.deposit_paid_amount]) !==
-        JSON.stringify([b.version, b.messages, b.balance, b.balance_paid, b.deposit_paid, b.deposit_paid_amount]);
+        JSON.stringify([a.version, a.messages, a.balance, a.balance_paid, a.deposit_paid, a.deposit_paid_amount, a.deposit_paid_currency]) !==
+        JSON.stringify([b.version, b.messages, b.balance, b.balance_paid, b.deposit_paid, b.deposit_paid_amount, b.deposit_paid_currency]);
       if (next && changed(next, view)) {
         readFields();
         applyView(next, true);

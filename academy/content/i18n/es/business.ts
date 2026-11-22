@@ -389,7 +389,7 @@ const business: AreaText = {
         },
         { type: "p", text: "Los admins reciben una push y una notificación en la app cuando el cliente abre el presupuesto por primera vez, lo acepta, lo rechaza o escribe." },
         { type: "note", tone: "warning", text: "**Enlace nuevo** y **Desactivar enlace** preguntan antes, porque el enlace actual del cliente deja de funcionar al momento." },
-        { type: "p", text: "Un presupuesto que nunca se ha enviado muestra aquí **Enviar al cliente**. También uno enviado al que le cambias el cliente (otro email, u otro teléfono si no tiene email): el enlace anterior deja de funcionar y, cuando lo envías, el nuevo cliente solo ve su propia conversación." },
+        { type: "p", text: "Un presupuesto que nunca se ha enviado muestra aquí **Enviar al cliente**. También uno enviado que pasas a otro cliente (email o teléfono cambiados o quitados, o un nombre nuevo con un contacto nuevo): el enlace anterior deja de funcionar y, cuando lo envías, el nuevo cliente solo ve su propia conversación." },
       ],
     },
     {
