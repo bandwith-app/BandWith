@@ -1883,6 +1883,7 @@ export default function AuthenticatedApp() {
                 // review #285 r8).
                 id: uuidToNumericId(`${e.eventId ?? e.id}-occ-${occDate}`),
                 eventId: e.eventId,
+                occurrence_of: e.eventId ?? e.id,
                 date: occDate,
               });
             }
@@ -3843,6 +3844,7 @@ export default function AuthenticatedApp() {
                 ...e,
                 id: `${e.id}-occ-${occDate}`,
                 eventId: e.id,
+                occurrence_of: e.id,
                 event_date: occDate,
                 date: occDate,
               });

@@ -70,3 +70,41 @@ describe('Home: a repeating rehearsal is expanded once', () => {
     expect(days.join('|')).not.toMatch(/28\s*Mar/);
   });
 });
+
+// Round 12 NIT (HomeView:366): the id check only knew string ids. The dates
+// AuthenticatedApp's upcomingRehearsals builds have a numeric id, and Home
+// takes one in when its series row isn't in the list. It still carried the
+// series rule, so Home expanded it again. Every expanded date is marked
+// (`occurrence_of`) and Home never expands a marked row.
+describe('Home: a marked date is never a new series', () => {
+  it('a numeric-id date of a weekly series stays one row', () => {
+    const weekly = { frequency: 'weekly', interval: 1, until: '2099-06-30' };
+    const occurrence = {
+      id: 424242,
+      eventId: 'r2',
+      occurrence_of: 'r2',
+      title: 'Weekly Jam',
+      status: 'REHEARSAL',
+      eventType: 'rehearsal',
+      date: '2099-02-07',
+      time: '19:00',
+      is_recurring: true,
+      recurrence_rule: weekly,
+    };
+    render(
+      <HomeView
+        selectedBand={{ id: 'b1', name: 'Band' } as any}
+        expandedCard={null as any}
+        setExpandedCard={() => {}}
+        upcomingRehearsals={[occurrence as any]}
+        currentRehearsal={null}
+        onRehearsalClick={() => {}}
+        isHidden={false}
+        dashboardData={{ upcomingEvents: [], recentQuotes: [] } as any}
+        isAdmin
+      />,
+    );
+    const rows = screen.getAllByText('Weekly Jam').map((el) => el.closest('button') ?? el.parentElement!);
+    expect(rows.map((r) => r.textContent ?? '').filter((t) => /\d\s*(Jan|Feb|Mar|Apr|May|Jun)/.test(t))).toHaveLength(1);
+  });
+});
