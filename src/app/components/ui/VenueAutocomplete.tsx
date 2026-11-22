@@ -151,13 +151,15 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
     // another field (Address) it is never overwritten by the late details.
     let typedHere = false;
     let typedElsewhere = false;
-    // Only text typed in the same form or dialog (its Address, city…): not a
-    // checkbox there, nor a field elsewhere (the chat on the other Duo page).
-    const scope = inputRef.current?.closest('form, [role=dialog]');
+    // Only text typed in the same form, dialog or page (its Address, city…):
+    // not a checkbox there, nor a field on another layer (the chat on the
+    // other Duo page). A host with none of those (the pricing sheet, the band
+    // edit) counts the whole page.
+    const scope = inputRef.current?.closest('form, [role=dialog], .bw-pane-detail') ?? document.body;
     const onInput = (e: Event) => {
       const target = e.target as Element | null;
       if (target === inputRef.current) typedHere = true;
-      else if (scope && target && scope.contains(target) && typesText(target)) typedElsewhere = true;
+      else if (target && scope.contains(target) && typesText(target)) typedElsewhere = true;
     };
     if (place.provider === 'google' && place.placeId && (!place.latitude || !place.city || !place.address)) {
       document.addEventListener('input', onInput, true);

@@ -1304,12 +1304,14 @@ export const BandPricingModal: React.FC<BandPricingModalProps> = ({
                             place.fullAddress ||
                             [place.address, place.city, place.country].filter(Boolean).join(', ') ||
                             place.name;
-                          setSettings({
-                            ...settings,
+                          // From the latest settings: the pick can land late
+                          // (place details), after other fields changed.
+                          setSettings((s) => ({
+                            ...s,
                             band_origin_address: formatted,
                             band_origin_lat: place.latitude,
                             band_origin_lng: place.longitude,
-                          });
+                          }));
                         }}
                         placeholder={t('City or rehearsal studio')}
                         className="border-0 pb-0 text-lg font-medium normal-case placeholder:text-muted-foreground/60"

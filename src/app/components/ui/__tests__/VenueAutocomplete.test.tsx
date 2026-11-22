@@ -279,4 +279,35 @@ describe('the highlighted suggestion stays in view', () => {
     await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
     expect(onSelect.mock.calls[0][0]).toMatchObject({ address: '131 West 3rd Street', city: 'New York' });
   });
+
+  it('a host with no form or dialog (the pricing sheet): a value typed after Tab is still never overwritten', async () => {
+    const google = { name: 'Blue Note Jazz Club', provider: 'google', placeId: 'p1' };
+    let resolve!: (d: unknown) => void;
+    mocks.getGooglePlaceDetails.mockReturnValue(new Promise((r) => (resolve = r)));
+    mocks.searchVenues.mockResolvedValue([google]);
+    const onSelect = vi.fn();
+    const Pricing: React.FC = () => {
+      const [value, setValue] = useState('');
+      const [radius, setRadius] = useState('');
+      return (
+        <div>
+          <VenueAutocomplete value={value} onChange={setValue} onSelect={onSelect} inputId="venue" />
+          <input aria-label="Free local radius" value={radius} onChange={(e) => setRadius(e.target.value)} />
+        </div>
+      );
+    };
+    render(<Pricing />);
+    const input = screen.getByRole('combobox');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'Blue Note' } });
+    await screen.findByRole('option');
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Tab' });
+    const radius = screen.getByRole('textbox', { name: 'Free local radius' }) as HTMLInputElement;
+    fireEvent.change(radius, { target: { value: '25' } });
+    resolve({ name: 'Blue Note Jazz Club', address: '131 West 3rd Street', city: 'New York' });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(radius.value).toBe('25');
+  });
 });
