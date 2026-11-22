@@ -88,4 +88,10 @@ describe('190 the stage signing keys', () => {
     expect(sql).toMatch(/CREATE TRIGGER bw_stage_rotate_signer\s+AFTER UPDATE OF role, is_active, band_id, user_id OR DELETE ON public\.band_members/);
     expect(sql).toMatch(/REVOKE EXECUTE ON FUNCTION public\.bw_stage_rotate_signer\(\) FROM PUBLIC, anon, authenticated/);
   });
+
+  it('a gig moved to another band loses its pair and its version goes up (Codex on #288; behaviour: stage_signer_quote.pglite.mjs)', () => {
+    expect(sql).toMatch(/CREATE TRIGGER bw_stage_event_moved\s+AFTER UPDATE OF band_id ON public\.events/);
+    expect(sql).toMatch(/IF NEW\.band_id IS DISTINCT FROM OLD\.band_id THEN/);
+    expect(sql).toMatch(/REVOKE EXECUTE ON FUNCTION public\.bw_stage_event_moved\(\) FROM PUBLIC, anon, authenticated/);
+  });
 });

@@ -179,6 +179,39 @@ describe('stageSigner / stageVerifyKey (migration 190)', () => {
       native.setStageCacheUser('u1');
     }
   });
+  it('a private key kept for one account is never handed to another on this phone, and goes when another account signs in (Codex on #288)', async () => {
+    const signer = await stageSigner('gig');
+    expect(signer).not.toBeNull();
+    native.setStageCacheUser('u2');
+    db.offline = true;
+    expect(await stageSigner('gig')).toBeNull();
+    expect(await stageVerifyKey('gig')).toBeNull();
+    expect(Object.values(localStorage).some((v) => String(v).includes(signer!.private))).toBe(false);
+    // Nor back to the first account later: it was deleted, not hidden.
+    native.setStageCacheUser('u1');
+    expect(await stageSigner('gig')).toBeNull();
+  });
+
+  it('the same account after an app restart (no account known yet in memory) still gets its kept pair offline', async () => {
+    const signer = await stageSigner('gig');
+    db.offline = true;
+    native.setStageCacheUser('u1');
+    expect(await stageSigner('gig')).toEqual(signer);
+  });
+
+  it('sign-out also empties the imported keys kept in memory (Claude on #288)', async () => {
+    const signer = (await stageSigner('gig'))!;
+    const data = new Uint8Array([1, 2, 3]);
+    await signBytes(signer.private, data);
+    const spy = vi.spyOn(crypto.subtle, 'importKey');
+    await signBytes(signer.private, data);
+    expect(spy).not.toHaveBeenCalled();
+    clearStageCache();
+    await signBytes(signer.private, data);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+
   it("a stored pair whose private key doesn't sign for its public one is replaced by naming it, and the new pair (new version) is used (Claude on #288)", async () => {
     const a = await generateSigner();
     const b = await generateSigner();

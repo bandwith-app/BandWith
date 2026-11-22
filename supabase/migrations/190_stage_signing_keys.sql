@@ -216,6 +216,32 @@ CREATE TRIGGER bw_stage_rotate_signer
   AFTER UPDATE OF role, is_active, band_id, user_id OR DELETE ON public.band_members
   FOR EACH ROW EXECUTE FUNCTION public.bw_stage_rotate_signer();
 
+-- A gig moved to another band: its pair goes and its version goes up, like
+-- a demotion, so the old band's admins (who may keep the private key on
+-- their phone) lead nobody there. (Its band key is changed by 191.)
+CREATE OR REPLACE FUNCTION public.bw_stage_event_moved()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF NEW.band_id IS DISTINCT FROM OLD.band_id THEN
+    UPDATE public.stage_keys s
+       SET sign_public = NULL, sign_private = NULL, sign_version = s.sign_version + 1
+     WHERE s.event_id = NEW.id;
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.bw_stage_event_moved() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS bw_stage_event_moved ON public.events;
+CREATE TRIGGER bw_stage_event_moved
+  AFTER UPDATE OF band_id ON public.events
+  FOR EACH ROW EXECUTE FUNCTION public.bw_stage_event_moved();
+
 -- 178 (date on hold) hides a tentative quote from every member, lineup
 -- included, through bw_can_view_event; spelled out here too, as in the stage
 -- key and topic (191), when 178 is in (it comes first in the release order).

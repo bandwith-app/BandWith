@@ -70,6 +70,11 @@ export async function generateSigner(): Promise<StageKeyPair> {
 
 const privCache = new Map<string, Promise<CryptoKey>>();
 const pubCache = new Map<string, Promise<CryptoKey>>();
+/** Sign-out and another account: the imported keys kept in memory go too (stageBleNative.ts). */
+export function clearSignCaches() {
+  privCache.clear();
+  pubCache.clear();
+}
 
 const privateKey = (pkcs8: string) => {
   let k = privCache.get(pkcs8);

@@ -10,7 +10,7 @@
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 import { supabase, isDemoMode } from './supabase';
 import { removeAllPackFiles } from './livePackFiles';
-import { generateSigner, isPublicKey, pairMatches, type StageSigner, type StageVerifyAnswer } from './stageSign';
+import { clearSignCaches, generateSigner, isPublicKey, pairMatches, type StageSigner, type StageVerifyAnswer } from './stageSign';
 
 export type StageBleState = 'on' | 'off' | 'unauthorized' | 'unsupported' | 'unknown';
 
@@ -71,11 +71,47 @@ const cachedKey = (eventId: string): string | null => {
  */
 let cacheGeneration = 0;
 let cacheUser: string | null = null;
-/** The signed-in account (AuthContext); another one than before drops fetches in flight. */
+/** Whose keys this phone keeps (kept across restarts): another account signing in deletes them. */
+const OWNER_KEY = 'bw-stage-owner';
+/**
+ * The signed-in account (AuthContext): another one than before drops fetches
+ * in flight, and deletes the keys kept for the last one (Codex on #288).
+ */
 export function setStageCacheUser(id: string | null | undefined) {
   if (!id) return;
   if (cacheUser && cacheUser !== id) cacheGeneration++;
+  let owner: string | null = null;
+  try {
+    owner = localStorage.getItem(OWNER_KEY);
+  } catch {
+    /* storage not available */
+  }
+  if (owner !== id) {
+    if (owner) {
+      cacheGeneration++;
+      removeKeptKeys();
+    }
+    try {
+      localStorage.setItem(OWNER_KEY, id);
+    } catch {
+      /* storage not available */
+    }
+  }
   cacheUser = id;
+}
+/** The kept Bluetooth keys of every gig, and the imported ones in memory. */
+function removeKeptKeys() {
+  clearSignCaches();
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(KEY_PREFIX)) keys.push(k);
+    }
+    keys.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    /* storage not available */
+  }
 }
 const tagFetch = () => cacheGeneration;
 const stillOurs = (tag: number) => tag === cacheGeneration;
@@ -105,6 +141,8 @@ export async function stageKey(eventId: string): Promise<string | null> {
 
 const SIGNER_PREFIX = KEY_PREFIX + 'signer:';
 const VERIFY_PREFIX = KEY_PREFIX + 'verify:';
+/** Kept per account and gig: never handed to another account (none known yet: nothing kept). */
+const mine = (prefix: string, eventId: string) => (cacheUser ? `${prefix}${cacheUser}:${eventId}` : null);
 const read = (k: string) => {
   try {
     return localStorage.getItem(k);
@@ -112,7 +150,8 @@ const read = (k: string) => {
     return null;
   }
 };
-const keep = (k: string, v: string) => {
+const keep = (k: string | null, v: string) => {
+  if (!k) return;
   try {
     localStorage.setItem(k, v);
   } catch {
@@ -135,14 +174,16 @@ const asVerify = (v: unknown): StageVerifyAnswer | null => {
   // Rotated, no new pair yet ("pending"): only past the first version.
   return o.public === null && version > 1 ? { public: null, version } : null;
 };
-const kept = <T>(k: string, as: (v: unknown) => T | null): T | null => {
+const kept = <T>(k: string | null, as: (v: unknown) => T | null): T | null => {
+  if (!k) return null;
   try {
     return as(JSON.parse(read(k) ?? 'null'));
   } catch {
     return null;
   }
 };
-const forget = (k: string) => {
+const forget = (k: string | null) => {
+  if (!k) return;
   try {
     localStorage.removeItem(k);
   } catch {
@@ -181,7 +222,7 @@ async function ask(fn: string, args: Record<string, string>): Promise<unknown> {
  * server says no (an admin no longer); the kept copy offline.
  */
 export async function stageSigner(eventId: string): Promise<StageSigner | null> {
-  const key = SIGNER_PREFIX + eventId;
+  const key = mine(SIGNER_PREFIX, eventId);
   const tag = tagFetch();
   let data = await ask('bw_stage_signer', { p_event_id: eventId });
   // Signed out (or another account) meanwhile: nothing is kept, nothing returned.
@@ -211,7 +252,7 @@ export async function stageSigner(eventId: string): Promise<StageSigner | null> 
     return null;
   }
   keep(key, JSON.stringify(signer));
-  keep(VERIFY_PREFIX + eventId, JSON.stringify({ public: signer.public, version: signer.version }));
+  keep(mine(VERIFY_PREFIX, eventId), JSON.stringify({ public: signer.public, version: signer.version }));
   return signer;
 }
 
@@ -221,7 +262,7 @@ export async function stageSigner(eventId: string): Promise<StageSigner | null> 
  * made the pair (or for a gig the server no longer shows this account).
  */
 export async function stageVerifyKey(eventId: string): Promise<StageVerifyAnswer | null> {
-  const key = VERIFY_PREFIX + eventId;
+  const key = mine(VERIFY_PREFIX, eventId);
   const tag = tagFetch();
   const data = await ask('bw_stage_verify_key', { p_event_id: eventId });
   if (!stillOurs(tag)) return null;
@@ -236,7 +277,7 @@ export async function stageVerifyKey(eventId: string): Promise<StageVerifyAnswer
 }
 
 /** The public key kept on this phone (no network): Stage starts with it, then asks the server. */
-export const keptVerifyKey = (eventId: string) => kept(VERIFY_PREFIX + eventId, asVerify);
+export const keptVerifyKey = (eventId: string) => kept(mine(VERIFY_PREFIX, eventId), asVerify);
 
 /**
  * Fetch the keys ahead of the gig (event detail open), so they're there
@@ -263,11 +304,13 @@ export function clearStageCache() {
   cacheGeneration++;
   cacheUser = null;
   void removeAllPackFiles().catch(() => undefined);
+  removeKeptKeys();
   try {
+    localStorage.removeItem(OWNER_KEY);
     const keys: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && (k.startsWith(SETLIST_PREFIX) || k.startsWith(KEY_PREFIX))) keys.push(k);
+      if (k && k.startsWith(SETLIST_PREFIX)) keys.push(k);
     }
     keys.forEach((k) => localStorage.removeItem(k));
   } catch {

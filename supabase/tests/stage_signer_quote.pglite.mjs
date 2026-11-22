@@ -277,6 +277,22 @@ ok(json(await as(ADMIN, set(GIG, p4, p1.public)))?.public === p3.public, 'naming
 }
 ok(json(await as(LINEUP, set(GIG, await pair(), p4.public))) === null, 'a member cannot replace it');
 
+// A gig moved to another band (Codex on #288): its pair goes and the version goes up,
+// so the old band's admins (who kept the private key) lead nobody there.
+{
+  const row = async () => (await db.query(`SELECT sign_public, sign_version FROM stage_keys WHERE event_id = '${QUOTE}'`)).rows[0];
+  await as(ADMIN, set(QUOTE, await pair()));
+  const before = await row();
+  ok(before.sign_public !== null, 'the quote has a pair again');
+  await db.exec(`INSERT INTO bands VALUES ('${id(9)}', 'Other band')`);
+  await db.exec(`UPDATE events SET title = 'Lee Wedding (late)' WHERE id = '${QUOTE}'`);
+  ok((await row()).sign_public === before.sign_public, 'another edit of the gig keeps its pair');
+  await db.exec(`UPDATE events SET band_id = '${id(9)}' WHERE id = '${QUOTE}'`);
+  const after = await row();
+  ok(after.sign_public === null && after.sign_version === before.sign_version + 1, `moved to another band: no pair, version ${before.sign_version + 1}, got ${JSON.stringify(after)}`);
+  ok((await db.query(`SELECT has_function_privilege('authenticated', 'public.bw_stage_event_moved()', 'EXECUTE') x`)).rows[0]?.x === false, 'clients cannot call the trigger function');
+}
+
 // 178's own rule is spelled out in 190's public-key function, not only inherited through bw_can_view_event.
 if (with178) {
   const def = (await db.query(`SELECT pg_get_functiondef('public.bw_stage_verify_key(uuid)'::regprocedure) d`)).rows[0].d;
