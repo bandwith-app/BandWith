@@ -71,6 +71,15 @@ const waitingNew = (me: string | null, id?: string) =>
   !!me && !!id && readLiveOutbox(me).some((o) => o.kind === 'note' && o.id === id && o.isNew);
 
 /**
+ * Something for this note still waits on this phone (an edit kept offline or
+ * after a server problem). The next change joins it there, in order: written
+ * straight to the server, it would be overwritten by the older one when the
+ * outbox sends it. In the outbox the newer edit replaces the older one.
+ */
+const waitingChange = (me: string | null, id?: string) =>
+  !!me && !!id && readLiveOutbox(me).some((o) => (o.kind === 'note' || o.kind === 'noteDelete') && o.id === id);
+
+/**
  * Save my note. With no signal it is kept on this phone and sent when back
  * online (liveOutbox.ts): `queued`.
  */
@@ -88,6 +97,7 @@ export const savePersonalNote = async (
     return { error: null, queued: true as const };
   };
   if (waitingNew(me, id)) return queue(true);
+  if (waitingChange(me, id)) return queue(false);
   const res = id
     ? await supabase.from('song_personal_notes').update({ body: text, anchor }).eq('id', id)
     : await supabase.from('song_personal_notes').insert({ song_id: songId, anchor, body: text });
@@ -103,7 +113,7 @@ export const deletePersonalNote = async (songId: string, id: string): Promise<{ 
     changed(songId);
     return { error: null, queued: true as const };
   };
-  if (waitingNew(me, id)) return queue();
+  if (waitingNew(me, id) || waitingChange(me, id)) return queue();
   const res = await supabase.from('song_personal_notes').delete().eq('id', id);
   if (res.error && me && isOfflineError(res.error)) return queue();
   if (!res.error) changed(songId);

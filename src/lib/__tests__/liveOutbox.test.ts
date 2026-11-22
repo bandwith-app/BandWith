@@ -1,10 +1,12 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
   addLiveOp,
   applyNoteOps,
   flushLiveOutbox,
   queueLiveOp,
   readLiveOutbox,
+  readLiveRefused,
+  dismissLiveRefused,
   waitingChanges,
   type LiveOp,
   type LiveOutboxApi,
@@ -110,11 +112,109 @@ describe('flushLiveOutbox', () => {
     expect(r.left).toBe(2);
   });
 
+  // A passing server problem is not a refusal: the change stays for the next try.
+  for (const [what, res] of [
+    ['503 Service Unavailable', { error: { message: 'Service Unavailable' }, status: 503 }],
+    ['500 on a PostgREST error', { error: { message: 'upstream error', code: '' }, status: 500 }],
+    ['429 Too Many Requests', { error: { message: 'Too Many Requests' }, status: 429 }],
+    ['408 Request Timeout', { error: { message: 'Request Timeout' }, status: 408 }],
+    ['401 expired session', { error: { message: 'JWT expired', code: 'PGRST301' }, status: 401 }],
+    ['a statement timeout', { error: { message: 'canceling statement due to statement timeout', code: '57014' } }],
+    ['a request that timed out', { error: { message: 'The request timed out.' } }],
+  ] as const) {
+    it(`server busy or down (${what}): stops and keeps every change`, async () => {
+      queueLiveOp(me, note('n1', 'a', true));
+      queueLiveOp(me, note('n2', 'b', true));
+      const r = await flushLiveOutbox(me, api({ note: async () => res }));
+      expect(r).toEqual({ sent: 0, dropped: 0, left: 2 });
+      expect(readLiveOutbox(me).map((o) => (o as { id: string }).id)).toEqual(['n1', 'n2']);
+    });
+  }
+
+  it('a 403 is a refusal, not a passing problem: dropped', async () => {
+    queueLiveOp(me, note('n1', 'a', true));
+    const r = await flushLiveOutbox(me, api({ note: async () => ({ error: { message: 'Forbidden' }, status: 403 }) }));
+    expect(r).toEqual({ sent: 0, dropped: 1, left: 0 });
+  });
+
   it('refused by the server (no longer allowed, song gone): dropped, the rest goes', async () => {
     queueLiveOp(me, note('n1', 'a', true));
     queueLiveOp(me, note('n2', 'b', true));
     const a = api({ note: async (op) => (op.id === 'n1' ? { error: { message: 'permission denied', code: '42501' } } : { error: null }) });
     const r = await flushLiveOutbox(me, a);
     expect(r).toEqual({ sent: 1, dropped: 1, left: 0 });
+  });
+});
+
+describe('a change the server never takes', () => {
+  afterEach(() => vi.useRealTimers());
+  const api503 = (bad: string): LiveOutboxApi => ({
+    note: async (op) => (op.id === bad ? { error: { message: 'trigger failed' }, status: 500 } : { error: null }),
+    noteDelete: async () => ({ error: null }),
+    suggestion: async () => ({ error: null }),
+    order: async () => ({ error: null }),
+  });
+
+  it('a server problem is tried again, then after 10 tries and 15 minutes set aside, kept to copy; the changes behind it go', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-20T20:00:00Z'));
+    queueLiveOp(me, note('n1', 'capo 2 on the bridge'));
+    queueLiveOp(me, note('n2', 'slower outro'));
+    for (let i = 0; i < 9; i++) {
+      const r = await flushLiveOutbox(me, api503('n1'));
+      expect(r).toEqual({ sent: 0, dropped: 0, left: 2 });
+      vi.setSystemTime(Date.now() + 30_000);
+    }
+    // Ten tries in a few minutes: a short outage, still waiting.
+    expect((await flushLiveOutbox(me, api503('n1'))).left).toBe(2);
+    expect(readLiveRefused(me)).toEqual([]);
+    // Still failing a quarter of an hour later: set aside, the next change goes.
+    vi.setSystemTime(new Date('2026-11-20T20:16:00Z'));
+    const r = await flushLiveOutbox(me, api503('n1'));
+    expect(r).toEqual({ sent: 1, dropped: 1, left: 0 });
+    const refused = readLiveRefused(me);
+    expect(refused).toHaveLength(1);
+    expect(refused[0].op).toMatchObject({ kind: 'note', id: 'n1', body: 'capo 2 on the bridge' });
+    expect(waitingChanges(me)).toBe(0);
+  });
+
+  it('after a day of server problems it is set aside, however few the tries', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-20T20:00:00Z'));
+    queueLiveOp(me, note('n1', 'capo 2'));
+    expect((await flushLiveOutbox(me, api503('n1'))).left).toBe(1);
+    vi.setSystemTime(new Date('2026-11-21T20:01:00Z'));
+    expect(await flushLiveOutbox(me, api503('n1'))).toEqual({ sent: 0, dropped: 1, left: 0 });
+    expect(readLiveRefused(me)).toHaveLength(1);
+  });
+
+  it('no signal is not a server problem: never set aside, however long', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-20T20:00:00Z'));
+    queueLiveOp(me, note('n1', 'capo 2'));
+    const offline: LiveOutboxApi = { ...api503('x'), note: async () => ({ error: { message: 'Failed to fetch' } }) };
+    for (let i = 0; i < 12; i++) {
+      await flushLiveOutbox(me, offline);
+      vi.setSystemTime(Date.now() + 3 * 60 * 60_000);
+    }
+    expect(readLiveOutbox(me)).toHaveLength(1);
+    expect(readLiveRefused(me)).toEqual([]);
+  });
+
+  it('refused for good (not allowed): kept to copy, not lost; removed when dismissed', async () => {
+    queueLiveOp(me, note('n1', 'capo 2'));
+    const refuse: LiveOutboxApi = { ...api503('x'), note: async () => ({ error: { message: 'Forbidden' }, status: 403 }) };
+    expect(await flushLiveOutbox(me, refuse)).toEqual({ sent: 0, dropped: 1, left: 0 });
+    const [item] = readLiveRefused(me);
+    expect(item.op).toMatchObject({ id: 'n1', body: 'capo 2' });
+    dismissLiveRefused(me, item.key);
+    expect(readLiveRefused(me)).toEqual([]);
+  });
+
+  it('a newer edit of a change that kept failing starts again from zero', () => {
+    let ops = addLiveOp([], { ...note('n1', 'capo 2'), failedTries: 9, firstFailedAt: '2026-11-20T20:00:00Z' } as LiveOp);
+    ops = addLiveOp(ops, note('n1', 'capo 3'));
+    expect(ops[0]).not.toHaveProperty('failedTries');
+    expect(ops[0]).not.toHaveProperty('firstFailedAt');
   });
 });

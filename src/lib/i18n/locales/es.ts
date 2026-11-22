@@ -1961,6 +1961,10 @@ const dict: Dictionary = {
   "Back online · synced": "En línea · sincronizado",
   "Back online · up to date": "De nuevo en línea · todo al día",
   "Sync now": "Sincronizar ahora",
+  "You’re offline · {changes} waiting for signal": "Sin conexión · {changes} esperando señal",
+  "Back online · sending {changes}": "De nuevo en línea · enviando {changes}",
+  "Back online · {changes} will be sent shortly": "De nuevo en línea · envío de {changes} en breve",
+  "Send now": "Enviar ahora",
 
   // Onboarding
   "Shared calendars": "Calendarios compartidos",
@@ -3876,6 +3880,18 @@ const dict: Dictionary = {
   "Saved on this phone": "Guardado en este teléfono",
   "Saved on this phone. It goes to the admin when you’re back online.": "Guardado en este teléfono. Llega al admin cuando vuelvas a tener conexión.",
   "Note saved on this phone. It reaches your account when you’re back online.": "Nota guardada en este teléfono. Llega a tu cuenta cuando vuelvas a tener conexión.",
+  // Live outbox: waiting with full signal, changes the server did not take
+  "1 change waiting to send": "1 cambio pendiente de enviar",
+  "{n} changes waiting to send": "{n} cambios pendientes de enviar",
+  "Saved on this phone, sent as soon as the server answers.": "Guardado en este teléfono, se envía en cuanto el servidor responda.",
+  "1 change wasn’t saved": "1 cambio no se guardó",
+  "{n} changes weren’t saved": "{n} cambios no se guardaron",
+  "These changes couldn’t be saved. Copy what you need, then remove them.": "Estos cambios no se pudieron guardar. Copia lo que necesites y luego quítalos.",
+  "Your note": "Tu nota",
+  "Suggestion to the band": "Sugerencia a la banda",
+  "New song order": "Nuevo orden de canciones",
+  "The server didn’t accept it.": "El servidor no lo aceptó.",
+  "The server didn’t answer for too long.": "El servidor no respondió durante demasiado tiempo.",
   // Live pack consent, readiness, Settings › Offline & live (plan §3.3–3.4)
   "Offline & live": "Sin conexión y en vivo",
   "Have the setlist with you, even without signal.": "Ten el setlist contigo, incluso sin señal.",

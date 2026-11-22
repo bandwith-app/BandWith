@@ -84,8 +84,13 @@ check (`app.check`) on each screen it reaches.
 | Offline consent: "Not now" downloads nothing and is remembered | `live-pack-consent` | full |
 | Offline readiness (admin): "Offline: N of M members ready", the not-ready list, Remind sends one push | `live-pack-consent` | all |
 | Settings › Offline & live: automatic on/off, Wi-Fi only, space used, Delete all with a confirm | `live-pack-consent` | all |
-| No signal: a personal note written in Stage is kept on the phone ("Note saved on this phone…", "1 change waiting for signal") and sent by itself when the signal is back (member) | `live-outbox` | all (laptop skipped: Stage controls on the Deck) |
+| No signal: a personal note written in Stage is kept on the phone ("Note saved on this phone…", "1 change waiting for signal") and sent by itself when the signal is back: nothing left "waiting" (for signal or to send) and nothing under "wasn’t saved" (member) | `live-outbox` | all (laptop skipped: Stage controls on the Deck) |
 | No signal: a "Note for the band" from Stage says "Saved on this phone. It goes to the admin…" and reaches the admin when back online | `live-outbox` | all but Book / laptop |
+| Urgent pop-up waits for an open sheet: hidden while the sheet is open, back when it closes | `urgent-yields` | all |
+| System Back with the urgent pop-up waiting closes the open sheet (New chat), not the hidden pop-up; the pop-up comes back | `urgent-yields` | all |
+| Urgent pop-up waits while the gig editor or the quote wizard is open (no dialog role: `data-modal-open`), back when it closes | `urgent-yields` | all |
+| Urgent pop-up waits for Stage mode: hidden while Stage is open, back when it closes | `urgent-yields` | all but Book / laptop |
+| An urgent item that arrives while a sheet is already open never flashes over it, not even for a frame; it shows once the sheet closes | `urgent-yields` | all |
 | Rehearsal session: a running session shows its clock in Live mode and on the rehearsal page; members get no controls; before the start only the admin sees Start rehearsal (Duo Laptop: the floor wedge's clock and Pause) | `rehearsal-session` | all |
 | Rehearsal session: start, pause (clock stands), resume, two songs, End asks first, summary (songs played) saved and on the rehearsal page | `rehearsal-session` | full |
 | Rehearsal session survives closing Live mode and restarting the app | `rehearsal-session` | full |

@@ -184,6 +184,7 @@ import { useLivePackPrefetch } from "@/app/hooks/useLivePackPrefetch";
 import { findPack } from "@/lib/livePackStore";
 import { isFlagOn, startAppFlags } from "@/lib/appFlags";
 import { useLiveOutboxFlush } from "@/app/hooks/useLiveOutbox";
+import { useLayerOpen } from "@/app/hooks/useLayerOpen";
 
 const mapEventStatus = (event: Event): EventStatus => {
   // event_type is the primary classifier
@@ -488,7 +489,7 @@ export default function AuthenticatedApp() {
     }
   }, [androidInstall, androidInstallSource]);
 
-  const { isOnline, wasOffline, pendingSyncCount, triggerSync } = useNetworkStatus((msg) => {
+  const { isOnline, wasOffline, pendingSyncCount, retryLaterCount, triggerSync } = useNetworkStatus((msg) => {
     setSaveToast({ message: msg, type: 'success' });
     refetchEvents();
     if (refetchDashboard) refetchDashboard();
@@ -530,6 +531,9 @@ export default function AuthenticatedApp() {
   // ═══ LOCAL CLIENT-SIDE BAND PILL FILTER (instant, <1ms) ═══
   const [selectedBandPill, setSelectedBandPill] = useState<string>('all');
   const [urgentNotification, setUrgentNotification] = useState<import('@/lib/services/notifications').Notification | null>(null);
+  // The urgent pop-up never draws over an open sheet, modal or Stage mode:
+  // it waits for it to close (watched only while one is waiting).
+  const layerOpen = useLayerOpen(!!urgentNotification);
   const [rsvpNotification, setRsvpNotification] = useState<import('@/lib/services/notifications').Notification | null>(null);
   const [pollNotification, setPollNotification] = useState<import('@/lib/services/notifications').Notification | null>(null);
   const { notifications: realNotifications, loading: notificationsLoading, refetch: refetchNotifications, setNotifications: setRealNotifications } = useNotifications({
@@ -2310,6 +2314,7 @@ export default function AuthenticatedApp() {
   const lastBackPressRef = useRef<number>(0);
   const backNavStateRef = useRef({
     urgentNotification,
+    layerOpen,
     rsvpNotification,
     pollNotification,
     votePollId,
@@ -2352,6 +2357,7 @@ export default function AuthenticatedApp() {
   // Keep ref synchronized with latest state on every render
   backNavStateRef.current = {
     urgentNotification,
+    layerOpen,
     rsvpNotification,
     pollNotification,
     votePollId,
@@ -2405,8 +2411,10 @@ export default function AuthenticatedApp() {
       if (handleBackFromStack()) return true;
 
       // 1. Transient Notifications & Popups
-      // The urgent popup only shows when no RSVP or poll sheet covers it.
-      if (s.urgentNotification && !s.rsvpNotification && !s.pollNotification && !s.showAdminTour) {
+      // The urgent popup only shows when no RSVP or poll sheet covers it, and
+      // waits while another sheet or Stage is open: Back then closes that
+      // layer (further down), and the waiting pop-up comes back after.
+      if (s.urgentNotification && !s.rsvpNotification && !s.pollNotification && !s.showAdminTour && !s.layerOpen) {
         setUrgentNotification(null);
         return true;
       }
@@ -3961,6 +3969,7 @@ export default function AuthenticatedApp() {
         isOnline={isOnline}
         wasOffline={wasOffline}
         pendingCount={pendingSyncCount}
+        retryLaterCount={retryLaterCount}
         onSyncNow={triggerSync}
       />
       <div className="fixed inset-0 z-0 bg-background" />
@@ -5051,7 +5060,7 @@ export default function AuthenticatedApp() {
 
       <AnimatePresence>
         {/* Waits for the welcome tour: one layer at a time on first launch. */}
-        {urgentNotification && !rsvpNotification && !pollNotification && !showAdminTour && (
+        {urgentNotification && !rsvpNotification && !pollNotification && !showAdminTour && !layerOpen && (
           <UrgentNotificationPopup
             key={urgentNotification.id}
             notification={urgentNotification}

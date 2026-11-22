@@ -68,10 +68,24 @@ describe('Stage mode: changes waiting for signal', () => {
     expect(screen.queryByText('Not saved')).toBeNull();
   });
 
+  const setOnline = (on: boolean) => Object.defineProperty(window.navigator, 'onLine', { configurable: true, get: () => on });
+
   it('the header counts the changes waiting on this phone', async () => {
+    setOnline(false);
+    try {
+      queueLiveOp('u-1', { kind: 'note', id: 'n1', songId: 's1', anchor: { type: 'song' }, body: 'capo 2', isNew: true });
+      render(<StageMode title="The Loft, Brooklyn" dateLabel="Sat 28 Nov" steps={[]} songs={songs} currentUserId="u-1" onClose={vi.fn()} />);
+      expect(await screen.findByText('1 change waiting for signal')).toBeInTheDocument();
+    } finally {
+      setOnline(true);
+    }
+  });
+
+  it('full signal, the server busy for a moment: "waiting to send", not "for signal"', async () => {
     queueLiveOp('u-1', { kind: 'note', id: 'n1', songId: 's1', anchor: { type: 'song' }, body: 'capo 2', isNew: true });
     render(<StageMode title="The Loft, Brooklyn" dateLabel="Sat 28 Nov" steps={[]} songs={songs} currentUserId="u-1" onClose={vi.fn()} />);
-    expect(await screen.findByText('1 change waiting for signal')).toBeInTheDocument();
+    expect(await screen.findByText('1 change waiting to send')).toBeInTheDocument();
+    expect(screen.queryByText(/waiting for signal/)).toBeNull();
   });
 });
 

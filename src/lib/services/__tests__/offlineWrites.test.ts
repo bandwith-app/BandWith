@@ -87,4 +87,16 @@ describe('writes with no signal stay on the phone (plan §3.5)', () => {
     expect(await keepOrderOffline({ message: 'Failed to fetch' }, { setlistId: 'sl', eventId: 'e1', rows, before })).toBe(true);
     expect(readLiveOutbox('u-1')).toEqual([{ kind: 'order', setlistId: 'sl', eventId: 'e1', rows, before }]);
   });
+
+  it("full signal but the server busy (503, 429, a timeout): the leader's new order stands and waits on the phone too", async () => {
+    const rows = [{ id: 'r2', setlist_id: 'sl', song_id: 'b', position: 0, set_number: 1 }];
+    const before = [{ songId: 'b', setNumber: 1 }];
+    expect(await keepOrderOffline({ message: 'Service Unavailable' }, { setlistId: 'sl', rows, before }, 503)).toBe(true);
+    expect(readLiveOutbox('u-1')).toHaveLength(1);
+    localStorage.clear();
+    expect(await keepOrderOffline({ message: 'canceling statement due to statement timeout', code: '57014' }, { setlistId: 'sl', rows, before })).toBe(true);
+    localStorage.clear();
+    expect(await keepOrderOffline({ message: 'Forbidden' }, { setlistId: 'sl', rows, before }, 403)).toBe(false);
+    expect(readLiveOutbox('u-1')).toEqual([]);
+  });
 });

@@ -1961,6 +1961,10 @@ const dict: Dictionary = {
   "Back online · synced": "Di nuovo online · sincronizzato",
   "Back online · up to date": "Di nuovo online · tutto aggiornato",
   "Sync now": "Sincronizza ora",
+  "You’re offline · {changes} waiting for signal": "Sei offline · {changes} in attesa di segnale",
+  "Back online · sending {changes}": "Di nuovo online · invio di {changes}",
+  "Back online · {changes} will be sent shortly": "Di nuovo online · a breve l’invio di {changes}",
+  "Send now": "Invia ora",
 
   // Onboarding
   "Shared calendars": "Calendari condivisi",
@@ -3876,6 +3880,18 @@ const dict: Dictionary = {
   "Saved on this phone": "Salvato su questo telefono",
   "Saved on this phone. It goes to the admin when you’re back online.": "Salvato su questo telefono. Arriva all’admin quando torni online.",
   "Note saved on this phone. It reaches your account when you’re back online.": "Nota salvata su questo telefono. Arriva al tuo account quando torni online.",
+  // Live outbox: waiting with full signal, changes the server did not take
+  "1 change waiting to send": "1 modifica in attesa di invio",
+  "{n} changes waiting to send": "{n} modifiche in attesa di invio",
+  "Saved on this phone, sent as soon as the server answers.": "Salvato su questo telefono, viene inviato appena il server risponde.",
+  "1 change wasn’t saved": "1 modifica non salvata",
+  "{n} changes weren’t saved": "{n} modifiche non salvate",
+  "These changes couldn’t be saved. Copy what you need, then remove them.": "Queste modifiche non sono state salvate. Copia quello che ti serve, poi rimuovile.",
+  "Your note": "La tua nota",
+  "Suggestion to the band": "Suggerimento alla band",
+  "New song order": "Nuovo ordine dei brani",
+  "The server didn’t accept it.": "Il server non l’ha accettata.",
+  "The server didn’t answer for too long.": "Il server non ha risposto per troppo tempo.",
   // Live pack consent, readiness, Settings › Offline & live (plan §3.3–3.4)
   "Offline & live": "Offline e live",
   "Have the setlist with you, even without signal.": "La scaletta con te, anche senza campo.",

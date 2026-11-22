@@ -1961,6 +1961,10 @@ const dict: Dictionary = {
   "Back online · synced": "Online · sincronizado",
   "Back online · up to date": "Online de novo · tudo em dia",
   "Sync now": "Sincronizar agora",
+  "You’re offline · {changes} waiting for signal": "Você está offline · {changes} aguardando sinal",
+  "Back online · sending {changes}": "Online de novo · enviando {changes}",
+  "Back online · {changes} will be sent shortly": "Online de novo · envio de {changes} em breve",
+  "Send now": "Enviar agora",
 
   // Onboarding
   "Shared calendars": "Calendários compartilhados",
@@ -3876,6 +3880,18 @@ const dict: Dictionary = {
   "Saved on this phone": "Salvo neste celular",
   "Saved on this phone. It goes to the admin when you’re back online.": "Salvo neste celular. Chega ao admin quando você voltar a ficar online.",
   "Note saved on this phone. It reaches your account when you’re back online.": "Nota salva neste celular. Chega à sua conta quando você voltar a ficar online.",
+  // Live outbox: waiting with full signal, changes the server did not take
+  "1 change waiting to send": "1 alteração aguardando envio",
+  "{n} changes waiting to send": "{n} alterações aguardando envio",
+  "Saved on this phone, sent as soon as the server answers.": "Salvo neste celular, enviado assim que o servidor responder.",
+  "1 change wasn’t saved": "1 alteração não foi salva",
+  "{n} changes weren’t saved": "{n} alterações não foram salvas",
+  "These changes couldn’t be saved. Copy what you need, then remove them.": "Essas alterações não puderam ser salvas. Copie o que precisar e depois remova-as.",
+  "Your note": "Sua nota",
+  "Suggestion to the band": "Sugestão para a banda",
+  "New song order": "Nova ordem das músicas",
+  "The server didn’t accept it.": "O servidor não aceitou.",
+  "The server didn’t answer for too long.": "O servidor ficou tempo demais sem responder.",
   // Live pack consent, readiness, Settings › Offline & live (plan §3.3–3.4)
   "Offline & live": "Offline e ao vivo",
   "Have the setlist with you, even without signal.": "Tenha o setlist com você, mesmo sem sinal.",

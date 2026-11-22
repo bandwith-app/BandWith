@@ -7,6 +7,8 @@ export interface NetworkStatus {
   isOnline: boolean;
   wasOffline: boolean;
   pendingSyncCount: number;
+  /** Of those, the ones the server rejected that wait for their retry time (not sent now). */
+  retryLaterCount: number;
   /** Manual sync: retries rejected changes straight away. */
   triggerSync: () => Promise<SyncResult>;
 }
@@ -37,6 +39,12 @@ export const useNetworkStatus = (
   });
   const [wasOffline, setWasOffline] = useState<boolean>(false);
   const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
+  const [retryLaterCount, setRetryLaterCount] = useState<number>(0);
+  const retryAtRef = useRef<number[]>([]);
+  const countRetryLater = useCallback(() => {
+    const now = Date.now();
+    setRetryLaterCount(retryAtRef.current.filter((t) => t > now).length);
+  }, []);
   const isInitialMount = useRef(true);
 
   // Callers pass inline callbacks: keep the latest ones in refs so the sync
@@ -59,11 +67,13 @@ export const useNetworkStatus = (
 
   // Subscribe to pending queue mutations
   useEffect(() => {
-    const unsubscribe = subscribeToSyncQueue((count) => {
+    const unsubscribe = subscribeToSyncQueue((count, retryAt = []) => {
       setPendingSyncCount(count);
+      retryAtRef.current = retryAt;
+      countRetryLater();
     });
     return unsubscribe;
-  }, []);
+  }, [countRetryLater]);
 
   // Listen to programmatic network status reports & window online/offline events
   useEffect(() => {
@@ -78,6 +88,8 @@ export const useNetworkStatus = (
     const handleOnline = async () => {
       currentOnlineState = true;
       setIsOnline(true);
+      // Back online: which waiting changes go now, which wait for their retry time.
+      countRetryLater();
       if (!isInitialMount.current) {
         setWasOffline(true);
         // Process offline mutation queue automatically on reconnect
@@ -105,7 +117,7 @@ export const useNetworkStatus = (
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [runSync]);
+  }, [runSync, countRetryLater]);
 
   // Rejected changes wait in backoff; look again periodically while there is work.
   useEffect(() => {
@@ -118,6 +130,7 @@ export const useNetworkStatus = (
     isOnline,
     wasOffline,
     pendingSyncCount,
+    retryLaterCount,
     triggerSync,
   };
 };

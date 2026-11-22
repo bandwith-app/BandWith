@@ -8,6 +8,8 @@ interface OfflineBannerProps {
   isOnline: boolean;
   wasOffline: boolean;
   pendingCount?: number;
+  /** Of pendingCount, the ones waiting for their retry time (not sent right now). */
+  retryLaterCount?: number;
   onSyncNow?: () => void;
 }
 
@@ -15,6 +17,7 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({
   isOnline,
   wasOffline,
   pendingCount = 0,
+  retryLaterCount = 0,
   onSyncNow,
 }) => {
   const t = useT();
@@ -60,10 +63,12 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({
     };
   }, [visible]);
 
-  const changes =
-    pendingCount === 1
-      ? t('{count} change', { count: pendingCount })
-      : t('{count} changes', { count: pendingCount });
+  const changesOf = (count: number) => (count === 1 ? t('{count} change', { count }) : t('{count} changes', { count }));
+  const changes = changesOf(pendingCount);
+  // Back online: only what goes now is "sending"; a change the server
+  // rejected waits for its retry time (the button sends it straight away).
+  const later = Math.min(Math.max(0, retryLaterCount), pendingCount);
+  const sendingNow = pendingCount - later;
 
   return (
     <AnimatePresence>
@@ -90,7 +95,7 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({
               <WifiOff className="w-[18px] h-[18px] shrink-0" aria-hidden />
               <span className="flex-1 min-w-0 truncate bw-label-sm">
                 {pendingCount > 0
-                  ? t('You’re offline · {changes} will sync', { changes })
+                  ? t('You’re offline · {changes} waiting for signal', { changes })
                   : t('You’re offline · showing cached info')}
               </span>
               <RefreshCw className="w-4 h-4 shrink-0" aria-hidden />
@@ -99,15 +104,17 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({
             <>
               <Wifi className="w-[18px] h-[18px] shrink-0" aria-hidden />
               <span className="flex-1 min-w-0 truncate bw-label-sm">
-                {pendingCount > 0
-                  ? t('Back online · {changes} to sync', { changes })
-                  : t('Back online · up to date')}
+                {sendingNow > 0
+                  ? t('Back online · sending {changes}', { changes: changesOf(sendingNow) })
+                  : later > 0
+                    ? t('Back online · {changes} will be sent shortly', { changes: changesOf(later) })
+                    : t('Back online · up to date')}
               </span>
               {pendingCount > 0 && onSyncNow && (
                 <button
                   type="button"
                   onClick={onSyncNow}
-                  aria-label={t('Sync now')}
+                  aria-label={t('Send now')}
                   className="relative -m-2 p-2 shrink-0 rounded-full active:scale-[var(--press-scale,0.97)] transition-transform"
                 >
                   <RefreshCw className="w-4 h-4 animate-spin" aria-hidden />
