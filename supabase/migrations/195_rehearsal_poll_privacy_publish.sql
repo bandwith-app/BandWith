@@ -64,6 +64,15 @@
 --     rider & stage (event_stage), and adds the old date to skip_dates. The
 --     client id is the new event's id: a retry finds it and creates nothing.
 --
+-- #4  bw_events_skip_notice: a deleted future date is announced to the
+--     series' lineup ("Rehearsal cancelled", translated by 089's
+--     bw_trg_server_notification_text, redefined here from its 089 body so
+--     the date shown is the deleted date: data.occurrence_date). A date moved
+--     with "Only this date" is announced as an update of the new one-off.
+--
+-- #8  bw_poll_options_keep_voted: no option of an open poll with votes is
+--     removed or added (an older build's stale publish), Claude #297 round 3.
+--
 -- #4  Deleted dates survive every write (Codex #297 round 3): the BEFORE
 --     UPDATE trigger bw_events_00_keep_skip_dates puts the stored
 --     skip_dates back into any new recurrence_rule (union), so a cadence
@@ -242,6 +251,10 @@ BEGIN
     END IF;
   END IF;
 
+  -- The proposal's own suggestions (nobody can vote on a proposal), while it
+  -- is still one (bw_poll_options_keep_voted guards open polls).
+  DELETE FROM public.rehearsal_poll_options WHERE poll_id = p_poll_id;
+
   UPDATE public.rehearsal_polls rp
      SET title = CASE WHEN v_f ? 'title' THEN coalesce(nullif(btrim(v_f ->> 'title'), ''), 'Rehearsal Availability Poll') ELSE rp.title END,
          notes = CASE WHEN v_f ? 'notes' THEN nullif(btrim(coalesce(v_f ->> 'notes', '')), '') ELSE rp.notes END,
@@ -261,8 +274,6 @@ BEGIN
          updated_at = now()
    WHERE rp.id = p_poll_id;
 
-  -- The proposal's own suggestions (nobody can vote on a proposal).
-  DELETE FROM public.rehearsal_poll_options WHERE poll_id = p_poll_id;
   INSERT INTO public.rehearsal_poll_options (poll_id, proposed_date, start_time, end_time)
   SELECT p_poll_id,
          (e.item ->> 'proposed_date')::date,
@@ -367,6 +378,36 @@ GRANT EXECUTE ON FUNCTION public.bw_skip_rehearsal_date(uuid, date) TO authentic
 COMMENT ON FUNCTION public.bw_skip_rehearsal_date(uuid, date) IS
   'Delete one date of a repeating rehearsal: append it to recurrence_rule.skip_dates under a row lock; admins of the event''s band (195, audit 05 #4, Codex #297 B3).';
 
+-- ── A poll's options stay while it has votes (Claude #297 round 3) ──────
+-- An older build (383f15b) publishing a stale form deletes the options of a
+-- poll already voted on, then adds its own (it ignores the delete's error).
+-- While a poll is open with votes, its options can be neither removed nor
+-- added; that build then shows the insert's message. Deleting the poll
+-- itself still removes everything (the cascade runs once the poll is gone).
+CREATE OR REPLACE FUNCTION public.bw_trg_poll_options_keep_voted()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_poll uuid := CASE WHEN TG_OP = 'DELETE' THEN OLD.poll_id ELSE NEW.poll_id END;
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.rehearsal_polls rp WHERE rp.id = v_poll AND rp.status = 'polling')
+     AND EXISTS (SELECT 1 FROM public.rehearsal_poll_votes v WHERE v.poll_id = v_poll) THEN
+    RAISE EXCEPTION 'This poll already has votes, so its dates can''t be changed. Close and reopen it to see the votes.'
+      USING ERRCODE = 'P0001';
+  END IF;
+  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_trg_poll_options_keep_voted() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS bw_poll_options_keep_voted ON public.rehearsal_poll_options;
+CREATE TRIGGER bw_poll_options_keep_voted
+  BEFORE INSERT OR DELETE ON public.rehearsal_poll_options
+  FOR EACH ROW EXECUTE FUNCTION public.bw_trg_poll_options_keep_voted();
+
 -- ── "Only this date": one date of a series moved, in one step ────────────
 CREATE OR REPLACE FUNCTION public.bw_move_rehearsal_date(
   p_event_id uuid,
@@ -465,10 +506,13 @@ BEGIN
       UNION
       SELECT to_char(p_date, 'YYYY-MM-DD')
     ) AS all_dates;
+  -- The lineup hears "moved", not "cancelled" (bw_trg_events_skip_notice).
+  PERFORM set_config('bw.skip_moved_to', v_id::text, true);
   UPDATE public.events
      SET recurrence_rule = v_rule || jsonb_build_object('skip_dates', v_skips),
          updated_at = now()
    WHERE id = p_event_id;
+  PERFORM set_config('bw.skip_moved_to', '', true);
 
   RETURN jsonb_build_object('event_id', v_id, 'series_id', p_event_id, 'skip_dates', v_skips);
 END;
@@ -533,6 +577,205 @@ CREATE TRIGGER bw_events_00_keep_skip_dates
   FOR EACH ROW
   WHEN (OLD.recurrence_rule IS NOT NULL)
   EXECUTE FUNCTION public.bw_trg_events_keep_skip_dates();
+
+
+-- ── A deleted date is announced (Claude #297 round 3) ────────────────────
+-- When skip_dates grows (from any build, any path), the series' lineup (or
+-- the band, if it has none: bw_event_recipient_ids) gets "Rehearsal
+-- cancelled" for each new future date, like 046 / 111 announce a cancelled
+-- event, through bw_notify (data.server = true): 089's translator writes it
+-- in each member's profiles.preferred_language. A date moved with "Only this
+-- date" is announced as an update of the new one-off instead. A series moved
+-- whole (its dates shift with it) announces nothing here; the event's own
+-- notice (111) covers the move. Members of that band only.
+-- 089's translator, from its 089 body; only the date line changes.
+CREATE OR REPLACE FUNCTION public.bw_trg_server_notification_text()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  d jsonb := coalesce(NEW.data, '{}'::jsonb);
+  v_lang text;
+  v_event uuid;
+  v_ev_title text;
+  v_ev_type text;
+  v_ev_date date;
+  v_ev_start time;
+  v_ev_currency text;
+  v_kind text;
+  v_title text;
+  v_when text;
+  v_changes text;
+  v_name text;
+  v_band text;
+  v_vars jsonb;
+  v_head text;
+  v_body text;
+  v_tx_title text;
+BEGIN
+  SELECT lower(left(btrim(p.preferred_language), 2)) INTO v_lang FROM public.profiles p WHERE p.id = NEW.user_id;
+  IF v_lang IS NULL OR v_lang NOT IN ('it', 'es', 'fr', 'de', 'pt') THEN
+    RETURN NEW;
+  END IF;
+
+  BEGIN
+    v_event := nullif(d ->> 'event_id', '')::uuid;
+  EXCEPTION WHEN others THEN v_event := NULL;
+  END;
+  IF v_event IS NOT NULL THEN
+    -- Scalars, not a record: a record's shape would be cached between rows.
+    SELECT e.title::text, e.event_type::text, coalesce(e.event_date, e.date)::date, e.start_time::time, e.currency::text
+      INTO v_ev_title, v_ev_type, v_ev_date, v_ev_start, v_ev_currency
+      FROM public.events e WHERE e.id = v_event;
+  END IF;
+  v_kind := CASE WHEN lower(coalesce(v_ev_type, d ->> 'event_type', 'gig')) = 'rehearsal' THEN 'rehearsal' ELSE 'gig' END;
+  v_title := coalesce(nullif(v_ev_title, ''), nullif(d ->> 'event_title', ''), public.bw_server_text(v_kind, v_lang));
+  -- 195: a date of a series (one deleted) is the date in the row, not the
+  -- series' first date (Claude #297 round 3).
+  v_when := public.bw_i18n_short_date(coalesce(nullif(d ->> 'occurrence_date', '')::date, v_ev_date, nullif(d ->> 'event_date', '')::date), v_lang);
+
+  CASE NEW.type
+  WHEN 'event_cancelled', 'event_confirmed', 'event_update' THEN
+    v_when := v_when || CASE WHEN v_ev_start IS NOT NULL THEN ' · ' || to_char(v_ev_start, 'HH24:MI') ELSE '' END;
+    SELECT string_agg(coalesce(public.bw_deputy_text('change.' || c, v_lang), c), ', ' ORDER BY o)
+      INTO v_changes
+      FROM jsonb_array_elements_text(coalesce(d -> 'changes', '[]'::jsonb)) WITH ORDINALITY AS x(c, o);
+    v_vars := jsonb_build_object('title', v_title, 'when', v_when, 'changes', coalesce(v_changes, ''));
+    IF NEW.type = 'event_cancelled' THEN
+      v_head := public.bw_server_text('cancelled.' || v_kind, v_lang);
+      v_body := public.bw_server_text(CASE WHEN (d ->> 'deleted')::boolean IS TRUE THEN 'removed.body' ELSE 'cancelled.body' END, v_lang, v_vars);
+    ELSIF NEW.type = 'event_confirmed' THEN
+      v_head := public.bw_server_text('confirmed.' || v_kind, v_lang);
+      v_body := public.bw_server_text('confirmed.body', v_lang, v_vars);
+    ELSE
+      v_head := public.bw_server_text('updated.' || v_kind, v_lang);
+      v_body := CASE WHEN v_changes IS NULL THEN NULL ELSE public.bw_server_text('updated.body', v_lang, v_vars) END;
+    END IF;
+
+  WHEN 'member_joined', 'member_left' THEN
+    v_name := nullif(d ->> 'member_name', '');
+    IF v_name IS NULL OR v_name = 'A member' THEN v_name := public.bw_server_text('a_member', v_lang); END IF;
+    v_band := coalesce(nullif(d ->> 'band_name', ''), 'BandWith');
+    v_vars := jsonb_build_object('name', v_name, 'band', v_band);
+    IF NEW.type = 'member_joined' THEN
+      v_head := public.bw_server_text('joined.title', v_lang, v_vars);
+      v_body := public.bw_server_text('joined.body', v_lang, v_vars);
+    ELSIF d ? 'member_user_id' THEN
+      v_head := public.bw_server_text('left.title', v_lang, v_vars);
+      v_body := public.bw_server_text(CASE WHEN (d ->> 'removed')::boolean IS TRUE THEN 'left.removed' ELSE 'left.body' END, v_lang, v_vars);
+    ELSE
+      -- To the person an admin removed.
+      v_head := public.bw_server_text('removed_you.title', v_lang, v_vars);
+      v_body := public.bw_server_text('removed_you.body', v_lang, v_vars);
+    END IF;
+
+  WHEN 'fee_changed' THEN
+    v_head := public.bw_server_text('fee.title', v_lang);
+    v_body := public.bw_server_text('fee.body', v_lang, jsonb_build_object(
+      'title', v_title, 'when', v_when,
+      'new', public.bw_i18n_amount((d ->> 'new_fee')::numeric, v_ev_currency, v_lang),
+      'old', public.bw_i18n_amount((d ->> 'old_fee')::numeric, v_ev_currency, v_lang)));
+
+  WHEN 'payment_received' THEN
+    v_head := public.bw_server_text('payment.title', v_lang);
+    IF d ? 'transaction_id' THEN
+      -- To the admins: the amount and what it was for.
+      SELECT t.title::text INTO v_tx_title FROM public.transactions t WHERE t.id = (d ->> 'transaction_id')::uuid;
+      v_body := public.bw_i18n_amount((d ->> 'amount')::numeric, d ->> 'currency', v_lang)
+                || ' · ' || coalesce(nullif(v_ev_title, ''), v_tx_title, '');
+    ELSE
+      v_body := public.bw_server_text('payment.lineup', v_lang, jsonb_build_object(
+        'title', coalesce(nullif(v_ev_title, ''), public.bw_server_text('a_gig', v_lang))));
+    END IF;
+
+  WHEN 'setlist_updated' THEN
+    v_head := public.bw_server_text('setlist.title', v_lang);
+    v_body := public.bw_server_text('setlist.body', v_lang, jsonb_build_object('name', coalesce(nullif(d ->> 'setlist_name', ''), 'Setlist')));
+
+  WHEN 'invite_received' THEN
+    v_vars := jsonb_build_object('band', coalesce(nullif(d ->> 'band_name', ''), 'BandWith'));
+    v_head := public.bw_server_text('invite.title', v_lang, v_vars);
+    v_body := public.bw_server_text('invite.body', v_lang);
+
+  ELSE
+    RETURN NEW;
+  END CASE;
+
+  NEW.title := left(coalesce(v_head, NEW.title), 255);
+  NEW.body := coalesce(v_body, NEW.body);
+  RETURN NEW;
+EXCEPTION WHEN others THEN
+  -- Never lose a notification over its translation: keep the English.
+  RAISE WARNING 'bw_trg_server_notification_text: %', SQLERRM;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_trg_server_notification_text() FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.bw_trg_events_skip_notice()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_old jsonb := CASE WHEN jsonb_typeof(OLD.recurrence_rule -> 'skip_dates') = 'array' THEN OLD.recurrence_rule -> 'skip_dates' ELSE '[]'::jsonb END;
+  v_new jsonb := CASE WHEN jsonb_typeof(NEW.recurrence_rule -> 'skip_dates') = 'array' THEN NEW.recurrence_rule -> 'skip_dates' ELSE '[]'::jsonb END;
+  v_moved text := coalesce(current_setting('bw.skip_moved_to', true), '');
+  v_kind text := CASE WHEN lower(coalesce(NEW.event_type, 'gig')) = 'rehearsal' THEN 'rehearsal' ELSE 'gig' END;
+  v_label text;
+  v_title text;
+  v_recipients uuid[];
+  v_day date;
+  v_when text;
+  v_new_ev record;
+BEGIN
+  IF NEW.band_id IS NULL OR NEW.event_date IS DISTINCT FROM OLD.event_date THEN
+    RETURN NULL;
+  END IF;
+  v_label := CASE WHEN v_kind = 'rehearsal' THEN 'Rehearsal' ELSE 'Gig' END;
+  v_title := coalesce(nullif(NEW.title, ''), v_label);
+  v_recipients := public.bw_event_recipient_ids(NEW.id, NEW.band_id, false);
+  FOR v_day IN
+    SELECT x::date FROM jsonb_array_elements_text(v_new) AS x
+     WHERE x ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' AND NOT (v_old ? x) AND x::date >= current_date
+     ORDER BY 1
+  LOOP
+    v_when := to_char(v_day, 'Dy DD Mon') || CASE WHEN NEW.start_time IS NOT NULL THEN ' · ' || to_char(NEW.start_time, 'HH24:MI') ELSE '' END;
+    IF v_moved ~ '^[0-9a-f-]{36}$' THEN
+      SELECT id, event_date, start_time INTO v_new_ev FROM public.events WHERE id = v_moved::uuid;
+      PERFORM public.bw_notify(v_recipients, NEW.band_id, 'event_update',
+        v_label || ' updated',
+        v_title || ' · ' || coalesce(to_char(v_new_ev.event_date, 'Dy DD Mon'), v_when)
+          || CASE WHEN v_new_ev.start_time IS NOT NULL THEN ' · ' || to_char(v_new_ev.start_time, 'HH24:MI') ELSE '' END
+          || ' — changed: date.',
+        jsonb_build_object('event_id', v_moved, 'event_type', v_kind, 'event_title', v_title,
+                           'changes', jsonb_build_array('date'), 'moved_from', to_char(v_day, 'YYYY-MM-DD'), 'series_id', NEW.id),
+        v_moved::uuid, 'event');
+    ELSE
+      PERFORM public.bw_notify(v_recipients, NEW.band_id, 'event_cancelled',
+        v_label || ' cancelled', v_title || ' · ' || v_when || ' has been cancelled.',
+        jsonb_build_object('event_id', NEW.id, 'event_type', v_kind, 'event_title', v_title,
+                           'event_date', to_char(v_day, 'YYYY-MM-DD'), 'occurrence_date', to_char(v_day, 'YYYY-MM-DD'), 'skipped', true),
+        NEW.id, 'event');
+    END IF;
+  END LOOP;
+  RETURN NULL;
+EXCEPTION WHEN others THEN
+  RAISE WARNING 'bw_trg_events_skip_notice: %', SQLERRM;
+  RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_trg_events_skip_notice() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS bw_events_skip_notice ON public.events;
+CREATE TRIGGER bw_events_skip_notice
+  AFTER UPDATE OF recurrence_rule ON public.events
+  FOR EACH ROW
+  WHEN (NEW.recurrence_rule IS DISTINCT FROM OLD.recurrence_rule)
+  EXECUTE FUNCTION public.bw_trg_events_skip_notice();
 
 -- ── A deleted date back on ───────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.bw_restore_rehearsal_date(p_event_id uuid, p_date date)

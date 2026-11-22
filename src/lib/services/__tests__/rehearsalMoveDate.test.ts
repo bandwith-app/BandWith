@@ -98,6 +98,17 @@ describe('Only this date (Codex #297 round 3 B2 B3)', () => {
     expect(db.updates).toEqual([]); // the series row is not moved
   });
 
+  // Claude #297 round 4: the wizard saves its other changes on the one-off.
+  it("says which event the one-off is: the server's, or the request id without 195", async () => {
+    const viaRpc = await moveRehearsalDateOnly({ eventId: 'ev', band_id: 'b1', date: '2099-12-08' }, { title: 'W', date: '2099-12-10', startTime: '19:00', endTime: '', clientId: 'req-1' });
+    expect(viaRpc).toEqual({ error: null, eventId: 'req-1' });
+    db.moveRpc = { data: null, error: { code: 'PGRST202', message: 'Could not find the function' } };
+    const viaCopy = await moveRehearsalDateOnly({ eventId: 'ev', band_id: 'b1', date: '2099-12-08' }, { title: 'W', date: '2099-12-10', startTime: '19:00', endTime: '', clientId: 'req-2' });
+    expect(viaCopy.error).toBeNull();
+    expect(db.created[0].ev.id).toBe('req-2'); // a retry creates nothing more
+    expect(viaCopy.eventId).toBe('req-2');
+  });
+
   it('needs the band and both dates', async () => {
     const { error } = await moveRehearsalDateOnly({ eventId: 'ev', band_id: null, date: '2099-12-08' }, { title: 'x', date: '2099-12-10', startTime: '19:00', endTime: '' });
     expect(error).toBeTruthy();

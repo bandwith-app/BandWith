@@ -423,6 +423,8 @@ const dict: Dictionary = {
   "Only this date": "Nur diesen Termin",
   "The whole series": "Die ganze Serie",
   "Choose which dates to move to save.": "Wähle, welche Termine verschoben werden, um zu speichern.",
+  "Only this date leaves the series as a one-off; the other dates stay as they are.": "Nur dieser Termin wird aus der Serie zum Einzeltermin; die anderen Termine bleiben, wie sie sind.",
+  "Moving one date needs a connection. Try again when you are online.": "Um nur einen Termin zu verschieben, brauchst du eine Verbindung. Versuch es online noch einmal.",
   "Rehearsal date deleted": "Probentermin gelöscht",
   "This rehearsal does not repeat any more. Reload and try again.": "Diese Probe wiederholt sich nicht mehr. Neu laden und erneut versuchen.",
   "This date can't be deleted on its own. Reload and try again.": "Dieses Datum kann nicht einzeln gelöscht werden. Neu laden und erneut versuchen.",

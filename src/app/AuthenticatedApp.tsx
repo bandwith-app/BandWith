@@ -99,7 +99,7 @@ import { listMyDeputyGigs } from "@/lib/services/deputies";
 import { OfflineBanner } from "@/app/components/ui/OfflineBanner";
 import { useNetworkStatus, isOfflineError, reportNetworkStatus } from "@/lib/offline/useNetworkStatus";
 import { enqueueMutation, getPendingMutations } from "@/lib/offline/syncQueue";
-import { deleteRehearsalDate } from "@/lib/services/rehearsalSkip";
+import { deleteRehearsalDate, moveRehearsalDateOnly } from "@/lib/services/rehearsalSkip";
 import { isSkippedOccurrence, mergeRecurrenceRule, occurrenceOn, openDateFor } from "@/lib/recurrenceSkips";
 import { occurrenceStart } from "@/lib/eventOverviewEdit";
 import type { QueuedEventExtras } from "@/lib/offline/eventExtras";
@@ -3347,11 +3347,35 @@ export default function AuthenticatedApp() {
       // One later date of a series edited here: the series start is written
       // only when the date moved (the whole series, by the same days); a
       // switch to "once" keeps the date on screen (Codex / Claude #297 round 3).
-      const seriesStart = data._editingEventId
+      const moveOnly = !!(data._editing && data._editingEventId && data._moveScope === 'date');
+      const seriesStart = data._editingEventId && !moveOnly
         ? occurrenceStart(editingEventData, date, !!eventData.is_recurring, 'series')
         : undefined;
       if (seriesStart === null) delete eventData.event_date;
       else if (seriesStart !== undefined) eventData.event_date = seriesStart;
+
+      // "Only this date" (Claude #297 round 4): the date leaves the series as
+      // a one-off in one transaction (bw_move_rehearsal_date: every column,
+      // lineup, rider & stage), then the rest of the wizard is saved on that
+      // one-off, not on the series. Its to-dos are new ones there.
+      if (moveOnly) {
+        if (!isOnline || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+          setSaveToast({ message: t('Moving one date needs a connection. Try again when you are online.'), type: 'error' });
+          return false;
+        }
+        const moved = await moveRehearsalDateOnly(
+          { eventId: data._editingEventId, band_id: realBand.id, date: editingEventData?.date ?? null, seriesDate: editingEventData?.seriesDate ?? null },
+          { title: title || '', date, startTime: timeFinal, endTime: endTime || '', clientId: data._moveClientId },
+        );
+        if (moved.error || !moved.eventId) {
+          setSaveToast({ message: t('Save failed: {error}', { error: moved.error?.message || '' }), type: 'error' });
+          return false;
+        }
+        data = { ...data, _editingEventId: moved.eventId, _originalTaskIds: [], _moveScope: undefined };
+        eventData.event_date = date;
+        eventData.is_recurring = false;
+        eventData.recurrence_rule = null;
+      }
 
       // Event to-dos (create modal, template or rehearsal wizard). Ids count
       // as saved only when the form loaded them from this event.

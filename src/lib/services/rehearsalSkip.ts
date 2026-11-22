@@ -99,7 +99,7 @@ const newRequestId = (): string =>
 export async function moveRehearsalDateOnly(
   event: { eventId?: string | null; band_id?: string | null; date?: string | null; seriesDate?: string | null },
   values: { title: string; date: string; startTime: string; endTime: string; clientId?: string },
-): Promise<{ error: Error | null }> {
+): Promise<{ error: Error | null; eventId?: string }> {
   const from = dayOf(event.date);
   const to = dayOf(values.date);
   if (!event.eventId || !event.band_id || !DAY.test(from) || !DAY.test(to)) {
@@ -119,7 +119,7 @@ export async function moveRehearsalDateOnly(
     return { error: error as unknown as Error };
   }
   if (!error && data && typeof data === 'object' && typeof (data as { event_id?: unknown }).event_id === 'string') {
-    return { error: null };
+    return { error: null, eventId: (data as { event_id: string }).event_id };
   }
 
   // No 195: the public columns the app may read (081), then the old date out.
@@ -137,8 +137,9 @@ export async function moveRehearsalDateOnly(
     .eq('event_id', event.eventId);
   if (peopleErr) return { error: peopleErr as unknown as Error };
 
-  const { error: createErr } = await createEvent(
+  const { data: created, error: createErr } = await createEvent(
     {
+      ...(values.clientId ? { id: values.clientId } : {}),
       band_id: row.band_id,
       title: values.title.trim() || row.title,
       event_type: row.event_type || 'rehearsal',
@@ -168,5 +169,6 @@ export async function moveRehearsalDateOnly(
     })),
   );
   if (createErr) return { error: createErr };
-  return skipRehearsalDate(event.eventId, from);
+  const skipped = await skipRehearsalDate(event.eventId, from);
+  return skipped.error ? skipped : { error: null, eventId: (created as { id?: string } | null)?.id ?? values.clientId };
 }

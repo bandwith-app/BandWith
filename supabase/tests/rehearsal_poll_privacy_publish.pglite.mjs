@@ -64,7 +64,7 @@ CREATE TABLE public.events (id uuid PRIMARY KEY, band_id uuid, title text, event
   recurrence_rule jsonb, updated_at timestamptz DEFAULT now(),
   status text, start_time time, "time" time, end_time time, duration_hours numeric, created_by uuid,
   event_type text, fee numeric(10,2), setlist_id uuid, venue_name text, notes text, parent_event_id uuid,
-  created_at timestamptz DEFAULT now(), "date" date);
+  created_at timestamptz DEFAULT now(), "date" date, currency text DEFAULT 'USD');
 ALTER TABLE public.band_members ADD COLUMN left_at timestamptz;
 CREATE TABLE public.event_members (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), event_id uuid REFERENCES public.events(id) ON DELETE CASCADE,
   user_id uuid, status text, fee numeric(10,2) DEFAULT 0, role text, notes text, paid_at timestamptz, UNIQUE (event_id, user_id));
@@ -110,6 +110,23 @@ GRANT SELECT (id, band_id, created_by, creator_role, title, notes, status, confi
 // 114 (room cost RPC) and 117 (vote deadline + vote policies), as they are live.
 await db.exec(readFileSync(`${REPO}/supabase/migrations/114_poll_room_cost_rpc.sql`, 'utf8'));
 await db.exec(readFileSync(`${REPO}/supabase/migrations/117_poll_vote_deadline.sql`, 'utf8'));
+// Server notices as live: notifications, bw_notify + recipients (046, 111),
+// the translators (088, 089, 090).
+const fnFrom = (file, name) => {
+  const src = readFileSync(`${REPO}/supabase/migrations/${file}`, 'utf8');
+  const m = src.match(new RegExp(`CREATE OR REPLACE FUNCTION public\\.${name}\\([\\s\\S]*?\\n\\$\\$;`));
+  if (!m) throw new Error(`${name} not found in ${file}`);
+  return m[0];
+};
+await db.exec(`
+  ALTER TABLE public.profiles ADD COLUMN preferred_language text;
+  CREATE TABLE public.notifications (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL, band_id uuid, type text NOT NULL,
+    title varchar(255) NOT NULL, body text, data jsonb DEFAULT '{}', read boolean DEFAULT false, reference_id uuid, reference_type text,
+    created_at timestamptz DEFAULT now());
+`);
+for (const [file, name] of [['046_server_notifications_and_push.sql', 'bw_notify'], ['046_server_notifications_and_push.sql', 'bw_active_band_member_ids']]) await db.exec(fnFrom(file, name));
+await db.exec(fnFrom('111_quote_events_private.sql', 'bw_event_recipient_ids').split('\n-- The 2-argument form')[0]);
+for (const f of ['088_deputy_push_i18n.sql', '089_server_notifications_i18n.sql', '090_app_notifications_i18n.sql']) await db.exec(readFileSync(`${REPO}/supabase/migrations/${f}`, 'utf8'));
 // 095 (free-slot heatmap), as it is live.
 await db.exec(readFileSync(`${REPO}/supabase/migrations/095_band_free_slots.sql`, 'utf8'));
 
@@ -236,6 +253,30 @@ ok(r1c?.published === false, 'B1 the same admin from a new request: already publ
 const reqCol = (await db.query(`SELECT has_column_privilege('authenticated', 'public.rehearsal_polls', 'publish_request_id', 'SELECT') AS a`).catch(() => ({ rows: [{ a: null }] }))).rows[0].a;
 ok(reqCol === false, 'B1 members cannot read publish_request_id');
 
+// ---- Claude #297 round 3: an older build's stale publish (update, delete, insert)
+// on PROPOSAL_B, now a poll with a vote.
+const oldBuild = await (async () => {
+  const out = {};
+  try { await asCommit(ADMIN2, () => db.query(`DELETE FROM rehearsal_poll_options WHERE poll_id = $1`, [PROPOSAL_B])); out.del = 'deleted'; } catch (e) { out.del = e.message; }
+  try { await asCommit(ADMIN2, () => db.query(`INSERT INTO rehearsal_poll_options (poll_id, proposed_date, start_time) VALUES ($1, '2099-12-20', '19:00')`, [PROPOSAL_B])); out.ins = 'inserted'; } catch (e) { out.ins = e.message; }
+  return out;
+})();
+const optsLeft = (await db.query(`SELECT count(*)::int AS n FROM rehearsal_poll_options WHERE poll_id = $1`, [PROPOSAL_B])).rows[0].n;
+const votesLeft = (await db.query(`SELECT count(*)::int AS n FROM rehearsal_poll_votes WHERE poll_id = $1`, [PROPOSAL_B])).rows[0].n;
+ok(/already has votes/.test(oldBuild.del) && /already has votes/.test(oldBuild.ins) && votesLeft === 1 && optsLeft === 2,
+  `an old build cannot remove or add options of a poll with votes; it shows the message (${JSON.stringify(oldBuild)}, ${optsLeft} options, ${votesLeft} vote)`);
+// A poll with no votes yet, and deleting a whole poll, still work.
+await db.exec(`INSERT INTO rehearsal_polls (id, band_id, created_by, creator_role, title, status) VALUES ('${id(51)}','${BAND_A}','${ADMIN}','admin','Empty','polling');
+  INSERT INTO rehearsal_poll_options (poll_id, proposed_date, start_time) VALUES ('${id(51)}','2099-12-21','19:00');`);
+const noVotes = await asCommit(ADMIN, () => db.query(`DELETE FROM rehearsal_poll_options WHERE poll_id = $1`, [id(51)])).then(() => 'deleted', (e) => e.message);
+ok(noVotes === 'deleted', `options of a poll with no votes can still change (${noVotes})`);
+await db.exec(`INSERT INTO rehearsal_polls (id, band_id, created_by, creator_role, title, status) VALUES ('${id(52)}','${BAND_A}','${ADMIN}','admin','Voted','polling');
+  INSERT INTO rehearsal_poll_options (id, poll_id, proposed_date, start_time) VALUES ('${id(53)}','${id(52)}','2099-12-22','19:00');
+  INSERT INTO rehearsal_poll_votes (poll_id, option_id, user_id) VALUES ('${id(52)}','${id(53)}','${INVITED}');`);
+const wholePoll = await db.query(`DELETE FROM rehearsal_polls WHERE id = $1`, [id(52)]).then(() => 'deleted', (e) => e.message);
+ok(wholePoll === 'deleted' && (await db.query(`SELECT count(*)::int AS n FROM rehearsal_poll_options WHERE poll_id = $1`, [id(52)])).rows[0].n === 0, `deleting a voted poll still removes its options (${wholePoll})`);
+
+
 // Not an admin of the proposal's band.
 await db.exec(`UPDATE rehearsal_polls SET status = 'proposed' WHERE id = '${PROPOSAL_B}'`);
 const r3 = await publish(B_ONLY);
@@ -348,7 +389,7 @@ await asCommit(ADMIN, () => db.query(`UPDATE events SET event_date = '2099-11-28
 ok(JSON.stringify((await paidRule())?.skip_dates) === '["2099-12-05","2099-12-19"]', `B4 a series moved by 2 days moves its deleted dates (${JSON.stringify((await paidRule())?.skip_dates)})`);
 await asCommit(ADMIN, () => db.query(`UPDATE events SET event_date = '2099-11-26', recurrence_rule = '{"frequency":"weekly","interval":2,"skip_dates":["2099-12-05","2099-12-19","2099-12-31"]}'::jsonb WHERE id = $1`, [PAID]));
 ok(JSON.stringify((await paidRule())?.skip_dates) === '["2099-12-03","2099-12-17","2099-12-31"]', `B4 moved back with the rule it read: stored dates shift back, a new one is kept (${JSON.stringify((await paidRule())?.skip_dates)})`);
-await asCommit(ADMIN, () => db.query(`SELECT public.bw_restore_rehearsal_date($1, '2099-12-31'::date)`, [PAID]));
+await asCommit(ADMIN, () => db.query(`SELECT public.bw_restore_rehearsal_date($1, '2099-12-31'::date)`, [PAID])).catch(() => null);
 // Turning the repeat off still clears the rule.
 await db.exec(`UPDATE events SET recurrence_rule = '{"frequency":"weekly","skip_dates":["2099-12-01"]}' WHERE id = '${ONCE}'`);
 await asCommit(ADMIN, () => db.query(`UPDATE events SET is_recurring = false, recurrence_rule = NULL WHERE id = $1`, [ONCE]));
@@ -370,6 +411,32 @@ const flagAfter = await as(ADMIN, async () => {
 ok(flagAfter === '', `B4 the restore flag is off again after the RPC (${JSON.stringify(flagAfter)})`);
 const trg = (await db.query(`SELECT tgname FROM pg_trigger WHERE tgrelid = 'public.events'::regclass AND NOT tgisinternal ORDER BY tgname`)).rows.map((r) => r.tgname);
 ok(trg[0] === 'bw_events_00_keep_skip_dates', `B4 the keep trigger fires first by name (${trg.join(', ')})`);
+
+// ---- Claude #297 round 3 #3: a deleted date is announced, in each member's language
+await db.exec(`UPDATE profiles SET preferred_language = 'it' WHERE id = '${INVITED}'; DELETE FROM notifications;`);
+const notes = async () => (await db.query(`SELECT user_id, type, title, body, data FROM notifications ORDER BY user_id`)).rows;
+const addSkip = (day) => asCommit(ADMIN, () => db.query(
+  `UPDATE events SET recurrence_rule = recurrence_rule || jsonb_build_object('skip_dates', coalesce(recurrence_rule -> 'skip_dates', '[]'::jsonb) || to_jsonb($2::text)) WHERE id = $1`, [PAID, day]));
+await addSkip('2099-12-10');
+const n1 = await notes();
+const itWhen = (await db.query(`SELECT public.bw_i18n_short_date('2099-12-10'::date, 'it') AS w`)).rows[0].w;
+const enWhen = (await db.query(`SELECT to_char('2099-12-10'::date, 'Dy DD Mon') AS w`)).rows[0].w;
+const nIt = n1.find((n) => n.user_id === INVITED);
+const nEn = n1.find((n) => n.user_id === OUTSIDER);
+ok(nIt?.type === 'event_cancelled' && nIt?.title === 'Prova annullata' && nIt?.body?.includes(itWhen), `#3 the Italian member reads "Prova annullata" with the deleted date (${JSON.stringify(nIt && { t: nIt.title, b: nIt.body })})`);
+ok(nEn?.type === 'event_cancelled' && nEn?.title === 'Rehearsal cancelled' && nEn?.body?.includes(enWhen) && nEn?.data?.occurrence_date === '2099-12-10', `#3 the English member reads "Rehearsal cancelled" with the deleted date (${JSON.stringify(nEn && { t: nEn.title, b: nEn.body })})`);
+ok(n1.length === 2 && !n1.some((n) => n.user_id === ADMIN || n.user_id === B_ONLY || n.user_id === PROPOSER), `#3 only the series' lineup hears it: not the admin who did it, nobody from another band (${n1.map((n) => n.user_id.slice(-2)).join(',')})`);
+await db.exec(`DELETE FROM notifications;`);
+await addSkip('2020-01-02');
+ok((await notes()).length === 0, '#3 a past date taken out is not announced');
+await asCommit(ADMIN2, () => db.query(`UPDATE events SET title = 'Studio night' WHERE id = $1`, [PAID]));
+ok((await notes()).length === 0, '#3 a write that adds no date announces nothing');
+const MOVE_3 = id(46);
+await move(ADMIN, PAID, '2099-12-24', '2099-12-26', { title: 'Studio night', start_time: '19:00', end_time: '22:00' }, MOVE_3);
+const n2 = await notes();
+const mIt = n2.find((n) => n.user_id === INVITED);
+ok(n2.length > 0 && n2.every((n) => n.type === 'event_update' && n.data?.event_id === MOVE_3 && n.data?.moved_from === '2099-12-24') && mIt?.title === 'Prova aggiornata',
+  `#3 "Only this date" is announced as a change of the new date, not a cancellation (${JSON.stringify(n2.map((n) => [n.type, n.title]))})`);
 
 // Codex #297 round 3: free-slot counts and a deleted date. The skip_dates
 // line lands in 178 (#294, feat/date-on-hold), not in 195. This check loads

@@ -8,7 +8,7 @@ import {
 import { cn } from '@/app/components/ui/utils';
 import { SongPicker, type PickedSong } from '@/app/components/ui/SongPicker';
 import { getRehearsalAccentColor } from '@/app/components/ui/WizardAccentRail';
-import { Card, IconButton, NavBackButton, PillButton, PillField, Selector, Tag } from '@/app/components/bw';
+import { BwSheet, Card, IconButton, NavBackButton, PillButton, PillField, Selector, Tag } from '@/app/components/bw';
 import { useRailAction } from '@/lib/railActions';
 import { PeekingScrollContainer } from '@/app/components/ui/PeekingScrollContainer';
 import { VenueAutocomplete } from '@/app/components/ui/VenueAutocomplete';
@@ -514,9 +514,24 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
     return opt ? t('{type} Rehearsal', { type: getLocale() === 'en' ? opt.label : t(opt.label) }) : t('Rehearsal');
   }, [data.title, data.type]);
 
-  // Navigation
-  const handleSubmit = async () => {
+  // One date of a repeating rehearsal given a new date: only this date, or
+  // the whole series? Asked on the first date too (Claude #297 round 4).
+  const askMoveScope = isEditing && !!editingEvent?.eventId && initialRecurrence !== 'once'
+    && data.recurrence !== 'once' && !!data.date && data.date !== (editingEvent?.date || '').slice(0, 10);
+  const [scopeAskOpen, setScopeAskOpen] = useState(false);
+  // One request id per wizard: a retry of "Only this date" creates nothing more.
+  const moveRequestRef = useRef<string>(
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+  );
+
+  // Navigation (the buttons pass their click event: only a scope string counts).
+  const handleSubmit = async (scopeArg?: unknown) => {
     if (isSubmitting) return;
+    const scope = scopeArg === 'date' || scopeArg === 'series' ? scopeArg : undefined;
+    if (askMoveScope && !scope) {
+      setScopeAskOpen(true);
+      return;
+    }
     setIsSubmitting(true);
     const finalTitle = getEffectiveTitle();
     const submitData = {
@@ -529,6 +544,7 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
         _editingLocalId: editingEvent.id,
         _originalEventType: editingEvent.eventType || 'rehearsal',
       } : {}),
+      ...(askMoveScope && scope ? { _moveScope: scope, _moveClientId: moveRequestRef.current } : {}),
     };
     let saved: boolean | void;
     try {
@@ -1799,6 +1815,24 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
 
   const modals = (
     <>
+      <BwSheet
+        open={scopeAskOpen}
+        onClose={() => setScopeAskOpen(false)}
+        overline={t('Recurrence')}
+        title={t('Move which dates?')}
+        closeLabel={t('Keep editing')}
+        tone="light"
+        zIndex={170}
+        portal
+        footer={
+          <div className="flex flex-col gap-2">
+            <PillButton onClick={() => { setScopeAskOpen(false); void handleSubmit('date'); }}>{t('Only this date')}</PillButton>
+            <PillButton variant="outline" onClick={() => { setScopeAskOpen(false); void handleSubmit('series'); }}>{t('The whole series')}</PillButton>
+          </div>
+        }
+      >
+        <p className="bw-body text-muted-foreground">{t('Only this date leaves the series as a one-off; the other dates stay as they are.')}</p>
+      </BwSheet>
       <RehearsalAddTaskModal
         isOpen={isAddTaskModalOpen}
         onClose={() => setIsAddTaskModalOpen(false)}

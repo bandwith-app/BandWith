@@ -423,6 +423,8 @@ const dict: Dictionary = {
   "Only this date": "Solo esta fecha",
   "The whole series": "Toda la serie",
   "Choose which dates to move to save.": "Elige qué fechas mover para guardar.",
+  "Only this date leaves the series as a one-off; the other dates stay as they are.": "Solo esta fecha sale de la serie como ensayo único; las demás fechas quedan como están.",
+  "Moving one date needs a connection. Try again when you are online.": "Para mover una sola fecha necesitas conexión. Vuelve a intentarlo cuando estés en línea.",
   "Rehearsal date deleted": "Fecha del ensayo eliminada",
   "This rehearsal does not repeat any more. Reload and try again.": "Este ensayo ya no se repite. Recarga e inténtalo de nuevo.",
   "This date can't be deleted on its own. Reload and try again.": "Esta fecha no se puede eliminar por separado. Recarga e inténtalo de nuevo.",
