@@ -80,9 +80,32 @@ describe('offline event extras', () => {
     mocks.eventSetlistId = 'sl-old';
     await replayEventExtras('e1', { setlist });
     expect(mocks.createSetlist).not.toHaveBeenCalled();
-    // Name and songs in one call (188): no separate rename that could land alone.
-    expect(mocks.replaceSetlistSongs).toHaveBeenCalledWith('sl-old', [{ song_id: 's1', set_number: 1 }], { name: 'Gig setlist' });
+    // Songs in one call (188); the gig's existing setlist keeps its own name.
+    expect(mocks.replaceSetlistSongs).toHaveBeenCalledWith('sl-old', [{ song_id: 's1', set_number: 1 }], undefined);
     expect(mocks.updateSetlist).not.toHaveBeenCalled();
+  });
+
+  // Audit review (Claude MINOR 9): the wizard's save carries the setlist as it
+  // loaded, so it never overwrites someone else's newer setlist.
+  it('an edit carries the setlist as the wizard loaded it, and never renames it', async () => {
+    mocks.eventSetlistId = 'sl-old';
+    const loaded = { id: 'sl-old', songs: [{ song_id: 's9', set_number: 1 }, { song_id: 's9', set_number: 2 }] };
+    await replayEventExtras('e1', { setlist: { ...setlist, loaded } });
+    expect(mocks.replaceSetlistSongs).toHaveBeenCalledWith('sl-old', [{ song_id: 's1', set_number: 1 }], { expected: { songs: loaded.songs } });
+  });
+
+  it('a setlist someone else changed meanwhile is not overwritten (reported as not saved)', async () => {
+    mocks.eventSetlistId = 'sl-old';
+    mocks.replaceSetlistSongs.mockResolvedValue({ error: null, conflict: { name: 'Other', songs: [] } });
+    const loaded = { id: 'sl-old', songs: [{ song_id: 's9', set_number: 1 }] };
+    const failed = await replayEventExtras('e1', { setlist: { ...setlist, loaded } });
+    expect(failed).toContain('setlist');
+  });
+
+  it('what was loaded from another setlist is not used as expected', async () => {
+    mocks.eventSetlistId = 'sl-new';
+    await replayEventExtras('e1', { setlist: { ...setlist, loaded: { id: 'sl-old', songs: [] } } });
+    expect(mocks.replaceSetlistSongs).toHaveBeenCalledWith('sl-new', [{ song_id: 's1', set_number: 1 }], undefined);
   });
 
   it('saves to-dos, the lineup and the stage, and reports what failed', async () => {

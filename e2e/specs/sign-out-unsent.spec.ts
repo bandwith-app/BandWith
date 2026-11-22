@@ -1,4 +1,4 @@
-import { test, expect } from '../fixtures';
+import { test, expect, DB_KEY } from '../fixtures';
 import { DEMO_USER_ID } from '../fixtures';
 import { escapeRe } from '../support/flows';
 import { openHub, openHubPage } from '../support/hub';
@@ -97,7 +97,57 @@ test('@smoke refused changes show in Offline & live, with Copy and Remove', asyn
   ).toBeVisible();
   await remove.click();
   await expect(list.getByText('Watch the drummer before the bridge')).toHaveCount(0);
+  // Undo puts it back where it was.
+  await list.getByRole('button', { name: app.t('Undo'), exact: true }).click();
+  await expect(list.getByText('Watch the drummer before the bridge')).toBeVisible();
+  await remove.click();
   await list.getByRole('button', { name: app.t('Remove change: {change}', { change: 'Slower intro on Empire State' }), exact: true }).click();
-  await expect(app.page.getByRole('region', { name: app.t('Not sent'), exact: true })).toHaveCount(0);
+  await expect(list.getByRole('listitem')).toHaveCount(0);
+  await expect(list.getByText(app.t('Change removed.'), { exact: true })).toBeVisible();
+});
+
+/**
+ * Round 5 (Codex MINOR): "Update BandWith" (z 1000) has its own Sign out;
+ * the unsent-changes sheet opens above it and takes taps (touch included).
+ */
+test('@smoke the unsent-changes sheet opens above "Update BandWith" and takes taps', async ({ app, context }) => {
+  const db = await app.readDb();
+  (db as Record<string, unknown>).app_versions = [{ platform: 'web', min_version: '999912312359' }];
+  await app.page.evaluate(({ k, v }) => {
+    localStorage.setItem(k, v);
+    sessionStorage.setItem('bw-min-reloaded:999912312359', '1');
+  }, { k: DB_KEY, v: JSON.stringify(db) });
+  await app.page.reload();
+  const update = app.page.getByTestId('update-required');
+  await expect(update).toBeVisible({ timeout: 20_000 });
+  // No signal, then a change made on this phone: nothing is sent behind the sheet.
+  await context.setOffline(true);
+  await app.page.evaluate((id) => {
+    localStorage.setItem(
+      `bw:live_outbox:${id}`,
+      JSON.stringify([{ kind: 'note', id: 'e2e-note-2', songId: 'e2e-song', anchor: { type: 'song' }, body: 'Watch the drummer before the bridge', isNew: true }]),
+    );
+  }, DEMO_USER_ID);
+  const touch = !!test.info().project.use.hasTouch;
+  const press = async (l: import('@playwright/test').Locator) => (touch ? l.tap() : l.click());
+  await press(update.getByRole('button', { name: app.t('Sign out') }));
+  const sheet = app.page.getByRole('dialog', { name: app.t('You have 1 unsent change') });
+  await expect(sheet).toBeVisible();
+  await app.settle();
+  // On top: the point under each button belongs to the sheet, not the update screen.
+  for (const name of ['Send now', 'Sign out anyway']) {
+    const button = sheet.getByRole('button', { name: app.t(name), exact: true });
+    const box = (await button.boundingBox())!;
+    const onTop = await app.page.evaluate(
+      ({ x, y }) => !!document.elementFromPoint(x, y)?.closest('[role="dialog"]')?.textContent?.includes('unsent'),
+      { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    );
+    expect(onTop, name).toBe(true);
+  }
+  await press(sheet.getByRole('button', { name: app.t('Send now'), exact: true }));
+  await expect(sheet.getByText(app.t('No connection. Try again when you are online.'))).toBeVisible();
+  await app.check('unsent changes above Update BandWith');
+  await context.setOffline(false);
+  await app.page.evaluate((id) => localStorage.removeItem(`bw:live_outbox:${id}`), DEMO_USER_ID);
 });
 

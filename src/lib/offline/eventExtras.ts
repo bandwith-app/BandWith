@@ -9,7 +9,8 @@
  * duplicate to-dos or a rider).
  */
 import { supabase } from '@/lib/supabase';
-import { createSetlist, replaceSetlistSongs } from '@/lib/services/songs';
+import { createSetlist } from '@/lib/services/songs';
+import { saveExistingGigSetlist, type LoadedGigSetlist } from '@/lib/services/gigSetlistSave';
 import { syncEventTasks, type EventTaskDraft } from '@/lib/services/eventTasks';
 import { saveEventLineup, type LineupRow } from '@/lib/services/eventMemberMoney';
 import { persistComposerStage, type ComposerStagePayload } from '@/lib/services/composerStage';
@@ -20,6 +21,8 @@ export interface QueuedSetlist {
   songs: { song_id: string; position: number; set_number: number }[];
   /** Editing: every song was removed from the gig's setlist. */
   cleared?: boolean;
+  /** Editing: the setlist as the wizard loaded it (never overwrite a newer one). */
+  loaded?: LoadedGigSetlist | null;
 }
 
 export interface QueuedEventExtras {
@@ -59,13 +62,12 @@ const saveSetlist = async (eventId: string, setlist: QueuedSetlist): Promise<voi
   const existingId = (ev as { setlist_id?: string | null } | null)?.setlist_id;
   if (existingId) {
     if (setlist.songs.length === 0 && !setlist.cleared) return;
-    // Songs, name and count in one transaction (188).
-    const { error } = await replaceSetlistSongs(
+    // Songs and count in one transaction (188); the setlist keeps its name.
+    await saveExistingGigSetlist(
       existingId,
       setlist.songs.map(({ song_id, set_number }) => ({ song_id, set_number })),
-      { name: setlist.name },
+      setlist.loaded,
     );
-    if (error) throw error;
     return;
   }
   if (setlist.songs.length === 0) return;

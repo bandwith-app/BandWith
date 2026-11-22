@@ -116,13 +116,39 @@ describe('round 4: nothing counts as sent unless the server wrote it', () => {
     expect(readLiveOutbox('u-a')).toEqual([edit]);
   });
 
-  it('a delete that matched no row with the owner signed in: refused, kept on the phone, not sent', async () => {
+  // Round 5 (Claude MINOR 1): a delete sent again (the first answer was lost)
+  // finds no row with its owner signed in: the note is gone, so it is sent.
+  it('a delete that matched no row with the owner signed in: already gone, counts as sent', async () => {
     const del = { kind: 'noteDelete' as const, id: 'n3', songId: 's1' };
     queueLiveOp('u-a', del);
     net.writeRows = [];
     const r = await flushLiveOutbox('u-a', liveOutboxApi);
-    expect(r).toMatchObject({ sent: 0, dropped: 1, left: 0 });
-    expect(readRefusedLiveOps('u-a')).toEqual([del]);
+    expect(r).toMatchObject({ sent: 1, dropped: 0, left: 0 });
+    expect(readRefusedLiveOps('u-a')).toEqual([]);
+  });
+
+  it('a delete that matched no row because another account is signed in: kept for its owner', async () => {
+    const del = { kind: 'noteDelete' as const, id: 'n3', songId: 's1' };
+    queueLiveOp('u-a', del);
+    net.writeRows = [];
+    net.switchOnWrite = 'u-b';
+    const r = await flushLiveOutbox('u-a', liveOutboxApi);
+    expect(r).toMatchObject({ sent: 0, dropped: 0, left: 1 });
+  });
+
+  it('an order whose "conflict" is already the order it wanted (sent before, answer lost): counts as sent', async () => {
+    queueLiveOp('u-a', {
+      kind: 'order', setlistId: 'sl1',
+      rows: [
+        { id: 'r2', setlist_id: 'sl1', song_id: 's2', position: 0, set_number: 1 },
+        { id: 'r1', setlist_id: 'sl1', song_id: 's1', position: 1, set_number: 1 },
+      ],
+      before: [{ songId: 's1', setNumber: 1 }, { songId: 's2', setNumber: 1 }],
+    });
+    net.rpcResult = { data: { saved: false, conflict: true, current: { name: 'Gig', songs: [{ song_id: 's2', set_number: 1 }, { song_id: 's1', set_number: 1 }] } }, error: null };
+    const r = await flushLiveOutbox('u-a', liveOutboxApi);
+    expect(r).toMatchObject({ sent: 1, dropped: 0, left: 0 });
+    expect(readRefusedLiveOps('u-a')).toEqual([]);
   });
 
   it("a suggestion names its owner (created_by), so another account's session is refused", async () => {
@@ -150,6 +176,24 @@ describe('round 4: nothing counts as sent unless the server wrote it', () => {
       p_expected: { songs: [{ song_id: 's1', set_number: 1 }, { song_id: 's2', set_number: 1 }] },
     });
     expect(writes().filter((c) => c.table === 'setlist_songs')).toEqual([]);
+  });
+
+  // Round 5 (Codex B4): the same song twice with different singers, swapped
+  // in Stage: each entry names its row, so the rows (and voices) move.
+  it('the order keeps every row id (the same song twice is never matched by song)', async () => {
+    queueLiveOp('u-a', {
+      kind: 'order', setlistId: 'sl1',
+      rows: [
+        { id: 'r2', setlist_id: 'sl1', song_id: 's1', position: 0, set_number: 1 },
+        { id: 'r1', setlist_id: 'sl1', song_id: 's1', position: 1, set_number: 1 },
+      ],
+      before: [{ songId: 's1', setNumber: 1 }, { songId: 's1', setNumber: 1 }],
+    });
+    await flushLiveOutbox('u-a', liveOutboxApi);
+    expect(net.rpcLog[0].args.p_songs).toEqual([
+      { id: 'r2', song_id: 's1', set_number: 1 },
+      { id: 'r1', song_id: 's1', set_number: 1 },
+    ]);
   });
 
   it('someone changed the setlist meanwhile: the order is refused, nothing written', async () => {

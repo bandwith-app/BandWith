@@ -528,8 +528,22 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
   const editorLoadedStateRef = useRef<SetlistState | null>(null);
   const [editorConflict, setEditorConflict] = useState<SetlistState | null>(null);
 
-  const openSetlistEditor = useCallback(async (setlistId: string) => {
+  const openSetlistEditor = useCallback(async (setlistId: string, opts?: { keepDraftUntilLoaded?: boolean }) => {
     const request = ++editorRequestRef.current;
+    // "Load the latest version": the draft stays until the latest version
+    // has arrived; if it can't be fetched, nothing the user typed is lost.
+    if (opts?.keepDraftUntilLoaded) {
+      setEditorError(null);
+      const { data, error } = await getSetlist(setlistId);
+      if (editorRequestRef.current !== request) return;
+      if (!data || (data.id && data.id !== setlistId)) {
+        setEditorError(errorText(error, t('Could not load this setlist')));
+        return;
+      }
+      applyLoadedSetlist(setlistId, data);
+      setEditorConflict(null);
+      return;
+    }
     setEditorLoadedId(null);
     editorLoadedStateRef.current = null;
     setEditorConflict(null);
@@ -549,27 +563,32 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
     if (editorRequestRef.current !== request) return;
     if (data && data.id && data.id !== setlistId) return;
     if (data) {
-      setEditorLoadedId(setlistId);
-      editorLoadedStateRef.current = {
-        name: data.name,
-        songs: [...data.songs]
-          .sort((a, b) => ((a.set_number ?? 1) - (b.set_number ?? 1)) || (a.position - b.position) || String(a.id).localeCompare(String(b.id)))
-          .map((s) => ({ song_id: s.song_id, set_number: s.set_number ?? 1 })),
-      };
-      setEditingSetlistName(data.name);
-      const seen = new Set<string>();
-      const ordered = [...data.songs]
-        .sort((a, b) => ((a.set_number ?? 1) - (b.set_number ?? 1)) || (a.position - b.position))
-        .filter((s) => (seen.has(s.song_id) ? false : (seen.add(s.song_id), true)));
-      setEditorItems(ordered.map((s) => ({ key: s.id || newEditorKey(), songId: s.song_id })));
-      setEditorSets(compactSets(ordered.map((s) => s.set_number ?? 1)));
-      setEditorBaseline(editorSnapshot(data.name, ordered.map((s) => s.song_id), ordered.map((s) => s.set_number ?? 1)));
+      applyLoadedSetlist(setlistId, data);
     } else {
       setEditorError(errorText(error, t('Could not load this setlist')));
       setEditorLoadFailed(true);
     }
     setSetlistEditorLoading(false);
   }, [t]);
+
+  // A loaded setlist into the editor, in play order. A song played twice
+  // (a reprise) stays twice.
+  function applyLoadedSetlist(setlistId: string, data: NonNullable<Awaited<ReturnType<typeof getSetlist>>['data']>) {
+    setEditorLoadedId(setlistId);
+    editorLoadedStateRef.current = {
+      name: data.name,
+      songs: [...data.songs]
+        .sort((a, b) => ((a.set_number ?? 1) - (b.set_number ?? 1)) || (a.position - b.position) || String(a.id).localeCompare(String(b.id)))
+        .map((s) => ({ song_id: s.song_id, set_number: s.set_number ?? 1 })),
+    };
+    setEditingSetlistName(data.name);
+    const ordered = [...data.songs]
+      .sort((a, b) => ((a.set_number ?? 1) - (b.set_number ?? 1)) || (a.position - b.position) || String(a.id).localeCompare(String(b.id)));
+    setEditorItems(ordered.map((s) => ({ key: s.id || newEditorKey(), songId: s.song_id })));
+    setEditorSets(compactSets(ordered.map((s) => s.set_number ?? 1)));
+    setEditorBaseline(editorSnapshot(data.name, ordered.map((s) => s.song_id), ordered.map((s) => s.set_number ?? 1)));
+    setEditorLoadFailed(false);
+  }
 
   // Setlist → PDF (share sheet on phones, download on the web).
   const [exportingPdf, setExportingPdf] = useState(false);
@@ -1446,7 +1465,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
                             variant="outline"
                             fullWidth={false}
                             disabled={setlistEditorSaving}
-                            onClick={() => editingSetlistId && void openSetlistEditor(editingSetlistId)}
+                            onClick={() => editingSetlistId && void openSetlistEditor(editingSetlistId, { keepDraftUntilLoaded: true })}
                           >
                             {t('Load the latest version')}
                           </PillButton>

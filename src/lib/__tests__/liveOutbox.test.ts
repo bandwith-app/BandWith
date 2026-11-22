@@ -1,10 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   addLiveOp,
   applyNoteOps,
   flushLiveOutbox,
   queueLiveOp,
   readLiveOutbox,
+  readRefusedLiveOps,
+  refusedListFull,
+  REFUSED_LIMIT,
   waitingChanges,
   type LiveOp,
   type LiveOutboxApi,
@@ -118,3 +121,110 @@ describe('flushLiveOutbox', () => {
     expect(r).toEqual({ sent: 1, dropped: 1, left: 0 });
   });
 });
+
+// Round 5 (Codex B1 + MINOR): refused changes survive sign-out (only account
+// deletion erases them), and are never dropped silently: a full list, or
+// storage that can't take the copy, keeps the change in the queue.
+describe('the refused list', () => {
+  const refusedApi = () => ({
+    note: async () => ({ error: { code: '42501', message: 'not allowed' } }),
+    noteDelete: async () => ({ error: { code: '42501', message: 'not allowed' } }),
+    suggestion: async () => ({ error: null }),
+    order: async () => ({ error: null }),
+  });
+  const n = (id: string) => ({ kind: 'note' as const, id, songId: 's1', anchor: { type: 'song' as const }, body: `note ${id}` });
+
+  it('survives sign-out (the bw: cache wipe)', async () => {
+    const { clearOfflineCache } = await import('../offline/storage');
+    queueLiveOp('u-1', n('a'));
+    await flushLiveOutbox('u-1', refusedApi());
+    expect(readRefusedLiveOps('u-1')).toHaveLength(1);
+    await clearOfflineCache();
+    expect(readRefusedLiveOps('u-1')).toHaveLength(1);
+  });
+
+  it('full: the change stays in the queue and the list says it is full', async () => {
+    for (let i = 0; i < REFUSED_LIMIT; i++) {
+      queueLiveOp('u-1', n(`x${i}`));
+    }
+    await flushLiveOutbox('u-1', refusedApi());
+    expect(readRefusedLiveOps('u-1')).toHaveLength(REFUSED_LIMIT);
+    queueLiveOp('u-1', n('one-more'));
+    const r = await flushLiveOutbox('u-1', refusedApi());
+    expect(r.left).toBe(1);
+    expect(readLiveOutbox('u-1')).toEqual([n('one-more')]);
+    expect(readRefusedLiveOps('u-1')).toHaveLength(REFUSED_LIMIT);
+    expect(refusedListFull('u-1')).toBe(true);
+  });
+
+  it("storage can't take the copy: the change stays in the queue", async () => {
+    queueLiveOp('u-1', n('a'));
+    const real = localStorage.setItem.bind(localStorage);
+    const spy = vi.spyOn(localStorage, 'setItem').mockImplementation((k: string, v: string) => {
+      if (k.includes('live_refused')) throw new Error('QuotaExceededError');
+      return real(k, v);
+    });
+    const r = await flushLiveOutbox('u-1', refusedApi());
+    spy.mockRestore();
+    expect(r.left).toBe(1);
+    expect(readLiveOutbox('u-1')).toEqual([n('a')]);
+  });
+});
+
+// Round 5 (Claude MINOR 1): only a definite refusal goes to the refused
+// list; anything else (a server error, a timeout) stays queued and is tried
+// again later, with a growing wait. One tab sends at a time.
+describe('definite refusals, retries and one tab at a time', () => {
+  const n = (id: string) => ({ kind: 'note' as const, id, songId: 's1', anchor: { type: 'song' as const }, body: `note ${id}` });
+  const failing = (error: unknown) => {
+    const calls: string[] = [];
+    return {
+      calls,
+      api: {
+        note: async (op: { id: string }) => (calls.push(op.id), { error }),
+        noteDelete: async () => ({ error }),
+        suggestion: async () => ({ error }),
+        order: async () => ({ error }),
+      } as LiveOutboxApi,
+    };
+  };
+
+  for (const code of ['42501', 'PGRST116', '22023', '23503', 'BW_SETLIST_CONFLICT']) {
+    it(`${code} is a definite refusal: kept in the refused list`, async () => {
+      queueLiveOp('u-2', n('a'));
+      const r = await flushLiveOutbox('u-2', failing({ code, message: 'refused' }).api, { force: true });
+      expect(r).toMatchObject({ dropped: 1, left: 0 });
+      expect(readRefusedLiveOps('u-2')).toHaveLength(1);
+    });
+  }
+
+  it('a server error (500) is not a refusal: it stays queued, the list stays empty', async () => {
+    queueLiveOp('u-2', n('a'));
+    queueLiveOp('u-2', n('b'));
+    const r = await flushLiveOutbox('u-2', failing({ code: '500', message: 'Internal Server Error' }).api, { force: true });
+    expect(r).toMatchObject({ sent: 0, dropped: 0, left: 2 });
+    expect(readRefusedLiveOps('u-2')).toEqual([]);
+  });
+
+  it('after a server error the next try waits (backoff); "Send now" (force) goes at once', async () => {
+    queueLiveOp('u-3', n('a'));
+    const f = failing({ code: '503', message: 'Service Unavailable' });
+    await flushLiveOutbox('u-3', f.api);
+    expect(f.calls).toEqual(['a']);
+    await flushLiveOutbox('u-3', f.api);
+    expect(f.calls).toEqual(['a']);
+    await flushLiveOutbox('u-3', f.api, { force: true });
+    expect(f.calls).toEqual(['a', 'a']);
+  });
+
+  it('another tab is sending: this one sends nothing; its lock expired: this one sends', async () => {
+    queueLiveOp('u-4', n('a'));
+    const ok = { note: async () => ({ error: null }), noteDelete: async () => ({ error: null }), suggestion: async () => ({ error: null }), order: async () => ({ error: null }) };
+    localStorage.setItem('bw:live_outbox_flushing:u-4', `other-tab|${Date.now() + 30_000}`);
+    expect(await flushLiveOutbox('u-4', ok, { force: true })).toMatchObject({ sent: 0, left: 1 });
+    localStorage.setItem('bw:live_outbox_flushing:u-4', `other-tab|${Date.now() - 1}`);
+    expect(await flushLiveOutbox('u-4', ok, { force: true })).toMatchObject({ sent: 1, left: 0 });
+    expect(localStorage.getItem('bw:live_outbox_flushing:u-4')).toBeNull();
+  });
+});
+

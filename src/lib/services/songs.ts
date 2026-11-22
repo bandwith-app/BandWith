@@ -177,6 +177,19 @@ export const createSong = async (songData: Partial<Song>): Promise<{ data: Song 
 };
 
 /** One song as stored now (the form reloads it after a save conflict). */
+/** Song titles by id (best effort: missing ones are left out). */
+export const getSongTitles = async (ids: string[]): Promise<Record<string, string>> => {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (!unique.length) return {};
+  try {
+    const { data, error } = await supabase.from('songs').select('id, title').in('id', unique);
+    if (error || !Array.isArray(data)) return {};
+    return Object.fromEntries((data as { id: string; title: string }[]).map((r) => [r.id, r.title]));
+  } catch {
+    return {};
+  }
+};
+
 export const getSong = async (songId: string): Promise<{ data: Song | null; error: Error | null }> => {
   try {
     const { data, error } = await supabase.from('songs').select('*').eq('id', songId).single();
@@ -632,7 +645,8 @@ export const removeSongFromSetlist = async (setlistSongId: string): Promise<{ er
 /** One entry for replaceSetlistSongs: a song id, or a song id with its set. */
 export type SetlistSongInput =
   | string
-  | { song_id: string; set_number?: number; notes?: string | null };
+  /** `id`: the row this entry is (Stage's order): it keeps that row, never matched by song. */
+  | { song_id: string; set_number?: number; notes?: string | null; id?: string };
 
 type PreviousSetlistRow = { song_id: string; set_number: number | null; position: number };
 
@@ -669,6 +683,7 @@ const setlistEntry = (entry: SetlistSongInput) => {
       ? Math.floor(item.set_number)
       : 1;
   return {
+    ...('id' in item && item.id ? { id: item.id } : {}),
     song_id: item.song_id,
     set_number: setNumber,
     ...('notes' in item && item.notes !== undefined ? { notes: item.notes } : {}),
@@ -761,11 +776,18 @@ const replaceSetlistSongsStepwise = async (
       if (!sameSetlist(current, { name: current.name, ...expected })) return { error: null, conflict: current };
     }
     const hasVoices = previousRows.some((r) => 'vocal_parts' in r);
+    // An entry naming its row keeps it (like 188); the rest match by song.
+    const named = new Map<number, StoredRow>();
+    entries.forEach((item, i) => {
+      const r = 'id' in item && item.id ? ordered.find((o) => o.id === item.id && o.song_id === item.song_id) : undefined;
+      if (r && ![...named.values()].includes(r)) named.set(i, r);
+    });
+    const claimed = new Set([...named.values()].map((r) => r.id));
     const bySong = new Map<string, StoredRow[]>();
-    for (const r of ordered) bySong.set(r.song_id, [...(bySong.get(r.song_id) ?? []), r]);
+    for (const r of ordered) if (!claimed.has(r.id)) bySong.set(r.song_id, [...(bySong.get(r.song_id) ?? []), r]);
 
     const rows = entries.map((item, i) => {
-      const kept = bySong.get(item.song_id)?.shift();
+      const kept = named.get(i) ?? bySong.get(item.song_id)?.shift();
       return {
         ...(kept ? { id: kept.id } : {}),
         setlist_id: setlistId,

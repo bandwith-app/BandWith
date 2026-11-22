@@ -194,6 +194,20 @@ describe('replaceSetlistSongs, before 188: who sings what survives (round 2, Cod
   });
 });
 
+describe('replaceSetlistSongs, before 188: the same song twice swapped by row id (round 5, Codex B4)', () => {
+  it('each entry naming its row keeps it, with its own singers', async () => {
+    const twice = [
+      { id: 'r1', setlist_id: 'sl', song_id: 'a', position: 1, set_number: 1, notes: null, vocal_parts: { bv: ['u-joe'] } },
+      { id: 'r9', setlist_id: 'sl', song_id: 'a', position: 2, set_number: 1, notes: null, vocal_parts: { lead: ['u-ana'] } },
+    ];
+    handler = (c) => (c.table === 'setlist_songs' && c.op === 'select' ? { data: twice } : {});
+    const { error } = await replaceSetlistSongs('sl', [{ id: 'r9', song_id: 'a' }, { id: 'r1', song_id: 'a' }]);
+    expect(error).toBeNull();
+    const insert = calls.find((c) => c.table === 'setlist_songs' && c.op === 'insert');
+    expect((insert?.payload as Array<{ id: string; position: number }>).map((r) => [r.id, r.position])).toEqual([['r9', 1], ['r1', 2]]);
+  });
+});
+
 describe('saveSongLyricsIfUnchanged, before 189 (round 2, Codex B2)', () => {
   it('the write itself only lands on the version it compared', async () => {
     let reads = 0;

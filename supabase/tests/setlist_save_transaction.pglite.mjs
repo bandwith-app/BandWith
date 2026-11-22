@@ -206,6 +206,20 @@ const src = (await db.query(`SELECT prosrc FROM pg_proc WHERE proname = 'bw_save
 const lockAt = src.search(/FROM\s+public\.setlist_songs[^;]*FOR\s+UPDATE/i);
 const readAt = src.search(/INTO\s+v_prev/i);
 ok(lockAt >= 0 && readAt > lockAt, 'the lock is taken before the rows are read for the copy');
+// Round 5 (Claude MINOR 10): someone who isn't an admin never takes the
+// setlist's lock (a plain read checks first, then the admin locks it).
+{
+  const adminAt = src.search(/bw_is_band_admin/i);
+  const setlistLockAt = src.search(/FROM\s+public\.setlists\s+s\s+WHERE\s+s\.id\s*=\s*p_setlist_id\s+FOR\s+UPDATE/i);
+  ok(adminAt >= 0 && setlistLockAt > adminAt, 'the admin check runs before the setlist row is locked');
+  // A member's call holds no lock on the setlist when it is refused.
+  await seed();
+  const held = await as(MEMBER, async () => {
+    await db.query(`SELECT public.bw_save_setlist_songs($1, $2::jsonb)`, [SL, JSON.stringify([{ song_id: S1 }])]).catch(() => {});
+    return 0;
+  });
+  ok(held === 0, 'a refused call ends cleanly');
+}
 
 // Round 3 (Codex B2): rows that stay are updated in place, never deleted and
 // put back. A singer change another admin saves while this save holds the
@@ -277,6 +291,29 @@ const rot = await save(ADMIN, [{ song_id: S3 }, { song_id: S2 }, { song_id: S4 }
 ok(!rot?.error && (await rows()).map((r) => r.song_id).join() === [S3, S2, S4, S1].join() && (await rows()).map((r) => r.position).join() === '1,2,3,4',
   `a rotation with a new song too (${rot?.error ?? 'ok'})`);
 await db.exec(`ALTER TABLE public.setlist_songs DROP CONSTRAINT t_pos_unique`);
+
+// Round 5 (Codex B4): the same song twice, each row with its own singers.
+// Stage swaps them: the rows (and their vocal_parts) move by their id, never
+// matched again by song. Entries without an id still match by song.
+{
+  await seed();
+  const R4 = id(35);
+  await db.exec(`INSERT INTO setlist_songs (id, setlist_id, song_id, position, set_number, vocal_parts) VALUES ('${R4}','${SL}','${S1}',4,2,'{"lead":["${ADMIN}"]}')`);
+  // Now: R1 (S1, bv MEMBER) set 1 pos 1, R2 set 1, R3 set 2, R4 (S1, lead ADMIN) set 2 pos 4.
+  const sw2 = await save(ADMIN, [
+    { id: R4, song_id: S1, set_number: 1 }, { id: R2, song_id: S2, set_number: 1 },
+    { id: R3, song_id: S3, set_number: 2 }, { id: R1, song_id: S1, set_number: 2 },
+  ]);
+  const after = await rows();
+  ok(!sw2?.error && after.map((r) => r.id).join() === [R4, R2, R3, R1].join(),
+    `same song twice, swapped by row id: the rows move (${sw2?.error ?? after.map((r) => r.id).join()})`);
+  ok(JSON.stringify(after[0].vocal_parts) === JSON.stringify({ lead: [ADMIN] }) && JSON.stringify(after[3].vocal_parts) === JSON.stringify({ bv: [MEMBER] }),
+    'and each keeps its own singers');
+  // An id that isn't this setlist's row for that song: matched by song as before.
+  const odd = await save(ADMIN, [{ id: FOREIGN, song_id: S1 }, { song_id: S2 }, { song_id: S3, set_number: 2 }, { song_id: S1, set_number: 2 }]);
+  const after2 = await rows();
+  ok(!odd?.error && after2.map((r) => r.id).join() === [R4, R2, R3, R1].join(), `an unknown id is ignored, the song matches its row (${odd?.error ?? after2.map((r) => r.id).join()})`);
+}
 
 // Older builds: their own delete + insert keeps working for admins, not for members.
 await seed();

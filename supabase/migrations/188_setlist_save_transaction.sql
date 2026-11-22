@@ -10,9 +10,11 @@
 -- bw_save_setlist_songs(setlist, songs, name, expected) does it all in one
 -- transaction: any failure rolls back to the setlist as it was.
 --
---   p_songs  [{ "song_id": uuid, "set_number": int?, "notes": text? }, …]
+--   p_songs  [{ "song_id": uuid, "set_number": int?, "notes": text?, "id": uuid? }, …]
 --            in play order. "notes" left out keeps the note already stored
---            for that song; "notes": null clears it.
+--            for that song; "notes": null clears it. "id": the row this entry
+--            is (Stage's order), kept when it is this setlist's row for that
+--            song; otherwise rows are matched by song (below).
 --   p_name   new name, or NULL / blank to keep the current one.
 --   p_expected  optional: the setlist as the editor loaded it,
 --            { "name": text, "songs": [{ "song_id", "set_number" }, …] } in
@@ -30,8 +32,9 @@
 --
 -- Rows for a song already in the setlist stay the same rows, updated in
 -- place (position, set, notes when sent): their id and vocal_parts (172: who
--- sings what for this gig is stored per row id) never change, the n-th time
--- a song appears taking the n-th existing row of that song. Only rows of
+-- sings what for this gig is stored per row id) never change. An entry that
+-- names its row ("id") keeps it; otherwise the n-th time a song appears takes
+-- the n-th existing row of that song not named by another entry. Only rows of
 -- songs taken out are deleted, only new ones inserted. Before, every save
 -- gave the rows new ids and dropped their vocal_parts.
 --
@@ -95,8 +98,14 @@ BEGIN
     RAISE EXCEPTION 'The songs must be a list' USING ERRCODE = '22023';
   END IF;
 
-  -- One save at a time per setlist.
-  SELECT s.band_id INTO v_band FROM public.setlists s WHERE s.id = p_setlist_id FOR UPDATE;
+  -- Admins only, checked with a plain read: anyone else never takes the lock.
+  SELECT s.band_id INTO v_band FROM public.setlists s WHERE s.id = p_setlist_id;
+  IF v_band IS NULL OR NOT public.bw_is_band_admin(v_band, v_uid) THEN
+    RAISE EXCEPTION 'Only band admins can change setlists' USING ERRCODE = '42501';
+  END IF;
+  -- One save at a time per setlist (the band checked again under the lock).
+  PERFORM 1 FROM public.setlists s WHERE s.id = p_setlist_id FOR UPDATE;
+  SELECT s.band_id INTO v_band FROM public.setlists s WHERE s.id = p_setlist_id;
   IF v_band IS NULL OR NOT public.bw_is_band_admin(v_band, v_uid) THEN
     RAISE EXCEPTION 'Only band admins can change setlists' USING ERRCODE = '42501';
   END IF;
@@ -156,22 +165,41 @@ BEGIN
        WHERE ss.setlist_id = p_setlist_id
     ) r;
 
-  -- The new list, each entry with the row it keeps (null: a new row).
+  -- The new list, each entry with the row it keeps (null: a new row). An
+  -- entry naming its row ("id", Stage's order) keeps that row when it is this
+  -- setlist's row for that song: the same song twice swapped keeps each row's
+  -- singers. The others match by song, the n-th unclaimed time a song
+  -- appears taking its n-th unclaimed row.
+  WITH n AS (
+    SELECT e.item,
+           e.ord::int AS pos,
+           (e.item ->> 'song_id')::uuid AS song_id,
+           CASE WHEN jsonb_typeof(e.item -> 'set_number') = 'number' AND (e.item ->> 'set_number')::numeric >= 1
+                THEN floor((e.item ->> 'set_number')::numeric)::int ELSE 1 END AS set_number,
+           CASE WHEN coalesce(e.item ->> 'id', '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                THEN (e.item ->> 'id')::uuid END AS want
+      FROM jsonb_array_elements(p_songs) WITH ORDINALITY AS e(item, ord)
+  ), prev AS (
+    SELECT * FROM jsonb_to_recordset(v_prev) AS p(id uuid, song_id uuid, position int, set_number int)
+  ), by_id AS (
+    SELECT DISTINCT ON (p.id) n.pos, p.id
+      FROM n JOIN prev p ON p.id = n.want AND p.song_id = n.song_id
+     ORDER BY p.id, n.pos
+  ), rest_n AS (
+    SELECT n.pos, n.song_id, row_number() OVER (PARTITION BY n.song_id ORDER BY n.pos) AS occ
+      FROM n WHERE NOT EXISTS (SELECT 1 FROM by_id b WHERE b.pos = n.pos)
+  ), rest_p AS (
+    SELECT p.id, p.song_id, row_number() OVER (PARTITION BY p.song_id ORDER BY p.set_number, p.position, p.id) AS occ
+      FROM prev p WHERE NOT EXISTS (SELECT 1 FROM by_id b WHERE b.id = p.id)
+  )
   SELECT coalesce(jsonb_agg(jsonb_build_object(
-           'id', p.id, 'song_id', n.song_id, 'pos', n.pos, 'set_number', n.set_number,
+           'id', coalesce(b.id, q.id), 'song_id', n.song_id, 'pos', n.pos, 'set_number', n.set_number,
            'has_notes', n.item ? 'notes', 'notes', n.item ->> 'notes') ORDER BY n.pos), '[]'::jsonb)
     INTO v_plan
-    FROM (
-      SELECT e.item,
-             e.ord::int AS pos,
-             (e.item ->> 'song_id')::uuid AS song_id,
-             CASE WHEN jsonb_typeof(e.item -> 'set_number') = 'number' AND (e.item ->> 'set_number')::numeric >= 1
-                  THEN floor((e.item ->> 'set_number')::numeric)::int ELSE 1 END AS set_number,
-             row_number() OVER (PARTITION BY e.item ->> 'song_id' ORDER BY e.ord) AS occ
-        FROM jsonb_array_elements(p_songs) WITH ORDINALITY AS e(item, ord)
-    ) n
-    LEFT JOIN jsonb_to_recordset(v_prev) AS p(id uuid, song_id uuid, occ bigint)
-      ON p.song_id = n.song_id AND p.occ = n.occ;
+    FROM n
+    LEFT JOIN by_id b ON b.pos = n.pos
+    LEFT JOIN rest_n r ON r.pos = n.pos
+    LEFT JOIN rest_p q ON q.song_id = r.song_id AND q.occ = r.occ;
   v_count := jsonb_array_length(v_plan);
 
   -- Rows that stay are changed in place, never deleted and put back: a

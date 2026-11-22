@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // its session, nothing is written (the database would give them the note).
 // Made-up song and note (New York).
 
-const net = vi.hoisted(() => ({ session: 'u-a' as string | null, log: [] as Array<{ table: string; op: string; args: unknown[] }> }));
+const net = vi.hoisted(() => ({ session: 'u-a' as string | null, rows: [{ id: 'n1' }] as unknown[], log: [] as Array<{ table: string; op: string; args: unknown[] }> }));
 vi.mock('../../supabase', () => {
   const q = (table: string) => {
     const b: any = {};
@@ -15,7 +15,7 @@ vi.mock('../../supabase', () => {
         return b;
       };
     }
-    b.then = (res: (v: unknown) => void) => res({ data: [{ id: 'n1' }], error: null });
+    b.then = (res: (v: unknown) => void) => res({ data: net.rows, error: null });
     return b;
   };
   return {
@@ -37,6 +37,7 @@ import { readLiveOutbox } from '../../liveOutbox';
 beforeEach(() => {
   localStorage.clear();
   net.session = 'u-a';
+  net.rows = [{ id: 'n1' }];
   net.log = [];
 });
 
@@ -60,5 +61,16 @@ describe('My notes: written only for the account that tapped Save', () => {
   it('an edit only matches a note of that owner', async () => {
     await savePersonalNote('s1', { type: 'song' }, 'capo 3', 'n1', 'u-a');
     expect(net.log.filter((c) => c.op === 'eq').map((c) => c.args)).toContainEqual(['user_id', 'u-a']);
+  });
+
+  // Round 5 (Claude MINOR 8): an online edit that matched no note (deleted
+  // on another device) saved nothing: it says so, never "saved".
+  it('an online edit that matches no note is an error, not saved', async () => {
+    net.rows = [];
+    const r = await savePersonalNote('s1', { type: 'song' }, 'capo 3', 'n1', 'u-a');
+    expect(net.log.some((c) => c.op === 'select' && c.args[0] === 'id')).toBe(true);
+    expect(r.error).toBeTruthy();
+    expect(String((r.error as Error).message)).toMatch(/note was deleted/i);
+    expect(readLiveOutbox('u-a')).toEqual([]);
   });
 });

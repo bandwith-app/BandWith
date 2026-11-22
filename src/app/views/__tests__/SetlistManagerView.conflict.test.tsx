@@ -111,4 +111,38 @@ describe('SetlistManagerView: saved only over the setlist as loaded', () => {
     expect(screen.getByDisplayValue('Rooftop Session · Saturday')).toBeTruthy();
     expect(svc.replaceSetlistSongs).toHaveBeenCalledTimes(1);
   });
+
+  // Round 5 (Claude MINOR 2): "Load the latest version" fetches first; the
+  // draft is replaced only when the latest version arrived.
+  it('"Load the latest version" that fails keeps the draft and says so', async () => {
+    svc.replaceSetlistSongs.mockResolvedValueOnce({ error: null, conflict: current });
+    await openAndSave();
+    svc.getSetlist.mockResolvedValueOnce({ data: null, error: new Error('Failed to fetch') } as any);
+    fireEvent.click(await screen.findByRole('button', { name: /load the latest version/i }));
+    await waitFor(() => expect(svc.getSetlist).toHaveBeenCalledTimes(2));
+    await act(async () => {});
+    expect(screen.getByDisplayValue('Rooftop Session · Saturday')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /load the latest version/i })).toBeTruthy();
+    expect(screen.getByText(/could not load this setlist/i)).toBeTruthy();
+  });
+
+  // Round 5 (Claude MINOR 9): a song played twice (a reprise) is kept.
+  it('a reprise loads and saves as two entries', async () => {
+    svc.getSetlist.mockResolvedValueOnce({
+      data: { id: 'sl-a', band_id: 'band-1', name: 'Rooftop Session', song_count: 3, songs: [
+        { id: 'row-1', setlist_id: 'sl-a', song_id: 'song-a', position: 1, set_number: 1 },
+        { id: 'row-2', setlist_id: 'sl-a', song_id: 'song-b', position: 2, set_number: 1 },
+        { id: 'row-3', setlist_id: 'sl-a', song_id: 'song-a', position: 3, set_number: 2 },
+      ] },
+      error: null,
+    } as any);
+    svc.replaceSetlistSongs.mockResolvedValueOnce({ error: null, previous: [] });
+    await openAndSave();
+    await waitFor(() => expect(svc.replaceSetlistSongs).toHaveBeenCalledTimes(1));
+    expect(svc.replaceSetlistSongs.mock.calls[0][1]).toEqual([
+      expect.objectContaining({ song_id: 'song-a', set_number: 1 }),
+      expect.objectContaining({ song_id: 'song-b', set_number: 1 }),
+      expect.objectContaining({ song_id: 'song-a', set_number: 2 }),
+    ]);
+  });
 });

@@ -1,11 +1,13 @@
 /**
  * Signing out with changes still waiting on this phone (notes, suggestions,
- * a setlist order, rehearsal notes: liveOutbox.ts, rehearsalNotesOutbox.ts):
+ * a setlist order, rehearsal notes: liveOutbox.ts, rehearsalNotesOutbox.ts;
+ * chat messages, #291):
  * the person is asked first ("Send now" / "Sign out anyway"), never left to
  * lose them without a word. The sheet that asks registers itself here
  * (UnsentChangesSignOut); AuthContext asks before every sign-out.
  */
 import { waitingChanges } from './liveOutbox';
+import { readChatOutboxCount } from './offline/storage';
 
 export type SignOutChoice = 'signout' | 'cancel';
 type Gate = (userId: string) => Promise<SignOutChoice>;
@@ -22,7 +24,7 @@ export function setSignOutGate(next: Gate): () => void {
 
 /** true: go on signing out (nothing waits, or the person chose to). */
 export async function askBeforeSignOut(userId: string | null | undefined): Promise<boolean> {
-  if (!userId || !gate || waitingChanges(userId) === 0) return true;
+  if (!userId || !gate || waitingChanges(userId) + readChatOutboxCount(userId) === 0) return true;
   return (await gate(userId)) === 'signout';
 }
 

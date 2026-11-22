@@ -1,11 +1,27 @@
 import { useEffect, useState } from 'react';
-import { flushLiveOutbox, readLiveOutbox, waitingChanges, WAITING_EVENTS } from '@/lib/liveOutbox';
-import { flushOutbox, readOutbox } from '@/lib/rehearsalNotesOutbox';
+import { flushLiveOutbox, readLiveOutbox, readRefusedLiveOps, waitingChanges, WAITING_EVENTS } from '@/lib/liveOutbox';
+import { flushOutbox, readOutbox, type OutboxApi } from '@/lib/rehearsalNotesOutbox';
 import { liveOutboxApi } from '@/lib/services/liveOutboxApi';
 import { deleteNote, saveNote, setNoteOk, setPractised } from '@/lib/services/rehearsalNotes';
 import { sessionUserId } from '@/lib/sessionUser';
 
 const rehearsalApi = { save: saveNote, remove: deleteNote, practised: setPractised, ok: setNoteOk };
+
+/**
+ * The rehearsal outbox sent only as its owner: before each change, the
+ * session must still be `userId` (another tab may have signed someone else
+ * in). Not: the flush stops as if offline and the change waits for its owner.
+ */
+const notOwnerNow = Object.assign(new Error('Held offline: another account is signed in on this device.'), { code: 'BW_NOT_OWNER' });
+function ownedRehearsalApi(userId: string): OutboxApi {
+  const mine = async () => (await sessionUserId()) === userId;
+  return {
+    save: async (note, before) => ((await mine()) ? rehearsalApi.save(note, before) : { error: notOwnerNow }),
+    remove: async (id) => ((await mine()) ? rehearsalApi.remove(id) : { error: notOwnerNow }),
+    practised: async (id, user, value) => ((await mine()) ? rehearsalApi.practised(id, user, value) : { error: notOwnerNow }),
+    ok: async (id, value) => ((await mine()) ? rehearsalApi.ok(id, value) : { error: notOwnerNow }),
+  };
+}
 const RETRY_MS = 30_000;
 
 /** The signed-in person: the given id, else the session saved on this device. */
@@ -40,10 +56,16 @@ export function useWaitingChanges(userId?: string | null): number {
   return n;
 }
 
-/** Send everything waiting for this person now; how many changes still wait. */
-export async function sendWaitingNow(userId: string): Promise<number> {
-  await Promise.all([flushLiveOutbox(userId, liveOutboxApi), flushOutbox(userId, rehearsalApi)]);
-  return waitingChanges(userId);
+/**
+ * Send everything waiting for this person now, only while they are the
+ * account signed in. `left`: still waiting; `refused`: turned down by the
+ * server during this send (kept in Settings › Offline & live).
+ */
+export async function sendWaitingNow(userId: string): Promise<{ left: number; refused: number }> {
+  if ((await sessionUserId()) !== userId) return { left: waitingChanges(userId), refused: 0 };
+  const before = readRefusedLiveOps(userId).length;
+  const [, rehearsal] = await Promise.all([flushLiveOutbox(userId, liveOutboxApi, { force: true }), flushOutbox(userId, ownedRehearsalApi(userId))]);
+  return { left: waitingChanges(userId), refused: Math.max(0, readRefusedLiveOps(userId).length - before) + rehearsal.dropped };
 }
 
 /**
@@ -57,7 +79,7 @@ export function useLiveOutboxFlush(userId?: string | null) {
     const go = () => {
       if (typeof navigator !== 'undefined' && !navigator.onLine) return;
       if (readLiveOutbox(userId).length) void flushLiveOutbox(userId, liveOutboxApi);
-      if (readOutbox(userId).length) void flushOutbox(userId, rehearsalApi);
+      if (readOutbox(userId).length) void flushOutbox(userId, ownedRehearsalApi(userId));
     };
     const onVisible = () => {
       if (document.visibilityState === 'visible') go();

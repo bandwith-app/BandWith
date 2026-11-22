@@ -170,4 +170,26 @@ describe('editing a quote: Android Back', () => {
     expect(screen.queryByText('Save your changes?')).toBeNull();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  // Round 5 (Codex B5): the deposit changed right after the pricing arrived
+  // (well within a moment) is the user's: touched comes from the input, not
+  // from timing.
+  it('the deposit changed just after pricing arrives: Back still asks', { timeout: 15000 }, async () => {
+    let arrive: (v: unknown) => void = () => {};
+    pricing.load = () => new Promise((r) => (arrive = r));
+    const { onClose } = await renderEdit();
+    fireEvent.click(screen.getByRole('button', { name: /pricing, logistics & billing/i }));
+    const deposit = await screen.findByLabelText('Booking deposit');
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 500));
+    });
+    await act(async () => arrive({ ...DEFAULT_BAND_PRICING }));
+    fireEvent.change(deposit, { target: { value: '50' } });
+    act(() => {
+      handleBackFromStack();
+    });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(await screen.findByText('Save your changes?')).toBeTruthy();
+  });
 });
+

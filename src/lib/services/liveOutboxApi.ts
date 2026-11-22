@@ -46,9 +46,15 @@ export const liveOutboxApi: LiveOutboxApi = {
 
   async noteDelete(op, userId) {
     const { data, error: writeError } = await supabase.from('song_personal_notes').delete().eq('id', op.id).eq('user_id', userId).select('id');
-    const error = writeError ?? noRow(data);
-    if (!error) notifyPersonalChanged(op.songId);
-    return { error };
+    if (writeError) return { error: writeError };
+    // No row, with its owner signed in: the note is already gone (a delete
+    // sent again after its answer was lost). Another session: not done.
+    if (noRow(data)) {
+      const other = await notOwner(userId);
+      if (other) return { error: other };
+    }
+    notifyPersonalChanged(op.songId);
+    return { error: null };
   },
 
   async suggestion(op, userId) {
@@ -68,11 +74,16 @@ export const liveOutboxApi: LiveOutboxApi = {
     const inOrder = [...op.rows].sort((a, b) => (a.set_number ?? 1) - (b.set_number ?? 1) || a.position - b.position);
     const res = await replaceSetlistSongs(
       op.setlistId,
-      inOrder.map((r) => ({ song_id: r.song_id, set_number: r.set_number })),
+      // Each entry names its row: the same song twice keeps each row's singers.
+      inOrder.map((r) => ({ id: r.id, song_id: r.song_id, set_number: r.set_number })),
       { expected: { songs: op.before.map((b) => ({ song_id: b.songId, set_number: b.setNumber ?? 1 })) } },
     );
     if (res.error) return { error: res.error };
-    if (res.conflict) return { error: new Error('The setlist changed meanwhile.') };
+    // "Changed meanwhile" into exactly this order: sent before, its answer
+    // lost. Anything else: refused for good, nothing written.
+    const wanted = inOrder.map((r) => `${r.song_id}:${r.set_number ?? 1}`).join(',');
+    if (res.conflict && res.conflict.songs.map((x) => `${x.song_id}:${x.set_number ?? 1}`).join(',') === wanted) return { error: null };
+    if (res.conflict) return { error: Object.assign(new Error('The setlist changed meanwhile.'), { code: 'BW_SETLIST_CONFLICT' }) };
     void notifySetlistSaved({
       setlistId: op.setlistId,
       eventId: op.eventId,

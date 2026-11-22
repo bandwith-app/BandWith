@@ -1,0 +1,30 @@
+import { replaceSetlistSongs } from './songs';
+
+/** The gig's setlist as the wizard loaded it: which setlist, its songs in play order. */
+export type LoadedGigSetlist = { id: string; songs: { song_id: string; set_number: number }[] };
+
+/** The setlist changed since it was loaded: nothing was written. */
+export class SetlistConflictError extends Error {
+  code = 'BW_SETLIST_CONFLICT';
+  constructor() {
+    super('Someone else changed this setlist while you were editing.');
+  }
+}
+
+/**
+ * The gig wizard's save over the gig's existing setlist (online and the
+ * offline replay). It keeps the setlist's own name, and with what the wizard
+ * loaded it is written only while the setlist is still that (188): a newer
+ * setlist from someone else is never overwritten.
+ */
+export async function saveExistingGigSetlist(
+  setlistId: string,
+  songs: { song_id: string; set_number: number }[],
+  loaded?: LoadedGigSetlist | null
+) {
+  const expected = loaded && loaded.id === setlistId ? { songs: loaded.songs } : undefined;
+  const res = await replaceSetlistSongs(setlistId, songs, expected ? { expected } : undefined);
+  if (res.error) throw res.error;
+  if (res.conflict) throw new SetlistConflictError();
+  return res.previous ?? [];
+}

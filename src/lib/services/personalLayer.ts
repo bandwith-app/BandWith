@@ -101,10 +101,14 @@ export const savePersonalNote = async (
   if (waitingNew(me, id)) return queue(true);
   const res = id
     ? await (me
-        ? supabase.from('song_personal_notes').update({ body: text, anchor }).eq('id', id).eq('user_id', me)
-        : supabase.from('song_personal_notes').update({ body: text, anchor }).eq('id', id))
+        ? supabase.from('song_personal_notes').update({ body: text, anchor }).eq('id', id).eq('user_id', me).select('id')
+        : supabase.from('song_personal_notes').update({ body: text, anchor }).eq('id', id).select('id'))
     : await supabase.from('song_personal_notes').insert({ song_id: songId, anchor, body: text, ...(me ? { user_id: me } : {}) });
   if (res.error && me && isOfflineError(res.error)) return queue(!id);
+  // An edit that matched no note (deleted on another device): nothing saved.
+  if (!res.error && id && !(Array.isArray(res.data) && res.data.length > 0)) {
+    return { error: new UserError(t('This note was deleted, maybe on another device. Nothing was saved.')) };
+  }
   if (!res.error) changed(songId);
   return { error: res.error };
 };

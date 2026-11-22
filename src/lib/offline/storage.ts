@@ -198,8 +198,35 @@ export const listOfflineKeys = async (prefix: string): Promise<string[]> => {
   return [...keys];
 };
 
-/** Removes every cached key `drop` says yes to (IndexedDB and the localStorage fallback). */
-const removeOfflineItemsWhere = async (drop: (key: string) => boolean): Promise<void> => {
+/**
+ * Chat messages written on this phone and not sent yet (#291), one list per
+ * account: `bw:chat_outbox:<uid>` = [{ chatId, clientId, body, createdAt }].
+ */
+export const CHAT_OUTBOX_PREFIX = 'bw:chat_outbox:';
+
+/** How many chat messages wait for `userId`. Missing or unreadable: 0 (never throws). */
+export const readChatOutboxCount = (userId: string | null | undefined): number => {
+  if (!userId) return 0;
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(`${CHAT_OUTBOX_PREFIX}${userId}`) || '[]');
+    return Array.isArray(v) ? v.length : 0;
+  } catch {
+    return 0;
+  }
+};
+
+/**
+ * Kept per account until the person deals with them: the changes the server
+ * refused (Settings › Offline & live: Stage notes and orders, rehearsal notes
+ * #296) and the chat messages not sent yet (#291). No bulk wipe takes them,
+ * sign-out included; only deleting the account erases them (accountWrites.ts).
+ */
+export const KEEP_ON_SIGN_OUT_PREFIXES = ['bw:live_refused:', 'bw:rehearsal_notes_rejected:', CHAT_OUTBOX_PREFIX] as const;
+export const isKeptOnSignOut = (key: string): boolean => KEEP_ON_SIGN_OUT_PREFIXES.some((p) => key.startsWith(p));
+
+/** Removes every cached key `drop` says yes to (IndexedDB and the localStorage fallback), never a kept one. */
+const removeOfflineItemsWhere = async (dropAny: (key: string) => boolean): Promise<void> => {
+  const drop = (key: string) => !isKeptOnSignOut(key) && dropAny(key);
   if (isIndexedDBAvailable()) {
     try {
       const db = await getDB();

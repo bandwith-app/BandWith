@@ -45,7 +45,7 @@ import { DatePicker, toDatePickerEvents } from '@/app/components/ui/DatePicker';
 import type { EventData } from '@/app/components/dashboard/EventCard';
 import { RehearsalCreationWizard } from '@/app/components/rehearsal/RehearsalCreationWizard';
 import { useBand } from '@/lib/BandContext';
-import { getSongs, getSetlists, getSetlist, type Song, type Setlist } from '@/lib/services/songs';
+import { getSongs, getSetlists, getSetlist, setlistOrder, type Song, type Setlist } from '@/lib/services/songs';
 import { removeSongsFromSets, setsFromSetlistSongs, setSongCount } from '@/lib/setlistSets';
 import { setStartNumbers, withSetSongs } from '@/lib/setlistOrder';
 import { SortableSongList } from '@/app/components/ui/SortableSongList';
@@ -769,6 +769,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   // the form used to open with 0). Songs the user picked meanwhile win.
   const editingSetlistId: string | undefined = isEditing ? editingEvent?.setlistId : undefined;
   const savedSongCountRef = useRef(0);
+  // Editing: the setlist as it loaded, so the save never overwrites a newer one (188).
+  const savedSetlistRef = useRef<{ id: string; songs: { song_id: string; set_number: number }[] } | null>(null);
   // Edit: what the form held once the saved setlist and to-dos loaded, to ask
   // before closing with changes (set below, after the snapshot).
   const editBaselineRef = useRef<string | null>(null);
@@ -780,7 +782,9 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
     if (!editingSetlistId || Array.isArray(ds?.setlist)) return;
     let cancelled = false;
     getSetlist(editingSetlistId).then(({ data, error }) => {
-      if (cancelled || error || !data?.songs?.length) return;
+      if (cancelled || error || !data) return;
+      savedSetlistRef.current = { id: editingSetlistId, songs: setlistOrder(data.songs ?? []) };
+      if (!data.songs?.length) return;
       const sets = setsFromSetlistSongs(data.songs, (n) => t('Set {n}', { n }));
       savedSongCountRef.current = setSongCount(sets);
       rebaseEdit();
@@ -999,6 +1003,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       setlist,
       // Every song removed from a saved setlist: empty it (no songs alone means "unchanged").
       _setlistCleared: isEditing && savedSongCountRef.current > 0 && setSongCount(setlist) === 0,
+      _setlistExpected: isEditing ? savedSetlistRef.current : null,
       // A task typed but not yet added with the button still counts.
       tasks: newTaskText.trim()
         ? [...tasks, { uid: `t-${Date.now()}`, title: newTaskText.trim(), completed: false }]

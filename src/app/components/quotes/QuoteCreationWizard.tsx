@@ -3141,10 +3141,11 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
   // - what only the user sets (client, date and times, venue, notes…) is
   //   compared with the quote as it opened;
   // - what the form also settles by itself from the band's pricing (fees,
-  //   totals, currency, extras, deposit…) is compared per field: its baseline
-  //   follows the form only for a moment after opening and after the pricing
-  //   arrives (however late), and only for fields the user hasn't changed. A
-  //   field changed at any other time is the user's from then on.
+  //   totals, currency, extras, deposit…) is compared per field: a field the
+  //   user changed (in the render of an input, a tap or a key: touched) keeps
+  //   the value it opened with as its baseline; a field the form changes on
+  //   its own (the pricing arriving, however late, and what follows from it)
+  //   moves its baseline along, unless the user touched it.
   const SETTLED_BY_FORM = [
     'currency', 'baseFee', 'musicianCount', 'musicians', 'performanceType',
     'travelIncluded', 'travelFee', 'travelDistanceKm', 'travelMode',
@@ -3153,10 +3154,36 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
     'depositAmount', 'depositRequired', 'depositPercentage', 'validityDays', 'validUntil',
     'subtotal', 'discountAmount', 'netAmount', 'vatAmount', 'total', 'totalWithVat',
   ];
-  const SETTLE_MS = 400;
   const editBaselineRef = useRef<{ own: string; settled: Record<string, string> } | null>(null);
+  const editLastRef = useRef<Record<string, string> | null>(null);
   const editTouchedRef = useRef(new Set<string>());
-  const editPricingRef = useRef<{ settings: BandPricingSettings; at: number } | null>(null);
+  const editPricingRef = useRef(pricingSettings);
+  // An input, tap or key of the user's is being handled (until its renders are done).
+  const userActRef = useRef(false);
+  React.useEffect(() => {
+    if (!isEditing) return;
+    let held = false;
+    let timer: number | undefined;
+    const act = () => {
+      userActRef.current = true;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => (userActRef.current = held), 0);
+    };
+    const down = () => ((held = true), act());
+    const up = () => ((held = false), act());
+    const kinds = ['input', 'change', 'click', 'keydown'] as const;
+    for (const k of kinds) document.addEventListener(k, act, true);
+    document.addEventListener('pointerdown', down, true);
+    document.addEventListener('pointerup', up, true);
+    document.addEventListener('pointercancel', up, true);
+    return () => {
+      for (const k of kinds) document.removeEventListener(k, act, true);
+      document.removeEventListener('pointerdown', down, true);
+      document.removeEventListener('pointerup', up, true);
+      document.removeEventListener('pointercancel', up, true);
+      window.clearTimeout(timer);
+    };
+  }, [isEditing]);
   const editSnapshot = isEditing
     ? (() => {
         const { createdAt: _c, updatedAt: _u, ...rest } = buildQuoteData() as Record<string, unknown>;
@@ -3170,20 +3197,21 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
       })()
     : null;
   if (editSnapshot) {
-    const now = Date.now();
-    if (!editPricingRef.current || editPricingRef.current.settings !== pricingSettings) {
-      editPricingRef.current = { settings: pricingSettings, at: now };
-    }
-    const settling = now - editPricingRef.current.at < SETTLE_MS;
     const base = editBaselineRef.current;
+    const last = editLastRef.current;
+    // The band's pricing arrived in this very render: what it changed is the form's.
+    const pricingRender = editPricingRef.current !== pricingSettings;
+    editPricingRef.current = pricingSettings;
     if (!base) editBaselineRef.current = { own: editSnapshot.own, settled: { ...editSnapshot.settled } };
-    else {
+    else if (last) {
+      // Only the fields that changed in this render, by whom it changed them.
       for (const [k, v] of Object.entries(editSnapshot.settled)) {
-        if (base.settled[k] === v) continue;
-        if (settling && !editTouchedRef.current.has(k)) base.settled[k] = v;
-        else editTouchedRef.current.add(k);
+        if (last[k] === v) continue;
+        if (userActRef.current && !pricingRender) editTouchedRef.current.add(k);
+        else if (!editTouchedRef.current.has(k)) base.settled[k] = v;
       }
     }
+    editLastRef.current = editSnapshot.settled;
   }
   const editDirty =
     !!editSnapshot &&

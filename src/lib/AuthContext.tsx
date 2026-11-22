@@ -486,9 +486,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Changes still waiting on this phone (notes, suggestions, a setlist order):
   // asked first, "Send now" or "Sign out anyway" (signOutGate.ts); closed,
-  // still signed in. A deleted account is not asked.
+  // still signed in. A deleted account is not asked: all it left on this
+  // device goes first (accountWrites.ts), so nothing is sent or written back.
   const signOutAfterAsking = async (opts?: { discardPendingWrites?: boolean }) => {
-    if (!opts?.discardPendingWrites) {
+    if (opts?.discardPendingWrites) {
+      const { discardAccountWrites } = await import('./accountWrites');
+      await discardAccountWrites(user?.id);
+    } else {
       const { askBeforeSignOut } = await import('./signOutGate');
       if (!(await askBeforeSignOut(user?.id))) return { error: null, cancelled: true as const };
     }

@@ -50,7 +50,8 @@ import {
 } from "@/lib/services/events";
 import type { EventMember, Event } from "@/lib/services/events";
 import { respondToOwnInvite, InviteResponseError, getOwnInviteStatus, inviteSettled } from "@/lib/services/inviteResponse";
-import { createSetlist, deleteSetlist, replaceSetlistSongs } from "@/lib/services/songs";
+import { createSetlist, deleteSetlist } from "@/lib/services/songs";
+import { saveExistingGigSetlist, SetlistConflictError } from "@/lib/services/gigSetlistSave";
 import { diffSetlist, entriesFromRows, type SetlistChange } from "@/lib/setlistChanges";
 import { notifySetlistSaved } from "@/lib/services/setlistNotify";
 import { receiptFor, deleteChat as deleteChatService, createChat as createChatService, chatErrorMessage } from "@/lib/services/chats";
@@ -3429,6 +3430,8 @@ export default function AuthenticatedApp() {
       // Set once the setlist is saved online: an offline fallback after that
       // must not queue it again.
       let setlistSaved = false;
+      // The setlist changed since the wizard loaded it: not written, not queued either.
+      let setlistConflict = false;
       // Edit: what the save changed in the setlist, for the lineup's one notification (107).
       const setlistChange: { current: { id: string; change: SetlistChange } | null } = { current: null };
       const persistSetlist = async (): Promise<string | null> => {
@@ -3446,13 +3449,14 @@ export default function AuthenticatedApp() {
             .maybeSingle();
           const existingId = (ev as { setlist_id?: string | null } | null)?.setlist_id;
           if (existingId) {
-            // Songs, name and count in one transaction (188).
-            const { error: replaceErr, previous } = await replaceSetlistSongs(
+            // Songs and count in one transaction (188). The setlist keeps its
+            // own name, and is written only while it is still what the
+            // wizard loaded: someone else's newer setlist is never overwritten.
+            const previous = await saveExistingGigSetlist(
               existingId,
               songs.map(({ song_id, set_number }) => ({ song_id, set_number })),
-              { name }
+              data._setlistExpected
             );
-            if (replaceErr) throw replaceErr;
             setlistChange.current = {
               id: existingId,
               change: diffSetlist(
@@ -3500,10 +3504,10 @@ export default function AuthenticatedApp() {
       // lineup changes, rider & stage): queued with it, replayed on sync.
       const offlineExtras = (isEdit: boolean): QueuedEventExtras | undefined => {
         const extras: QueuedEventExtras = {};
-        if (!setlistSaved && !eventData.setlist_id) {
+        if (!setlistSaved && !setlistConflict && !eventData.setlist_id) {
           const songs = setlistSongs();
           const cleared = !!(isEdit && data._setlistCleared);
-          if (songs.length > 0 || cleared) extras.setlist = { bandId: realBand.id, name: setlistName, songs, cleared };
+          if (songs.length > 0 || cleared) extras.setlist = { bandId: realBand.id, name: setlistName, songs, cleared, loaded: data._setlistExpected ?? null };
         }
         const drafts = taskDrafts();
         if (drafts.length > 0 || originalTaskIds.length > 0) {
@@ -3579,6 +3583,7 @@ export default function AuthenticatedApp() {
       const setlistId = await withFastTimeout(persistSetlist(), 6000).catch((err) => {
         console.error('Setlist persist error:', err);
         setlistFailed = true;
+        if (err instanceof SetlistConflictError) setlistConflict = true;
         return null;
       });
       if (!setlistFailed) setlistSaved = true;
@@ -3615,6 +3620,8 @@ export default function AuthenticatedApp() {
           if (memberFailed) {
             console.error('Member persist issue:', memberResult);
             setSaveToast({ message: t('Event updated, but there was a problem saving members.'), type: 'error' });
+          } else if (setlistConflict) {
+            setSaveToast({ message: t('Event updated. Someone else changed the setlist meanwhile, so your setlist changes were not saved.'), type: 'error' });
           } else if (setlistFailed) {
             setSaveToast({ message: t('Event updated, but the setlist was not saved.'), type: 'error' });
           } else if (!tasksSaved) {

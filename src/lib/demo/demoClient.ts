@@ -1736,7 +1736,9 @@ const rpc = (fn: string, args: Row = {}) => {
       const list: Row[] = Array.isArray(args.p_songs) ? args.p_songs : [];
       const now = new Date().toISOString();
       const next = list.map((e, i) => {
-        const k = left.findIndex((r) => r.song_id === e.song_id);
+        // An entry naming its row keeps it (188), else the first of that song.
+        const byId = e.id ? left.findIndex((r) => r.id === e.id && r.song_id === e.song_id) : -1;
+        const k = byId >= 0 ? byId : left.findIndex((r) => r.song_id === e.song_id);
         const old = k >= 0 ? left.splice(k, 1)[0] : null;
         return {
           ...(old ?? { id: uuid(), created_at: now, vocal_parts: null }),
