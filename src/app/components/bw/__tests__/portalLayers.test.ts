@@ -32,6 +32,8 @@ const PORTALS: Record<string, Kind> = {
   '/src/app/components/quotes/QuoteShareModal.tsx': 'dialog',
   '/src/app/components/band/MemberDetail.tsx': 'dialog',
   '/src/app/components/dashboard/StageSongOnly.tsx': 'dialog',
+  // #290: the count-in countdown and its options sheet (both role="dialog").
+  '/src/app/components/dashboard/StageCountIn.tsx': 'dialog',
   '/src/app/components/songs/ChordEditor.tsx': 'dialog',
   '/src/app/components/songs/SongSuggestionsView.tsx': 'dialog',
   '/src/app/components/songs/PersonalLayer.tsx': 'dialog',
