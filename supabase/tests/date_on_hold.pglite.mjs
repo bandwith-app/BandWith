@@ -10,6 +10,7 @@
 //   mkdir -p /tmp/pgB && cd /tmp/pgB && npm init -y >/dev/null && npm i @electric-sql/pglite@0.5.15
 //   cp <repo>/supabase/tests/date_on_hold.pglite.mjs . && node date_on_hold.pglite.mjs <repo>
 //   node date_on_hold.pglite.mjs <repo> /dev/null     # before: FAILs expected
+//   MIG_175=<175 file> MIG_181=<181 file> node date_on_hold.pglite.mjs <repo>   # + real 175 and 181, both orders
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
 
@@ -677,6 +678,85 @@ ok(orderA?.c === true, `order 178 → 181: confirmed, the lineup member is back 
   const orderB = (await tryq(`SELECT cleared_at IS NOT NULL c FROM chat_participants WHERE chat_id = '${QCHAT}' AND user_id = '${MEM}'`)).rows[0];
   ok(during === 0 && orderB?.c === true, `order 181 → 178: out while a quote, back once confirmed, history cleared (${during}, ${JSON.stringify(orderB || null)})`);
   db = db1;
+}
+
+// ── Cross-PR: the real 175 (chat scope, section 3) and 181, both orders ────
+// MIG_175 / MIG_181: paths to those branches' files (git show
+// origin/fix/security-audit:supabase/migrations/175_security_audit_access.sql).
+// chats.type is the chat_type enum here, as on databases built from 002.
+const M175 = process.env.MIG_175;
+const M181 = process.env.MIG_181;
+if (M175 && M181) {
+  const db1 = db;
+  const sec175 = (() => {
+    const all = readFileSync(M175, 'utf8').split('\n');
+    const a = all.findIndex((l) => l.startsWith('-- ── 3.'));
+    const b = all.findIndex((l) => l.startsWith('-- ── 4.'));
+    return all.slice(a, b).join('\n');
+  })();
+  const [GC, GRP, QC, QE8, GIG8] = [70, 71, 72, 38, 39].map(id);
+  const cross = async (order) => {
+    db = new PGlite();
+    await boot(db);
+    await db.exec(`
+      CREATE TYPE chat_type AS ENUM ('direct', 'group', 'band', 'event', 'rider');
+      ALTER TABLE chats ALTER COLUMN type TYPE chat_type USING type::chat_type;
+      INSERT INTO auth.users (id) SELECT unnest(ARRAY['${ADMIN}','${MEM}','${MEM2}','${OUT}']::uuid[]);
+      INSERT INTO profiles (id, full_name) VALUES ('${ADMIN}','Leo Admin'), ('${MEM}','Marta Drums'), ('${MEM2}','Sam Bass'), ('${OUT}','Ex Member');
+      INSERT INTO bands VALUES ('${BAND}', 'Velvet Static');
+      INSERT INTO band_members (band_id, user_id, role) VALUES ('${BAND}','${ADMIN}','admin'), ('${BAND}','${MEM}','member'), ('${BAND}','${MEM2}','member');
+      INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, created_at) VALUES
+        ('${GIG8}','${BAND}','Rooftop Session','confirmed','gig','${ADMIN}', current_date + 5, now() - interval '1 day'),
+        ('${QE8}','${BAND}','Smith Brunch','tentative','gig','${ADMIN}', current_date + 9, now() - interval '1 day');
+      INSERT INTO event_members (event_id, user_id, status) VALUES ('${GIG8}','${MEM}','confirmed'), ('${GIG8}','${MEM2}','dropped_out'), ('${QE8}','${MEM}','confirmed');
+      INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES
+        ('${GC}','event','Rooftop Session','${BAND}','${GIG8}','${ADMIN}'), ('${GRP}','group','Velvet crew','${BAND}',NULL,'${ADMIN}'),
+        ('${QC}','event','Smith Brunch','${BAND}','${QE8}','${ADMIN}');
+      INSERT INTO chat_participants (chat_id, user_id) VALUES ('${GC}','${ADMIN}'), ('${GC}','${MEM}'), ('${GC}','${MEM2}'),
+        ('${GRP}','${ADMIN}'), ('${GRP}','${MEM}'), ('${GRP}','${OUT}'), ('${QC}','${ADMIN}'), ('${QC}','${MEM}');
+      INSERT INTO messages (chat_id, sender_id, content, created_at) VALUES ('${QC}','${ADMIN}','Client budget 4200', now() - interval '1 hour');`);
+    const sc = async (chat, uid) => (await tryq(
+      `SELECT public.bw_chat_scope_ok(c.type::text, c.band_id, c.event_id, '${uid}') ok FROM chats c WHERE c.id = '${chat}'`)).rows[0]?.ok;
+    const steps = order === 'A' ? ['175', '178', '181'] : ['175', '181', '178'];
+    const mid = {};
+    for (const st of steps) {
+      const sql = st === '175' ? sec175 : st === '181' ? readFileSync(M181, 'utf8') : readFileSync(MIG, 'utf8');
+      const err = await db.exec(sql).then(() => null, (e) => e.message);
+      if (err) console.log(`order ${order}, ${st}:`, err);
+      if (st === '178') mid.grpOut = await sc(GRP, OUT);
+    }
+    const tag = order === 'A' ? '175 → 178 → 181' : '175 → 181 → 178';
+    const inChat = async (chat, uid) => (await tryq(`SELECT 1 FROM chat_participants WHERE chat_id = '${chat}' AND user_id = '${uid}'`)).rows.length;
+    if (order === 'A') ok(mid.grpOut === false, `${tag}: 178's chat rule keeps 175's legacy 'group' = band rule (former member out: ${mid.grpOut})`);
+    ok(await sc(GRP, MEM) === true && await sc(GRP, OUT) === false, `${tag}: legacy group chat follows the band`);
+    ok((await tryq(`SELECT public.bw_is_event_participant('${GIG8}', '${MEM2}') p`)).rows[0]?.p === false,
+      `${tag}: dropped out is off the gig (bw_is_event_participant keeps 181's status list)`);
+    ok(await inChat(GC, MEM2) === 0 && await inChat(GC, MEM) === 1, `${tag}: gig chat = lineup (dropped out gone, lineup kept)`);
+    ok(await inChat(QC, MEM) === 0, `${tag}: a member is out of the quote chat`);
+    // An older admin build adds the whole lineup to the quote chat in one insert.
+    await db.exec(`DELETE FROM chat_participants WHERE chat_id = '${QC}' AND user_id = '${ADMIN}'`);
+    const ins = await as(ADMIN, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${QC}','${ADMIN}'), ('${QC}','${MEM}')`);
+    ok(!ins.error && await inChat(QC, ADMIN) === 1 && await inChat(QC, MEM) === 0,
+      `${tag}: old build's whole-lineup insert saves the admin, skips the member (${ins.error || 'no error'})`);
+    const trig = (await tryq(`SELECT string_agg(tgname, ',' ORDER BY tgname) t FROM pg_trigger WHERE tgrelid = 'public.chat_participants'::regclass AND NOT tgisinternal`)).rows[0]?.t || '';
+    await asServer(ADMIN, `UPDATE events SET status = 'confirmed' WHERE id = '${QE8}'`);
+    const back = (await tryq(`SELECT cleared_at IS NOT NULL c FROM chat_participants WHERE chat_id = '${QC}' AND user_id = '${MEM}'`)).rows[0];
+    const list = await as(MEM, `SELECT public.get_user_chats('${MEM}') j`);
+    const listed = JSON.stringify(list.rows[0]?.j || []).includes(QC);
+    const old = await as(MEM, `SELECT content FROM messages WHERE chat_id = '${QC}'`);
+    ok(back?.c === true && listed && old.rows.length === 0 && !old.error,
+      `${tag}: confirmed, the member is back (listed, history before the confirmation hidden) [${trig}]`);
+    // Re-running 175 afterwards keeps the stronger rule.
+    await db.exec(sec175).catch((e) => console.log(`order ${order}, re-run 175:`, e.message));
+    const def = await fnDef('bw_chat_scope_ok');
+    ok(def.includes('bw_is_event_participant') && def.includes('dropped_out') && def.includes("'group'"),
+      `${tag}, then 175 again: the lineup + quote rule stays live`);
+  };
+  await cross('A');
+  await cross('B');
+  db = db1;
+} else {
+  console.log('skip: cross-PR 175 + 181 (set MIG_175 and MIG_181)');
 }
 
 console.log(fails ? `\n${passes} passed, ${fails} FAILED` : `\n${passes} passed, ALL OK`);

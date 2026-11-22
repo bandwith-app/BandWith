@@ -82,9 +82,16 @@
 -- Older app builds: they already hid quotes from members; now members simply
 -- don't get those rows (events, their own lineup row, notifications), which
 -- the app treats like a gig they are not on. No RPC they call changes shape.
--- Apply after 175 (it defines bw_chat_scope_ok, redefined here); if 175 is
--- ever applied after this, run this file again. 181's bw_chat_scope_ok
--- (lineup rule) already carries the quote rule and is kept on a re-run.
+-- Works with or without 175 / 181, in either order (checked with the real
+-- 175 + 181 loaded: 175 -> 178 -> 181 and 175 -> 181 -> 178). Its
+-- bw_chat_scope_ok keeps 175's rules ('group' = band, every caller passes
+-- type::text); 181's version (lineup rule, which carries the quote rule via
+-- bw_is_event_participant) is kept on a re-run, and 175 re-run keeps either.
+-- bw_is_event_participant keeps 181's off-the-gig statuses (declined,
+-- dropped_out, removed). 175's BEFORE INSERT trigger already skips quote-chat
+-- rows through bw_chat_scope_ok; 178's own trigger makes the same call
+-- without 175 and also sets the history cutoff (cleared_at) after the
+-- confirmation, which 175's does not.
 -- Idempotent; safe to re-run on live data.
 -- ============================================================================
 
@@ -204,7 +211,7 @@ AS $$
     FROM chats c
     JOIN events e ON e.id = c.event_id
    WHERE auth.uid() IS NOT NULL
-     AND c.type = 'event'
+     AND c.type::text = 'event'
      AND e.band_id IS NOT NULL
      AND (
        c.created_by = auth.uid()
@@ -256,7 +263,7 @@ AS $$
     JOIN events e ON e.id = c.event_id
     JOIN event_date_holds h ON h.event_id = e.id AND h.release_reason = 'confirmed' AND h.released_at IS NOT NULL
    WHERE auth.uid() IS NOT NULL
-     AND c.type = 'event'
+     AND c.type::text = 'event'
      AND e.band_id IS NOT NULL
      AND EXISTS (SELECT 1 FROM chat_participants cp WHERE cp.chat_id = c.id AND cp.user_id = auth.uid())
      AND NOT public.bw_is_band_admin(e.band_id, auth.uid());
@@ -288,7 +295,7 @@ BEGIN
   END;
   IF v_chat IS NULL AND p_reference_type = 'chat' THEN v_chat := p_reference_id; END IF;
   IF v_chat IS NULL THEN RETURN NULL; END IF;
-  SELECT c.event_id INTO v_event FROM chats c WHERE c.id = v_chat AND c.type = 'event';
+  SELECT c.event_id INTO v_event FROM chats c WHERE c.id = v_chat AND c.type::text = 'event';
   RETURN v_event;
 END;
 $$;
@@ -349,7 +356,8 @@ AS $$
         OR EXISTS (
           SELECT 1 FROM event_members em
           WHERE em.event_id = e.id AND em.user_id = p_user_id
-            AND COALESCE(em.status, '') <> 'declined'
+            -- Off the gig like declined (046, 181): dropped out, removed.
+            AND COALESCE(em.status, '') NOT IN ('declined', 'dropped_out', 'removed')
         )
       )
   );
@@ -427,7 +435,7 @@ AS $$
   SELECT c.id, c.title::text, c.version, c.status::text, c.sent_at, c.viewed_at
     FROM public.contracts c
    WHERE c.event_id = p_event_id
-     AND c.type = 'rider'
+     AND c.type::text = 'rider'
      AND auth.uid() IS NOT NULL
      AND public.bw_is_band_member(c.band_id)
      AND NOT public.bw_event_quote_hidden(p_event_id)
@@ -615,7 +623,9 @@ CREATE POLICY chat_participants_quote_admins_only ON public.chat_participants
 
 -- Joining a quote chat: a member's row is dropped silently (older admin
 -- builds add the whole lineup in one insert; the admin's own row must still
--- save). Joining a former quote chat: the history before the confirmation is
+-- save). With 175 its bw_chat_participant_scope trigger (same rule, through
+-- bw_chat_scope_ok) fires first and this one agrees; without 175 this is
+-- the only guard. Joining a former quote chat: the history before the confirmation is
 -- cleared for members (cleared_at), whoever adds them.
 CREATE OR REPLACE FUNCTION public.bw_trg_chat_participant_quote_guard()
 RETURNS trigger
@@ -628,7 +638,7 @@ DECLARE
   v_band uuid;
   v_cut timestamptz;
 BEGIN
-  SELECT c.event_id INTO v_event FROM chats c WHERE c.id = NEW.chat_id AND c.type = 'event';
+  SELECT c.event_id INTO v_event FROM chats c WHERE c.id = NEW.chat_id AND c.type::text = 'event';
   IF v_event IS NULL THEN RETURN NEW; END IF;
   IF public.bw_event_quote_hidden(v_event, NEW.user_id) THEN
     RETURN NULL;
@@ -663,7 +673,7 @@ BEGIN
     SELECT cp.chat_id, cp.user_id, to_jsonb(cp) AS row_data
       FROM chat_participants cp
       JOIN chats c ON c.id = cp.chat_id
-     WHERE c.type = 'event'
+     WHERE c.type::text = 'event'
        AND c.event_id IS NOT NULL
        AND (p_event_id IS NULL OR c.event_id = p_event_id)
        AND public.bw_event_quote_hidden(c.event_id, cp.user_id)
@@ -708,7 +718,7 @@ BEGIN
   SELECT DISTINCT c.id, em.user_id, now(), now()
     FROM chats c
     JOIN event_members em ON em.event_id = c.event_id
-   WHERE c.type = 'event' AND c.event_id = p_event_id
+   WHERE c.type::text = 'event' AND c.event_id = p_event_id
      AND em.user_id IS NOT NULL
      AND coalesce(em.status, 'invited') NOT IN ('declined', 'dropped_out', 'removed')
      AND public.bw_is_band_member(v_band, em.user_id)
@@ -716,7 +726,7 @@ BEGIN
      AND NOT EXISTS (SELECT 1 FROM chat_participants cp WHERE cp.chat_id = c.id AND cp.user_id = em.user_id);
   DELETE FROM chat_participants_quote_178 a
    USING chats c
-   WHERE a.chat_id = c.id AND c.type = 'event' AND c.event_id = p_event_id;
+   WHERE a.chat_id = c.id AND c.type::text = 'event' AND c.event_id = p_event_id;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_quote_event_confirmed(uuid) FROM PUBLIC, anon, authenticated;
@@ -744,7 +754,8 @@ STABLE SECURITY DEFINER
 SET search_path TO 'public'
 AS $f$
   SELECT CASE
-    WHEN p_type = 'band' THEN
+    -- 'group' with a band: legacy, same rule as the band chat (175).
+    WHEN p_type IN ('band', 'group') THEN
       p_band_id IS NULL OR public.bw_is_band_member(p_band_id, p_user_id)
     WHEN p_type = 'event' THEN
       (p_band_id IS NULL OR public.bw_is_band_member(p_band_id, p_user_id))
@@ -827,7 +838,7 @@ AS $$
    WHERE u IS NOT NULL
      AND NOT EXISTS (
        SELECT 1 FROM chats c
-        WHERE c.id = p_chat_id AND c.type = 'event' AND c.event_id IS NOT NULL
+        WHERE c.id = p_chat_id AND c.type::text = 'event' AND c.event_id IS NOT NULL
           AND public.bw_event_quote_hidden(c.event_id, u));
 $$;
 REVOKE ALL ON FUNCTION public.bw_chat_push_readers(uuid, uuid[]) FROM PUBLIC, anon, authenticated;

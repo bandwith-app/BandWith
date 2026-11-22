@@ -33,6 +33,14 @@ export function notificationTarget(
 ): NotificationTarget | null {
   const kind = String(type || data?.type || '');
   const d = data || {};
+  // A hold's push (178) travels as event_date_hold so old builds just open
+  // the calendar; the real notice type and the event come along separately.
+  if (kind === 'event_date_hold') {
+    const holdType = str(d.hold_type) || 'date_hold';
+    if (holdType === 'date_hold_released') return null;
+    const holdEventId = str(d.hold_event_id);
+    return holdEventId ? { screen: 'home', holdEventId } : { screen: 'home' };
+  }
   const chatId = str(d.chatId) || str(d.chat_id);
   const eventId = str(d.eventId) || str(d.event_id);
 

@@ -68,4 +68,13 @@ describe('date on hold (178)', () => {
     expect(notificationTarget('date_hold_changed', {})).toEqual({ screen: 'home' });
     expect(notificationTarget('date_hold_released', { event_id: 'e1' })).toBeNull();
   });
+
+  it('routes the hold push (type event_date_hold, no event_id for old builds) to that hold', () => {
+    // 178's push payload: old builds see an event_* type without an event id
+    // and open the calendar; new builds open the hold itself.
+    const push = { type: 'event_date_hold', hold_type: 'date_hold_changed', hold_event_id: 'e2', notification_id: 'n1' };
+    expect(notificationTarget(push.type, push)).toEqual({ screen: 'home', holdEventId: 'e2' });
+    expect(notificationTarget('event_date_hold', { hold_type: 'date_hold', hold_event_id: 'e3' })).toEqual({ screen: 'home', holdEventId: 'e3' });
+    expect(notificationTarget('event_date_hold', { hold_type: 'date_hold_released', hold_event_id: 'e2' })).toBeNull();
+  });
 });
