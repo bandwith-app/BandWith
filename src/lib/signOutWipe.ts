@@ -37,11 +37,12 @@ const AUDIO_KEYS = 'bw-regia-audio:';
  */
 const PUSH_KEYS = 'bandwith.push-';
 /**
- * Changes still waiting to be sent, per account: the rehearsal notes outbox
- * and the Stage outbox (#291 review: IdentityHub's wipe erased them), and
- * the offline queue (accountQueue, below). The same list as #287's
- * PENDING_WRITE_PREFIXES, which lands after this (merge order #292 → #296 →
- * #287), so copied as data.
+ * Changes still waiting to be sent, per account, kept by prefix: the
+ * rehearsal notes outbox and the Stage outbox (#291 review: IdentityHub's
+ * wipe erased them). The offline queue is kept by accountQueue (below), per
+ * account only. Together these are what #287's PENDING_WRITE_PREFIXES names
+ * (#287 lands after this, merge order #292 → #296 → #287, so this is data
+ * here, not an import).
  */
 const PENDING_KEYS = ['bw:rehearsal_notes_outbox:', 'bw:live_outbox:'] as const;
 const QUEUE_PREFIX = 'bw:offline_queue:';
@@ -50,6 +51,8 @@ const QUEUE_PREFIX = 'bw:offline_queue:';
  * Never the anonymous one (queued before the user was known) nor the legacy
  * global key: the next account to sign in adopts those (syncQueue
  * adoptOrphanQueue), so a bandmate would replay this person's edits as theirs.
+ * Accepted trade-off: edits this person queued before their account was known
+ * (in `:anonymous`) go with it.
  */
 const accountQueue = (k: string): boolean => {
   if (!k.startsWith(QUEUE_PREFIX)) return false;
@@ -143,14 +146,26 @@ const step = <T>(run: () => T | Promise<T>, ms = 3000): Promise<T | undefined> =
 
 /**
  * The accounts' offline queues as stored (#296 round 10): IndexedDB first,
- * so the localStorage snapshot alone doesn't keep them. Read before the clear.
+ * so the localStorage snapshot alone doesn't keep them. Read before the clear,
+ * never capped (round 11: the clear right after waits on the same storage
+ * anyway). A key that can't be read is reported and skipped; the queues
+ * already read are always kept.
  */
 const readAccountQueues = async (): Promise<[string, unknown][]> => {
-  const keys = (await storage.listOfflineKeys(QUEUE_PREFIX)).filter(accountQueue);
   const out: [string, unknown][] = [];
+  let keys: string[] = [];
+  try {
+    keys = (await storage.listOfflineKeys(QUEUE_PREFIX)).filter(accountQueue);
+  } catch (err) {
+    console.warn('[signOutWipe] Could not list the offline queues:', err);
+  }
   for (const k of keys) {
-    const v = await storage.getOfflineItem<unknown>(k).catch(() => null);
-    if (v != null) out.push([k, v]);
+    try {
+      const v = await storage.getOfflineItem<unknown>(k);
+      if (v != null) out.push([k, v]);
+    } catch (err) {
+      console.warn(`[signOutWipe] Could not read ${k}; the other queues are kept:`, err);
+    }
   }
   return out;
 };
@@ -160,23 +175,33 @@ export async function wipeAfterFailedSignOut(): Promise<void> {
   await step(() => supabase.auth.signOut({ scope: 'local' }));
   await step(() => settleRefusedNotes());
   await step(() => import('./regiaAudio').then((m) => m.clearDownloadedAudio()));
-  // Kept entries, read before the offline cache is cleared (before #292 it clears every bw: key).
-  const keep = snapshot(kept);
-  const queues = (await step(readAccountQueues)) ?? [];
-  // Awaited in full, never capped: a clear that ended later could take the entries put back below.
-  await Promise.resolve().then(() => storage.clearOfflineCache()).catch(() => {});
-  // The anonymous and legacy queues go with it (clearOfflineCache removes both, and kept() keeps neither).
-  try {
-    const drop: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && !kept(k)) drop.push(k);
+  // Read, clear and write back with the offline queues held (round 11): a sync pass still running
+  // lands first (what it sent is out of the queue), and none interleaves, so nothing it sent
+  // comes back. If the module can't load, the same steps run unheld.
+  const held = await import('./offline/syncQueue').then(
+    (m) => m.withOfflineQueuesHeld,
+    () => <T>(fn: () => Promise<T>) => fn(),
+  );
+  await held(async () => {
+    // Kept entries, read before the offline cache is cleared (before #292 it clears every bw: key).
+    const keep = snapshot(kept);
+    const queues = await readAccountQueues();
+    // Awaited in full, never capped: a clear that ended later could take the entries put back below.
+    await Promise.resolve().then(() => storage.clearOfflineCache()).catch(() => {});
+    // The anonymous and legacy queues go with it (clearOfflineCache removes both, and kept() keeps neither).
+    try {
+      const drop: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && !kept(k)) drop.push(k);
+      }
+      drop.forEach((k) => localStorage.removeItem(k));
+      for (const [k, v] of keep) localStorage.setItem(k, v);
+    } catch {
+      /* storage blocked */
     }
-    drop.forEach((k) => localStorage.removeItem(k));
-    for (const [k, v] of keep) localStorage.setItem(k, v);
-  } catch {
-    /* storage blocked */
-  }
-  // Each account's unsent edits, back where they were stored (as AuthContext's sign-out does).
-  for (const [k, v] of queues) await step(() => storage.setOfflineItem(k, v), 10_000);
+    // Each account's unsent edits, back where they were stored (as AuthContext's sign-out does),
+    // in full before the queues are let go.
+    for (const [k, v] of queues) await storage.setOfflineItem(k, v).catch(() => {});
+  });
 }
