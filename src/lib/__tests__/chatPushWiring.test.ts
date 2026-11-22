@@ -1,14 +1,9 @@
 // send-push must announce only the caller's own message and respect the push
 // switch (audit 02 #6, #7). The function runs on Deno, so this checks how it
 // is wired; the rules themselves are tested in chatPush.test.ts.
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-
-const root = resolve(__dirname, '../../..');
-const read = (env: string, rel: string) => readFileSync(process.env[env] || resolve(root, rel), 'utf8');
-const sendPush = read('SEND_PUSH_SRC', 'supabase/functions/send-push/index.ts');
-const chats = read('CHATS_SRC', 'src/lib/services/chats.ts');
+import sendPush from '../../../supabase/functions/send-push/index.ts?raw';
+import chats from '../services/chats.ts?raw';
 
 describe('send-push wiring', () => {
   it('refuses an app push that is not the caller’s own recent message', () => {
