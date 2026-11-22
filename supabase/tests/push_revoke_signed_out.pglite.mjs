@@ -53,8 +53,9 @@ const revoke3 = (uid, tok, owner, at) =>
   as(uid, async () => (await db.query(`SELECT public.bw_revoke_push_token($1, $2, $3) AS r`, [tok, owner, at])).rows[0].r);
 const register = (uid, tok, secret, platform = 'ios') =>
   as(uid, async () => (await db.query(`SELECT public.bw_register_push_token_stamped($1, $2, $3) AS j`, [tok, platform, secret])).rows[0].j);
-const pending = (tok, owner) =>
-  as(null, async () => (await db.query(`SELECT public.bw_push_token_registered($1, $2) AS r`, [tok, owner])).rows[0].r);
+const gated = async (tok) => (await db.query(`SELECT uid_gated FROM push_tokens WHERE token = $1`, [tok])).rows[0]?.uid_gated;
+const registerGated = (uid, tok, secret, platform, flag) =>
+  as(uid, async () => (await db.query(`SELECT public.bw_register_push_token_stamped($1, $2, $3, $4) AS j`, [tok, platform, secret, flag])).rows[0].j);
 const S1 = 'a'.repeat(20) + '1'.repeat(44), S2 = 'b'.repeat(20) + '2'.repeat(44);
 
 // Codex review #287 round 4 (B2): a former user on a shared iPad holds the
@@ -82,12 +83,11 @@ ok(await revoke(null, TOK3, ALICE, null, S1) === false, 'replayed: nothing more 
 // Re-registering rotates the secret: a replay of the old one fails.
 await register(ALICE, TOK3, S2);
 ok(await revoke(null, TOK3, ALICE, null, S1) === false && await active(TOK3) === true, 'after a new registration the old secret is refused');
-ok(await pending(TOK3, ALICE) === true, 'still registered to Alice: the device keeps its revocation');
+// Main's decision (round 5): no lookup by token at all, the device decides.
+ok((await db.query(`SELECT to_regprocedure('public.bw_push_token_registered(text,uuid)') AS a, to_regprocedure('public.bw_push_token_registered(text,uuid,text)') AS b`)).rows.every((r) => r.a === null && r.b === null), 'no bw_push_token_registered: nobody can ask by token');
 // The device moves to Bob: Alice's secrets are useless, and Bob's row is his.
 await register(BOB, TOK3, S1);
 ok(await revoke(null, TOK3, ALICE, null, S2) === false && await revoke(null, TOK3, ALICE, null, S1) === false && await active(TOK3) === true, "Alice's secrets can't touch Bob's registration");
-ok(await pending(TOK3, ALICE) === false, 'no longer registered to Alice: her revocation can go');
-ok(await pending(TOK3, BOB) === true, 'registered to Bob');
 // Any other re-save (046, an older build) clears the secret: no replay.
 await db.exec(`CREATE OR REPLACE FUNCTION public.bw_register_push_token(p_token text, p_platform text) RETURNS void LANGUAGE sql SECURITY DEFINER AS $$
   INSERT INTO public.push_tokens (user_id, token, platform, is_active, updated_at) VALUES (auth.uid(), p_token, p_platform, true, now())
@@ -96,6 +96,26 @@ await db.exec(`CREATE OR REPLACE FUNCTION public.bw_register_push_token(p_token 
 await as(BOB, () => db.query(`SELECT public.bw_register_push_token($1, 'ios')`, [TOK3]));
 ok(await revoke(null, TOK3, BOB, null, S1) === false && await active(TOK3) === true, 'a re-save by 046 clears the secret: the old one is refused');
 ok(await revoke(BOB, TOK3, BOB, null, null) === true, 'the signed-in owner can still switch it off');
+// Codex review #287 round 5 (B1): only the new Android save marks a token as
+// checking the signed-in account; any other change of the registration
+// clears it, so send-push falls back to the notification message.
+const TOKA = 'android-token-' + 'f'.repeat(40);
+ok(await registerGated(ALICE, TOKA, S1, 'android', true) !== null && await gated(TOKA) === true, 'the new Android save marks the token');
+await register(ALICE, TOKA, S1, 'android');
+ok(await gated(TOKA) === false, 'a save without the mark (3-arg call) leaves it unmarked');
+await registerGated(ALICE, TOKA, S1, 'android', true);
+await as(BOB, () => db.query(`SELECT public.bw_register_push_token($1, 'android')`, [TOKA]));
+ok(await gated(TOKA) === false, 'a re-save by 046 (an older build) clears the mark');
+await registerGated(BOB, TOKA, S2, 'android', true);
+await db.query(`UPDATE push_tokens SET is_active = false WHERE token = $1`, [TOKA]);
+ok(await gated(TOKA) === false, 'switched off: the mark goes');
+await registerGated(BOB, TOKA, S2, 'ios', true);
+ok(await gated(TOKA) === false, 'never on iOS');
+await registerGated(BOB, TOKA, S2, 'android', null);
+ok(await gated(TOKA) === false, 'null means no');
+await registerGated(BOB, TOKA, S2, 'android', true);
+await db.query(`UPDATE push_tokens SET user_id = $2 WHERE token = $1`, [TOKA, ALICE]);
+ok(await gated(TOKA) === false, 'moved to another account by anything else: the mark goes');
 // The same secret sent twice stays valid (the save set it itself).
 await register(BOB, TOK3, S2);
 await register(BOB, TOK3, S2);
@@ -110,14 +130,15 @@ ok(await revoke(null, 'short', ALICE, null, S1) === false, 'malformed token: not
 ok(await active(TOK2) === true, "Bob's other token untouched throughout");
 
 const priv = async (role, fn) => (await db.query(`SELECT has_function_privilege('${role}', '${fn}', 'EXECUTE') AS x`).catch(() => ({ rows: [{ x: null }] }))).rows[0].x;
-ok(await priv('anon', 'public.bw_register_push_token_stamped(text,text,text)') === false, 'the stamped save is not open to anon');
-ok(await priv('authenticated', 'public.bw_register_push_token_stamped(text,text,text)') === true, 'the stamped save is open to signed-in users');
-for (const fn of ['public.bw_revoke_push_token(text,uuid,timestamptz,text)', 'public.bw_push_token_registered(text,uuid)']) {
+ok(await priv('anon', 'public.bw_register_push_token_stamped(text,text,text,boolean)') === false, 'the stamped save is not open to anon');
+ok(await priv('authenticated', 'public.bw_register_push_token_stamped(text,text,text,boolean)') === true, 'the stamped save is open to signed-in users');
+ok((await db.query(`SELECT to_regprocedure('public.bw_register_push_token_stamped(text,text,text)') AS f`)).rows[0].f === null, 'one stamped save only (the draft 3-arg form is dropped)');
+for (const fn of ['public.bw_revoke_push_token(text,uuid,timestamptz,text)']) {
   ok(await priv('anon', fn) === true && await priv('authenticated', fn) === true, `${fn} callable without a session`);
   ok(await priv('public', fn) === false, `${fn} not granted to PUBLIC`);
 }
-const cols = (await db.query(`SELECT column_name FROM information_schema.columns WHERE table_name = 'push_tokens' AND column_name = 'revoke_secret_hash'`)).rows;
-ok(cols.length === 1, 'push_tokens.revoke_secret_hash exists');
+const cols = (await db.query(`SELECT column_name FROM information_schema.columns WHERE table_name = 'push_tokens' AND column_name IN ('revoke_secret_hash', 'uid_gated')`)).rows;
+ok(cols.length === 2, 'push_tokens.revoke_secret_hash and uid_gated exist');
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

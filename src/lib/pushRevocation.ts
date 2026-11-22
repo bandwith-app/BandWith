@@ -40,8 +40,10 @@ export interface PendingRevocation {
   userId: string;
   /** push_tokens.updated_at of the registration, when the save answered. */
   registeredAt: string | null;
-  /** Revocation secrets the server may hold for it, newest first (none: only signed in). */
-  secrets: string[];
+  /** The secret of the last save the server confirmed: never evicted (Codex review #287 round 5). */
+  confirmed: string | null;
+  /** Secrets of saves whose answer never came, newest first, at most 3. */
+  attempts: string[];
   /** When it was queued (device clock): only for the queue's order. */
   at: string;
 }
@@ -51,16 +53,24 @@ export interface SavedPushToken {
   token: string;
   userId: string;
   registeredAt: string | null;
-  secrets: string[];
+  confirmed: string | null;
+  attempts: string[];
 }
 
-/** At most this many candidate secrets per registration. */
-const MAX_SECRETS = 3;
+/** At most this many unanswered saves' secrets per registration. */
+const MAX_ATTEMPTS = 3;
 
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
-const secretList = (v: unknown): string[] =>
-  Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.length >= 32).slice(0, MAX_SECRETS) : [];
+const isSecret = (x: unknown): x is string => typeof x === 'string' && x.length >= 32;
+const secretOf = (v: unknown): string | null => (isSecret(v) ? v : null);
+/** Unanswered saves' secrets: unique, never the confirmed one, newest first. */
+const attemptList = (v: unknown, confirmed: string | null = null): string[] =>
+  Array.isArray(v) ? v.filter(isSecret).filter((x, i, a) => x !== confirmed && a.indexOf(x) === i).slice(0, MAX_ATTEMPTS) : [];
+
+/** Every secret the server may hold for it: the unanswered saves first, then the confirmed one. */
+export const candidateSecrets = (p: Pick<PendingRevocation, 'confirmed' | 'attempts'>): string[] =>
+  p.confirmed ? [...p.attempts, p.confirmed] : [...p.attempts];
 
 export function readPendingRevocations(store: Store | null): PendingRevocation[] {
   if (!store) return [];
@@ -72,7 +82,10 @@ export function readPendingRevocations(store: Store | null): PendingRevocation[]
             (p) =>
               !!p && typeof p.token === 'string' && typeof p.userId === 'string' && (typeof p.registeredAt === 'string' || p.registeredAt === null) && typeof p.at === 'string',
           )
-          .map((p) => ({ token: p.token, userId: p.userId, registeredAt: p.registeredAt, secrets: secretList(p.secrets), at: p.at }))
+          .map((p) => {
+            const confirmed = secretOf(p.confirmed);
+            return { token: p.token, userId: p.userId, registeredAt: p.registeredAt, confirmed, attempts: attemptList(p.attempts, confirmed), at: p.at };
+          })
       : [];
   } catch {
     return [];
@@ -100,7 +113,10 @@ export function newRevokeSecret(): string {
 export function rememberPushToken(store: Store | null, saved: SavedPushToken | null) {
   if (!store) return;
   try {
-    if (saved) store.setItem(PUSH_TOKEN_KEY, JSON.stringify({ ...saved, secrets: secretList(saved.secrets) }));
+    if (saved) {
+      const confirmed = secretOf(saved.confirmed);
+      store.setItem(PUSH_TOKEN_KEY, JSON.stringify({ ...saved, confirmed, attempts: attemptList(saved.attempts, confirmed) }));
+    }
     else store.removeItem(PUSH_TOKEN_KEY);
   } catch {
     /* storage blocked: sign-out falls back to the token in memory */
@@ -113,7 +129,8 @@ export function rememberedPushToken(store: Store | null, userId: string | null |
   try {
     const v = JSON.parse(store.getItem(PUSH_TOKEN_KEY) || 'null') as Partial<SavedPushToken> | null;
     if (!v || typeof v.token !== 'string' || v.userId !== userId) return null;
-    return { token: v.token, userId, registeredAt: typeof v.registeredAt === 'string' ? v.registeredAt : null, secrets: secretList(v.secrets) };
+    const confirmed = secretOf(v.confirmed);
+    return { token: v.token, userId, registeredAt: typeof v.registeredAt === 'string' ? v.registeredAt : null, confirmed, attempts: attemptList(v.attempts, confirmed) };
   } catch {
     return null;
   }
@@ -121,13 +138,14 @@ export function rememberedPushToken(store: Store | null, userId: string | null |
 
 /**
  * Before a save goes out (Claude review #287 round 4): the old stamp is
- * cleared at once, and the new secret is kept first, with the previous ones
- * of that registration (the save may not arrive, or its answer may be lost).
+ * cleared at once, and the new secret joins the unanswered ones (the save may
+ * not arrive, or its answer may be lost). The confirmed secret stays pinned:
+ * offline saves never push it out (Codex review #287 round 5).
  */
 export function beginPushSave(store: Store | null, token: string, userId: string, secret: string) {
   const prev = rememberedPushToken(store, userId);
-  const older = prev?.token === token ? prev.secrets.filter((x) => x !== secret) : [];
-  rememberPushToken(store, { token, userId, registeredAt: null, secrets: [secret, ...older] });
+  const same = prev?.token === token ? prev : null;
+  rememberPushToken(store, { token, userId, registeredAt: null, confirmed: same?.confirmed ?? null, attempts: [secret, ...(same?.attempts ?? [])] });
 }
 
 /**
@@ -135,7 +153,7 @@ export function beginPushSave(store: Store | null, token: string, userId: string
  * server stores none, an older database).
  */
 export function confirmPushSave(store: Store | null, token: string, userId: string, secret: string | null, registeredAt: string | null) {
-  rememberPushToken(store, { token, userId, registeredAt, secrets: secret ? [secret] : [] });
+  rememberPushToken(store, { token, userId, registeredAt, confirmed: secret, attempts: [] });
 }
 
 /**
@@ -177,7 +195,7 @@ export interface SignOutRevokeDeps {
 export async function revokeOnSignOut(
   token: string,
   userId: string,
-  saved: Pick<SavedPushToken, 'registeredAt' | 'secrets'> | null,
+  saved: Pick<SavedPushToken, 'registeredAt' | 'confirmed' | 'attempts'> | null,
   deps: SignOutRevokeDeps,
 ): Promise<'server' | 'queued' | 'device'> {
   let ok = false;
@@ -197,8 +215,9 @@ export async function revokeOnSignOut(
     // Another account's revocation for this token stays (Codex review #287
     // round 4); this account's earlier one is merged into the new one.
     const same = list.find((p) => p.token === token && p.userId === userId);
-    const secrets = [...(saved?.secrets ?? []), ...(same?.secrets ?? [])].filter((x, i, a) => a.indexOf(x) === i).slice(0, MAX_SECRETS);
-    const entry: PendingRevocation = { token, userId, registeredAt: saved?.registeredAt ?? same?.registeredAt ?? null, secrets, at };
+    const confirmed = saved?.confirmed ?? same?.confirmed ?? null;
+    const attempts = attemptList([...(saved?.attempts ?? []), ...(same?.attempts ?? [])], confirmed);
+    const entry: PendingRevocation = { token, userId, registeredAt: saved?.registeredAt ?? same?.registeredAt ?? null, confirmed, attempts, at };
     writePending(deps.store, [...list.filter((p) => p !== same), entry]);
   }
   try {
@@ -214,15 +233,17 @@ type Answer = { data?: unknown; error: unknown };
 export interface FlushDeps {
   /** bw_revoke_push_token with one secret (null: none, only signed in). */
   revoke: (p: PendingRevocation, secret: string | null) => PromiseLike<Answer>;
-  /** bw_push_token_registered: still on for that account? */
-  registered: (p: PendingRevocation) => PromiseLike<Answer>;
+  /** False once the session that started the flush is over: stop between entries. */
+  alive?: () => boolean;
 }
 
 /**
- * Sends the waiting revocations. Done: the server switched it off, or says
- * the token is no longer on for that account. Kept: offline, or refused
- * while the token is still on for that account (Codex review #287 round 4:
- * never dropped while that registration is active).
+ * Sends the waiting revocations, deciding on the device (main's decision on
+ * #287 round 5: no lookup by token). Done: the server switched it off, or
+ * refused every secret it may hold (had one still been valid, the revocation
+ * would have succeeded: that registration is already off or replaced).
+ * Kept: offline or an error, or no secret known (it waits for a confirmed
+ * save of the token, or for its account to sign in again here).
  */
 export async function flushPushRevocations(store: Store | null, deps: FlushDeps): Promise<number> {
   const list = readPendingRevocations(store);
@@ -237,9 +258,11 @@ export async function flushPushRevocations(store: Store | null, deps: FlushDeps)
     }
   };
   for (const p of list) {
+    if (deps.alive && !deps.alive()) break;
+    const secrets = candidateSecrets(p);
     let failed = false;
     let revoked = false;
-    for (const secret of p.secrets.length ? p.secrets : [null]) {
+    for (const secret of secrets.length ? secrets : [null]) {
       const r = await call(() => deps.revoke(p, secret));
       if (r.error) {
         failed = true;
@@ -250,14 +273,8 @@ export async function flushPushRevocations(store: Store | null, deps: FlushDeps)
         break;
       }
     }
-    if (revoked) {
-      sent++;
-      done.add(`${p.token}|${p.userId}|${p.at}`);
-      continue;
-    }
-    if (failed) continue;
-    const still = await call(() => deps.registered(p));
-    if (!still.error && still.data === false) done.add(`${p.token}|${p.userId}|${p.at}`);
+    if (revoked) sent++;
+    if (revoked || (!failed && secrets.length > 0)) done.add(`${p.token}|${p.userId}|${p.at}`);
   }
   // Something may have been queued or saved meanwhile: merge, don't overwrite.
   const current = readPendingRevocations(store);

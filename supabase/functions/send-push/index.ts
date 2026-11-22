@@ -2,6 +2,7 @@
 import { adminClient, chatRecipients, HttpError, requireCaller } from '../_shared/auth.ts';
 import { localizePushLabel, pushCollapseId, pushLanguage, pushThreadId } from '../_shared/push-labels.ts';
 import { isSilentRequest, silentApns, silentFcmMessage } from '../_shared/push-silent.ts';
+import { accountTagged, fcmAccountGates, gatedFcmMessage } from '../_shared/fcm-account-gate.ts';
 
 const APNS_KEY_ID = Deno.env.get('APNS_KEY_ID');
 const APNS_TEAM_ID = Deno.env.get('APNS_TEAM_ID');
@@ -314,7 +315,11 @@ async function getFCMAccessToken(): Promise<string | null> {
   }
 }
 
-async function sendToFCM(
+type FcmRest = Parameters<typeof sendFcmMessage> extends [unknown, string, ...infer R] ? R : never;
+
+/** gateUid: the account the push is for, on a token that checks it on the phone (184). */
+async function sendFcmMessage(
+  gateUid: string | undefined,
   deviceToken: string,
   title: string,
   subtitle: string | undefined,
@@ -349,7 +354,11 @@ async function sendToFCM(
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(silent ? { message: silentFcmMessage(deviceToken, data ?? {}) } : {
+        body: JSON.stringify(silent ? {
+          message: silentFcmMessage(deviceToken, gateUid ? accountTagged(data, gateUid) : data ?? {}),
+        } : gateUid ? {
+          message: gatedFcmMessage(deviceToken, gateUid, { displayTitle, title, subtitle, body, data, channelId, tag, collapseId }),
+        } : {
           message: {
             token: deviceToken,
             notification: { title: displayTitle, body },
@@ -512,6 +521,10 @@ Deno.serve(async (req: Request) => {
     // Per recipient: the icon badge is their own unread count (a band message
     // used to set everyone's to 1), and the subtitle label is in their language.
     const tokenUserIds: string[] = [...new Set(tokens.map((tk: any) => String(tk.user_id)))];
+    // Android tokens that check the signed-in account on the phone (184) get
+    // a data-only push tagged with its recipient (Codex review #287 round 5).
+    const fcmGates = fcmAccountGates(tokens);
+    const sendToFCM = (deviceToken: string, ...rest: FcmRest) => sendFcmMessage(fcmGates.get(deviceToken), deviceToken, ...rest);
     const badgeByUser = new Map<string, number>();
     if (badge === undefined && !silent) {
       await Promise.all(tokenUserIds.map(async (uid) => {

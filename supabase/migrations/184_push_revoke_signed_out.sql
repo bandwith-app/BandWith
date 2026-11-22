@@ -23,10 +23,21 @@
 --     (push_tokens.updated_at, returned by the save) or without one.
 -- It can only switch a token off, never on, and returns whether it did.
 --
--- bw_push_token_registered: whether the token is still on for that account.
--- A revocation that came back false is kept while it is (the device may have
--- lost the save's reply), and dropped once the token is off or has moved.
--- It answers only someone who holds the device token.
+-- No lookup by token (main's decision on #287 round 5): the device decides
+-- itself. A refused revocation that carries secrets is dropped (had the
+-- secret still been valid, the revocation would have succeeded); one without
+-- a secret waits until the token is saved again or its account signs in
+-- again on the device. bw_push_token_registered, from an earlier draft that
+-- was never live, is dropped.
+--
+-- push_tokens.uid_gated (Codex review #287 round 5): the token belongs to an
+-- Android build that shows a push only when it is for the account signed in
+-- on the device (checked natively, cleared at sign-out before anything goes
+-- out). send-push gives those tokens data-only messages tagged with the
+-- recipient; every other token keeps the notification message, because an
+-- older APK shows nothing for a data-only message in the background. Only the
+-- new save sets it; any other change of the registration clears it, like the
+-- secret.
 --
 -- bw_register_push_token_stamped (Codex review #287 round 2): the same save
 -- as bw_register_push_token (046), storing the secret's hash and returning
@@ -43,8 +54,10 @@
 BEGIN;
 
 ALTER TABLE public.push_tokens ADD COLUMN IF NOT EXISTS revoke_secret_hash text;
+ALTER TABLE public.push_tokens ADD COLUMN IF NOT EXISTS uid_gated boolean NOT NULL DEFAULT false;
 
--- Any change of the registration that doesn't set a new secret clears it.
+-- Any change of the registration that doesn't set a new secret clears it,
+-- and the account check of the build that made it (uid_gated).
 CREATE OR REPLACE FUNCTION public.bw_push_tokens_secret_guard()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -60,6 +73,12 @@ BEGIN
           OR NEW.is_active IS DISTINCT FROM OLD.is_active
           OR NEW.updated_at IS DISTINCT FROM OLD.updated_at) THEN
     NEW.revoke_secret_hash := NULL;
+  END IF;
+  IF NEW.user_id IS DISTINCT FROM OLD.user_id
+     OR NEW.token IS DISTINCT FROM OLD.token
+     OR NEW.is_active IS DISTINCT FROM OLD.is_active
+     OR NEW.updated_at IS DISTINCT FROM OLD.updated_at THEN
+    NEW.uid_gated := false;
   END IF;
   RETURN NEW;
 END;
@@ -123,28 +142,22 @@ $$;
 REVOKE ALL ON FUNCTION public.bw_revoke_push_token(text, uuid, timestamptz, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.bw_revoke_push_token(text, uuid, timestamptz, text) TO anon, authenticated, service_role;
 
--- Still on for that account? Only for someone holding the device token.
-CREATE OR REPLACE FUNCTION public.bw_push_token_registered(p_token text, p_user_id uuid)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-  SELECT p_token IS NOT NULL AND length(p_token) BETWEEN 16 AND 4096 AND EXISTS (
-    SELECT 1 FROM public.push_tokens
-     WHERE token = p_token AND user_id = p_user_id AND coalesce(is_active, true)
-  );
-$$;
-REVOKE ALL ON FUNCTION public.bw_push_token_registered(text, uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.bw_push_token_registered(text, uuid) TO anon, authenticated, service_role;
+-- From earlier drafts, never live: no lookup by token at all.
+DROP FUNCTION IF EXISTS public.bw_push_token_registered(text, uuid);
+DROP FUNCTION IF EXISTS public.bw_push_token_registered(text, uuid, text);
 
 -- The save of 046's bw_register_push_token, plus the revocation secret's
 -- hash and the stamp it wrote. Not live anywhere yet: the earlier draft
 -- returned only the stamp.
 DROP FUNCTION IF EXISTS public.bw_register_push_token_stamped(text, text);
 DROP FUNCTION IF EXISTS public.bw_register_push_token_stamped(text, text, text);
-CREATE FUNCTION public.bw_register_push_token_stamped(p_token text, p_platform text, p_secret text DEFAULT NULL)
+DROP FUNCTION IF EXISTS public.bw_register_push_token_stamped(text, text, text, boolean);
+CREATE FUNCTION public.bw_register_push_token_stamped(
+  p_token text,
+  p_platform text,
+  p_secret text DEFAULT NULL,
+  p_uid_gated boolean DEFAULT false
+)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -167,14 +180,16 @@ BEGIN
   END IF;
 
   PERFORM set_config('bw.push_secret_set', 'on', true);
-  INSERT INTO public.push_tokens (user_id, token, platform, is_active, updated_at, revoke_secret_hash)
-  VALUES (v_uid, p_token, p_platform, true, now(), encode(sha256(convert_to(v_secret, 'UTF8')), 'hex'))
+  INSERT INTO public.push_tokens (user_id, token, platform, is_active, updated_at, revoke_secret_hash, uid_gated)
+  VALUES (v_uid, p_token, p_platform, true, now(), encode(sha256(convert_to(v_secret, 'UTF8')), 'hex'),
+          coalesce(p_uid_gated, false) AND p_platform = 'android')
   ON CONFLICT (token) DO UPDATE
     SET user_id = EXCLUDED.user_id,
         platform = EXCLUDED.platform,
         is_active = true,
         updated_at = now(),
-        revoke_secret_hash = EXCLUDED.revoke_secret_hash
+        revoke_secret_hash = EXCLUDED.revoke_secret_hash,
+        uid_gated = EXCLUDED.uid_gated
   RETURNING updated_at INTO v_at;
   PERFORM set_config('bw.push_secret_set', '', true);
 
@@ -182,7 +197,7 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.bw_register_push_token_stamped(text, text, text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.bw_register_push_token_stamped(text, text, text) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.bw_register_push_token_stamped(text, text, text, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_register_push_token_stamped(text, text, text, boolean) TO authenticated, service_role;
 
 COMMIT;

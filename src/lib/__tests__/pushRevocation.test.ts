@@ -1,6 +1,7 @@
 // Audit 04 #6: an offline sign-out still stops this device's pushes.
 // Codex review #287: the server matches the registration (never a device
-// clock); round 4: signed out, only with the registration's own secret.
+// clock); round 4: signed out, only with the registration's own secret;
+// round 5: no lookup by token, the confirmed secret is pinned.
 import { describe, expect, it, vi } from 'vitest';
 import {
   PUSH_REVOKE_MAX_QUEUED,
@@ -25,20 +26,21 @@ const TOKEN = 'device-token-0123456789';
 const REG = '2026-11-22T09:59:58.123456+00:00'; // push_tokens.updated_at as the server stored it
 const S1 = 'a'.repeat(64);
 const S2 = 'b'.repeat(64);
-const saved = (registeredAt: string | null, secrets: string[]) => ({ registeredAt, secrets });
+const S3 = 'c'.repeat(64);
+const S4 = 'd'.repeat(64);
+const saved = (registeredAt: string | null, confirmed: string | null, attempts: string[] = []) => ({ registeredAt, confirmed, attempts });
 const offline = async () => {
   throw new Error('offline');
 };
-const server = (revoked: boolean | 'offline', registered: boolean | 'offline' = false) => ({
+const server = (revoked: boolean | 'offline') => ({
   revoke: vi.fn(async (_p: unknown, _secret: string | null) => (revoked === 'offline' ? { data: null, error: new Error('offline') } : { data: revoked, error: null })),
-  registered: vi.fn(async (_p: unknown) => (registered === 'offline' ? { data: null, error: new Error('offline') } : { data: registered, error: null })),
 });
 
 describe('push revocation on sign-out', () => {
   it('online: the server takes it, nothing queued, device untouched', async () => {
     const store = mem();
     const unregisterDevice = vi.fn(async () => {});
-    expect(await revokeOnSignOut(TOKEN, 'alice', saved(REG, [S1]), { store, revokeOnServer: async () => true, unregisterDevice })).toBe('server');
+    expect(await revokeOnSignOut(TOKEN, 'alice', saved(REG, S1), { store, revokeOnServer: async () => true, unregisterDevice })).toBe('server');
     expect(readPendingRevocations(store)).toEqual([]);
     expect(unregisterDevice).not.toHaveBeenCalled();
   });
@@ -47,9 +49,9 @@ describe('push revocation on sign-out', () => {
     const store = mem();
     const unregisterDevice = vi.fn(async () => {});
     const now = () => new Date('2026-11-22T10:00:00Z');
-    expect(await revokeOnSignOut(TOKEN, 'alice', saved(REG, [S1]), { store, revokeOnServer: offline, unregisterDevice, now })).toBe('queued');
+    expect(await revokeOnSignOut(TOKEN, 'alice', saved(REG, S1), { store, revokeOnServer: offline, unregisterDevice, now })).toBe('queued');
     expect(unregisterDevice).toHaveBeenCalledOnce();
-    const entry = { token: TOKEN, userId: 'alice', registeredAt: REG, secrets: [S1], at: '2026-11-22T10:00:00.000Z' };
+    const entry = { token: TOKEN, userId: 'alice', registeredAt: REG, confirmed: S1, attempts: [], at: '2026-11-22T10:00:00.000Z' };
     expect(readPendingRevocations(store)).toEqual([entry]);
 
     expect(await flushPushRevocations(store, server('offline'))).toBe(0);
@@ -60,31 +62,45 @@ describe('push revocation on sign-out', () => {
     expect(readPendingRevocations(store)).toEqual([]);
   });
 
-  // Codex review #287 round 4 (B4): a false answer may only mean the device
-  // lost the save's reply. While the token is still on for that account the
-  // revocation stays, and every secret the device may have sent is tried.
-  it('a refused revocation stays while the token is still on for that account', async () => {
+  // Main's decision (#287 round 5): no lookup by token. Every secret the
+  // server may hold is tried; refused by all of them, the registration is
+  // already off or replaced (a valid one would have worked): dropped.
+  it('refused for every secret it may hold: dropped; offline or an error: kept', async () => {
     const store = mem();
-    await revokeOnSignOut(TOKEN, 'alice', saved(null, [S2, S1]), { store, revokeOnServer: offline, unregisterDevice: async () => {}, now: () => new Date(0) });
-    const still = server(false, true);
-    expect(await flushPushRevocations(store, still)).toBe(0);
-    expect(still.revoke.mock.calls.map((c) => c[1])).toEqual([S2, S1]);
+    await revokeOnSignOut(TOKEN, 'alice', saved(null, S1, [S2]), { store, revokeOnServer: offline, unregisterDevice: async () => {}, now: () => new Date(0) });
+    expect(await flushPushRevocations(store, server('offline'))).toBe(0);
     expect(readPendingRevocations(store)).toHaveLength(1);
-    expect(await flushPushRevocations(store, server(false, 'offline'))).toBe(0);
-    expect(readPendingRevocations(store)).toHaveLength(1);
-    // Off, or moved to another account: nothing left to do.
-    expect(await flushPushRevocations(store, server(false, false))).toBe(0);
+    const refused = server(false);
+    expect(await flushPushRevocations(store, refused)).toBe(0);
+    expect(refused.revoke.mock.calls.map((c) => c[1])).toEqual([S2, S1]);
     expect(readPendingRevocations(store)).toEqual([]);
   });
 
-  it('no secret known: the revocation waits until it can go (signed in again) or the token moves', async () => {
+  it('no secret known: a refusal keeps it, until the token is saved again or the owner path takes it', async () => {
     const store = mem();
     expect(await revokeOnSignOut(TOKEN, 'alice', null, { store, revokeOnServer: async () => false, unregisterDevice: async () => {}, now: () => new Date(0) })).toBe('queued');
-    expect(readPendingRevocations(store)).toEqual([{ token: TOKEN, userId: 'alice', registeredAt: null, secrets: [], at: '1970-01-01T00:00:00.000Z' }]);
-    const s = server(false, true);
+    expect(readPendingRevocations(store)).toEqual([{ token: TOKEN, userId: 'alice', registeredAt: null, confirmed: null, attempts: [], at: '1970-01-01T00:00:00.000Z' }]);
+    const s = server(false);
     await flushPushRevocations(store, s);
     expect(s.revoke).toHaveBeenCalledWith(expect.objectContaining({ token: TOKEN }), null);
     expect(readPendingRevocations(store)).toHaveLength(1);
+    // Alice signs in again here: the owner path switches it off.
+    expect(await flushPushRevocations(store, server(true))).toBe(1);
+    expect(readPendingRevocations(store)).toEqual([]);
+  });
+
+  // Claude review #287 round 5: a sign-out waiting for the flush stops it
+  // between entries; what is left stays queued.
+  it('the flush stops between entries once its session is over', async () => {
+    const store = mem();
+    const deps = { store, revokeOnServer: async () => false, unregisterDevice: async () => {}, now: () => new Date(0) };
+    await revokeOnSignOut(`${TOKEN}-1`, 'alice', saved(REG, S1), deps);
+    await revokeOnSignOut(`${TOKEN}-2`, 'alice', saved(REG, S2), deps);
+    let live = true;
+    const s = { revoke: vi.fn(async () => { live = false; return { data: true, error: null }; }) };
+    expect(await flushPushRevocations(store, { ...s, alive: () => live })).toBe(1);
+    expect(s.revoke).toHaveBeenCalledTimes(1);
+    expect(readPendingRevocations(store).map((p) => p.token)).toEqual([`${TOKEN}-2`]);
   });
 
   it('no account known: the device stops, nothing is queued for the server', async () => {
@@ -100,12 +116,12 @@ describe('push revocation on sign-out', () => {
   it("another account's revocation for the same token is kept; the same account's is merged", async () => {
     const store = mem();
     const deps = { store, revokeOnServer: async () => false, unregisterDevice: async () => {}, now: () => new Date(0) };
-    await revokeOnSignOut(TOKEN, 'alice', saved(REG, [S1]), deps);
+    await revokeOnSignOut(TOKEN, 'alice', saved(REG, S1), deps);
     await revokeOnSignOut(TOKEN, 'bob', null, deps);
-    await revokeOnSignOut(TOKEN, 'alice', saved(null, [S2]), deps);
+    await revokeOnSignOut(TOKEN, 'alice', saved(null, S1, [S2]), deps);
     const list = readPendingRevocations(store);
     expect(list.map((p) => p.userId).sort()).toEqual(['alice', 'bob']);
-    expect(list.find((p) => p.userId === 'alice')).toMatchObject({ registeredAt: REG, secrets: [S2, S1] });
+    expect(list.find((p) => p.userId === 'alice')).toMatchObject({ registeredAt: REG, confirmed: S1, attempts: [S2] });
     // Only a save the server confirmed moves the token: then none is left.
     forgetRevocation(store, TOKEN);
     expect(readPendingRevocations(store)).toEqual([]);
@@ -113,7 +129,7 @@ describe('push revocation on sign-out', () => {
 
   it('an old revocation is still sent, never dropped unsent', async () => {
     const store = mem();
-    await revokeOnSignOut(TOKEN, 'alice', saved(REG, [S1]), { store, revokeOnServer: async () => false, unregisterDevice: async () => {}, now: () => new Date(0) });
+    await revokeOnSignOut(TOKEN, 'alice', saved(REG, S1), { store, revokeOnServer: async () => false, unregisterDevice: async () => {}, now: () => new Date(0) });
     expect(await flushPushRevocations(store, server('offline'))).toBe(0);
     expect(readPendingRevocations(store)).toHaveLength(1);
     expect(await flushPushRevocations(store, server(true))).toBe(1);
@@ -123,7 +139,7 @@ describe('push revocation on sign-out', () => {
   it('the queue stays bounded: the oldest go first', async () => {
     const store = mem();
     for (let i = 0; i < PUSH_REVOKE_MAX_QUEUED + 5; i++) {
-      await revokeOnSignOut(`${TOKEN}-${i}`, 'alice', saved(REG, [S1]), { store, revokeOnServer: async () => false, unregisterDevice: async () => {}, now: () => new Date(i * 1000) });
+      await revokeOnSignOut(`${TOKEN}-${i}`, 'alice', saved(REG, S1), { store, revokeOnServer: async () => false, unregisterDevice: async () => {}, now: () => new Date(i * 1000) });
     }
     const list = readPendingRevocations(store);
     expect(list).toHaveLength(PUSH_REVOKE_MAX_QUEUED);
@@ -131,25 +147,41 @@ describe('push revocation on sign-out', () => {
   });
 
   // Claude review #287 round 4: a re-save clears the stamp at once and keeps
-  // the new secret only as a candidate until the answer arrives; the answer
-  // makes it the only one. A lost answer leaves both candidates.
+  // the new secret as an attempt until the answer arrives; the answer makes it
+  // the confirmed one. Codex round 5 (B2): offline attempts never evict the
+  // confirmed secret.
   it('a re-save clears the stamp, and the answer alone sets the new one', () => {
     const store = mem();
     expect(rememberedPushToken(store, 'alice')).toBeNull();
     beginPushSave(store, TOKEN, 'alice', S1);
     confirmPushSave(store, TOKEN, 'alice', S1, REG);
-    expect(rememberedPushToken(store, 'alice')).toEqual({ token: TOKEN, userId: 'alice', registeredAt: REG, secrets: [S1] });
+    expect(rememberedPushToken(store, 'alice')).toEqual({ token: TOKEN, userId: 'alice', registeredAt: REG, confirmed: S1, attempts: [] });
     beginPushSave(store, TOKEN, 'alice', S2);
-    expect(rememberedPushToken(store, 'alice')).toEqual({ token: TOKEN, userId: 'alice', registeredAt: null, secrets: [S2, S1] });
+    expect(rememberedPushToken(store, 'alice')).toEqual({ token: TOKEN, userId: 'alice', registeredAt: null, confirmed: S1, attempts: [S2] });
     confirmPushSave(store, TOKEN, 'alice', S2, '2026-11-22T10:00:00+00:00');
-    expect(rememberedPushToken(store, 'alice')).toEqual({ token: TOKEN, userId: 'alice', registeredAt: '2026-11-22T10:00:00+00:00', secrets: [S2] });
+    expect(rememberedPushToken(store, 'alice')).toEqual({ token: TOKEN, userId: 'alice', registeredAt: '2026-11-22T10:00:00+00:00', confirmed: S2, attempts: [] });
     // A server without secrets (046): none is kept.
     beginPushSave(store, TOKEN, 'alice', S1);
     confirmPushSave(store, TOKEN, 'alice', null, REG);
-    expect(rememberedPushToken(store, 'alice')?.secrets).toEqual([]);
+    expect(rememberedPushToken(store, 'alice')).toMatchObject({ confirmed: null, attempts: [] });
     expect(rememberedPushToken(store, 'bob')).toBeNull();
     rememberPushToken(store, null);
     expect(rememberedPushToken(store, 'alice')).toBeNull();
+  });
+
+  it('three offline saves never evict the confirmed secret, in the device or the queue', async () => {
+    const store = mem();
+    beginPushSave(store, TOKEN, 'alice', S1);
+    confirmPushSave(store, TOKEN, 'alice', S1, REG);
+    for (const s of [S2, S3, S4, 'e'.repeat(64)]) beginPushSave(store, TOKEN, 'alice', s);
+    const kept = rememberedPushToken(store, 'alice');
+    expect(kept).toMatchObject({ confirmed: S1, attempts: ['e'.repeat(64), S4, S3] });
+    await revokeOnSignOut(TOKEN, 'alice', kept, { store, revokeOnServer: offline, unregisterDevice: async () => {}, now: () => new Date(0) });
+    await revokeOnSignOut(TOKEN, 'alice', saved(null, null, ['f'.repeat(64), S2]), { store, revokeOnServer: offline, unregisterDevice: async () => {}, now: () => new Date(1) });
+    expect(readPendingRevocations(store)[0].confirmed).toBe(S1);
+    const s = server(false);
+    await flushPushRevocations(store, s);
+    expect(s.revoke.mock.calls.map((c) => c[1])).toContain(S1);
   });
 
   it('secrets are random, 256 bits', () => {
@@ -162,7 +194,7 @@ describe('push revocation on sign-out', () => {
     expect(push).toMatch(/const known = cachedToken \?\? remembered\?\.token/);
     expect(push).toMatch(/await PushNotifications\.unregister\(\)/);
     expect(push).toMatch(/p_secret: secret/);
-    expect(push).toMatch(/bw_push_token_registered/);
+    expect(push).not.toMatch(/bw_push_token_registered/);
     expect(ctx).toMatch(/window\.addEventListener\('online', flush\)/);
     expect(ctx).toMatch(/await unregisterPushToken\(user\?\.id\)/);
     // Round 4 (B3): a sign-in no longer drops anyone's revocation.

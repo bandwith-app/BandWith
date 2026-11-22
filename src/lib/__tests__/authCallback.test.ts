@@ -58,7 +58,7 @@ describe('auth callback errors', () => {
   // to ask for a new link, in every language, instead of "open it elsewhere".
   it('a refused password change says to ask for a new link', async () => {
     await setLocalePref('en');
-    expect(recoveryRefusedText()).toBe('This reset link can no longer change your password. Ask for a new link and open it in this browser.');
+    expect(recoveryRefusedText()).toBe('This reset link can no longer change your password. Ask for a new link and open it on this device.');
     for (const l of ['it', 'es', 'fr', 'de', 'pt'] as const) {
       await setLocalePref(l);
       expect(recoveryRefusedText()).not.toMatch(/reset link can no longer/);

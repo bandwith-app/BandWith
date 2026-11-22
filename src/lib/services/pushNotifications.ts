@@ -55,6 +55,63 @@ const exclusive = <T>(fn: () => Promise<T>): Promise<T> => {
 };
 
 /**
+ * The longest a sign-out waits for the push work ahead of it (a save whose
+ * request never answers, a long flush): then the local sign-out goes on and
+ * the revocation waits in the queue (Claude review #287 round 5).
+ */
+export const SIGN_OUT_PUSH_WAIT_MS = 5000;
+
+/**
+ * Android builds from #287 round 5 on (BwPushIdentityPlugin): the device
+ * keeps the signed-in account natively and shows a push only when it is for
+ * that account, so a late push for an account that signed out offline shows
+ * nothing, whatever the network did. The account is cleared before anything
+ * else at sign-out, and the FCM token deletion is awaited.
+ */
+interface PushIdentityPlugin {
+  setUser(options: { uid: string }): Promise<void>;
+  clear(): Promise<void>;
+  deleteToken(): Promise<void>;
+}
+const pushIdentity = registerPlugin<PushIdentityPlugin>('BwPushIdentity');
+const checksAccountNatively = (): boolean =>
+  Capacitor.getPlatform() === 'android' && Capacitor.isPluginAvailable('BwPushIdentity');
+
+/** The account this device shows pushes for; true when the native side has it. */
+const markNativePushUser = async (userId: string): Promise<boolean> => {
+  if (!checksAccountNatively()) return false;
+  try {
+    await pushIdentity.setUser({ uid: userId });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const clearNativePushUser = async (): Promise<void> => {
+  if (!checksAccountNatively()) return;
+  try {
+    await pushIdentity.clear();
+  } catch {
+    /* never block sign-out */
+  }
+};
+
+/** Stops delivery on the device: on the new Android builds, waits for FCM to delete the token. */
+const stopDevicePush = async (): Promise<void> => {
+  cachedToken = null;
+  if (checksAccountNatively()) {
+    try {
+      await pushIdentity.deleteToken();
+      return;
+    } catch {
+      /* the plugin's unregister below */
+    }
+  }
+  await PushNotifications.unregister();
+};
+
+/**
  * Android hands out a new FCM token now and then (and after an update or a
  * data wipe): save every token it reports, not only the first one, or
  * pushes go to a dead token and the device goes quiet.
@@ -148,6 +205,7 @@ export const subscribeToPush = async (userId: string): Promise<{ success: boolea
 
   pushUserId = userId;
   const session = pushSession;
+  await markNativePushUser(userId);
 
   try {
     console.log('[Push] Starting subscription for user:', userId);
@@ -291,26 +349,45 @@ const saveTokenToDatabase = (userId: string, token: string, session = pushSessio
     // server may hold it (Codex review #287 round 4).
     const secret = newRevokeSecret();
     beginPushSave(revokeStore(), token, userId, secret);
+    // Marked only when the native side holds this account: otherwise a
+    // data-only push would find no account and show nothing.
+    const uidGated = await markNativePushUser(userId);
 
     try {
       // 184: the same save as bw_register_push_token (046, which older builds
       // keep calling unchanged), with the revocation secret and the row's
       // stamp in one round trip.
-      const { data, error: stampedError } = await supabase.rpc('bw_register_push_token_stamped', { p_token: token, p_platform: platform, p_secret: secret });
+      const { data, error: stampedError } = await supabase.rpc('bw_register_push_token_stamped', {
+        p_token: token,
+        p_platform: platform,
+        p_secret: secret,
+        p_uid_gated: uidGated,
+      });
+      // Answered after a sign-out that stopped waiting for it: the queued
+      // revocation already holds this secret, and nothing here may forget it.
+      if (session !== pushSession) return { success: false, error: new Error('Signed out') };
       if (!stampedError) {
         const reply = (data ?? {}) as { registered_at?: unknown; secret?: unknown };
         const at = typeof reply.registered_at === 'string' ? reply.registered_at : null;
         await afterSave(userId, token, at, typeof reply.secret === 'string' && reply.secret ? reply.secret : secret);
         return { success: true, error: null };
       }
+      // Only a database without 184 falls back to the older saves, never a
+      // server error or a timeout (Codex review #287 round 5).
       if (!isMissingFunction(stampedError)) {
         console.warn('[Push] Stamped token save failed:', stampedError.message);
+        return { success: false, error: new Error(stampedError.message) };
       }
 
       const { error: rpcError } = await supabase.rpc('bw_register_push_token', { p_token: token, p_platform: platform });
+      if (session !== pushSession) return { success: false, error: new Error('Signed out') };
       if (!rpcError) {
         await afterSave(userId, token, null, null);
         return { success: true, error: null };
+      }
+      if (!isMissingFunction(rpcError)) {
+        console.warn('[Push] Token save failed:', rpcError.message);
+        return { success: false, error: new Error(rpcError.message) };
       }
 
       const { error } = await supabase
@@ -348,6 +425,9 @@ export const unregisterPushToken = async (userId?: string | null): Promise<void>
   savedToken = null;
   pushSession += 1;
   if (!isNative()) return;
+  // First, before any network: from now on this device shows no push for
+  // that account (Codex review #287 round 5).
+  await clearNativePushUser();
   // After an offline cold start the native token may not be back yet: the
   // one last saved for this account is (Codex review #287).
   const remembered = rememberedPushToken(revokeStore(), owner);
@@ -362,37 +442,52 @@ export const unregisterPushToken = async (userId?: string | null): Promise<void>
   const token = known ?? (await tokenFromPlugin());
   if (!token) {
     // Not even the plugin: delivery stops on the device itself.
-    cachedToken = null;
     try {
-      await PushNotifications.unregister();
+      await stopDevicePush();
     } catch {
       /* best effort: never block sign-out */
     }
     return;
   }
   const saved = remembered?.token === token ? remembered : null;
+  const store = owner ? revokeStore() : null;
+  // Offline (audit 04 #6): stop delivery on the phone itself; the next
+  // sign-in registers again.
+  const unregisterDevice = stopDevicePush;
   // After a save already on its way: it can't switch the token back on later.
-  const outcome = await exclusive(() => revokeOnSignOut(token, owner, saved, {
-    store: owner ? revokeStore() : null,
-    revokeOnServer: async () => {
-      const { error } = await supabase.rpc('bw_unregister_push_token', { p_token: token });
-      if (!error) return true;
-      // "No error" for 0 rows (RLS, a row that moved) switched nothing off:
-      // only a row actually updated counts (Claude review #287).
-      const { data, error: updateError } = await supabase
-        .from('push_tokens')
-        .update({ is_active: false })
-        .eq('token', token)
-        .select('id');
-      return !updateError && Array.isArray(data) && data.length > 0;
-    },
-    // Offline (audit 04 #6): stop delivery on the phone itself; the next
-    // sign-in registers again.
-    unregisterDevice: async () => {
-      cachedToken = null;
-      await PushNotifications.unregister();
-    },
-  }));
+  let gaveUp = false;
+  const job = exclusive(async () => {
+    if (gaveUp) return 'queued' as const;
+    return revokeOnSignOut(token, owner, saved, {
+      store,
+      revokeOnServer: async () => {
+        const { error } = await supabase.rpc('bw_unregister_push_token', { p_token: token });
+        if (!error) return true;
+        // "No error" for 0 rows (RLS, a row that moved) switched nothing off:
+        // only a row actually updated counts (Claude review #287).
+        const { data, error: updateError } = await supabase
+          .from('push_tokens')
+          .update({ is_active: false })
+          .eq('token', token)
+          .select('id');
+        return !updateError && Array.isArray(data) && data.length > 0;
+      },
+      unregisterDevice,
+    });
+  });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<'late'>((resolve) => {
+    timer = setTimeout(() => resolve('late'), SIGN_OUT_PUSH_WAIT_MS);
+  });
+  let outcome = await Promise.race([job, late]);
+  clearTimeout(timer);
+  if (outcome === 'late') {
+    // The push work ahead never finished: queue it here and stop the device.
+    // If that work does reach the server later, the queue still holds what
+    // it needs (Claude review #287 round 5).
+    gaveUp = true;
+    outcome = await revokeOnSignOut(token, owner, saved, { store, revokeOnServer: async () => false, unregisterDevice });
+  }
   if (outcome === 'queued') console.warn('[Push] Server not reached: device unregistered, revocation queued');
 };
 
@@ -441,11 +536,13 @@ let flushing: Promise<number> | null = null;
 export const flushQueuedPushRevocations = async (): Promise<number> => {
   if (!isNative()) return 0;
   if (flushing) return flushing;
+  const session = pushSession;
   const run = exclusive(() =>
     flushPushRevocations(revokeStore(), {
       revoke: async (p, secret) =>
         supabase.rpc('bw_revoke_push_token', { p_token: p.token, p_user_id: p.userId, p_registered_at: p.registeredAt, p_secret: secret }),
-      registered: async (p) => supabase.rpc('bw_push_token_registered', { p_token: p.token, p_user_id: p.userId }),
+      // A sign-out waiting behind the flush: stop between entries.
+      alive: () => session === pushSession,
     }),
   );
   flushing = run;
@@ -499,7 +596,14 @@ export const setupNativePushListeners = (
   const handles: Array<{ remove: () => Promise<void> }> = [];
 
   // Listen for push notifications received while app is in foreground
-  PushNotifications.addListener('pushNotificationReceived', async (notification) => {
+  PushNotifications.addListener('pushNotificationReceived', async (received) => {
+    // A data-only push (Android builds that check the account natively, 184)
+    // carries its title and body in data.
+    const notification = {
+      ...received,
+      title: received.title || (received.data?.bw_title as string | undefined) || undefined,
+      body: received.body || (received.data?.bw_body as string | undefined) || undefined,
+    };
     // Silent live pack refresh (170): download the changed setlist, show nothing.
     if (notification.data?.type === 'live_pack_refresh') {
       window.dispatchEvent(new CustomEvent(LIVE_PACK_REFRESH_EVENT, { detail: { eventId: String(notification.data?.event_id || '') } }));

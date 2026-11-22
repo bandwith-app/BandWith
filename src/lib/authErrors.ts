@@ -85,7 +85,7 @@ export function authErrorKind(error: unknown): AuthErrorKind {
  * account the link signed in, or its session ended (Codex review #287 round 4).
  */
 export function recoveryRefusedText(): string {
-  return t('This reset link can no longer change your password. Ask for a new link and open it in this browser.');
+  return t('This reset link can no longer change your password. Ask for a new link and open it on this device.');
 }
 
 /** A sentence for the user, in the app's language. Never the server's own text. */
