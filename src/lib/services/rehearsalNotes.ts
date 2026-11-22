@@ -62,8 +62,13 @@ export async function saveNote(note: RehearsalNote, before: string[]): Promise<W
   if (upd.error) return result(upd);
   if (!upd.data?.length) {
     const ins = await supabase.from('rehearsal_notes').insert(row);
-    // Already there but not mine to change (someone else's note): nothing to do.
-    if (ins.error && (ins.error as { code?: string }).code !== '23505') return result(ins);
+    // Already there, yet the update found no row it may change: this account may no longer
+    // edit it (admin rights gone meanwhile, someone else's note). A refusal for good, never a
+    // success: the outbox keeps its text in the refused list (#296 round 5).
+    if (ins.error && (ins.error as { code?: string }).code === '23505') {
+      return { error: { code: '42501', message: 'rehearsal_note_not_editable' }, status: 403 };
+    }
+    if (ins.error) return result(ins);
   }
   const want = note.scope === 'members' ? note.assignees.map((a) => a.userId) : [];
   const gone = before.filter((u) => !want.includes(u));

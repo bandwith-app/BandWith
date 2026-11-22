@@ -152,6 +152,21 @@ ok(/duplicate key|rehearsal_sessions_occurrence_key/.test(dup), 'a first save ov
   ok(earlierNew.rows.length === 1 && new Date(now.started_at).toISOString() === EARLIER, "this build's merge moves the start earlier (on the revision it read)");
 }
 
+// #296 round 5: an old build's save (no summary.pauses) keeps the saved pause times; a new build's replaces them.
+{
+  const spans = [[Date.parse('2026-11-19T19:10:00Z'), Date.parse('2026-11-19T19:15:00Z')]];
+  const withPauses = JSON.stringify({ v: 1, durationS: 900, played: PLAYED, total: 3, pauses: spans });
+  await as(ADMIN_A, () => db.query(`UPDATE rehearsal_sessions SET summary = $1::jsonb, paused_ms = 300000 WHERE event_id = $2`, [withPauses, EVENT]));
+  const start = (await saved()).started_at;
+  const oldWrite = await upsert(ADMIN_B, { started_at: new Date(start).toISOString(), paused_ms: 420000, summary: summary(PLAYED) });
+  const afterOld = await saved();
+  ok(oldWrite.ok && JSON.stringify(afterOld.summary.pauses) === JSON.stringify(spans) && afterOld.summary.played.length === 2,
+    "an old build's save keeps the saved pause times (and writes the rest)");
+  const newer = JSON.stringify({ v: 1, durationS: 900, played: PLAYED, total: 3, pauses: [] });
+  await as(ADMIN_A, () => db.query(`UPDATE rehearsal_sessions SET summary = $1::jsonb WHERE event_id = $2`, [newer, EVENT]));
+  ok(JSON.stringify((await saved()).summary.pauses) === '[]', "a new build's save replaces the pause times");
+}
+
 // Members still cannot write.
 const m = await upsert(MEMBER, { started_at: A_START });
 ok(!!m.error, 'a member cannot write');

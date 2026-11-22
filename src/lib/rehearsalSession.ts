@@ -198,10 +198,11 @@ export const fromRow = (row: unknown): SessionState | null => {
   const startedAt = ms(row.started_at);
   const pausedMs = row.paused_ms === undefined || row.paused_ms === null ? 0 : Number(row.paused_ms);
   if (startedAt === null || !isCount(pausedMs)) return null;
-  const pauses = isObj(row.summary) ? parsePauses(row.summary.pauses) : [];
+  // No pause times at all: written by an older build (kept undefined, so a merge knows, #296 round 5).
+  const pauses = isObj(row.summary) && Array.isArray(row.summary.pauses) ? parsePauses(row.summary.pauses) : undefined;
   return {
     startedAt,
-    pausedMs: Math.max(pausedMs, spanMs(unionSpans(pauses))),
+    pausedMs: Math.max(pausedMs, spanMs(unionSpans(pauses ?? []))),
     pausedAt: ms(row.paused_at),
     endedAt: ms(row.ended_at),
     played: isObj(row.summary) ? parsePlayed(row.summary.played) : [],
@@ -245,7 +246,18 @@ const lastRun = (s: SessionState): number =>
  * - Songs: every song played on either, by when it was played (a song an
  *   older version saved, with no time, right after the timed one before it).
  */
-export const mergeSessions = (mine: SessionState, saved: SessionState, savedAt?: number): SessionState => {
+/**
+ * `savedAt`: when the saved copy was written (its updated_at). `cutoff`: the
+ * latest moment the other copy can know of (savedAt, or when a message
+ * came in): pauses after it are none of its paused time.
+ */
+export interface MergeTimes {
+  savedAt?: number;
+  cutoff?: number;
+}
+
+export const mergeSessions = (mine: SessionState, saved: SessionState, times?: number | MergeTimes): SessionState => {
+  const { savedAt, cutoff = savedAt } = typeof times === 'number' ? { savedAt: times, cutoff: times } : times ?? {};
   const same = mine.startedAt === saved.startedAt;
   const both = [mine, saved];
   const other = (s: SessionState) => (s === mine ? saved : mine);
@@ -257,40 +269,76 @@ export const mergeSessions = (mine: SessionState, saved: SessionState, savedAt?:
   const touched = (s: SessionState) => Math.max(lastRun(s), s.pausedAt ?? -Infinity);
   const ends = both.map((s) => s.endedAt).filter((e): e is number => e !== null);
   const lastEnd = ends.length ? Math.max(...ends) : null;
-  // Same start: no Resume or song after the End. A different start: the running copy was
-  // last written before the End (it can't know about it, #296 round 4); written after it, it
-  // is a real Resume and stays running.
+  // Same start: no Resume or song after the End; a copy with paused time it holds no times
+  // for (an older build's Resume leaves no span) counts as written when it was saved (#296
+  // round 5). A different start: the running copy was last written before the End (it can't
+  // know about it, #296 round 4); written after it, it is a real Resume and stays running.
+  const untimed = (s: SessionState) => s.pauses === undefined || untimedPauseMs(s) > 0;
   const writtenUntil = (s: SessionState) => (s === saved && savedAt !== undefined ? savedAt : touched(s));
+  const runUntil = (s: SessionState) => (s === saved && savedAt !== undefined && untimed(s) ? Math.max(lastRun(s), savedAt) : lastRun(s));
   const ended =
     lastEnd !== null &&
-    both.every((s) => s.endedAt !== null || (same ? lastRun(s) : writtenUntil(s)) <= lastEnd);
+    both.every((s) => s.endedAt !== null || (same ? runUntil(s) : writtenUntil(s)) <= lastEnd);
   // A pause still open on one copy is closed by the other copy's Resume or End after it
-  // (#296 round 4); with none, it stays open only on the copy that did the newest thing.
+  // (#296 round 4). Still open on the copy that did the newest thing: the session is paused
+  // since the earliest pause still open on either (two offline pauses at 19:10 and 19:12: 19:10).
   const newest = ended ? null : both.filter((s) => s.endedAt === null).sort((x, y) => touched(y) - touched(x))[0];
-  let pausedAt: number | null = null;
+  const stillOpen: number[] = [];
+  let newestPaused = false;
   for (const s of both) {
     if (s.endedAt !== null || s.pausedAt === null) continue;
     const o = other(s);
     const P = s.pausedAt;
     const closers = [...(o.pauses ?? []).map((p) => p[1]), ...(o.endedAt !== null ? [o.endedAt] : [])].filter((t) => t > P);
     if (closers.length) spans.push([P, Math.min(...closers)]);
-    else if (s === newest) pausedAt = P;
+    else {
+      stillOpen.push(P);
+      if (s === newest) newestPaused = true;
+    }
   }
+  let pausedAt: number | null = newestPaused ? Math.min(...stillOpen) : null;
   const pauses = unionSpans(spans);
   if (pausedAt !== null && pauses.length) pausedAt = Math.max(pausedAt, pauses[pauses.length - 1][1]);
-  // Paused time (#296 round 4, Claude): a copy with no pause times (an older build rebuilds the
-  // summary without them) already holds every pause it knew of in pausedMs; never added up across copies.
-  const timed = both.filter((s) => (s.pauses ?? []).length > 0);
-  const pausedMs = Math.max(
-    spanMs(pauses) + Math.max(0, ...timed.map(untimedPauseMs)),
-    ...both.filter((s) => !(s.pauses ?? []).length).map((s) => s.pausedMs),
-  );
+  // Paused time (#296 round 5, Claude): a copy with no pause times holds every pause it knew
+  // of in pausedMs; the part not covered by the spans it could have known (up to its cutoff)
+  // is added once (the largest), never summed across copies.
+  const untimedOf = (s: SessionState, until: number) =>
+    (s.pauses ?? []).length ? untimedPauseMs(s) : Math.max(0, s.pausedMs - spanMs(clipSpans(pauses, until)));
+  const pausedMs = spanMs(pauses) + Math.max(0, untimedOf(mine, Infinity), untimedOf(saved, cutoff ?? Infinity));
   return {
     startedAt: Math.min(mine.startedAt, saved.startedAt),
     pausedMs,
     pausedAt,
     endedAt: ended ? lastEnd : null,
     played: mergePlayed(saved.played, mine.played),
+    pauses,
+  };
+};
+
+/** Spans cut at `until` (the part after it dropped). */
+const clipSpans = (spans: PauseSpan[], until: number): PauseSpan[] =>
+  spans.filter(([a]) => a < until).map(([a, b]) => [a, Math.min(b, until)] as PauseSpan);
+
+/**
+ * A message from an older build (no revision, no pause times) that resumed:
+ * running, with more paused time than ours while ours is paused or ended.
+ * That is a real Resume (#296 round 5): its state is taken, our pause times
+ * and songs are kept, and our open pause (or the time since our End) is
+ * closed at its start + the paused time it added (by the time it came in at
+ * the latest). Null: not one (a stale copy can't undo an End).
+ */
+export const oldBuildResume = (mine: SessionState, theirs: SessionState, receivedAt: number): SessionState | null => {
+  if (mine.startedAt !== theirs.startedAt || theirs.pausedAt !== null || theirs.endedAt !== null) return null;
+  const delta = theirs.pausedMs - mine.pausedMs;
+  const from = mine.pausedAt ?? mine.endedAt;
+  if (delta <= 0 || from === null) return null;
+  const pauses = unionSpans([...(mine.pauses ?? []), ...(theirs.pauses ?? []), [from, Math.max(from, Math.min(from + delta, receivedAt))]]);
+  return {
+    startedAt: mine.startedAt,
+    pausedMs: Math.max(theirs.pausedMs, spanMs(pauses)),
+    pausedAt: null,
+    endedAt: null,
+    played: mergePlayed(mine.played, theirs.played),
     pauses,
   };
 };

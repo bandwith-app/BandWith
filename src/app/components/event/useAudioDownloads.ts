@@ -76,7 +76,13 @@ export function useAudioDownloads(refs: string[]) {
       const { current } = pass;
       const user = await pass.user;
       const stillHere = async () => current() && !!user && (await sessionUserId()) === user;
-      if (!user || !(await stillHere())) return;
+      if (!user) {
+        // No session (it expired offline): what is already here still shows (read only,
+        // cachedAudio falls back to the account that downloaded it); nothing is downloaded (#296 round 5).
+        if (current()) await check();
+        return;
+      }
+      if (!(await stillHere())) return;
       const refs = refsRef.current;
       const have = await cachedAudio(refs);
       setCached(have);
@@ -117,7 +123,7 @@ export function useAudioDownloads(refs: string[]) {
       if (queued) void run(queued);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, check]);
 
   const prepare = useCallback((): Promise<void> => run(), [run]);
 

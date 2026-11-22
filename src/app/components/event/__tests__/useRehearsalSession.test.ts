@@ -410,3 +410,39 @@ describe('#296 round 4: a conflict merge knows when the saved copy was written',
     expect(result.current.status).toBe('live');
   });
 });
+
+describe('#296 round 5: an older build’s Resume on the channel', () => {
+  const T0 = Date.now() - 30 * 60_000;
+  const live = startSession(T0);
+  /** What builds up to 383f15b send: no rev, no pause times. */
+  const oldMsg = (state: Parameters<typeof toRow>[0]) => {
+    const row = toRow(state, CTX, 3, Date.now());
+    const { pauses: _drop, ...summary } = row.summary;
+    return { v: 1, eventId: 'event-1', date: '2026-11-19', row: { ...row, summary } };
+  };
+
+  for (const isLeader of [false, true]) {
+    it(`${isLeader ? 'admin' : 'member'}: the old build pauses, then resumes: running here again (not frozen)`, async () => {
+      fetchMock.mockResolvedValue({ state: live, summary: null, rev: 'r1' });
+      const { result, bridge } = setup({ isLeader, currentSong: null });
+      await waitFor(() => expect(result.current.status).toBe('live'));
+      const pausedAt = Date.now() - 3 * 60_000;
+      act(() => bridge.current.receive?.(oldMsg({ ...live, pausedAt, pauses: undefined })));
+      expect(result.current.status).toBe('paused');
+      // The old build's Resume: paused_ms grows by the pause, pausedAt back to null.
+      act(() => bridge.current.receive?.(oldMsg({ ...live, pausedMs: 2 * 60_000, pauses: undefined })));
+      expect(result.current.status).toBe('live');
+      expect(result.current.state?.pausedMs).toBe(2 * 60_000);
+    });
+  }
+
+  it('an old build’s Resume after our End: running again, the duration keeps every minute', async () => {
+    const ended = endSession(live, T0 + 20 * 60_000);
+    fetchMock.mockResolvedValue({ state: ended, summary: null, rev: 'r1' });
+    const { result, bridge } = setup({ isLeader: false, currentSong: null });
+    await waitFor(() => expect(result.current.status).toBe('ended'));
+    act(() => bridge.current.receive?.(oldMsg({ ...live, pausedMs: 5 * 60_000, pauses: undefined })));
+    expect(result.current.status).toBe('live');
+    expect(result.current.state?.pauses).toEqual([[T0 + 20 * 60_000, T0 + 25 * 60_000]]);
+  });
+});

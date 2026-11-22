@@ -8,6 +8,7 @@ import {
   markPlayed,
   mergeSessions,
   occurrenceDate,
+  oldBuildResume,
   parseSummary,
   pauseSession,
   pickSession,
@@ -366,5 +367,53 @@ describe('#296 round 4: mixed builds and open pauses', () => {
     const saved = { ...startSession(T0), played: [{ ...A, at: T0 + 1 * MIN }, X, { ...B, at: T0 + 30 * MIN }] };
     const mine = { ...startSession(T0), played: [{ ...A, at: T0 + 1 * MIN }, { id: 's3', title: 'Empire State of Mind', at: T0 + 10 * MIN }] };
     expect(mergeSessions(mine, saved).played.map((p) => p.id)).toEqual(['s1', 's9', 's3', 's2']);
+  });
+});
+
+describe('#296 round 5: older builds and open pauses', () => {
+  it('Claude (a): an old copy’s 0:10–0:17 (no times) and a new offline 0:40–0:45: 12 minutes, the same merged again', () => {
+    const old = { ...startSession(T0), pausedMs: 7 * MIN, pauses: undefined };
+    const fresh = resumeSession(pauseSession(startSession(T0), T0 + 40 * MIN), T0 + 45 * MIN);
+    let m = mergeSessions(fresh, old, { savedAt: T0 + 20 * MIN, cutoff: T0 + 20 * MIN });
+    expect(m.pausedMs).toBe(12 * MIN);
+    for (let i = 0; i < 3; i++) m = mergeSessions(m, old, { savedAt: T0 + 20 * MIN, cutoff: T0 + 20 * MIN });
+    expect(m.pausedMs).toBe(12 * MIN);
+    // The round-4 case is unchanged: 10–15 and an old paused_ms 8 that knew it: 8.
+    const a = resumeSession(pauseSession(startSession(T0), T0 + 10 * MIN), T0 + 15 * MIN);
+    expect(mergeSessions(a, { ...startSession(T0), pausedMs: 8 * MIN, pauses: undefined }, { cutoff: T0 + 20 * MIN }).pausedMs).toBe(8 * MIN);
+  });
+
+  it('Codex: two pauses still open offline (19:10 and 19:12): paused since 19:10', () => {
+    const live = startSession(T0);
+    const m = mergeSessions(pauseSession(live, T0 + 10 * MIN), pauseSession(live, T0 + 12 * MIN));
+    expect(m.pausedAt).toBe(T0 + 10 * MIN);
+    expect(mergeSessions(pauseSession(live, T0 + 12 * MIN), pauseSession(live, T0 + 10 * MIN)).pausedAt).toBe(T0 + 10 * MIN);
+  });
+
+  it('Claude: same start, an older build’s copy with paused time it has no times for, saved after our End: its Resume counts', () => {
+    const live = startSession(T0);
+    const ended = endSession(live, T0 + 30 * MIN);
+    // The old build resumed (paused_ms grew, no span) and saved at 0:40.
+    const old = { ...live, pausedMs: 5 * MIN, pauses: undefined };
+    expect(sessionStatus(mergeSessions(ended, old, { savedAt: T0 + 40 * MIN }))).toBe('live');
+    // Nothing untimed and nothing done after the End: still ended.
+    expect(sessionStatus(mergeSessions(ended, { ...live, pauses: [] }, { savedAt: T0 + 40 * MIN }))).toBe('ended');
+  });
+
+  it('Claude blocker: an older build’s Resume message (more paused time, no times) closes our pause by what it added', () => {
+    const paused = pauseSession(startSession(T0), T0 + 10 * MIN);
+    const theirs = { ...startSession(T0), pausedMs: 4 * MIN, pauses: undefined };
+    const r = oldBuildResume(paused, theirs, T0 + 20 * MIN)!;
+    expect(sessionStatus(r)).toBe('live');
+    expect(r.pauses).toEqual([[T0 + 10 * MIN, T0 + 14 * MIN]]);
+    expect(elapsedSeconds(r, T0 + 20 * MIN)).toBe(16 * 60);
+    // After our End: running again, the gap is a pause, no minute lost.
+    const ended = endSession(startSession(T0), T0 + 30 * MIN);
+    const back = oldBuildResume(ended, { ...startSession(T0), pausedMs: 6 * MIN, pauses: undefined }, T0 + 40 * MIN)!;
+    expect(sessionStatus(back)).toBe('live');
+    expect(elapsedSeconds(back, T0 + 40 * MIN)).toBe(34 * 60);
+    // A stale message (no more paused time) is not a Resume, and can't undo the End.
+    expect(oldBuildResume(ended, { ...startSession(T0), pauses: undefined }, T0 + 40 * MIN)).toBeNull();
+    expect(sessionStatus(mergeSessions(ended, { ...startSession(T0), pauses: undefined }, { cutoff: T0 + 40 * MIN }))).toBe('ended');
   });
 });

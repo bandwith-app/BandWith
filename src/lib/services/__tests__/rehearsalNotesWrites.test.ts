@@ -5,10 +5,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  * says which HTTP status it got (supabase-js puts it next to the error).
  */
 let answer: { data: unknown; error: unknown; status: number } = { data: null, error: null, status: 200 };
+/** Answers in order, one per write (then `answer`). */
+const answers: (typeof answer)[] = [];
 vi.mock('@/lib/supabase', () => {
   const chain: Record<string, unknown> = {};
   for (const m of ['from', 'update', 'insert', 'delete', 'upsert', 'eq', 'in', 'select']) chain[m] = vi.fn(() => chain);
-  chain.then = (resolve: (v: unknown) => unknown) => Promise.resolve(answer).then(resolve);
+  chain.then = (resolve: (v: unknown) => unknown) => Promise.resolve(answers.shift() ?? answer).then(resolve);
   return { supabase: chain };
 });
 
@@ -52,5 +54,17 @@ describe('rehearsal note writes report their HTTP status', () => {
   it('a saved note has no error', async () => {
     answer = { data: [{ id: 'n1' }], error: null, status: 200 };
     expect((await saveNote(note, [])).error).toBeNull();
+  });
+});
+
+describe('#296 round 5 (Codex): an edit no longer allowed is a refusal, never a success', () => {
+  it('update finds no row it may change (0 rows) and the insert finds the note there (23505): refused', async () => {
+    answers.length = 0;
+    answers.push({ data: [], error: null, status: 200 }, { data: null, error: { code: '23505', message: 'duplicate key' }, status: 409 });
+    const r = await saveNote(note, []);
+    expect(r.error).not.toBeNull();
+    // Final (not retried): the outbox keeps its text in the refused list.
+    const { isRetryableWriteError } = await import('@/lib/rehearsalNotesOutbox');
+    expect(isRetryableWriteError(r.error, r.status)).toBe(false);
   });
 });

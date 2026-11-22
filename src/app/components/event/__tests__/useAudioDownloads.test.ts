@@ -12,8 +12,9 @@ const downloadMock = vi.fn(async (_ref: string) => {
   await new Promise<void>((r) => (release = r));
   return state.signedOut ? { ok: false as const, reason: 'failed' as const } : { ok: true as const };
 });
+let cachedOverride = new Set<string>();
 vi.mock('@/lib/regiaAudio', () => ({
-  cachedAudio: async () => new Set<string>(),
+  cachedAudio: async (refs: string[]) => new Set(refs.filter((r) => cachedOverride.has(r))),
   downloadAudio: (ref: string) => downloadMock(ref),
   audioSession: () => {
     const at = state.signedOut;
@@ -116,5 +117,20 @@ describe('#296 round 4: a pass asked for during a download belongs to that accou
     await drain(run);
     await flush();
     expect(downloadMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('#296 round 5: session expired offline', () => {
+  it('the songs already on the device still show as ready; nothing is downloaded', async () => {
+    state.user = null;
+    const refs = ['https://a/1.mp3', 'https://a/2.mp3'];
+    cachedOverride = new Set(['https://a/1.mp3']);
+    const { result } = renderHook(() => useAudioDownloads(refs));
+    await act(async () => {
+      await result.current.prepare();
+    });
+    expect(result.current.audio['https://a/1.mp3']).toEqual({ state: 'ready' });
+    expect(downloadMock).not.toHaveBeenCalled();
+    cachedOverride = new Set();
   });
 });

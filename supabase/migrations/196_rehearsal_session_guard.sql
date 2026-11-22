@@ -23,6 +23,11 @@
 -- there is skipped quietly (their device shows the saved one at the next
 -- open). Rehearsal notes are not affected.
 --
+-- Pause times (#296 round 5): those builds rebuild the summary on every save
+-- without summary.pauses; the saved pause times are carried over, so the
+-- app's paused_ms minus the pause times is exactly what they added. A write
+-- that has summary.pauses (this build) replaces them.
+--
 -- Same function as 131 plus that one check. No new columns, grants or
 -- policies. Idempotent.
 
@@ -42,6 +47,11 @@ BEGIN
        AND NOT (NEW.started_at < OLD.started_at AND COALESCE(jsonb_typeof(NEW.summary -> 'pauses') = 'array', false)) THEN
       -- Another start over a saved session: skipped, the saved one stays.
       RETURN NULL;
+    END IF;
+    IF jsonb_typeof(OLD.summary -> 'pauses') = 'array'
+       AND COALESCE(jsonb_typeof(NEW.summary -> 'pauses') IS DISTINCT FROM 'array', true) THEN
+      NEW.summary := CASE WHEN jsonb_typeof(NEW.summary) = 'object' THEN NEW.summary ELSE '{}'::jsonb END
+        || jsonb_build_object('pauses', OLD.summary -> 'pauses');
     END IF;
     NEW.started_by := OLD.started_by;
     NEW.created_at := OLD.created_at;

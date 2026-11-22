@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { addOp, applyOps, clearNoteBackoff, dismissRejected, flushOutbox, readOutbox, readRejected, writeOutbox, type NoteOp } from '../rehearsalNotesOutbox';
+import { addOp, applyOps, clearNoteBackoff, dismissRejected, flushOutbox, queueNoteOp, readOutbox, readRejected, writeOutbox, type NoteOp } from '../rehearsalNotesOutbox';
 import type { RehearsalNote } from '../rehearsalNotes';
 
 const ME = 'user-me';
@@ -245,5 +245,80 @@ describe('audit 06 #5: a server error never throws a note away', () => {
     const api = apiWith(async () => ({ error: { message: 'Failed to fetch' } }));
     expect(await flushOutbox(ME, api)).toEqual({ sent: 0, dropped: 0, left: 2 });
     expect(api.save).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('#296 round 5: the refused list and account deletion', () => {
+  it('its key prefix stays exactly bw:rehearsal_notes_rejected: (the sign-out exclusion in #292 matches it)', async () => {
+    const { REJECTED_PREFIX } = await import('../rehearsalNotesOutbox');
+    expect(REJECTED_PREFIX).toBe('bw:rehearsal_notes_rejected:');
+  });
+
+  it('deleting the account (discardPendingWrites) erases it', async () => {
+    localStorage.clear();
+    clearNoteBackoff();
+    writeOutbox(ME, [{ kind: 'save', note: note('gone', { body: 'Outro: four bars' }), before: [] }]);
+    await flushOutbox(ME, {
+      save: vi.fn(async () => ({ error: { code: '42501', message: 'denied' }, status: 403 })),
+      remove: vi.fn(async () => ({ error: null })),
+      practised: vi.fn(async () => ({ error: null })),
+      ok: vi.fn(async () => ({ error: null })),
+    });
+    expect(readRejected(ME)).toHaveLength(1);
+    const { clearOfflineCache } = await import('../offline/storage');
+    // The account-deletion call (AuthContext signOut({ discardPendingWrites: true }), #287).
+    await (clearOfflineCache as (prefix?: string, opts?: unknown) => Promise<void>)('bw:', {
+      keepPendingWrites: true,
+      discardPendingWritesOf: ME,
+    });
+    expect(readRejected(ME)).toEqual([]);
+  });
+});
+
+describe('#296 round 5 (Claude): a refused note kept here never blocks or loses a later edit', () => {
+  const api403 = () => ({
+    save: vi.fn(async (n: RehearsalNote) => (n.body === 'first words' ? { error: { code: '42501', message: 'denied' }, status: 403 } : { error: null })),
+    remove: vi.fn(async () => ({ error: null })),
+    practised: vi.fn(async () => ({ error: null })),
+    ok: vi.fn(async () => ({ error: null })),
+  });
+
+  it('marked refused in the outbox: a new save of the same note goes out, the refused words stay', async () => {
+    localStorage.clear();
+    clearNoteBackoff();
+    writeOutbox(ME, [{ kind: 'save', note: note('n1', { body: 'first words' }), before: [], refused: true }]);
+    queueNoteOp(ME, { kind: 'save', note: note('n1', { body: 'second words' }), before: [] });
+    expect(readOutbox(ME).map((o) => (o.kind === 'save' ? o.note.body : o.kind))).toEqual(['second words']);
+    const api = api403();
+    await flushOutbox(ME, api);
+    expect(api.save).toHaveBeenCalledTimes(1);
+    expect(api.save.mock.calls[0][0].body).toBe('second words');
+    expect(readRejected(ME).map((n) => n.body)).toEqual(['first words']);
+  });
+
+  it('a delete of the note doesn’t erase the refused words either', () => {
+    localStorage.clear();
+    writeOutbox(ME, [{ kind: 'save', note: note('n1', { body: 'first words' }), before: [], refused: true }]);
+    queueNoteOp(ME, { kind: 'delete', id: 'n1' });
+    expect(readRejected(ME).map((n) => n.body)).toEqual(['first words']);
+  });
+
+  it('refused in memory only (storage completely full): a later edit of the note is still sent', async () => {
+    localStorage.clear();
+    clearNoteBackoff();
+    writeOutbox(ME, [{ kind: 'save', note: note('n1', { body: 'first words' }), before: [] }]);
+    const quota = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new DOMException('quota', 'QuotaExceededError');
+    });
+    const api = api403();
+    try {
+      await flushOutbox(ME, api);
+    } finally {
+      quota.mockRestore();
+    }
+    queueNoteOp(ME, { kind: 'save', note: note('n1', { body: 'second words' }), before: [] });
+    await flushOutbox(ME, api);
+    expect(api.save.mock.calls.map((c) => c[0].body)).toEqual(['first words', 'second words']);
+    dismissRejected(ME, 'n1');
   });
 });

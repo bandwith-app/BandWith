@@ -19,10 +19,11 @@ const opId = (op: NoteOp) => (op.kind === 'save' ? op.note.id : op.id);
 /** Queue a change: it replaces a waiting one of the same kind; a delete drops all of that note's. */
 export function addOp(ops: NoteOp[], op: NoteOp): NoteOp[] {
   const id = opId(op);
-  const kept = ops.filter((o) => opId(o) !== id || (op.kind !== 'delete' && o.kind !== op.kind));
+  // A refused note kept here (no room elsewhere) is never replaced: its words stay (#296 round 5).
+  const kept = ops.filter((o) => opId(o) !== id || (o.kind === 'save' && !!o.refused) || (op.kind !== 'delete' && o.kind !== op.kind));
   if (op.kind === 'save') {
     // Keep the assignees the server had before the first waiting save.
-    const prev = ops.find((o) => o.kind === 'save' && o.note.id === id);
+    const prev = ops.find((o) => o.kind === 'save' && o.note.id === id && !o.refused);
     if (prev && prev.kind === 'save') return [...kept, { ...op, before: prev.before }];
   }
   return [...kept, op];
@@ -85,7 +86,9 @@ export function writeOutbox(userId: string, ops: NoteOp[]): boolean {
 }
 
 export function queueNoteOp(userId: string, op: NoteOp) {
-  writeOutbox(userId, addOp(readAllOps(userId), op));
+  const all = readAllOps(userId);
+  // Refused ones stay as they are; the new change goes out on its own.
+  writeOutbox(userId, [...all.filter((o) => isRefused(userId, o)), ...addOp(all.filter((o) => !isRefused(userId, o)), op)]);
 }
 
 /**
@@ -99,13 +102,21 @@ export function queueNoteOp(userId: string, op: NoteOp) {
  * the outbox entry untouched), never sent again, and shown with
  * `spaceFull` so the person copies it now.
  */
-const REJECTED_PREFIX = 'bw:rehearsal_notes_rejected:';
+/**
+ * Kept exactly as it is: sign-out must keep these lists (they hold words the
+ * server refused), only an account deletion erases them. The exclusion list
+ * for sign-out lives in clearOfflineCache (src/lib/offline/storage.ts, PR #292).
+ */
+export const REJECTED_PREFIX = 'bw:rehearsal_notes_rejected:';
 
 export type RejectedNote = RehearsalNote & { spaceFull?: boolean };
 
-/** Refused notes no storage could take (this visit only). */
+/**
+ * Refused changes no storage could take (this visit only), by the change
+ * itself, not the note: a later real edit of the note still goes out.
+ */
 const refusedHere = new Map<string, Map<string, RehearsalNote>>();
-const isRefused = (userId: string, op: NoteOp) => op.kind === 'save' && (!!op.refused || !!refusedHere.get(userId)?.has(op.note.id));
+const isRefused = (userId: string, op: NoteOp) => op.kind === 'save' && (!!op.refused || !!refusedHere.get(userId)?.has(JSON.stringify(op)));
 
 const readStoredRejected = (userId: string): RehearsalNote[] => {
   try {
@@ -146,7 +157,8 @@ function writeRejected(userId: string, notes: RehearsalNote[]): boolean {
 export function dismissRejected(userId: string, id: string) {
   const ops = readAllOps(userId);
   const left = ops.filter((o) => !(o.kind === 'save' && o.note.id === id && isRefused(userId, o)));
-  refusedHere.get(userId)?.delete(id);
+  const here = refusedHere.get(userId);
+  for (const [sig, n] of here ?? []) if (n.id === id) here!.delete(sig);
   if (left.length !== ops.length) writeOutbox(userId, left);
   writeRejected(userId, readStoredRejected(userId).filter((n) => n.id !== id));
 }
@@ -257,7 +269,7 @@ export function flushOutbox(userId: string, api: OutboxApi) {
             readStoredRejected(userId).some((n) => n.id === op.note.id && n.body === op.note.body);
           if (!kept) {
             if (!refusedHere.has(userId)) refusedHere.set(userId, new Map());
-            refusedHere.get(userId)!.set(op.note.id, op.note);
+            refusedHere.get(userId)!.set(same, op.note);
             writeOutbox(userId, readAllOps(userId).map((o) => (JSON.stringify(o) === same ? { ...op, refused: true as const } : o)));
             continue;
           }

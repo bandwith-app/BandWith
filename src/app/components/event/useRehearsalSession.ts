@@ -4,6 +4,7 @@ import {
   fromRow,
   markPlayed,
   mergeSessions,
+  oldBuildResume,
   pauseSession,
   pickSession,
   resumeSession,
@@ -380,6 +381,12 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
     if (!c.key || !msg || msg.v !== 1 || msg.eventId !== c.eventId || msg.date !== c.date) return;
     const next = msg.row ? fromRow(msg.row) : null;
     const mine = stateRef.current;
+    const receivedAt = Date.now();
+    // An older build's Resume (no revision, no pause times, more paused time): a real one,
+    // taken with our pause times kept (#296 round 5).
+    const resumed = !('rev' in msg) && mine && next ? oldBuildResume(mine, next, receivedAt) : null;
+    /** Merged with what this message brings (it can't know of pauses after it came in). */
+    const mergeIn = (): SessionState => resumed ?? mergeSessions(mine!, next!, { cutoff: receivedAt });
     /**
      * Taken as it is only when it is built on a newer save than ours, and it
      * doesn't turn a saved, ended session back to running (#296 round 4: a
@@ -387,19 +394,20 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
      * a stale copy adds what it has and can't reopen it (mergeSessions).
      */
     const takes = (): boolean =>
-      !mine || !next || (newerRev(msg.rev, revRef.current) && !(sessionStatus(mine) === 'ended' && sessionStatus(next) !== 'ended'));
+      !resumed &&
+      (!mine || !next || (newerRev(msg.rev, revRef.current) && !(sessionStatus(mine) === 'ended' && sessionStatus(next) !== 'ended')));
     if (!c.isLeader) {
       if (takes()) {
         setState(next);
         if (typeof msg.rev === 'string') revRef.current = msg.rev;
-      } else setState(mergeSessions(mine!, next!));
+      } else setState(mergeIn());
       return;
     }
     if (unsavedRef.current) {
       // A change of ours not saved yet (offline, on its way): never overwritten, the other
       // admin's change merges into it (#296 round 3) and both are saved together.
       if (!next || !mine) return;
-      const merged = mergeSessions(mine, next);
+      const merged = mergeIn();
       if (sameSession(merged, mine)) return;
       versionRef.current += 1;
       setState(merged);
@@ -411,7 +419,7 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
     if (takes()) {
       if (typeof msg.rev === 'string') revRef.current = msg.rev;
     } else {
-      shown = mergeSessions(mine!, next!);
+      shown = mergeIn();
       if (sameSession(shown, mine)) return;
     }
     setState(shown);
