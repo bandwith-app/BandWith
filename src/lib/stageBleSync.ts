@@ -20,8 +20,17 @@
  * Why reads, not a written ping: on Android the Bluetooth LE plugin's write
  * throws an uncaught exception, and the app crashes, if Bluetooth turns off
  * while it goes out (seen on the emulator; airplane mode does exactly that).
- * Reads fail cleanly. A read's answer belongs to that read, so it needs no
- * nonce; a replayed old answer is far from the others and is filtered out.
+ * Reads fail cleanly. A read's answer belongs to that read; a replayed old
+ * answer among real ones is far from the others and is filtered out.
+ *
+ * Residual risk, left for a later release (review of #288): the answer has
+ * no member nonce, since a nonce means a member write, the crash above. A
+ * phone posing as the leader, out of the real leader's range, can replay
+ * frames it recorded earlier (and an old signed state: it can't make new
+ * ones), so members following it get a click shifted by the replay's delay.
+ * A real-time relay shifts it by at most half the round trip (500 ms at
+ * most: the round-trip ceiling of #283). Fix once a write is safe: the member writes 8
+ * random bytes, the leader signs t1 with them.
  *
  * Then the NTP-style maths of the Realtime click (clockSample / bestSample).
  */
