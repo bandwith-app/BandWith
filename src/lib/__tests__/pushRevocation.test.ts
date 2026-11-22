@@ -6,15 +6,20 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   MAX_UNCONFIRMED_SECRETS,
   PUSH_REVOKE_MAX_QUEUED,
+  REVOKE_RETRY_BASE_MS,
+  REVOKE_RETRY_MAX_MS,
   beginPushSave,
   confirmPushSave,
   flushPushRevocations,
   forgetRevocation,
   newRevokeSecret,
+  nextRevocationRetry,
   readPendingRevocations,
   rememberPushToken,
   rememberedPushToken,
+  rememberedPushTokenAny,
   revokeOnSignOut,
+  revokeRetryDelay,
 } from '../pushRevocation';
 import push from '../services/pushNotifications.ts?raw';
 import ctx from '../AuthContext.tsx?raw';
@@ -54,7 +59,7 @@ describe('push revocation on sign-out', () => {
     const now = () => new Date('2026-11-22T10:00:00Z');
     expect(await revokeOnSignOut(TOKEN, 'alice', saved(REG, S1), { store, revokeOnServer: offline, unregisterDevice, now })).toBe('queued');
     expect(unregisterDevice).toHaveBeenCalledOnce();
-    const entry = { token: TOKEN, userId: 'alice', registeredAt: REG, confirmed: S1, attempts: [], at: '2026-11-22T10:00:00.000Z' };
+    const entry = { token: TOKEN, userId: 'alice', registeredAt: REG, confirmed: S1, attempts: [], at: '2026-11-22T10:00:00.000Z', tries: 0, retryAt: null };
     expect(readPendingRevocations(store)).toEqual([entry]);
 
     expect(await flushPushRevocations(store, server('offline'))).toBe(0);
@@ -65,30 +70,43 @@ describe('push revocation on sign-out', () => {
     expect(readPendingRevocations(store)).toEqual([]);
   });
 
-  // Main's decision (#287 round 5): no lookup by token. Every secret the
-  // server may hold is tried; refused by all of them, the registration is
-  // already off or replaced (a valid one would have worked): dropped.
-  it('refused for every secret it may hold: dropped; offline or an error: kept', async () => {
+  // Main's decision (#287 round 6, B2): every secret the server may hold is
+  // tried; refused by all of them, it is never dropped: kept, and tried
+  // again with a backoff that doubles, until the server takes it.
+  it('refused for every secret it may hold: kept and retried with backoff; offline: kept as is', async () => {
     const store = mem();
     await revokeOnSignOut(TOKEN, 'alice', saved(null, S1, [S2]), { store, revokeOnServer: offline, unregisterDevice: async () => {}, now: () => new Date(0) });
-    expect(await flushPushRevocations(store, server('offline'))).toBe(0);
-    expect(readPendingRevocations(store)).toHaveLength(1);
+    const T0 = 1_000_000;
+    expect(await flushPushRevocations(store, { ...server('offline'), now: () => T0 })).toBe(0);
+    expect(readPendingRevocations(store)).toEqual([expect.objectContaining({ tries: 0, retryAt: null })]);
     const refused = server(false);
-    expect(await flushPushRevocations(store, refused)).toBe(0);
+    expect(await flushPushRevocations(store, { ...refused, now: () => T0 })).toBe(0);
     expect(refused.revoke.mock.calls.map((c) => c[1])).toEqual([S2, S1]);
+    expect(readPendingRevocations(store)).toEqual([expect.objectContaining({ tries: 1, retryAt: T0 + REVOKE_RETRY_BASE_MS })]);
+    expect(nextRevocationRetry(store)).toBe(T0 + REVOKE_RETRY_BASE_MS);
+    // Not due yet: not sent.
+    const early = server(true);
+    expect(await flushPushRevocations(store, { ...early, now: () => T0 + REVOKE_RETRY_BASE_MS - 1 })).toBe(0);
+    expect(early.revoke).not.toHaveBeenCalled();
+    // Refused again: the wait doubles, and never grows past the ceiling.
+    expect(await flushPushRevocations(store, { ...server(false), now: () => T0 + REVOKE_RETRY_BASE_MS })).toBe(0);
+    expect(readPendingRevocations(store)[0]).toMatchObject({ tries: 2, retryAt: T0 + 3 * REVOKE_RETRY_BASE_MS });
+    expect(revokeRetryDelay(50)).toBe(REVOKE_RETRY_MAX_MS);
+    // Taken at last: gone.
+    expect(await flushPushRevocations(store, { ...server(true), now: () => T0 + 3 * REVOKE_RETRY_BASE_MS })).toBe(1);
     expect(readPendingRevocations(store)).toEqual([]);
   });
 
   it('no secret known: a refusal keeps it, until the token is saved again or the owner path takes it', async () => {
     const store = mem();
     expect(await revokeOnSignOut(TOKEN, 'alice', null, { store, revokeOnServer: async () => false, unregisterDevice: async () => {}, now: () => new Date(0) })).toBe('queued');
-    expect(readPendingRevocations(store)).toEqual([{ token: TOKEN, userId: 'alice', registeredAt: null, confirmed: null, attempts: [], at: '1970-01-01T00:00:00.000Z' }]);
+    expect(readPendingRevocations(store)).toEqual([{ token: TOKEN, userId: 'alice', registeredAt: null, confirmed: null, attempts: [], at: '1970-01-01T00:00:00.000Z', tries: 0, retryAt: null }]);
     const s = server(false);
-    await flushPushRevocations(store, s);
+    await flushPushRevocations(store, { ...s, now: () => 0 });
     expect(s.revoke).toHaveBeenCalledWith(expect.objectContaining({ token: TOKEN }), null);
     expect(readPendingRevocations(store)).toHaveLength(1);
-    // Alice signs in again here: the owner path switches it off.
-    expect(await flushPushRevocations(store, server(true))).toBe(1);
+    // Alice signs in again here (after the backoff): the owner path switches it off.
+    expect(await flushPushRevocations(store, { ...server(true), now: () => REVOKE_RETRY_MAX_MS })).toBe(1);
     expect(readPendingRevocations(store)).toEqual([]);
   });
 
@@ -213,6 +231,17 @@ describe('push revocation on sign-out', () => {
     expect(MAX_UNCONFIRMED_SECRETS).toBe(20);
     expect(kept).toHaveLength(20);
     expect(kept[0]).toBe(many[many.length - 1]);
+  });
+
+  // Codex review #287 round 7 (B4): a session that ended elsewhere still
+  // finds the registration, whichever account it was for.
+  it('the remembered registration is found without knowing its account', () => {
+    const store = mem();
+    expect(rememberedPushTokenAny(store)).toBeNull();
+    confirmPushSave(store, TOKEN, 'alice', S1, REG);
+    expect(rememberedPushTokenAny(store)).toEqual({ token: TOKEN, userId: 'alice', registeredAt: REG, confirmed: S1, attempts: [] });
+    expect(rememberedPushToken(store, 'bob')).toBeNull();
+    expect(rememberedPushToken(store, 'alice')?.confirmed).toBe(S1);
   });
 
   it('secrets are random, 256 bits', () => {

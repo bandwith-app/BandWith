@@ -163,6 +163,8 @@ async function sendToAPNs(
   collapseId?: string,
   silent = false
 ): Promise<{ success: boolean; error?: string }> {
+  // The caller's data never carries `aps` or the server's keys (round 7).
+  data = clientPushData(data);
   try {
     let jwt = await generateAPNsJWT();
     const quiet = silent ? silentApns(data ?? {}) : null;

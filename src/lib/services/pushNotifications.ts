@@ -17,8 +17,10 @@ import {
   flushPushRevocations,
   forgetRevocation,
   newRevokeSecret,
+  nextRevocationRetry,
   rememberPushToken,
   rememberedPushToken,
+  rememberedPushTokenAny,
   revokeOnSignOut,
 } from '@/lib/pushRevocation';
 
@@ -42,6 +44,12 @@ let tokenWatch = false;
  * session before is stale and saves nothing (Claude review #287 round 4).
  */
 let pushSession = 0;
+/**
+ * Bumped when a registration starts (subscribe) and when a save is
+ * confirmed: a sign-out's device stop that completes later does nothing to
+ * the newer registration (Codex review #287 round 7, B3).
+ */
+let registrationGen = 0;
 /**
  * Saves, the sign-out revocation and the flush run one at a time: a save
  * never interleaves with a revocation of the same token, and two saves of
@@ -101,14 +109,24 @@ const clearNativePushUser = async (): Promise<void> => {
  * The session ended without a sign-out here (refresh refused, account
  * deleted, an app start with no session): from now on the device shows no
  * push for the account that was signed in (Codex review #287 round 6). Saves
- * started for it save nothing.
+ * started for it save nothing. Round 7 (B4), on every platform: like a
+ * sign-out, delivery stops natively and the server revocation is queued with
+ * the remembered registration's token, account and secrets, then sent
+ * (signed out, 184 takes those).
  */
 export const forgetPushAccount = async (): Promise<void> => {
-  pushUserId = null;
-  savedToken = null;
-  pushSession += 1;
-  if (!isNative()) return;
-  await clearNativePushUser();
+  const record = rememberedPushTokenAny(revokeStore());
+  const owner = pushUserId ?? record?.userId ?? null;
+  if (!isNative() || (!owner && !cachedToken)) {
+    pushUserId = null;
+    savedToken = null;
+    pushSession += 1;
+    if (isNative()) await clearNativePushUser();
+    return;
+  }
+  // The session is gone: no signed-in call, the queue and its flush do it.
+  await unregisterPushToken(owner, { sessionGone: true });
+  await flushQueuedPushRevocations().catch(() => 0);
 };
 
 /** Resolves with the work, or at the deadline with nothing while the work goes on. */
@@ -133,11 +151,32 @@ const untilDeadline = (work: Promise<unknown>, deadline: number): Promise<void> 
  */
 export const DEVICE_PUSH_STOP_WAIT_MS = 2500;
 
+/** The device stop on its way, if any: one at a time (round 7, B3). */
+let deviceStop: Promise<void> | null = null;
+
 /**
  * Stops delivery on the device: on the new Android builds, waits (at most
- * DEVICE_PUSH_STOP_WAIT_MS) for FCM to delete the token.
+ * DEVICE_PUSH_STOP_WAIT_MS) for FCM to delete the token. Single-flight: a
+ * second call while one runs gets the same one (Codex review #287 round 7,
+ * B3), and its fallback unregister is skipped if a newer registration
+ * started meanwhile.
  */
-const stopDevicePush = async (): Promise<void> => {
+const stopDevicePush = (): Promise<void> => {
+  if (deviceStop) return deviceStop;
+  const run = stopDevicePushOnce(registrationGen);
+  deviceStop = run;
+  void run.then(
+    () => {
+      if (deviceStop === run) deviceStop = null;
+    },
+    () => {
+      if (deviceStop === run) deviceStop = null;
+    },
+  );
+  return run;
+};
+
+const stopDevicePushOnce = async (gen: number): Promise<void> => {
   cachedToken = null;
   if (checksAccountNatively()) {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -154,6 +193,7 @@ const stopDevicePush = async (): Promise<void> => {
     if (outcome !== 'failed') return;
     // Not deleted: the plugin's unregister below.
   }
+  if (gen !== registrationGen) return; // a newer registration since: leave it
   await PushNotifications.unregister();
 };
 
@@ -251,6 +291,10 @@ export const subscribeToPush = async (userId: string): Promise<{ success: boolea
 
   pushUserId = userId;
   const session = pushSession;
+  registrationGen += 1;
+  // A device stop from the sign-out before still running finishes first,
+  // so it can't take the new registration's token with it (round 7, B3).
+  if (deviceStop) await untilDeadline(deviceStop, Date.now() + DEVICE_PUSH_STOP_WAIT_MS);
   await markNativePushUser(userId);
 
   try {
@@ -362,6 +406,7 @@ export const subscribeToPush = async (userId: string): Promise<{ success: boolea
  * separate read, and it stores no secret.
  */
 const afterSave = async (userId: string, token: string, stamp: string | null, secret: string | null) => {
+  registrationGen += 1;
   savedToken = token;
   savedAt = Date.now();
   forgetRevocation(revokeStore(), token);
@@ -463,17 +508,22 @@ const saveTokenToDatabase = (userId: string, token: string, session = pushSessio
 
 /**
  * Stop pushes to this device for the account that is signing out. Call it
- * BEFORE the session ends (the RPC needs the user's JWT).
+ * BEFORE the session ends (the RPC needs the user's JWT). With sessionGone
+ * (the session already ended elsewhere), no signed-in call: the revocation
+ * is queued for the signed-out flush.
  */
-export const unregisterPushToken = async (userId?: string | null): Promise<void> => {
+export const unregisterPushToken = async (userId?: string | null, opts: { sessionGone?: boolean } = {}): Promise<void> => {
+  // Sign-out waits for push work SIGN_OUT_PUSH_WAIT_MS at most, native calls
+  // and the permission check included: past that they go on in the
+  // background (Codex review #287 rounds 6-7).
+  const deadline = Date.now() + SIGN_OUT_PUSH_WAIT_MS;
   const owner = userId ?? pushUserId ?? '';
   pushUserId = null;
   savedToken = null;
   pushSession += 1;
+  // A registration after this one makes everything late here a no-op (B3).
+  const gen = registrationGen;
   if (!isNative()) return;
-  // Sign-out waits for push work SIGN_OUT_PUSH_WAIT_MS at most, native calls
-  // included: past that they go on in the background (Codex review #287 r6).
-  const deadline = Date.now() + SIGN_OUT_PUSH_WAIT_MS;
   // First, before any network: from now on this device shows no push for
   // that account (Codex review #287 round 5).
   await untilDeadline(clearNativePushUser(), deadline);
@@ -488,7 +538,7 @@ export const unregisterPushToken = async (userId?: string | null): Promise<void>
   if (!isRemotePushConfigured()) return;
   // No token known (the first start after an upgrade, offline, before the
   // native callback): the plugin still has it (Codex review #287 round 3).
-  const token = known ?? (await tokenFromPlugin());
+  const token = known ?? (await tokenFromPlugin(deadline));
   if (!token) {
     // Not even the plugin: delivery stops on the device itself.
     try {
@@ -507,11 +557,16 @@ export const unregisterPushToken = async (userId?: string | null): Promise<void>
   // After a save already on its way: it can't switch the token back on later.
   let gaveUp = false;
   let serverTookIt = false;
+  // Past the deadline (the late path below already queued it and stopped the
+  // device) or after a newer registration, the job's own late completion
+  // does nothing: no second device stop, no call as the next account (B3).
+  const stale = () => gaveUp || gen !== registrationGen;
   const job = exclusive(async () => {
-    if (gaveUp) return 'queued' as const;
+    if (stale()) return 'queued' as const;
     return revokeOnSignOut(token, owner, saved, {
       store,
       revokeOnServer: async () => {
+        if (opts.sessionGone || stale()) return false;
         // 184: true only when it switched this account's token off; false
         // when the token is (still) another account's.
         const { data: switchedOff, error } = await supabase.rpc('bw_unregister_push_token', { p_token: token });
@@ -525,7 +580,9 @@ export const unregisterPushToken = async (userId?: string | null): Promise<void>
           .select('id');
         return (serverTookIt = !updateError && Array.isArray(data) && data.length > 0);
       },
-      unregisterDevice,
+      unregisterDevice: async () => {
+        if (!stale()) await unregisterDevice();
+      },
     });
   });
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -548,19 +605,29 @@ export const unregisterPushToken = async (userId?: string | null): Promise<void>
 /**
  * The device's token from the plugin, when nothing remembers it: register()
  * answers with the token the system already holds (also offline, as a
- * rule). Waits a moment at most; null when it doesn't come.
+ * rule). Waits 2.5 s at most, and never past the sign-out's deadline, the
+ * permission check included (Claude review #287 round 7, M1); null when it
+ * doesn't come.
  */
-const tokenFromPlugin = async (waitMs = 2500): Promise<string | null> => {
+const tokenFromPlugin = async (deadline: number): Promise<string | null> => {
+  const waitMs = Math.max(0, Math.min(2500, deadline - Date.now()));
   try {
-    const perm = await PushNotifications.checkPermissions();
-    if (perm.receive !== 'granted') return null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const perm = await Promise.race([
+      PushNotifications.checkPermissions(),
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), Math.max(0, deadline - Date.now()));
+      }),
+    ]);
+    clearTimeout(timer);
+    if (perm?.receive !== 'granted') return null;
   } catch {
     return null;
   }
   let handle: { remove: () => Promise<void> } | null = null;
   try {
     return await new Promise<string | null>((resolve) => {
-      const timer = setTimeout(() => resolve(null), waitMs);
+      const timer = setTimeout(() => resolve(null), Math.min(waitMs, Math.max(0, deadline - Date.now())));
       void PushNotifications.addListener('registration', (t) => {
         clearTimeout(timer);
         resolve(typeof t?.value === 'string' && t.value ? t.value : null);
@@ -604,7 +671,22 @@ export const flushQueuedPushRevocations = async (): Promise<number> => {
     return await run;
   } finally {
     if (flushing === run) flushing = null;
+    scheduleRevocationRetry();
   }
+};
+
+/** The next try of a refused revocation, while the app runs (round 7, B2). */
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+const scheduleRevocationRetry = () => {
+  if (retryTimer) clearTimeout(retryTimer);
+  retryTimer = null;
+  const due = nextRevocationRetry(revokeStore());
+  // Only refused ones wait on a timer: an offline one waits for 'online'.
+  if (due === null) return;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    void flushQueuedPushRevocations().catch(() => 0);
+  }, Math.max(1000, due - Date.now()));
 };
 
 /**

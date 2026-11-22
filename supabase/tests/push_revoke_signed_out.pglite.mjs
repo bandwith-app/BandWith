@@ -68,12 +68,21 @@ const S1 = 'a'.repeat(20) + '1'.repeat(44), S2 = 'b'.repeat(20) + '2'.repeat(44)
 // device token and a bandmate's id. Without a session, the token, account
 // and a stamp are not enough: only the secret the registration stored.
 const REG = '2026-11-20T10:00:00Z';
-ok(await revoke3(null, TOK, ALICE, REG) === false && await active(TOK) === true, 'anon with token + account + stamp, no secret: refused');
+ok(await revoke3(null, TOK, ALICE, '2026-11-20T10:00:00.000001Z') === false && await active(TOK) === true, 'anon with a stamp one microsecond off: refused');
+ok(await revoke3(null, TOK, BOB, REG) === false && await active(TOK) === true, "anon with the stamp but another account: refused");
 ok(await revoke3(null, TOK, ALICE, null) === false && await active(TOK) === true, 'anon with no stamp and no secret: refused');
 ok(await revoke(null, TOK, ALICE, null, S1) === false && await active(TOK) === true, 'anon with a secret the row never stored: refused');
 // Signed in as the owner: the own token, with or without its stamp.
 ok(await revoke(BOB, TOK, ALICE, null, null) === false && await active(TOK) === true, 'signed in as someone else: refused');
 ok(await revoke(ALICE, TOK, ALICE, '2026-11-20T09:00:00Z', null) === false, 'owner with a stamp that is not the registration: nothing');
+// Main's decision (round 6): no secret matched (an older build's
+// registration), but token, account and the exact stamp of its save do.
+ok(await revoke(null, TOK, ALICE, REG, S1) === true && await active(TOK) === false, 'anon: wrong secret, exact stamp of that registration: switched off');
+await db.query(`UPDATE push_tokens SET is_active = true, updated_at = $2 WHERE token = $1`, [TOK, REG]);
+ok(await revoke3(null, TOK, ALICE, REG) === true && await active(TOK) === false, 'anon: no secret, exact stamp: switched off');
+await db.query(`UPDATE push_tokens SET is_active = true, updated_at = $2 WHERE token = $1`, [TOK, REG]);
+ok(await revoke3(null, TOK, ALICE, REG) === true && await revoke3(null, TOK, ALICE, REG) === false, 'replayed: the switch-off changed the stamp, nothing more');
+await db.query(`UPDATE push_tokens SET is_active = true, updated_at = $2 WHERE token = $1`, [TOK, REG]);
 ok(await revoke(ALICE, TOK, ALICE, null, null) === true && await active(TOK) === false, 'owner without a stamp switches the own token off');
 
 // The stamped save stores the device's secret (hashed) and returns the stamp.

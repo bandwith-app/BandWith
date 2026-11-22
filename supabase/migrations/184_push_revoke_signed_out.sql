@@ -10,12 +10,15 @@
 -- it is online again, by then without a session. bw_revoke_push_token works
 -- for anon too, and only:
 --   * for the exact token and the account that signed out;
---   * signed out (anon): only with the revocation secret of exactly that
+--   * signed out (anon): with the revocation secret of exactly that
 --     registration (Codex review #287 round 4). The device makes a random
 --     secret, keeps it, and sends it with the save
 --     (bw_register_push_token_stamped); the row stores only its sha256.
---     Token, account and stamp are not enough: a former user of a shared
---     iPad holds the token and a bandmate's id. Every new registration
+--     When no secret matches, by token, account and the exact stamp
+--     (push_tokens.updated_at, microseconds) that registration's save
+--     returned to the device (main's decision, round 6): a former user of a
+--     shared iPad holds the token and a bandmate's id, but not the stamp of
+--     the bandmate's own save; a NULL stamp is never enough. Every new registration
 --     rotates the secret; any other change of the registration (a re-save by
 --     046, a move to another account, a switch off) clears it (trigger), so
 --     a replayed call never undoes a newer registration.
@@ -23,11 +26,10 @@
 --     (push_tokens.updated_at, returned by the save) or without one.
 -- It can only switch a token off, never on, and returns whether it did.
 --
--- No lookup by token (main's decision on #287 round 5): the device decides
--- itself. A refused revocation that carries secrets is dropped (had the
--- secret still been valid, the revocation would have succeeded); one without
--- a secret waits until the token is saved again or its account signs in
--- again on the device. bw_push_token_registered, from an earlier draft that
+-- No lookup by token (main's decision on #287 round 5). A refused revocation
+-- is never dropped (round 6): the device keeps it and tries again with
+-- backoff until the server takes it, or a confirmed save of the token on the
+-- device makes it moot. bw_push_token_registered, from an earlier draft that
 -- was never live, is dropped.
 --
 -- push_tokens.uid_gated (Codex review #287 round 5): the token belongs to an
@@ -136,7 +138,25 @@ BEGIN
        AND (p_registered_at IS NULL OR updated_at = p_registered_at);
   ELSE
     -- Anyone else (signed out included): the registration's own secret.
-    IF p_secret IS NULL OR length(p_secret) < 32 OR length(p_secret) > 256 THEN
+    IF p_secret IS NOT NULL AND length(p_secret) BETWEEN 32 AND 256 THEN
+      UPDATE public.push_tokens
+         SET is_active = false, updated_at = now()
+       WHERE token = p_token
+         AND user_id = p_user_id
+         AND coalesce(is_active, true)
+         AND revoke_secret_hash IS NOT NULL
+         AND revoke_secret_hash = encode(sha256(convert_to(p_secret, 'UTF8')), 'hex');
+      GET DIAGNOSTICS v_count = ROW_COUNT;
+      IF v_count > 0 THEN
+        RETURN true;
+      END IF;
+    END IF;
+    -- No secret matched (a registration by an older build or a database
+    -- without 184 has none; a lost answer left the device unsure): exactly
+    -- the registration the device saved, by token, account and the stamp the
+    -- save returned (main's decision on #287 round 6). Any later save
+    -- changes the stamp, so a replay never undoes a newer registration.
+    IF p_registered_at IS NULL THEN
       RETURN false;
     END IF;
     UPDATE public.push_tokens
@@ -144,8 +164,7 @@ BEGIN
      WHERE token = p_token
        AND user_id = p_user_id
        AND coalesce(is_active, true)
-       AND revoke_secret_hash IS NOT NULL
-       AND revoke_secret_hash = encode(sha256(convert_to(p_secret, 'UTF8')), 'hex');
+       AND updated_at = p_registered_at;
   END IF;
   GET DIAGNOSTICS v_count = ROW_COUNT;
   RETURN v_count > 0;

@@ -6,6 +6,7 @@ const h = vi.hoisted(() => ({
   platform: 'ios',
   listeners: {} as Record<string, ((v: unknown) => unknown)[]>,
   registerFires: true,
+  checkPermissions: (async () => ({ receive: 'granted' })) as () => Promise<{ receive: string }>,
   unregister: vi.fn(async () => {}),
   rpc: vi.fn(),
   from: vi.fn(),
@@ -37,7 +38,7 @@ vi.mock('@capacitor/push-notifications', () => ({
       });
     },
     requestPermissions: async () => ({ receive: 'granted' }),
-    checkPermissions: async () => ({ receive: 'granted' }),
+    checkPermissions: () => h.checkPermissions(),
     register: async () => {
       if (!h.registerFires) return;
       await Promise.all([...(h.listeners.registration ?? [])].map((f) => f({ value: TOKEN })));
@@ -79,6 +80,7 @@ describe('sign-out stops pushes (Codex review #287 rounds 2-4)', () => {
     vi.unstubAllEnvs();
     h.platform = 'ios';
     h.registerFires = true;
+    h.checkPermissions = async () => ({ receive: 'granted' });
     h.listeners = {};
     h.unregister.mockClear();
     h.rpc.mockReset();
@@ -216,14 +218,20 @@ describe('sign-out stops pushes (Codex review #287 rounds 2-4)', () => {
     expect(pending()).toEqual([expect.objectContaining({ token: TOKEN, userId: 'alice', registeredAt: null, confirmed: null, attempts: [] })]);
     expect(h.unregister).toHaveBeenCalledOnce();
     h.rpc.mockReset();
-    // Refused signed out, no secret: it stays (main's decision, round 5: no
-    // lookup by token).
+    // Refused signed out, no secret: it stays (main's decisions, rounds 5-6:
+    // no lookup by token, never dropped), tried again after a backoff.
     h.rpc.mockImplementation(async () => ({ data: false, error: null }));
     expect(await push.flushQueuedPushRevocations()).toBe(0);
-    expect(pending()).toHaveLength(1);
-    // Alice signs in again on the device: the owner path switches it off.
-    h.rpc.mockImplementation(async () => ({ data: true, error: null }));
-    expect(await push.flushQueuedPushRevocations()).toBe(1);
+    expect(pending()).toEqual([expect.objectContaining({ tries: 1 })]);
+    // Alice signs in again on the device, past the backoff: the owner path switches it off.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(Date.now() + 60 * 60_000);
+      h.rpc.mockImplementation(async () => ({ data: true, error: null }));
+      expect(await push.flushQueuedPushRevocations()).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
     expect(pending()).toEqual([]);
     expect(h.rpc.mock.calls.map((c) => c[0])).not.toContain('bw_push_token_registered');
   });
@@ -428,7 +436,7 @@ describe('sign-out stops pushes (Codex review #287 rounds 2-4)', () => {
     expect(h.identity.setUser).toHaveBeenCalledWith({ uid: 'alice' });
     h.log = [];
     await push.forgetPushAccount();
-    expect(h.log).toEqual(['clear']);
+    expect(h.log[0]).toBe('clear');
     // A registration answering afterwards saves nothing for the old account.
     h.rpc.mockClear();
     await Promise.all([...(h.listeners.registration ?? [])].map((f) => f({ value: 'device-token-rotated-0123456789' })));
@@ -480,5 +488,123 @@ describe('sign-out stops pushes (Codex review #287 rounds 2-4)', () => {
     expect(h.identity.setUser).toHaveBeenCalledWith({ uid: 'alice' });
     expect(h.rpc.mock.calls.filter((c) => c[0] === 'bw_register_push_token_stamped').some((c) => c[1].p_uid_gated === true)).toBe(true);
     expect(pending()).toEqual([]);
+  });
+
+  // Codex review #287 round 7 (B4): a refused refresh ends the session
+  // without the sign-out button, on every platform: delivery stops natively
+  // and the revocation is queued with the remembered secret, then sent.
+  it('a session that ends without sign-out stops the device and queues the revocation (iOS)', async () => {
+    const push = await load();
+    h.rpc.mockImplementation(async (fn: string) => (fn === 'bw_register_push_token_stamped' ? SAVED : offline()));
+    h.from.mockImplementation(() => builder(offline));
+    await push.subscribeToPush('alice');
+    const secret = lastSecret();
+    h.rpc.mockReset();
+    h.rpc.mockImplementation(offline);
+    await push.forgetPushAccount();
+    expect(h.unregister).toHaveBeenCalledOnce();
+    // No signed-in call: the session is gone.
+    expect(h.rpc.mock.calls.map((c) => c[0])).not.toContain('bw_unregister_push_token');
+    expect(pending()).toEqual([expect.objectContaining({ token: TOKEN, userId: 'alice', registeredAt: STAMP, confirmed: secret })]);
+    expect(h.rpc).toHaveBeenCalledWith('bw_revoke_push_token', { p_token: TOKEN, p_user_id: 'alice', p_registered_at: STAMP, p_secret: secret });
+    expect(remembered()).toBeNull();
+  });
+
+  it('an app start with no session revokes the registration left from before', async () => {
+    const push = await load();
+    h.rpc.mockImplementation(async (fn: string) => (fn === 'bw_register_push_token_stamped' ? SAVED : offline()));
+    h.from.mockImplementation(() => builder(offline));
+    await push.subscribeToPush('alice');
+    const secret = lastSecret();
+    // The app is killed; the refresh token expires meanwhile; a cold start.
+    const fresh = await load();
+    h.unregister.mockClear();
+    h.rpc.mockReset();
+    h.rpc.mockResolvedValue({ data: true, error: null });
+    await fresh.forgetPushAccount();
+    expect(h.unregister).toHaveBeenCalledOnce();
+    expect(h.rpc).toHaveBeenCalledWith('bw_revoke_push_token', { p_token: TOKEN, p_user_id: 'alice', p_registered_at: STAMP, p_secret: secret });
+    expect(pending()).toEqual([]);
+    // Nothing left from before: a later start without a session does nothing native.
+    h.unregister.mockClear();
+    await (await load()).forgetPushAccount();
+    expect(h.unregister).not.toHaveBeenCalled();
+  });
+
+  // Codex review #287 round 7 (B3): Alice's sign-out times out at 5 s while
+  // its server call hangs; Bob signs in. When Alice's call finally answers,
+  // her late job must not stop the device again (that would take Bob's
+  // registration).
+  it("a late answer of Alice's sign-out does not unregister Bob", async () => {
+    vi.useFakeTimers();
+    try {
+      const push = await load();
+      let answer: (v: unknown) => void = () => {};
+      h.rpc.mockImplementation((fn: string) =>
+        fn === 'bw_register_push_token_stamped' ? Promise.resolve(SAVED) : fn === 'bw_unregister_push_token' ? new Promise((r) => (answer = r)) : offline(),
+      );
+      h.from.mockImplementation(() => builder(offline));
+      await push.subscribeToPush('alice');
+      const out = push.unregisterPushToken('alice');
+      await vi.advanceTimersByTimeAsync(5100);
+      await out;
+      expect(h.unregister).toHaveBeenCalledOnce(); // the deadline's own device stop
+      expect(pending()).toEqual([expect.objectContaining({ userId: 'alice' })]);
+      // Bob signs in on the device.
+      const bob = push.subscribeToPush('bob');
+      await vi.advanceTimersByTimeAsync(10);
+      answer({ data: false, error: null });
+      await vi.advanceTimersByTimeAsync(10);
+      expect((await bob).success).toBe(true);
+      expect(h.unregister).toHaveBeenCalledOnce();
+      expect(h.rpc.mock.calls.filter((c) => c[0] === 'bw_register_push_token_stamped').some((c) => c[1].p_token === TOKEN)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('one device stop at a time: the deadline does not start a second one', async () => {
+    vi.useFakeTimers();
+    try {
+      h.platform = 'android';
+      vi.stubEnv('VITE_ANDROID_PUSH', 'true');
+      h.identityAvailable = true;
+      const push = await load();
+      h.rpc.mockImplementation(async (fn: string) =>
+        fn === 'bw_register_push_token_stamped' ? SAVED : fn === 'bw_unregister_push_token' ? new Promise((r) => setTimeout(() => r({ data: false, error: null }), 4000)) : offline(),
+      );
+      h.from.mockImplementation(() => builder(offline));
+      await push.subscribeToPush('alice');
+      // The server answers at 4 s (not this account's), FCM's deletion then
+      // hangs past the deadline, where the late path stops the device too.
+      h.identity.deleteToken.mockImplementation(() => new Promise(() => {}));
+      const out = push.unregisterPushToken('alice');
+      await vi.advanceTimersByTimeAsync(5100);
+      await out;
+      expect(h.identity.deleteToken).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Claude review #287 round 7 (M1): the whole sign-out path is capped,
+  // the permission check of the token lookup included.
+  it('a permission check that never answers still lets sign-out finish within 5 s', async () => {
+    vi.useFakeTimers();
+    try {
+      h.checkPermissions = () => new Promise(() => {});
+      const push = await load();
+      h.rpc.mockImplementation(offline);
+      let done = false;
+      const out = push.unregisterPushToken('alice').then(() => (done = true));
+      await vi.advanceTimersByTimeAsync(4900);
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(200);
+      await out;
+      expect(done).toBe(true);
+      expect(h.unregister).toHaveBeenCalledOnce(); // no token known: the device still stops
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

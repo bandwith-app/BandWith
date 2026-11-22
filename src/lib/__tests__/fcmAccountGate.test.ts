@@ -82,4 +82,16 @@ describe('Android pushes only the signed-in account sees', () => {
     // Every FCM send drops them before anything else, gated or not.
     expect(sendPush).toMatch(/\): Promise<\{ success: boolean; error\?: string \}> \{\s*\/\/ The keys only the server sets[^\n]*\n\s*data = clientPushData\(data\);/);
   });
+
+  // Codex review #287 round 7: sendToAPNs spreads the caller's data after
+  // the aps block, so a data.aps replaced the alert, thread-id or sound.
+  it('a sender passing data.aps cannot replace the APNs alert, thread or sound', () => {
+    const sent = { chat_id: 'c1', aps: { alert: 'spoofed', sound: 'none', 'thread-id': 'x' } };
+    expect(clientPushData(sent)).toEqual({ chat_id: 'c1' });
+    const apns = sendPush.slice(sendPush.indexOf('async function sendToAPNs('));
+    const body = apns.slice(0, apns.indexOf('const apnsPayload'));
+    // Dropped first thing, before the silent payload or the alert's spread.
+    expect(body).toMatch(/\): Promise<\{ success: boolean; error\?: string \}> \{\s*\/\/[^\n]*\n\s*data = clientPushData\(data\);\s*try \{/);
+    expect(body.indexOf('clientPushData(data)')).toBeLessThan(body.indexOf('silentApns('));
+  });
 });

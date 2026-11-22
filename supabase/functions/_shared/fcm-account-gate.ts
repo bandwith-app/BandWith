@@ -19,7 +19,9 @@ type PushData = Record<string, unknown>;
  * carrying silent="1" would hide a chat push on the phone, a bw_uid would
  * aim the account check at someone else.
  */
-export const RESERVED_PUSH_KEYS = ['silent', 'bw_uid', 'bw_title', 'bw_body', 'bw_tag'] as const;
+// 'aps' (Codex review #287 round 7): spread after the APNs block, a caller's
+// data.aps would replace the alert, thread-id or sound.
+export const RESERVED_PUSH_KEYS = ['silent', 'bw_uid', 'bw_title', 'bw_body', 'bw_tag', 'aps'] as const;
 
 /** The caller's data without the keys only the server sets. */
 export function clientPushData<T extends PushData | undefined>(data: T): T {

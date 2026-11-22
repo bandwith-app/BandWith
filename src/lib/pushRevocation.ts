@@ -24,6 +24,12 @@
  * stays queued while the token is still on for that account, and only a save
  * the server confirmed (the token is now someone's current registration)
  * clears the queue for that token.
+ *
+ * Round 7 (main's decision on #287 round 6): a refused revocation is never
+ * dropped. It is tried again with backoff (REVOKE_RETRY_BASE_MS doubling, at
+ * most REVOKE_RETRY_MAX_MS) until the server takes it; signed out, the server
+ * also matches the registration by token, account and the stamp its save
+ * returned, when no secret does.
  */
 
 export const PUSH_REVOKE_KEY = 'bandwith.push-revoke';
@@ -34,6 +40,10 @@ export const PUSH_TOKEN_KEY = 'bandwith.push-token';
  * no expiry, and its exact-stamp match makes a late call harmless.
  */
 export const PUSH_REVOKE_MAX_QUEUED = 20;
+/** The first retry of a refused revocation; each refusal doubles it. */
+export const REVOKE_RETRY_BASE_MS = 30_000;
+/** The longest wait between two tries of one revocation. */
+export const REVOKE_RETRY_MAX_MS = 60 * 60_000;
 
 export interface PendingRevocation {
   token: string;
@@ -46,6 +56,10 @@ export interface PendingRevocation {
   attempts: string[];
   /** When it was queued (device clock): only for the queue's order. */
   at: string;
+  /** Refusals so far (round 7): the backoff grows with them. */
+  tries: number;
+  /** Not tried again before this (device clock, ms); null: at the next flush. */
+  retryAt: number | null;
 }
 
 /** The token this device last saved, for which account, its stamp and secrets. */
@@ -89,7 +103,9 @@ export function readPendingRevocations(store: Store | null): PendingRevocation[]
           )
           .map((p) => {
             const confirmed = secretOf(p.confirmed);
-            return { token: p.token, userId: p.userId, registeredAt: p.registeredAt, confirmed, attempts: attemptList(p.attempts, confirmed), at: p.at };
+            const tries = Number.isInteger(p.tries) && p.tries > 0 ? p.tries : 0;
+            const retryAt = typeof p.retryAt === 'number' && Number.isFinite(p.retryAt) ? p.retryAt : null;
+            return { token: p.token, userId: p.userId, registeredAt: p.registeredAt, confirmed, attempts: attemptList(p.attempts, confirmed), at: p.at, tries, retryAt };
           })
       : [];
   } catch {
@@ -130,12 +146,23 @@ export function rememberPushToken(store: Store | null, saved: SavedPushToken | n
 
 /** The token last saved on this device for `userId`, if any. */
 export function rememberedPushToken(store: Store | null, userId: string | null | undefined): SavedPushToken | null {
-  if (!store || !userId) return null;
+  if (!userId) return null;
+  const v = rememberedPushTokenAny(store);
+  return v && v.userId === userId ? v : null;
+}
+
+/**
+ * The token last saved on this device, whichever account it was for: a
+ * session that ended without a sign-out here still revokes it (Codex review
+ * #287 round 7, B4).
+ */
+export function rememberedPushTokenAny(store: Store | null): SavedPushToken | null {
+  if (!store) return null;
   try {
     const v = JSON.parse(store.getItem(PUSH_TOKEN_KEY) || 'null') as Partial<SavedPushToken> | null;
-    if (!v || typeof v.token !== 'string' || v.userId !== userId) return null;
+    if (!v || typeof v.token !== 'string' || typeof v.userId !== 'string' || !v.userId) return null;
     const confirmed = secretOf(v.confirmed);
-    return { token: v.token, userId, registeredAt: typeof v.registeredAt === 'string' ? v.registeredAt : null, confirmed, attempts: attemptList(v.attempts, confirmed) };
+    return { token: v.token, userId: v.userId, registeredAt: typeof v.registeredAt === 'string' ? v.registeredAt : null, confirmed, attempts: attemptList(v.attempts, confirmed) };
   } catch {
     return null;
   }
@@ -229,7 +256,8 @@ export async function revokeOnSignOut(
     const same = list.find((p) => p.token === token && p.userId === userId);
     const confirmed = saved?.confirmed ?? same?.confirmed ?? null;
     const attempts = attemptList([...(saved?.attempts ?? []), ...(same?.attempts ?? [])], confirmed);
-    const entry: PendingRevocation = { token, userId, registeredAt: saved?.registeredAt ?? same?.registeredAt ?? null, confirmed, attempts, at };
+    // A new sign-out is a new chance: tried at the next flush.
+    const entry: PendingRevocation = { token, userId, registeredAt: saved?.registeredAt ?? same?.registeredAt ?? null, confirmed, attempts, at, tries: 0, retryAt: null };
     writePending(deps.store, [...list.filter((p) => p !== same), entry]);
   }
   try {
@@ -247,20 +275,35 @@ export interface FlushDeps {
   revoke: (p: PendingRevocation, secret: string | null) => PromiseLike<Answer>;
   /** False once the session that started the flush is over: stop between entries. */
   alive?: () => boolean;
+  /** Device clock in ms, for the backoff. */
+  now?: () => number;
+}
+
+/** The wait after the n-th refusal (n >= 1). */
+export const revokeRetryDelay = (tries: number): number =>
+  Math.min(REVOKE_RETRY_MAX_MS, REVOKE_RETRY_BASE_MS * 2 ** Math.max(0, Math.min(tries - 1, 20)));
+
+/** When the next refused revocation is due (ms, device clock), or null with none in backoff. */
+export function nextRevocationRetry(store: Store | null): number | null {
+  const due = readPendingRevocations(store).flatMap((p) => (p.retryAt === null ? [] : [p.retryAt]));
+  return due.length ? Math.min(...due) : null;
 }
 
 /**
- * Sends the waiting revocations, deciding on the device (main's decision on
- * #287 round 5: no lookup by token). Done: the server switched it off, or
- * refused every secret it may hold (had one still been valid, the revocation
- * would have succeeded: that registration is already off or replaced).
- * Kept: offline or an error, or no secret known (it waits for a confirmed
- * save of the token, or for its account to sign in again here).
+ * Sends the waiting revocations (main's decision on #287 round 5: no lookup
+ * by token). Done only when the server switched it off. Refused: kept, and
+ * tried again after a backoff that doubles with every refusal (main's
+ * decision, round 6: never dropped); only a save of the token the server
+ * confirmed clears it (forgetRevocation). Offline or an error: kept as it
+ * is, for the next flush.
  */
 export async function flushPushRevocations(store: Store | null, deps: FlushDeps): Promise<number> {
   const list = readPendingRevocations(store);
   if (!list.length) return 0;
   const done = new Set<string>();
+  const refused = new Set<string>();
+  const now = deps.now?.() ?? Date.now();
+  const keyOf = (p: PendingRevocation) => `${p.token}|${p.userId}|${p.at}`;
   let sent = 0;
   const call = async (fn: () => PromiseLike<Answer>): Promise<Answer> => {
     try {
@@ -271,6 +314,7 @@ export async function flushPushRevocations(store: Store | null, deps: FlushDeps)
   };
   for (const p of list) {
     if (deps.alive && !deps.alive()) break;
+    if (p.retryAt !== null && p.retryAt > now) continue;
     const secrets = candidateSecrets(p);
     let failed = false;
     let revoked = false;
@@ -285,11 +329,18 @@ export async function flushPushRevocations(store: Store | null, deps: FlushDeps)
         break;
       }
     }
-    if (revoked) sent++;
-    if (revoked || (!failed && secrets.length > 0)) done.add(`${p.token}|${p.userId}|${p.at}`);
+    if (revoked) {
+      sent++;
+      done.add(keyOf(p));
+    } else if (!failed) refused.add(keyOf(p));
   }
   // Something may have been queued or saved meanwhile: merge, don't overwrite.
   const current = readPendingRevocations(store);
-  writePending(store, current.filter((p) => !done.has(`${p.token}|${p.userId}|${p.at}`)));
+  writePending(
+    store,
+    current
+      .filter((p) => !done.has(keyOf(p)))
+      .map((p) => (refused.has(keyOf(p)) ? { ...p, tries: p.tries + 1, retryAt: now + revokeRetryDelay(p.tries + 1) } : p)),
+  );
   return sent;
 }
