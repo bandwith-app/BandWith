@@ -1298,7 +1298,9 @@ export const BandPricingModal: React.FC<BandPricingModalProps> = ({
                     <div className="flex-1 min-w-0">
                       <VenueAutocomplete
                         value={settings.band_origin_address}
-                        onChange={(val) => setSettings({ ...settings, band_origin_address: val })}
+                        // From the latest settings too: the field hands its text
+                        // back late on a pick, just before `onSelect` below.
+                        onChange={(val) => setSettings((s) => ({ ...s, band_origin_address: val }))}
                         onSelect={(place) => {
                           const formatted =
                             place.fullAddress ||
