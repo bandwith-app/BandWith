@@ -14,6 +14,10 @@
 -- policies decide who writes. 132 and 080 grant by column, so each new column
 -- gets its own grant. The app reads these only once this is live (apply before
 -- the web deploy).
+--
+-- Needs 170 (live pack) first: its refresh trigger on songs is re-created here
+-- so that a change to these columns also refreshes the members' packs. Same
+-- function, same columns as 170, plus the five below.
 
 BEGIN;
 
@@ -47,5 +51,25 @@ GRANT SELECT (time_signature, count_in_bars, pickup_beats, backing_track, line_t
 
 -- bands: SELECT is by column since 080; writes stay with the admins (RLS).
 GRANT SELECT (count_in_style), UPDATE (count_in_style) ON public.bands TO authenticated;
+
+-- 170's silent refresh: also when the tempo, count-in or line timing changes.
+DROP TRIGGER IF EXISTS bw_live_pack_song ON public.songs;
+CREATE TRIGGER bw_live_pack_song
+  AFTER UPDATE ON public.songs
+  FOR EACH ROW
+  WHEN (OLD.title IS DISTINCT FROM NEW.title
+     OR OLD.artist IS DISTINCT FROM NEW.artist
+     OR OLD.key IS DISTINCT FROM NEW.key
+     OR OLD.bpm IS DISTINCT FROM NEW.bpm
+     OR OLD.duration_seconds IS DISTINCT FROM NEW.duration_seconds
+     OR OLD.lyrics IS DISTINCT FROM NEW.lyrics
+     OR OLD.chord_chart IS DISTINCT FROM NEW.chord_chart
+     OR OLD.audio_url IS DISTINCT FROM NEW.audio_url
+     OR OLD.time_signature IS DISTINCT FROM NEW.time_signature
+     OR OLD.count_in_bars IS DISTINCT FROM NEW.count_in_bars
+     OR OLD.pickup_beats IS DISTINCT FROM NEW.pickup_beats
+     OR OLD.backing_track IS DISTINCT FROM NEW.backing_track
+     OR OLD.line_timing IS DISTINCT FROM NEW.line_timing)
+  EXECUTE FUNCTION public.bw_trg_live_pack_song();
 
 COMMIT;

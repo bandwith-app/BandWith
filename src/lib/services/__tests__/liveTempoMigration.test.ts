@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import sql171 from '../../../../supabase/migrations/171_song_tempo_count_in.sql?raw';
+import sql170 from '../../../../supabase/migrations/170_live_pack.sql?raw';
 import { stageSongSelect, isMissingColumn, liveSongFields, stageSongOf } from '../../stageSongs';
 
 const sql = sql171.replace(/--.*$/gm, '');
@@ -22,6 +23,20 @@ describe('171 live mode: tempo and count-in', () => {
     expect(sql).not.toMatch(/TO anon/);
     expect(sql).toMatch(/^\s*BEGIN;/m);
     expect(sql).toMatch(/^\s*COMMIT;/m);
+  });
+
+  it("re-creates 170's live-pack refresh trigger so a change to the new columns refreshes the members' packs too", () => {
+    const watched = (src: string) => {
+      const m = src.replace(/--.*$/gm, '').match(/CREATE TRIGGER bw_live_pack_song\s+AFTER UPDATE ON public\.songs\s+FOR EACH ROW\s+WHEN \(([\s\S]*?)\)\s+EXECUTE FUNCTION public\.bw_trg_live_pack_song\(\)/);
+      return [...(m?.[1] ?? '').matchAll(/OLD\.(\w+) IS DISTINCT FROM NEW\.\1/g)].map((x) => x[1]);
+    };
+    const before = watched(sql170);
+    expect(before.length).toBeGreaterThan(5);
+    const after = watched(sql);
+    for (const c of [...before, ...LIVE]) expect(after).toContain(c);
+    // After the columns exist, inside the transaction.
+    expect(sql.indexOf('DROP TRIGGER IF EXISTS bw_live_pack_song ON public.songs')).toBeGreaterThan(sql.indexOf('ADD COLUMN IF NOT EXISTS line_timing'));
+    expect(sql.indexOf('CREATE TRIGGER bw_live_pack_song')).toBeLessThan(sql.lastIndexOf('COMMIT;'));
   });
 
   it('live mode asks for exactly these columns, and again without them before 171 is applied', () => {
