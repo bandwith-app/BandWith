@@ -37,6 +37,10 @@ vi.mock('@/lib/nativeFiles', async (orig) => ({ ...(await orig<typeof import('@/
 vi.mock('@/lib/memberCalendar', async (orig) => ({
   ...(await orig<typeof import('@/lib/memberCalendar')>()),
   useCalendarToken: () => ({ token: 'c'.repeat(64), loading: false }),
+  // #285 (182): Add to calendar asks for a one-event link and whether the old link needs a look.
+  // Stand-ins as in EventDetail.calendar.test.tsx (the real hooks read the session).
+  useEventCalendarToken: () => ({ token: 'd'.repeat(64), loading: false, legacy: false }),
+  useCalendarLinkReview: () => false,
 }));
 vi.mock('@/lib/haptics', () => ({
   haptic: { tap: vi.fn(), medium: vi.fn(), confirm: vi.fn(), delete: vi.fn(), selection: vi.fn(), pickUp: vi.fn(), dragTick: vi.fn(), drop: vi.fn() },

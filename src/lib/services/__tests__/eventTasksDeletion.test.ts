@@ -9,7 +9,8 @@ const refusal = {
   hint: 'account_deletion_in_progress',
 };
 const insert = vi.fn(async () => ({ error: refusal }));
-vi.mock('../../supabase', () => ({ supabase: { from: () => ({ insert }) } }));
+// (#297: new tasks go in with an upsert on their id, so a retry never doubles them; the refusal is the same.)
+vi.mock('../../supabase', () => ({ supabase: { from: () => ({ insert, upsert: insert }) } }));
 
 import { syncEventTasks } from '../eventTasks';
 import { setLocalePref } from '@/lib/i18n';
