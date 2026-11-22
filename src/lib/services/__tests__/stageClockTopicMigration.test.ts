@@ -80,6 +80,18 @@ describe('191 the stage clock topic', () => {
     expect(sql).not.toMatch(/GRANT EXECUTE ON FUNCTION public\.bw_stage_(new_band_key|lineup_left|event_hidden)/);
   });
 
+  it("a member who leaves the band (inactive, removed, moved) takes no working band key along for the band's coming gigs (Claude on #283; behaviour: stage_topic_quote.pglite.mjs)", () => {
+    const f = fn(sql191, 'bw_stage_member_left');
+    expect(f).toMatch(/COALESCE\(OLD\.is_active, true\)/);
+    expect(f).toMatch(/TG_OP = 'DELETE'/);
+    expect(f).toMatch(/NOT COALESCE\(NEW\.is_active, true\)/);
+    expect(f).toMatch(/NEW\.band_id IS DISTINCT FROM OLD\.band_id/);
+    expect(f).toMatch(/e\.band_id = OLD\.band_id/);
+    expect(f).toMatch(/e\.event_date IS NULL OR e\.event_date >= current_date/);
+    expect(sql).toMatch(/CREATE TRIGGER bw_stage_member_left\s+AFTER UPDATE OF is_active, band_id, user_id OR DELETE ON public\.band_members/);
+    expect(sql).toContain('REVOKE EXECUTE ON FUNCTION public.bw_stage_member_left() FROM PUBLIC, anon, authenticated;');
+  });
+
   it('the strict pattern takes UUIDs and nothing else', () => {
     const re = new RegExp(`^stage-clock:event:(${STRICT_UUID})$`);
     expect(re.test('stage-clock:event:0f8fad5b-d9cb-469f-a165-70867728950e')).toBe(true);

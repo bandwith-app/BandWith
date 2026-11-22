@@ -276,6 +276,29 @@ await db.exec(`UPDATE events SET band_id = '${id(9)}' WHERE id = '${GIG}'`);
 ok((await keyOf(GIG)) !== before, 'gig moved to another band: a new key');
 await is(ADMIN, `SELECT has_function_privilege('public.bw_stage_new_band_key(uuid)', 'EXECUTE')`, false, 'clients cannot change a key themselves');
 
+// A member who leaves the band (Claude on #283): the band key of the band's coming gigs
+// changes (the copy on their phone finds nothing), past gigs keep theirs; a role change
+// or an ex-member removed later changes nothing.
+{
+  const [PAST, NEXT] = [40, 41].map(id);
+  await db.exec(`
+INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date)
+VALUES ('${PAST}','${BAND}','Last Friday','confirmed','gig','${ADMIN}', current_date - 5),
+       ('${NEXT}','${BAND}','Hoboken Pier','confirmed','gig','${ADMIN}', current_date + 20);
+INSERT INTO stage_keys (event_id, key) VALUES ('${PAST}', 'past-key'), ('${NEXT}', 'next-key');
+`);
+  await db.exec(`UPDATE band_members SET role = 'admin' WHERE band_id = '${BAND}' AND user_id = '${LINEUP}'`);
+  ok((await keyOf(NEXT)) === 'next-key', 'a role change keeps the band key');
+  await db.exec(`DELETE FROM band_members WHERE band_id = '${BAND}' AND user_id = '${EX}'`);
+  ok((await keyOf(NEXT)) === 'next-key', 'removing someone who had already left keeps the band key');
+  const quoteBefore = await keyOf(QUOTE);
+  await db.exec(`UPDATE band_members SET is_active = false WHERE band_id = '${BAND}' AND user_id = '${OFF}'`);
+  ok((await keyOf(NEXT)) !== 'next-key', "a member leaves: a coming gig's band key changes");
+  ok((await keyOf(QUOTE)) !== quoteBefore, "a member leaves: every coming gig of the band (the quote too)");
+  ok((await keyOf(PAST)) === 'past-key', 'a member leaves: a past gig keeps its key');
+  await is(ADMIN, `SELECT has_function_privilege('public.bw_stage_member_left()', 'EXECUTE')`, false, 'clients cannot call the trigger function');
+}
+
 // 178's own rule is spelled out in 191's functions, not only inherited through bw_can_view_event.
 if (with178) {
   const defs = (await db.query(`SELECT string_agg(pg_get_functiondef(p.oid), ' ') d FROM pg_proc p

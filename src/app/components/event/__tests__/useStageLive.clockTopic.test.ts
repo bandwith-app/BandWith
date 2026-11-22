@@ -25,6 +25,8 @@ const net = vi.hoisted(() => ({
   refuseClock: false,
   /** Every send, joined or not (supabase-js posts over HTTP when not joined). */
   tries: [] as Array<{ topic: string; event: string; from: string }>,
+  /** Answers that still get through (null: all); the rest are lost on the way. */
+  pongBudget: null as number | null,
 }));
 const phones: Phone[] = [];
 const joinClocks = () => {
@@ -64,6 +66,10 @@ vi.mock('@/lib/supabase', () => ({
           net.log.push({ topic, event: m.event, from, payload: m.payload });
           if (net.dropPingsOf === from && m.event === PING_EVENT) return 'ok';
           const pong = m.event !== PING_EVENT && /pong/.test(m.event);
+          if (pong && net.pongBudget !== null) {
+            if (net.pongBudget <= 0) return 'ok';
+            net.pongBudget--;
+          }
           const payload = pong && net.pongSkew ? { ...m.payload, t1: (m.payload as { t1: number }).t1 + net.pongSkew } : m.payload;
           const deliver = () => {
             for (const p of phones)
@@ -111,6 +117,7 @@ beforeEach(() => {
   net.pongSkew = 0;
   net.refuseClock = false;
   net.tries = [];
+  net.pongBudget = null;
 });
 
 describe("useStageLive: an ordinary member measures the leader's clock (audit #9)", () => {
@@ -366,5 +373,51 @@ describe("useStageLive: an ordinary member measures the leader's clock (audit #9
     act(() => leader.result.current.click.setOn(true, { bpm: 120, beats: 4 }));
     await new Promise((r) => setTimeout(r, 2_500));
     expect(net.tries.filter((t) => t.from === me && t.topic.startsWith('stage-clock:')).length).toBe(0);
+  });
+
+  it('a round that brought back answers but none usable (two slow ones) is tried again: the member gets a measure (Codex on #283)', async () => {
+    net.pongDelay = 700;
+    net.pongSkew = 1000;
+    // Only two answers of the first round get through: too few slow ones to use.
+    net.pongBudget = 2;
+    const leader = phone(true);
+    const member = phone(false);
+    act(() => leader.result.current.click.setOn(true, { bpm: 120, beats: 4 }));
+    await new Promise((r) => setTimeout(r, 2500));
+    expect(member.result.current.click.offset).toBe(0);
+    net.pongBudget = null;
+    // Measured, the offset reads about +1000 (minus half the delay).
+    await waitFor(() => expect(member.result.current.click.offset).toBeGreaterThan(400), { timeout: 8000 });
+  }, 14_000);
+
+  it("an answer more than 5 s after its ping isn't used, whatever else came back (Codex on #283)", async () => {
+    net.pongDelay = 5_600;
+    net.pongSkew = 1000;
+    const leader = phone(true);
+    const member = phone(false);
+    act(() => leader.result.current.click.setOn(true, { bpm: 120, beats: 4 }));
+    await new Promise((r) => setTimeout(r, 8_500));
+    // Answers did come back, all too late to tell the time by.
+    expect(net.log.some((m) => isPong(m.event) && (m.payload as { to?: string }).to === member.result.current.clientId)).toBe(true);
+    expect(member.result.current.click.offset).toBe(0);
+  }, 12_000);
+
+  it('pings in many made-up names use up the cap, a bandmate in Stage (presence) is still answered (Claude on #283)', async () => {
+    const leader = phone(true);
+    const member = phone(false);
+    const me = member.result.current.clientId;
+    const boss = leader.result.current.clientId;
+    const stage = phones.find((p) => p.topic === 'stage:event:gig-1' && p.key === boss)!;
+    act(() => stage.handlers.filter((h) => h.type === 'presence' && h.event === 'join').forEach((h) => h.cb({ key: me, newPresences: [{ lead: false }] })));
+    // The leader's clock channel (made first: the leader's phone opened first).
+    const clock = phones.find((p) => p.topic === 'stage-clock:event:gig-1')!;
+    const ping = (from: string, t0: number) => clock.handlers.filter((h) => h.event === PING_EVENT).forEach((h) => h.cb({ payload: { from, to: boss, t0 } }));
+    act(() => {
+      for (let i = 0; i < 60; i++) ping(`fake-${i}`, 1000 + i);
+    });
+    act(() => ping(me, 424242));
+    await waitFor(() => expect(net.log.some((m) => isPong(m.event) && (m.payload as { to?: string; t0?: number }).to === me && (m.payload as { t0?: number }).t0 === 424242)).toBe(true), { timeout: 1000 });
+    // The made-up names still get no more than the cap.
+    expect(net.log.filter((m) => isPong(m.event) && String((m.payload as { to?: string }).to).startsWith('fake-')).length).toBeLessThanOrEqual(40);
   });
 });

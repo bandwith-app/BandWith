@@ -188,6 +188,7 @@ $do$;
 --   - a gig becomes a quote (members off its lineup, or every member with 178,
 --     no longer see it);
 --   - a gig moves to another band;
+--   - a member leaves the band (its coming gigs);
 --   - and once now, for every quote gig (keys handed out before this).
 -- Apps on this version ask for the key whenever online (stageBleNative.ts),
 -- so the band's phones pick up the new one. Released apps keep theirs: for a
@@ -253,6 +254,41 @@ DROP TRIGGER IF EXISTS bw_stage_event_hidden ON public.events;
 CREATE TRIGGER bw_stage_event_hidden
   AFTER UPDATE OF band_id, status, event_type, quote_id ON public.events
   FOR EACH ROW EXECUTE FUNCTION public.bw_stage_event_hidden();
+
+-- A member leaves the band (made inactive, removed, moved to another band or
+-- account): the band key of the band's coming gigs (today on, or no date)
+-- changes, so the copy on their phone finds nothing (Claude on #283). Past
+-- gigs keep theirs. A role change isn't leaving (a demoted admin is still a
+-- member; their key pair is 190's). Released apps (383f15b) keep the copy
+-- they have and don't ask again: for those gigs they need signing out and in
+-- once (in the PR's release notes).
+CREATE OR REPLACE FUNCTION public.bw_stage_member_left()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF COALESCE(OLD.is_active, true)
+     AND (TG_OP = 'DELETE'
+          OR NOT COALESCE(NEW.is_active, true)
+          OR NEW.band_id IS DISTINCT FROM OLD.band_id
+          OR NEW.user_id IS DISTINCT FROM OLD.user_id) THEN
+    PERFORM public.bw_stage_new_band_key(e.id)
+       FROM public.events e
+       JOIN public.stage_keys s ON s.event_id = e.id
+      WHERE e.band_id = OLD.band_id
+        AND (e.event_date IS NULL OR e.event_date >= current_date);
+  END IF;
+  RETURN NULL;
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.bw_stage_member_left() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS bw_stage_member_left ON public.band_members;
+CREATE TRIGGER bw_stage_member_left
+  AFTER UPDATE OF is_active, band_id, user_id OR DELETE ON public.band_members
+  FOR EACH ROW EXECUTE FUNCTION public.bw_stage_member_left();
 
 -- Once: the keys of today's quote gigs (a run again changes them again, harmless).
 SELECT public.bw_stage_new_band_key(e.id)
