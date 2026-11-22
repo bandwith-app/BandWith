@@ -7,7 +7,8 @@
 #   scripts/release-android.sh 1.0.1 --publish  # build + GitHub release android-v1.0.1
 #   scripts/release-android.sh 1.0.1 --publish --prerelease
 #       # a few testers first: a GitHub prerelease, which the in-app updater and
-#       # the latest link skip. Send its own link; when it holds, promote it:
+#       # the latest link skip. Send its own link; when it holds, promote it
+#       # (--latest only if it is the highest version: scripts/android-latest-flag.sh):
 #       #   gh release edit android-v1.0.1 --prerelease=false --latest
 #       # (docs/release-checklist.md)
 #
@@ -53,8 +54,17 @@ if [ -n "$PRERELEASE" ] && [ "$PUBLISH" != "--publish" ]; then
   exit 1
 fi
 # A prerelease is never "latest": the updater and releases/latest/download skip it.
-RELEASE_FLAGS=(--latest)
-[ -n "$PRERELEASE" ] && RELEASE_FLAGS=(--prerelease --latest=false)
+# A stable release is latest only above the current latest (a hotfix for an
+# older line must not take the fixed link back): scripts/android-latest-flag.sh.
+if [ -n "$PRERELEASE" ]; then
+  RELEASE_FLAGS=(--prerelease --latest=false)
+else
+  CURRENT_LATEST=""
+  if [ "$PUBLISH" = "--publish" ]; then
+    CURRENT_LATEST="$(gh release view --repo bandwith-app/BandWith --json tagName -q .tagName 2>/dev/null || true)"
+  fi
+  RELEASE_FLAGS=("$(scripts/android-latest-flag.sh "$VERSION" "$CURRENT_LATEST")")
+fi
 KEYSTORE="${BW_ANDROID_KEYSTORE:-$HOME/Developer/BandWith-keys/bandwith-release.jks}"
 TAG="android-v$VERSION"
 NOTES_FILE=scripts/android-release-notes.md
