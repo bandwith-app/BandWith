@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { encodeStageState, toBase64, STAGE_BLE_CHARACTERISTIC } from '@/lib/stageBle';
+import { encodeSignedState, encodeStageState, toBase64, STAGE_BLE_CHARACTERISTIC, STAGE_BLE_SIGNED_CHARACTERISTIC } from '@/lib/stageBle';
+import { generateSigner } from '@/lib/stageSign';
 import { STAGE_BLE_CLOCK_CHARACTERISTIC, STAGE_BLE_LIVE_CHARACTERISTIC, decodeLive, encodeClock, encodeLive, type LiveEvents } from '@/lib/stageBleSync';
 import { fromBase64 } from '@/lib/stageBle';
 import { nowMs } from '@/lib/stageClick';
@@ -13,6 +14,8 @@ if (!globalThis.crypto?.subtle) {
 }
 
 const KEY = toBase64(new Uint8Array(32).map((_, i) => i * 3));
+/** The gig's key pair (migration 190, #288): the leader signs its state and its clock. The live frame is checked with the band key. */
+const SIGNER = await generateSigner();
 const IDS = ['a1', 'b2'];
 /** The simulated leader's clock runs this far ahead of the member's. */
 const AHEAD_MS = 500;
@@ -43,6 +46,17 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
     }),
     disconnect: vi.fn(async () => {}),
     requestConnectionPriority: vi.fn(async () => {}),
+    getServices: vi.fn(async () => [
+      {
+        uuid: 'gig',
+        characteristics: [
+          STAGE_BLE_CHARACTERISTIC,
+          STAGE_BLE_SIGNED_CHARACTERISTIC,
+          ...(ble.oldLeader ? [] : [STAGE_BLE_CLOCK_CHARACTERISTIC]),
+          ...(ble.live ? [STAGE_BLE_LIVE_CHARACTERISTIC] : []),
+        ].map((uuid) => ({ uuid, properties: {}, descriptors: [] })),
+      },
+    ]),
     startNotifications: vi.fn(async (_id: string, _s: string, char: string, cb: (v: DataView) => void) => {
       if (char === STAGE_BLE_LIVE_CHARACTERISTIC && !ble.live) throw new Error('Characteristic not found.');
       ble.notify.set(char, cb);
@@ -54,7 +68,7 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
         ble.clockReads++;
         // The leader stamps on arrival (5 ms each way).
         await new Promise((r) => setTimeout(r, 5));
-        const frame = await encodeClock(nowMs() + AHEAD_MS, KEY);
+        const frame = await encodeClock(nowMs() + AHEAD_MS, SIGNER.private);
         await new Promise((r) => setTimeout(r, 5));
         return new DataView(frame.buffer);
       }
@@ -67,8 +81,10 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
         if (ble.echo && cb) setTimeout(() => cb(view), 0);
         return view;
       }
-      if (char !== STAGE_BLE_CHARACTERISTIC) return new DataView(new ArrayBuffer(0));
-      const bytes = (await encodeStageState({ seq: 3, from: 'lead', songId: 'b2', order: null }, IDS, KEY))!;
+      const signed = char === STAGE_BLE_SIGNED_CHARACTERISTIC;
+      if (char !== STAGE_BLE_CHARACTERISTIC && !signed) return new DataView(new ArrayBuffer(0));
+      const state = { seq: 3, from: 'lead', songId: 'b2', order: null };
+      const bytes = signed ? (await encodeSignedState(state, IDS, SIGNER.private))! : (await encodeStageState(state, IDS, KEY))!;
       return new DataView(bytes.buffer);
     }),
     write: vi.fn(async () => {
@@ -79,12 +95,14 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
     }),
     stopEnabledNotifications: vi.fn(async () => {}),
   },
+  BluetoothLe: { disconnect: vi.fn(async () => {}) },
   ConnectionPriority: { CONNECTION_PRIORITY_BALANCED: 0, CONNECTION_PRIORITY_HIGH: 1, CONNECTION_PRIORITY_LOW_POWER: 2 },
 }));
 
 const native = vi.hoisted(() => ({
   start: vi.fn(async (_o: Record<string, string>) => ({ state: 'on' })),
   update: vi.fn(async () => {}),
+  updateSigned: vi.fn(async () => {}),
   updateLive: vi.fn(async (_o: { value: string; notify: string }) => {}),
   stop: vi.fn(async () => {}),
   now: vi.fn(async () => ({ now: 0 })),
@@ -93,15 +111,21 @@ const native = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/stageBleNative', () => ({
+  STAGE_KEY_EVENT: 'bw:stage-key',
   StageBle: native,
   stageBleAvailable: () => true,
   stageKey: async () => KEY,
-  // #283: the key is asked for again while Stage is open, and the server may say no.
-  STAGE_KEY_EVENT: 'bw:stage-key',
   fetchStageKey: async () => ({ key: KEY, denied: false }),
+  stageVerifyKey: async () => ({ public: SIGNER.public, version: 1 }),
+  fetchVerifyKey: async () => ({ answer: { public: SIGNER.public, version: 1 }, server: true }),
+  keptVerifyKey: () => ({ public: SIGNER.public, version: 1 }),
+  stageSigner: async () => ({ ...SIGNER, version: 1 }),
+  signerRefused: () => false,
+  previousStageKey: () => null,
+  forgetStageKeys: () => {},
 }));
 
-const { useStageBle, forgetScanStarts } = await import('../useStageBle');
+const { useStageBle, forgetScanStarts, forgetSignedLeaders } = await import('../useStageBle');
 const { __resetAppFlagsForTest, __setAppFlagsForTest } = await import('@/lib/appFlags');
 
 const click = { seq: 5, from: 'lead', on: true, bpm: 120, beats: 4, bars: null, startAt: 1_795_000_000_000, songId: 'a1' };
@@ -128,6 +152,7 @@ beforeEach(async () => {
   __resetAppFlagsForTest(null);
   // Each test is another session: the scans of the one before don't count against it (#280's scan budget).
   forgetScanStarts();
+  forgetSignedLeaders();
 });
 
 describe('useStageBle: live frame (click, playhead)', () => {

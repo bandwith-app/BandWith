@@ -886,8 +886,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   const pageNoteSheets = useNoteSheets(rehearsalNotes);
   // The Bluetooth key is fetched while online, so Stage mode can sync offline on stage.
   useEffect(() => {
-    if (canStage) prefetchStageKey(event.eventId);
-  }, [canStage, event.eventId]);
+    if (canStage) prefetchStageKey(event.eventId, isAdmin);
+  }, [canStage, event.eventId, isAdmin]);
   const isGigDay = isLiveDay(gigTimes);
   // "Go live" opens the gig (or rehearsal) straight in live mode: on open, and
   // again when it comes for the gig already open in the side pane (iPad, Duo).
@@ -3210,6 +3210,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
             connected: stageLive.connected,
             bluetooth: stageLive.bluetooth,
             bluetoothFollowers: stageLive.bluetoothFollowers,
+            bluetoothUnsigned: stageLive.bluetoothUnsigned,
             fixBluetooth: stageLive.fixBluetooth,
             onToggle: stageLive.setFollowing,
           }}

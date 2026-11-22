@@ -34,7 +34,7 @@ vi.mock('@/lib/supabase', () => {
 const emit = (type: string, event: string, msg: unknown) =>
   chan.handlers.filter((h) => h.type === type && h.event === event).forEach((h) => h.cb(msg));
 const ble = vi.hoisted(() => ({
-  onState: null as null | ((s: StageLiveState) => void),
+  onState: null as null | ((s: StageLiveState, signed?: boolean) => void),
   // Stable, like the real hook's callbacks (a new one each render would re-open the channel).
   api: {
     status: 'connected',
@@ -48,7 +48,7 @@ const ble = vi.hoisted(() => ({
   },
 }));
 vi.mock('../useStageBle', () => ({
-  useStageBle: (o: { onState: (s: StageLiveState) => void }) => {
+  useStageBle: (o: { onState: (s: StageLiveState, signed?: boolean) => void }) => {
     ble.onState = o.onState;
     return ble.api;
   },
@@ -69,6 +69,8 @@ const phone = (isLeader = false) =>
 const now = () => nextSeq(null);
 const live = (state: StageLiveState) => act(() => emit('broadcast', 'state', { payload: state }));
 const bt = (state: StageLiveState) => act(() => ble.onState!(state));
+/** A state with the admins' signature (useStageBle checked it). */
+const signed = (state: StageLiveState) => act(() => ble.onState!(state, true));
 
 const beat = (from: string, seq?: number) => act(() => emit('broadcast', LEAD_BEAT_EVENT, { payload: seq === undefined ? { from } : { from, seq } }));
 const later = (ms: number) => act(() => void vi.advanceTimersByTime(ms));
@@ -406,6 +408,83 @@ describe('useStageLive: Bluetooth states never outrank the live channel (review 
     expect(m.result.current.currentId).toBe('row-2');
     live({ seq: s1, from: 'A', songId: 'row-2', order: null });
     // A leads online now: a Bluetooth state from anyone else is held back.
+    bt({ seq: s1 + 100, from: 'X', songId: 'row-3', order: null });
+    expect(m.result.current.currentId).toBe('row-2');
+  });
+});
+
+describe("useStageLive: the admins' signed Bluetooth states (Claude on #288)", () => {
+  it('a band-key state with a high seq never holds back a signed one: the signed song applies whatever that seq', () => {
+    const m = phone();
+    // A member posing as an older app, 4½ minutes ahead (still plausible: no clock measured).
+    bt({ seq: now() + 2700, from: 'x', songId: 'row-3', order: null });
+    expect(m.result.current.currentId).toBe('row-3');
+    signed({ seq: now(), from: 'admin', songId: 'row-2', order: null });
+    expect(m.result.current.currentId).toBe('row-2');
+    // Among signed states the newest still wins.
+    signed({ seq: now() - 50, from: 'admin', songId: 'row-1', order: null });
+    expect(m.result.current.currentId).toBe('row-2');
+  });
+
+  it("a signed state an hour ahead of this phone's clock isn't taken: a clock more than 5 minutes off never counts, signed or not (main session's rule)", () => {
+    const m = phone();
+    signed({ seq: nextSeq(null, Date.now() + 60 * 60_000), from: 'admin', songId: 'row-3', order: null });
+    expect(m.result.current.currentId).not.toBe('row-3');
+    // Nor does it hold back the next signed state with a real seq.
+    signed({ seq: now(), from: 'admin', songId: 'row-2', order: null });
+    expect(m.result.current.currentId).toBe('row-2');
+  });
+
+  it("a band-key change held back while a leader was online is dropped once a signed leader is taken: it never applies later (Codex on #288)", () => {
+    const m = phone();
+    live({ seq: now(), from: 'admin-1', songId: 'row-1', order: null });
+    // Held: a leader is online.
+    bt({ seq: now() + 5000, from: 'x', songId: 'row-3', order: null });
+    signed({ seq: now() + 100, from: 'admin-2', songId: 'row-2', order: null });
+    expect(m.result.current.currentId).toBe('row-2');
+    // The live leader goes quiet: the held band-key state was dropped, not applied.
+    later(LIVE_LEAD_FRESH_MS + 1000);
+    expect(m.result.current.currentId).toBe('row-2');
+  });
+
+  it('the same leader heard over Bluetooth (signed) and then the live channel is one leader: an older state from it arriving late is compared by seq, not taken as a new leader (Codex on #288)', () => {
+    const m = phone();
+    signed({ seq: now() + 200, from: 'admin', songId: 'row-2', order: null });
+    expect(m.result.current.currentId).toBe('row-2');
+    live({ seq: now(), from: 'admin', songId: 'row-1', order: null });
+    expect(m.result.current.currentId).toBe('row-2');
+    // Its newer one applies as usual.
+    live({ seq: now() + 400, from: 'admin', songId: 'row-3', order: null });
+    expect(m.result.current.currentId).toBe('row-3');
+  });
+
+  it('signed states are taken while a leader leads on the live channel (band-key ones are not)', () => {
+    const m = phone();
+    live({ seq: now(), from: 'admin-1', songId: 'row-1', order: null });
+    bt({ seq: now() + 100, from: 'x', songId: 'row-3', order: null });
+    expect(m.result.current.currentId).not.toBe('row-3');
+    signed({ seq: now() + 100, from: 'admin-2', songId: 'row-2', order: null });
+    expect(m.result.current.currentId).toBe('row-2');
+  });
+
+  it('a signed state that arrives late never overrides a newer Realtime one, also after a band-key link (Codex on #288)', () => {
+    const m = phone();
+    live({ seq: now(), from: 'admin', songId: 'row-2', order: null });
+    // Delayed over Bluetooth: older than what the live channel said.
+    signed({ seq: now() - 50, from: 'admin', songId: 'row-1', order: null });
+    expect(m.result.current.currentId).toBe('row-2');
+    // A band-key phone in between (an older app, or a member posing as one).
+    bt({ seq: now() + 3000, from: 'x', songId: 'row-3', order: null });
+    signed({ seq: now() - 40, from: 'admin', songId: 'row-1', order: null });
+    expect(m.result.current.currentId).not.toBe('row-1');
+  });
+
+  it('a live state that arrives after its signed Bluetooth copy still marks its sender as leading online (Codex on #288)', () => {
+    const m = phone();
+    const s1 = now();
+    signed({ seq: s1, from: 'A', songId: 'row-2', order: null });
+    expect(m.result.current.currentId).toBe('row-2');
+    live({ seq: s1, from: 'A', songId: 'row-2', order: null });
     bt({ seq: s1 + 100, from: 'X', songId: 'row-3', order: null });
     expect(m.result.current.currentId).toBe('row-2');
   });

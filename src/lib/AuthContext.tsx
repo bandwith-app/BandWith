@@ -11,7 +11,7 @@ import { callbackProblem, callbackProblemText, callbackUrlError, markLaunchUrlHa
 import { Capacitor } from '@capacitor/core';
 import { cleanupPresence } from './services/presence';
 import { clearOfflineCache as clearOfflineCacheOf, getOfflineItem, setOfflineItem, getCacheKey } from './offline/storage';
-import { clearStageCache } from './stageBleNative';
+import { clearStageCache, setStageCacheUser } from './stageBleNative';
 import { flushQueuedPushRevocations, forgetPushAccount, subscribeToPush, unregisterPushToken } from './services/pushNotifications';
 import { clearRecoveryProof, hasAnyRecoveryProof, hasRecoveryProof, updatePasswordForProvenAccount } from './recoveryProof';
 import { syncAppBadge } from './services/appBadge';
@@ -263,6 +263,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (session) {
           setSession(session);
           setUser(session.user);
+          setStageCacheUser(session.user.id);
           const cachedProfile = await getOfflineItem<Profile>(getCacheKey(session.user.id, 'global', 'user_profile'));
           if (cachedProfile) {
             setProfile(cachedProfile);
@@ -273,9 +274,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             setProfile(profileData);
           }
         } else {
-          // No session at start: the device shows no account's pushes
-          // (Codex review #287 round 6).
+          // No session at start: no Bluetooth key stays (#288), no pushes show (#287).
+          clearStageCache();
           void forgetPushAccount().catch(() => {});
+          // Signed out since the last run (no stored session, even offline): the sign-out
+          // clean-up, an admin's private key included (Codex + Claude on #288), and the device
+          // shows no account's pushes (Codex review #287 round 6). Both source checks
+          // (authStageSession.test, pushRevocation.test) read this branch from its first line.
         }
       } catch (error) {
         console.error('Error initializing auth:', error);
@@ -310,6 +315,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       setSession(session);
       setUser(session?.user ?? null);
+      // Expired or revoked (not only the sign-out button): the same clean-up as the button's.
+      if (event === 'SIGNED_OUT') clearStageCache();
+      setStageCacheUser(session?.user?.id);
 
       // Quick sign-in keeps the refresh token, which Supabase rotates.
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session && Capacitor.isNativePlatform()) {

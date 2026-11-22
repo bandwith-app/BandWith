@@ -43,7 +43,9 @@ vi.mock('../supabase', () => ({
   isDemoMode: false,
 }));
 // The native apps fetch the gig's Bluetooth key (087).
+const signedForgot = vi.hoisted(() => [] as string[]);
 const keyAnswer = vi.hoisted(() => ({ value: { key: 'KEY-1' as string | null, denied: false }, asks: 0 }));
+const keysForgot = vi.hoisted(() => [] as string[]);
 vi.mock('../stageBleNative', () => ({
   stageBleAvailable: () => true,
   stageKey: async () => keyAnswer.value.key,
@@ -51,7 +53,9 @@ vi.mock('../stageBleNative', () => ({
     keyAnswer.asks++;
     return keyAnswer.value;
   },
+  forgetStageKeys: (e: string) => void keysForgot.push(e),
 }));
+vi.mock('../stageSignedMemory', () => ({ forgetSignedMemory: (u: string, e: string) => void signedForgot.push(`${u}:${e}`) }));
 // What the band's admins see (migration 170).
 const status = vi.hoisted(() => ({ reported: [] as string[], forgotten: [] as string[] }));
 vi.mock('../livePackStatus', () => ({
@@ -86,6 +90,8 @@ vi.mock('../livePackFiles', async (orig) => ({
 
 import { getCacheKey, getOfflineItem, setOfflineItem, syncCachedRoles, clearOfflineCache } from '../offline/storage';
 import {
+  deleteAllPacks,
+  deletePack,
   fetchSetlistRows,
   findPack,
   listPacks,
@@ -100,7 +106,6 @@ import {
   savePackSongs,
   sweepPacks,
   packOpenedEvent,
-  deleteAllPacks,
   sweepGonePacks,
   occurrenceNotesFromPack,
 } from '../livePackStore';
@@ -182,6 +187,26 @@ describe('removal', () => {
     await savePackSongs({ userId: me, event: gig({ id: 'e2', band_id: 'b2', setlist_id: 's2' }), songs });
     expect(await sweepPacks(me, ['b2'])).toBe(1);
     expect((await listPacks(me)).map((p) => p.eventId)).toEqual(['e2']);
+  });
+
+  it("takes along what this phone remembers of the gig's signed leaders (Claude on #288)", async () => {
+    signedForgot.length = 0;
+    await savePackSongs({ userId: me, event: gig(), songs });
+    await savePackSongs({ userId: me, event: gig({ id: 'e2', band_id: 'b2', setlist_id: 's2' }), songs });
+    await sweepPacks(me, ['b2']);
+    expect(signedForgot).toEqual([`${me}:e1`]);
+  });
+
+  it('"Delete all" and deleting one take along the gig\'s kept keys, the private signing key included (Codex on #288)', async () => {
+    keysForgot.length = 0;
+    await savePackSongs({ userId: me, event: gig(), songs });
+    await savePackSongs({ userId: me, event: gig({ id: 'e2', band_id: 'b2', setlist_id: 's2' }), songs });
+    await deletePack(me, 'b1', 'e1');
+    expect(keysForgot).toEqual(['e1']);
+    await savePackSongs({ userId: me, event: gig(), songs });
+    keysForgot.length = 0;
+    await deleteAllPacks(me);
+    expect(keysForgot.sort()).toEqual(['e1', 'e2']);
   });
 
   it('goes when my role changes, and at sign-out', async () => {
@@ -907,7 +932,7 @@ describe('round 8 (review #273)', () => {
         answers.song_personal_notes = () => ({ data: [{ id: 'n1', song_id: 'song1', anchor: { type: 'song' }, body: 'capo 2' }], error: null });
         answers.rehearsal_notes = () => ({ data: [], error: null });
         await refreshPack({ userId: me, event: reh });
-        localStorage.setItem('bw-stage-key:e1', 'KEY-1');
+        keysForgot.length = 0;
         expect((await personalFromPacks(me, 'song1'))?.notes).toHaveLength(1);
         expect(await occurrenceNotesFromPack(me, 'e1', inDays(3))).toEqual([]);
         answers['rpc:bw_live_pack_keep'] = () => ({ data: [], error: null });
@@ -915,7 +940,8 @@ describe('round 8 (review #273)', () => {
         expect(await readPack(me, 'b1', 'e1')).toBeNull();
         expect(await personalFromPacks(me, 'song1')).toBeNull();
         expect(await occurrenceNotesFromPack(me, 'e1', inDays(3))).toBeNull();
-        expect(localStorage.getItem('bw-stage-key:e1')).toBeNull();
+        // Every key kept for the gig goes (band key, public key, an admin's private one: forgetStageKeys, #288).
+        expect(keysForgot).toContain('e1');
         expect(status.forgotten).toContain('e1');
         const keepCall = asked.find((q) => q.table === 'rpc:bw_live_pack_keep');
         expect((keepCall?.filters[0][2] as { p_event_ids: string[] }).p_event_ids).toContain('e1');

@@ -97,6 +97,8 @@ export interface StageLiveControls {
   bluetooth?: StageBleStatus;
   /** Leader: phones linked over Bluetooth. */
   bluetoothFollowers?: number;
+  /** Leader: leading over Bluetooth with no key pair (the status line says so). */
+  bluetoothUnsigned?: boolean;
   /** Allow Bluetooth / turn it on. */
   fixBluetooth?: () => void | Promise<void>;
   isLeader: boolean;
@@ -814,6 +816,7 @@ export const StageMode: React.FC<StageModeProps> = ({
               online={live.connected}
               isLeader={live.isLeader}
               followers={live.bluetoothFollowers}
+              unsigned={live.bluetoothUnsigned}
               onFix={live.fixBluetooth}
               accentColor={accentColor}
             />

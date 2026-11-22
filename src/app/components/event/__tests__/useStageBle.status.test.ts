@@ -69,14 +69,15 @@ const native = vi.hoisted(() => ({
   }),
 }));
 
-vi.mock('@/lib/stageBleNative', () => ({ STAGE_KEY_EVENT: 'bw:stage-key', StageBle: native, stageBleAvailable: () => true, stageKey: async () => KEY, fetchStageKey: async () => ({ key: KEY, denied: false }) }));
+vi.mock('@/lib/stageBleNative', () => ({ STAGE_KEY_EVENT: 'bw:stage-key', StageBle: native, stageBleAvailable: () => true, stageKey: async () => KEY, fetchStageKey: async () => ({ key: KEY, denied: false }), stageVerifyKey: async () => null, fetchVerifyKey: async () => ({ answer: null, server: false }), forgetStageKeys: () => {}, keptVerifyKey: () => null, stageSigner: async () => null, signerRefused: () => false, previousStageKey: () => null, }));
 
-const { useStageBle, forgetScanStarts } = await import('../useStageBle');
+const { useStageBle, forgetSignedLeaders, forgetScanStarts } = await import('../useStageBle');
 
 const render = (isLeader: boolean) =>
   renderHook(() => useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader, onState: () => {} }));
 
 beforeEach(() => {
+  forgetSignedLeaders();
   forgetScanStarts();
   Object.assign(env, { platform: 'ios', initError: null, enabled: true, startState: 'on', stateCb: null, resumeCb: null });
   vi.clearAllMocks();

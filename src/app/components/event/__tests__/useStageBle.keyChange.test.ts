@@ -84,6 +84,14 @@ vi.mock('@/lib/stageBleNative', () => ({
     return server.denied ? { key: null, denied: true } : { key: server.key, denied: false };
   },
   STAGE_KEY_EVENT: 'bw:stage-key',
+  // #288's signed links: no key pair here, so it runs as before (band key only).
+  stageVerifyKey: async () => null,
+  fetchVerifyKey: async () => ({ answer: null, server: false }),
+  forgetStageKeys: () => {},
+  keptVerifyKey: () => null,
+  stageSigner: async () => null,
+  signerRefused: () => false,
+  previousStageKey: () => null,
 }));
 
 const hook = await import('../useStageBle');

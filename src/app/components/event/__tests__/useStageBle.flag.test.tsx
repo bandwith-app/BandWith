@@ -17,13 +17,22 @@ const h = vi.hoisted(() => ({
 }));
 vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => true, getPlatform: () => 'ios' } }));
 vi.mock('@capacitor/app', () => ({ App: { addListener: async () => ({ remove: async () => {} }) } }));
+// The gig's key pair (#288): the leader signs its state and its clock; no pair, no clock.
+const PAIR = vi.hoisted(() => ({ public: 'pub', private: 'priv', version: 1 }));
 vi.mock('@/lib/stageBleNative', () => ({
+  STAGE_KEY_EVENT: 'bw:stage-key',
   stageBleAvailable: () => true,
   stageKey: async () => 'a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2U=',
-  // #283: the key is asked for again while Stage is open, and the server may say no.
-  STAGE_KEY_EVENT: 'bw:stage-key',
   fetchStageKey: async () => ({ key: 'a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2U=', denied: false }),
+  stageSigner: async () => PAIR,
+  signerRefused: () => false,
+  stageVerifyKey: async () => ({ public: PAIR.public, version: 1 }),
+  fetchVerifyKey: async () => ({ answer: { public: PAIR.public, version: 1 }, server: true }),
+  keptVerifyKey: () => ({ public: PAIR.public, version: 1 }),
+  previousStageKey: () => null,
+  forgetStageKeys: () => {},
   StageBle: {
+    updateSigned: async () => {},
     addListener: async () => ({ remove: async () => {} }),
     start: async (o: Record<string, unknown>) => {
       h.starts.push(o);
@@ -41,11 +50,14 @@ vi.mock('@/lib/stageBleNative', () => ({
     },
   },
 }));
+// No WebCrypto in this jsdom: the pair is taken as working (the leader checks it signs before using it).
+vi.mock('@/lib/stageSign', async (orig) => ({ ...(await orig<typeof import('@/lib/stageSign')>()), pairMatches: async () => true }));
 // No WebCrypto in this jsdom: the state's bytes are its JSON here.
 vi.mock('@/lib/stageBle', async (orig) => ({
   ...(await orig<typeof import('@/lib/stageBle')>()),
   stageServiceUuid: async () => 'svc',
   encodeStageState: async (state: unknown) => new TextEncoder().encode(JSON.stringify(state)),
+  encodeSignedState: async (state: unknown) => new TextEncoder().encode(JSON.stringify(state)),
 }));
 // Every clock read decodes and counts (the real book keeps only better samples).
 vi.mock('@/lib/stageBleSync', async (orig) => {
@@ -80,12 +92,26 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
     disconnect: async () => {},
     startNotifications: async () => {},
     requestConnectionPriority: async () => {},
+    // What the leader's service has: the song (band key and signed), the signed clock, the live frame.
+    getServices: async () => [
+      {
+        uuid: 'svc',
+        characteristics: [
+          'b7d50001-5b1e-4c6a-9b3d-6e0a2f7c1d42',
+          'b7d50004-5b1e-4c6a-9b3d-6e0a2f7c1d42',
+          'b7d50005-5b1e-4c6a-9b3d-6e0a2f7c1d42',
+          'b7d50003-5b1e-4c6a-9b3d-6e0a2f7c1d42',
+        ].map((uuid) => ({ uuid, properties: {}, descriptors: [] })),
+      },
+    ],
     read: async (_id: string, _svc: string, ch: string) => {
       h.reads.push(ch);
-      if (h.hold && ch === 'b7d50002-5b1e-4c6a-9b3d-6e0a2f7c1d42') await h.hold;
+      // The clock characteristic (STAGE_BLE_CLOCK_CHARACTERISTIC, checked below).
+      if (h.hold && ch === 'b7d50005-5b1e-4c6a-9b3d-6e0a2f7c1d42') await h.hold;
       return new DataView(new ArrayBuffer(4));
     },
   },
+  BluetoothLe: { disconnect: async () => {} },
 }));
 
 import { useStageBle } from '../useStageBle';

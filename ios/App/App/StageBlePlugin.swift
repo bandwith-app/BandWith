@@ -8,27 +8,31 @@ import CryptoKit
 /// key, see `src/lib/stageBle.ts`) and one characteristic:
 /// - read: the full state (long reads are served by offset);
 /// - notify: a short value (the seq); subscribers then read the full state.
-/// No encryption is required, so members connect without pairing; every
-/// state carries an HMAC that only band members can make.
+/// No encryption is required, so members connect without pairing. The JS
+/// side signs every value; this state (version 2) carries an HMAC with the
+/// band key, kept for apps from before signed states.
 ///
 /// Members' phones use @capacitor-community/bluetooth-le (central role).
 ///
-/// Two more characteristics, for members with no internet
-/// (`src/lib/stageBleSync.ts`, frame version 3), only when `key` is given:
+/// More characteristics, for members on this app (`src/lib/stageBleSync.ts`):
+/// - signed state (read + notify, `signedUuid`): the same state signed with
+///   the gig's private key, which only admins get (version 4, audit #1);
 /// - clock (read only, `clockUuid`): every read is answered at once with
-///   this phone's clock at that moment, 16 bytes signed with the key;
+///   this phone's clock at that moment, signed here with `signKey`
+///   (ECDSA P-256, PKCS#8 base64); both only when `signKey` is given;
 /// - live (read + notify, `liveUuid`): the click and the playhead (B3).
 /// Reads, not writes: a member's write in flight can crash its app on Android
 /// when Bluetooth turns off; reads fail cleanly. Apps from before them never
 /// look at these characteristics.
 ///
 /// JS: `StageBle.start({ serviceUuid, characteristicUuid, value, notify,
-/// clockUuid?, liveUuid?, key? })`, `update({ value, notify })`,
-/// `updateLive({ value, notify })`, `now()` → `{ now }` (this plugin's clock,
-/// ms), `setClock({ offset })` (the app's clock minus this plugin's, so clock
-/// reads carry the app's clock), `stop()` (values base64), and the
-/// `stateChange` event `{ state, subscribers }` with state on | off |
-/// unauthorized | unsupported | unknown.
+/// clockUuid?, liveUuid?, signedUuid?, signKey? })`, `update({ value, notify })`,
+/// `updateSigned({ value, notify })`, `updateLive({ value, notify })`,
+/// `now()` → `{ now }` (this plugin's clock, ms), `setClock({ offset })` (the
+/// app's clock minus this plugin's, so clock reads carry the app's clock),
+/// `stop()` (values base64), and the `stateChange` event
+/// `{ state, subscribers }` with state on | off | unauthorized | unsupported
+/// | unknown (subscribers: phones following, on either state).
 @objc(StageBlePlugin)
 public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDelegate {
     public let identifier = "StageBlePlugin"
@@ -38,6 +42,7 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
         CAPPluginMethod(name: "update", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "updateLive", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "updateSigned", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "now", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setClock", returnType: CAPPluginReturnPromise),
     ]
@@ -52,13 +57,19 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
     private var subscribers: [CBCentral] = []
     private var notifyPending = false
 
-    // Clock and live characteristics (frame version 3).
+    // Clock and live characteristics (frame version 3), signed state (version 4).
     private var clockUUID: CBUUID?
     private var liveUUID: CBUUID?
+    private var signedUUID: CBUUID?
     private var liveCharacteristic: CBMutableCharacteristic?
-    private var key = Data()
-    /// The last clock answer, for a read continued at an offset (never past 22 bytes in practice).
-    private var lastClock = Data()
+    private var signedCharacteristic: CBMutableCharacteristic?
+    private var signKey: P256.Signing.PrivateKey?
+    /// Each phone's last clock answer, for a read continued at an offset (a small MTU).
+    private var lastClock: [UUID: Data] = [:]
+    private var signedValue = Data()
+    private var signedNotifyValue = Data()
+    private var signedSubscribers: [CBCentral] = []
+    private var signedPending = false
     private var liveValue = Data()
     private var liveNotifyValue = Data()
     private var liveSubscribers: [CBCentral] = []
@@ -81,14 +92,19 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
             self.characteristicUUID = CBUUID(string: char)
             self.value = value
             self.notifyValue = notify
-            if let key = Data(base64Encoded: call.getString("key") ?? ""), !key.isEmpty {
-                let newClock = call.getString("clockUuid").map { CBUUID(string: $0) }
-                let newLive = call.getString("liveUuid").map { CBUUID(string: $0) }
-                if (self.clockUUID != newClock || self.liveUUID != newLive) && self.serviceAdded { self.teardown() }
-                self.clockUUID = newClock
-                self.liveUUID = newLive
-                self.key = key
+            // CryptoKit reads the PKCS#8 that WebCrypto exports.
+            let key = Data(base64Encoded: call.getString("signKey") ?? "")
+                .flatMap { try? P256.Signing.PrivateKey(derRepresentation: $0) }
+            let newClock = key == nil ? nil : call.getString("clockUuid").map { CBUUID(string: $0) }
+            let newSigned = key == nil ? nil : call.getString("signedUuid").map { CBUUID(string: $0) }
+            let newLive = call.getString("liveUuid").map { CBUUID(string: $0) }
+            if (self.clockUUID != newClock || self.liveUUID != newLive || self.signedUUID != newSigned) && self.serviceAdded {
+                self.teardown()
             }
+            self.clockUUID = newClock
+            self.signedUUID = newSigned
+            self.liveUUID = newLive
+            self.signKey = key
             if self.manager == nil {
                 // Creating the manager shows the Bluetooth permission prompt the first time.
                 self.manager = CBPeripheralManager(delegate: self, queue: nil)
@@ -120,10 +136,13 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
             self.serviceUUID = nil
             self.clockUUID = nil
             self.liveUUID = nil
-            self.key = Data()
-            self.lastClock = Data()
+            self.signedUUID = nil
+            self.signKey = nil
+            self.lastClock = [:]
             self.liveValue = Data()
             self.liveNotifyValue = Data()
+            self.signedValue = Data()
+            self.signedNotifyValue = Data()
             call.resolve()
         }
     }
@@ -140,6 +159,22 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
             self.liveValue = value
             self.liveNotifyValue = notify
             if !notify.isEmpty { self.sendLive() }
+            call.resolve()
+        }
+    }
+
+    /// Signed state: the value reads get, and a notice for its subscribers (empty: none).
+    @objc func updateSigned(_ call: CAPPluginCall) {
+        guard let value = Data(base64Encoded: call.getString("value") ?? ""),
+              let notify = Data(base64Encoded: call.getString("notify") ?? "")
+        else {
+            call.reject("value and notify are required")
+            return
+        }
+        DispatchQueue.main.async {
+            self.signedValue = value
+            self.signedNotifyValue = notify
+            if !notify.isEmpty { self.sendSigned() }
             call.resolve()
         }
     }
@@ -166,9 +201,9 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
         Double(clock_gettime_nsec_np(CLOCK_UPTIME_RAW)) / 1_000_000
     }
 
-    /// Clock answer stamped `t1` (the app's clock, ms): see stageBleSync.ts.
-    /// Test vector: t1 1795000000123.4, the test key → 030210534f5fb0d28cb51b043ea1b037.
-    static func clockFrame(t1: Double, key: Data) -> Data {
+    /// Clock answer stamped `t1` (the app's clock, ms), 72 bytes: see stageBleSync.ts.
+    /// ECDSA signatures differ every time: stageBleSync.test.ts checks a frame made here.
+    static func clockFrame(t1: Double, key: P256.Signing.PrivateKey) -> Data {
         let ticks = UInt64((t1 * 10).rounded())
         var body = Data([3, 2])
         body.append(UInt8((ticks >> 40) & 0xff))
@@ -177,8 +212,8 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
         body.append(UInt8((ticks >> 16) & 0xff))
         body.append(UInt8((ticks >> 8) & 0xff))
         body.append(UInt8(ticks & 0xff))
-        let mac = HMAC<SHA256>.authenticationCode(for: body, using: SymmetricKey(data: key))
-        body.append(contentsOf: Data(mac).prefix(8))
+        // r‖s, 64 bytes (WebCrypto's form).
+        if let sig = try? key.signature(for: body) { body.append(sig.rawRepresentation) }
         return body
     }
 
@@ -194,8 +229,13 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
         }
     }
 
+    /// Phones following: on the older state, the signed one, or both (counted once).
+    private func followerCount() -> Int {
+        Set(subscribers.map { $0.identifier } + signedSubscribers.map { $0.identifier }).count
+    }
+
     private func emitState() {
-        notifyListeners("stateChange", data: ["state": stateName(), "subscribers": subscribers.count])
+        notifyListeners("stateChange", data: ["state": stateName(), "subscribers": followerCount()])
     }
 
     private func teardown() {
@@ -203,11 +243,15 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
         manager?.removeAllServices()
         characteristic = nil
         liveCharacteristic = nil
+        signedCharacteristic = nil
         serviceAdded = false
         subscribers.removeAll()
         liveSubscribers.removeAll()
+        signedSubscribers.removeAll()
+        lastClock = [:]
         notifyPending = false
         livePending = false
+        signedPending = false
     }
 
     private func setUpIfReady() {
@@ -218,16 +262,21 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
         let char = CBMutableCharacteristic(type: characteristicUUID, properties: [.read, .notify], value: nil, permissions: [.readable])
         let service = CBMutableService(type: serviceUUID, primary: true)
         service.characteristics = [char]
-        if !key.isEmpty {
+        if signKey != nil {
             if let clockUUID = clockUUID {
                 // Value nil: every read comes to the delegate, stamped there.
                 service.characteristics?.append(CBMutableCharacteristic(type: clockUUID, properties: [.read], value: nil, permissions: [.readable]))
             }
-            if let liveUUID = liveUUID {
-                let live = CBMutableCharacteristic(type: liveUUID, properties: [.read, .notify], value: nil, permissions: [.readable])
-                service.characteristics?.append(live)
-                liveCharacteristic = live
+            if let signedUUID = signedUUID {
+                let signed = CBMutableCharacteristic(type: signedUUID, properties: [.read, .notify], value: nil, permissions: [.readable])
+                service.characteristics?.append(signed)
+                signedCharacteristic = signed
             }
+        }
+        if let liveUUID = liveUUID {
+            let live = CBMutableCharacteristic(type: liveUUID, properties: [.read, .notify], value: nil, permissions: [.readable])
+            service.characteristics?.append(live)
+            liveCharacteristic = live
         }
         characteristic = char
         serviceAdded = true
@@ -237,6 +286,11 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
     private func sendLive() {
         guard let manager = manager, let char = liveCharacteristic, !liveSubscribers.isEmpty, !liveNotifyValue.isEmpty else { return }
         livePending = !manager.updateValue(liveNotifyValue, for: char, onSubscribedCentrals: nil)
+    }
+
+    private func sendSigned() {
+        guard let manager = manager, let char = signedCharacteristic, !signedSubscribers.isEmpty, !signedNotifyValue.isEmpty else { return }
+        signedPending = !manager.updateValue(signedNotifyValue, for: char, onSubscribedCentrals: nil)
     }
 
     private func sendNotify() {
@@ -252,8 +306,10 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
             serviceAdded = false
             characteristic = nil
             liveCharacteristic = nil
+            signedCharacteristic = nil
             subscribers.removeAll()
             liveSubscribers.removeAll()
+            signedSubscribers.removeAll()
         }
         emitState()
     }
@@ -275,9 +331,12 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
         let current: Data
         if request.characteristic.uuid == characteristicUUID {
             current = value
-        } else if let clockUUID = clockUUID, request.characteristic.uuid == clockUUID, !key.isEmpty {
-            if request.offset == 0 { lastClock = StageBlePlugin.clockFrame(t1: t1, key: key) }
-            current = lastClock
+        } else if let clockUUID = clockUUID, request.characteristic.uuid == clockUUID, let key = signKey {
+            let who = request.central.identifier
+            if request.offset == 0 { lastClock[who] = StageBlePlugin.clockFrame(t1: t1, key: key) }
+            current = lastClock[who] ?? Data()
+        } else if let signedUUID = signedUUID, request.characteristic.uuid == signedUUID {
+            current = signedValue
         } else if let liveUUID = liveUUID, request.characteristic.uuid == liveUUID {
             current = liveValue
         } else {
@@ -298,6 +357,12 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
             sendLive()
             return
         }
+        if let signedUUID = signedUUID, characteristic.uuid == signedUUID {
+            if !signedSubscribers.contains(where: { $0.identifier == central.identifier }) { signedSubscribers.append(central) }
+            sendSigned()
+            emitState()
+            return
+        }
         if !subscribers.contains(where: { $0.identifier == central.identifier }) { subscribers.append(central) }
         sendNotify()
         emitState()
@@ -308,6 +373,12 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
             liveSubscribers.removeAll { $0.identifier == central.identifier }
             return
         }
+        lastClock[central.identifier] = nil
+        if let signedUUID = signedUUID, characteristic.uuid == signedUUID {
+            signedSubscribers.removeAll { $0.identifier == central.identifier }
+            emitState()
+            return
+        }
         subscribers.removeAll { $0.identifier == central.identifier }
         emitState()
     }
@@ -315,5 +386,6 @@ public class StageBlePlugin: CAPPlugin, CAPBridgedPlugin, CBPeripheralManagerDel
     public func peripheralManagerIsReady(toUpdateSubscribers peripheral: CBPeripheralManager) {
         if notifyPending { sendNotify() }
         if livePending { sendLive() }
+        if signedPending { sendSigned() }
     }
 }

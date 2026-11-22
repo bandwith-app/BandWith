@@ -10,6 +10,8 @@ interface Props {
   online: boolean;
   isLeader: boolean;
   followers?: number;
+  /** Leader: leading with no key pair (useStageBle().unsigned). */
+  unsigned?: boolean;
   /** Allow Bluetooth / turn it on (useStageBle().fix). */
   onFix?: () => void | Promise<void>;
   accentColor?: string;
@@ -21,10 +23,10 @@ interface Props {
  * with at most one button. Nothing at all while the internet works (except a
  * missing Bluetooth permission, worth granting before the internet drops).
  */
-export const StageBleNoticeLine: React.FC<Props> = ({ status, online, isLeader, followers, onFix, accentColor, className }) => {
+export const StageBleNoticeLine: React.FC<Props> = ({ status, online, isLeader, followers, unsigned, onFix, accentColor, className }) => {
   const t = useT();
   const platform = Capacitor.getPlatform();
-  const notice = stageBleNotice({ status: status ?? 'off', online, isLeader, followers: followers ?? 0, platform });
+  const notice = stageBleNotice({ status: status ?? 'off', online, isLeader, followers: followers ?? 0, unsigned, platform });
   if (!notice) return null;
   const label = notice.action === 'turn-on' ? t('Turn on') : platform === 'ios' ? t('Open Settings') : t('Allow');
   return (

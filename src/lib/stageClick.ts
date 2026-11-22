@@ -184,11 +184,34 @@ export interface PeerClock {
 }
 
 /**
- * The offset to use for `leader`'s click: of the clocks measured against that
- * same leader, over any path, the one with the shortest round trip.
+ * Online, a Bluetooth clock further from the Realtime one for the same
+ * leader than both measures can be off (half of each round trip, and never
+ * less than this) is dropped. A nearby phone can delay a recorded clock answer
+ * (there is no member nonce yet, stageBleSync.ts); Realtime can't be
+ * replayed that way, so it wins. Within it, the faster round trip is used.
  */
-export const pickClock = (leader: string | null, clocks: Array<PeerClock | null | undefined>): ClockSample | null =>
-  leader ? fastest(clocks.flatMap((c) => (c && c.from === leader && c.sample ? [c.sample] : []))) : null;
+export const BLE_CLOCK_AGREE_MS = 30;
+/** However slow the round trips, two measures further apart than this don't agree (Claude on #288). */
+export const BLE_CLOCK_AGREE_MAX_MS = 80;
+
+/**
+ * The offset to use for `leader`'s click: the clock measured against that
+ * same leader over Realtime or Bluetooth with the shortest round trip, but
+ * Realtime's whenever the Bluetooth one disagrees with it by more than both
+ * measures can be off (half of each round trip, BLE_CLOCK_AGREE_MS at least).
+ */
+export const pickClock = (leader: string | null, realtime: PeerClock | null | undefined, bluetooth: PeerClock | null | undefined): ClockSample | null => {
+  if (!leader) return null;
+  const rt = realtime?.from === leader ? realtime.sample : null;
+  const bt = bluetooth?.from === leader ? bluetooth.sample : null;
+  if (rt && bt) {
+    // Each measure may be off by up to half its round trip: they agree within the sum of those
+    // (Claude on #288), never more than BLE_CLOCK_AGREE_MAX_MS (a slow link can't make any two agree).
+    const agree = Math.min(BLE_CLOCK_AGREE_MAX_MS, Math.max(BLE_CLOCK_AGREE_MS, rt.rtt / 2 + bt.rtt / 2));
+    return Math.abs(bt.offset - rt.offset) > agree || rt.rtt <= bt.rtt ? rt : bt;
+  }
+  return rt ?? bt;
+};
 
 export interface BeatPosition {
   /** Beat number from 0, or -1 before the start. */

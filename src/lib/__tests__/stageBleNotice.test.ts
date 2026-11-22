@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bleProblem, followLabel, stageBleNotice, type StageBleNoticeInput } from '../stageBleNotice';
+import { bleLinked, bleProblem, followLabel, stageBleNotice, type StageBleNoticeInput } from '../stageBleNotice';
 
 const member = (over: Partial<StageBleNoticeInput>): StageBleNoticeInput => ({
   status: 'connected',
@@ -23,6 +23,12 @@ describe('stageBleNotice: one plain line, only when it matters', () => {
   it('member offline: linked to the leader, or what to do', () => {
     expect(stageBleNotice(member({ status: 'connected' }))).toEqual({ tone: 'ok', text: "Connected to the leader's phone" });
     expect(stageBleNotice(member({ status: 'searching' }))).toEqual({ tone: 'warn', text: 'Not connected: ask the leader to open Stage' });
+  });
+
+  it("a demoted admin still leading: told another admin needs to lead, online or not (Claude on #288)", () => {
+    const line = { tone: 'warn', text: "You're no longer an admin for this band: another admin needs to lead." };
+    expect(stageBleNotice(leader({ status: 'not-admin' }))).toEqual(line);
+    expect(stageBleNotice(leader({ status: 'not-admin', online: true, followers: 2 }))).toEqual(line);
   });
 
   it('leader offline: how many phones follow', () => {
@@ -65,6 +71,39 @@ describe('stageBleNotice: one plain line, only when it matters', () => {
     expect(stageBleNotice(leader({ status: 'unsupported' }))?.text).toBe("This phone can't lead the band without internet.");
   });
 
+  it("a leader on an older app: followed, and one plain line asks to update it, online too", () => {
+    const text = "The leader's app is out of date: ask them to update";
+    expect(stageBleNotice(member({ status: 'old-leader' }))).toEqual({ tone: 'warn', text });
+    expect(stageBleNotice(member({ status: 'old-leader', online: true }))).toEqual({ tone: 'warn', text });
+    expect(bleLinked('old-leader')).toBe(true);
+    expect(bleLinked('connected')).toBe(true);
+    expect(bleLinked('searching')).toBe(false);
+  });
+
+  it('a phone that kept an out-of-date key (the band changed who can lead): one plain line, offline only', () => {
+    expect(stageBleNotice(member({ status: 'stale-key' }))).toEqual({
+      tone: 'warn',
+      text: 'The band changed who can lead: connect to the internet once to follow the leader.',
+    });
+    expect(stageBleNotice(member({ status: 'stale-key', online: true }))).toBeNull();
+    expect(bleLinked('stale-key')).toBe(false);
+  });
+
+  it("a leader not verified yet: following, one plain line offline, saying who goes online (Claude on #288)", () => {
+    expect(stageBleNotice(member({ status: 'unverified' }))).toEqual({
+      tone: 'warn',
+      text: 'Leader not verified yet: connect to the internet once to check it.',
+    });
+    expect(stageBleNotice(member({ status: 'leader-unverified' }))).toEqual({
+      tone: 'warn',
+      text: 'Leader not verified yet: ask the leader to connect to the internet once.',
+    });
+    expect(stageBleNotice(member({ status: 'unverified', online: true }))).toBeNull();
+    expect(stageBleNotice(member({ status: 'leader-unverified', online: true }))).toBeNull();
+    expect(bleLinked('unverified')).toBe(true);
+    expect(bleLinked('leader-unverified')).toBe(true);
+  });
+
   it("the leader's time far ahead of this phone's, offline: never \"connected\" (Codex on #280, rule B)", () => {
     expect(stageBleNotice(member({ status: 'clock-off' }))).toEqual({
       tone: 'warn',
@@ -74,7 +113,7 @@ describe('stageBleNotice: one plain line, only when it matters', () => {
   });
 
   it('never uses technical words', () => {
-    const all = (['connected', 'searching', 'leading', 'denied', 'bt-off', 'outdated', 'clock-off', 'unsupported'] as const).flatMap((status) =>
+    const all = (['connected', 'old-leader', 'stale-key', 'unverified', 'leader-unverified', 'searching', 'leading', 'denied', 'bt-off', 'outdated', 'clock-off', 'unsupported'] as const).flatMap((status) =>
       [false, true].flatMap((isLeader) =>
         (['ios', 'android'] as const).map((platform) => stageBleNotice({ status, online: false, isLeader, followers: 2, platform })?.text ?? ''),
       ),
@@ -90,6 +129,15 @@ describe('bleProblem: what a failed start means', () => {
     expect(bleProblem(new Error('BLE unsupported'))).toBe('unsupported');
     expect(bleProblem(new Error('BLE not available.'))).toBe('unsupported');
     expect(bleProblem('weird')).toBe('denied');
+  });
+
+  it("an admin leading with no key pair (offline before one was made, or this phone can't make one): told in plain words, offline only (Claude on #288)", () => {
+    expect(stageBleNotice(leader({ followers: 2, unsigned: true }))).toEqual({
+      tone: 'warn',
+      text: "Phones on the latest app can't check you yet: connect to the internet once with Stage open.",
+    });
+    expect(stageBleNotice(leader({ followers: 2, unsigned: true, online: true }))).toBeNull();
+    expect(stageBleNotice(leader({ followers: 2, unsigned: false }))?.text).toBe('2 phones connected to you');
   });
 });
 

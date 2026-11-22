@@ -86,6 +86,8 @@ export interface FloorWedgeModeProps {
     bluetooth?: StageBleStatus;
     /** Leader: phones linked over Bluetooth. */
     bluetoothFollowers?: number;
+    /** Leader: leading with no key pair. */
+    bluetoothUnsigned?: boolean;
     /** Allow Bluetooth / turn it on. */
     fixBluetooth?: () => void | Promise<void>;
     onToggle: (on: boolean) => void;
@@ -521,6 +523,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
           online={follow.connected}
           isLeader={follow.isLeader}
           followers={follow.bluetoothFollowers}
+          unsigned={follow.bluetoothUnsigned}
           onFix={follow.fixBluetooth}
         />
       )}

@@ -43,6 +43,7 @@ import {
   type PeerClock,
 } from '@/lib/stageClick';
 import { REGIA_EVENT } from '@/lib/stageRegia';
+import { bleLinked as linkedOverBle } from '@/lib/stageBleNotice';
 import { parsePlayheadState, PLAYHEAD_EVENT, stopPlayhead, type PlayheadState } from '@/lib/playhead';
 import type { LiveEvent, LiveEvents } from '@/lib/stageBleSync';
 import { STAGE_KEY_EVENT } from '@/lib/stageBleNative';
@@ -131,10 +132,10 @@ interface Options<T extends LiveSongRef> {
   isLeader: boolean;
 }
 
-/** `waiting`: no signal, the order is kept on this phone and saved when back online. */
-/** Where a leader's state came from: the live channel (admins only), or Bluetooth (anyone with the band key). */
-type StateSource = 'realtime' | 'bluetooth';
+/** Where a state came from: 'bluetooth' is a band-key state (any member could make one), 'signed' carries the admins' signature. */
+type StateSource = 'realtime' | 'bluetooth' | 'signed';
 
+/** `waiting`: no signal, the order is kept on this phone and saved when back online. */
 export type StageSaveState = 'idle' | 'saving' | 'saved' | 'error' | 'waiting';
 /** A setlist_songs row as stored (row id, song, set). */
 type StoredRow = { id: string; songId: string; setNumber: number };
@@ -268,13 +269,13 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   /** The measure of one peer's clock: its samples, and the t0 of each ping still unanswered. */
   const samplesRef = useRef<{ peer: string; at: number; samples: ClockSample[]; sent: number[] }>({ peer: '', at: 0, samples: [], sent: [] });
   const pingTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // Follow the tempo (playhead.ts): the newest playhead state, ours or the leader's.
+  const [playhead, setPlayheadState] = useState<PlayheadState | null>(null);
+  const playheadRef = useRef<PlayheadState | null>(null);
   /** The clock topic joined: sent to only then (supabase-js would post a ping over HTTP otherwise). */
   const clockJoined = useRef(false);
   /** The stage topic joined: the same for what this phone sends there unasked (pings). */
   const stageJoined = useRef(false);
-  // Follow the tempo (playhead.ts): the newest playhead state, ours or the leader's.
-  const [playhead, setPlayheadState] = useState<PlayheadState | null>(null);
-  const playheadRef = useRef<PlayheadState | null>(null);
 
   const live = !!eventId && open;
   const ordered = useMemo(() => applyOrder(songs, order), [songs, order]);
@@ -292,12 +293,15 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
 
   /**
    * A leader's state from either path; the newest wins, with limits on
-   * Bluetooth states (anyone with the band key can make one):
+   * band-key Bluetooth states ('bluetooth': anyone with the band key can make one):
    * - while a leader leads on the live channel (a state or a beat in the last
    *   LIVE_LEAD_FRESH_MS) they're held back, the newest applying once it goes quiet;
-   * - one never holds back a Realtime state: a Realtime state newer than the
-   *   last Realtime one applies even when a Bluetooth one had a higher seq;
-   * - a seq far ahead of the clock is dropped (useStageBle drops them too).
+   * - one never holds back a trusted state (Realtime, or Bluetooth signed by the
+   *   admins): one newer than the last trusted state applies even when a
+   *   band-key one had a higher seq;
+   * - a Bluetooth seq (band-key or signed) far ahead of that leader's clock is
+   *   dropped, and so is every state of a leader whose clock was measured more
+   *   than 5 minutes off (useStageBle drops them too).
    * A live leader not heard before, once the one followed has gone quiet
    * (Stage reopened, maybe on a phone with an earlier clock), is taken
    * whatever its seq.
@@ -307,21 +311,25 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       if (state.from === clientId) return;
       const bluetooth = source === 'bluetooth';
       const at = Date.now();
-      if (bluetooth) {
-        // Judged with that leader's clock, when one was measured (a phone set an hour ahead still leads).
-        // Measured more than 5 minutes off: that phone's states never count (MAX_CLOCK_OFFSET_MS).
+      const realtime = source === 'realtime';
+      if (!realtime) {
+        // A Bluetooth seq (band-key or signed) is judged with that leader's clock, when one was
+        // measured, and then only ~30 s beyond it (a phone set a few minutes ahead still leads);
+        // none measured, at most 5 minutes ahead. Measured more than 5 minutes off: that phone's
+        // states never count (MAX_CLOCK_OFFSET_MS, main session's rule).
         const clock = leaderOffsetRef.current(state.from);
         if (!clock || !seqPlausible(state.seq, at + clock.offset, clock.measured ? SEQ_AHEAD_MEASURED : SEQ_AHEAD_MAX)) return;
-        if (leadingOnline(at)) {
+        if (bluetooth && leadingOnline(at)) {
           if (isNewer(state, heldBleRef.current)) heldBleRef.current = state;
           return;
         }
       }
+      // Only the live channel tells who leads online (only admins can send there).
       let newLeader = false;
-      if (!bluetooth) {
+      if (realtime) {
         const last = lastRef.current;
-        // The live copy of the state already applied from Bluetooth: its sender leads online
-        // (recorded before the duplicate is dropped, Codex on #288).
+        // The live copy of the state already applied from Bluetooth (band-key or signed): its
+        // sender leads online, recorded before the duplicate is dropped (Codex on #288).
         if (last && last.from === state.from && last.seq === state.seq) {
           liveLeadRef.current.set(state.from, at);
           trustedRef.current = state;
@@ -334,13 +342,16 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         const followed = trustedRef.current?.from;
         // This phone leading itself counts as a leader online (its own states are in trustedRef).
         const followedFresh = followed === clientId ? ledRef.current : !!followed && at - (lead.get(followed) ?? -Infinity) < LIVE_LEAD_FRESH_MS;
-        // The followed leader gone quiet: another admin's state is taken whatever its seq.
+        // The followed leader gone quiet: another admin's state is taken whatever its seq. The
+        // leader followed, heard now on the live channel (it led this phone over Bluetooth), is the
+        // same leader, compared by seq like any of its states (Codex on #288).
         newLeader = state.from !== followed && !followedFresh;
       }
       // Clock moves on even for states we don't show (Lamport).
+      // Trusted (Realtime, or signed over Bluetooth) over a band-key state: applies whatever that one's seq.
       const overBluetooth = !bluetooth && lastFromBluetoothRef.current && isNewer(state, recent(trustedRef.current));
       if (!isNewer(state, recent(lastRef.current)) && !overBluetooth && !newLeader) {
-        if (!bluetooth) {
+        if (realtime) {
           const kept = refusedRef.current.get(state.from);
           if (!kept || isNewer(state, kept.state)) refusedRef.current.set(state.from, { state, at });
           else kept.at = at;
@@ -348,7 +359,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         return;
       }
       // Taken: only now is its sender a live leader (a refused state marks nothing, Codex on #288).
-      if (!bluetooth) {
+      // Only the live channel says who leads online: a signed Bluetooth state doesn't.
+      if (realtime) {
         liveLeadRef.current.set(state.from, at);
         refusedRef.current.delete(state.from);
         armQuiet();
@@ -358,6 +370,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       lastRef.current = state;
       lastFromBluetoothRef.current = bluetooth;
       if (!bluetooth) trustedRef.current = state;
+      // A signed leader taken: band-key changes held back meanwhile never apply (Codex on #288).
+      if (source === 'signed') heldBleRef.current = null;
       remoteRef.current = state;
       setLeaderSeen(true);
       // The order and the struck songs are the setlist's: they apply even when not following.
@@ -445,7 +459,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   }
 
   // Offline on stage: the same states over Bluetooth (native apps only).
-  const receiveBle = useCallback((state: StageLiveState) => receive(state, 'bluetooth'), [receive]);
+  const receiveBle = useCallback((state: StageLiveState, signed?: boolean) => receive(state, signed ? 'signed' : 'bluetooth'), [receive]);
   const ble = useStageBle({ eventId, savedIds, open: live, isLeader, onState: receiveBle, onLive: onBleLive, farewell: bleFarewell });
   /**
    * A leader's clock offset, measured over Bluetooth or Realtime (0 when none
@@ -731,13 +745,6 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       .on('broadcast', { event: PING_EVENT }, (msg: { payload?: unknown }) => answerPing(msg?.payload, true))
       .on('broadcast', { event: PONG_EVENT }, (msg: { payload?: unknown }) => takePong(msg?.payload))
       .on('broadcast', { event: CLOCK_PONG_EVENT }, (msg: { payload?: unknown }) => takePong(msg?.payload))
-      // The server's word that the band key changed (191: someone left, a gig moved or was hidden).
-      // Only a hint: Bluetooth fetches the key again and restarts if it really changed.
-      .on('broadcast', { event: STAGE_KEY_BROADCAST }, (msg: { payload?: unknown }) => {
-        const p = msg?.payload as { event_id?: unknown } | undefined;
-        if (p?.event_id !== eventId || typeof window === 'undefined') return;
-        window.dispatchEvent(new CustomEvent(STAGE_KEY_EVENT, { detail: eventId }));
-      })
       .on('broadcast', { event: LEAD_BEAT_EVENT }, (msg: { payload?: { from?: unknown; seq?: unknown } }) => {
         // Only admins can send here: a leader still leading online.
         const from = msg?.payload?.from;
@@ -757,6 +764,13 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
           heldBleRef.current = null;
           receiveRef.current(held, 'realtime');
         }
+      })
+      // The server's word that the band key changed (191: someone left, a gig moved or was hidden).
+      // Only a hint: Bluetooth fetches the key again and restarts if it really changed.
+      .on('broadcast', { event: STAGE_KEY_BROADCAST }, (msg: { payload?: unknown }) => {
+        const p = msg?.payload as { event_id?: unknown } | undefined;
+        if (p?.event_id !== eventId || typeof window === 'undefined') return;
+        window.dispatchEvent(new CustomEvent(STAGE_KEY_EVENT, { detail: eventId }));
       })
       .on('presence', { event: 'join' }, (msg: { key?: string; newPresences?: Array<{ lead?: unknown }> }) => {
         if (msg?.key === clientId) return;
@@ -805,8 +819,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       })
       .subscribe((status: string) => {
         setConnected(status === 'SUBSCRIBED');
-        stageJoined.current = status === 'SUBSCRIBED';
         joined = status === 'SUBSCRIBED';
+        stageJoined.current = status === 'SUBSCRIBED';
         // Off the channel: no leader reaches this phone online, Bluetooth takes over at once.
         if (status !== 'SUBSCRIBED') {
           liveLeadRef.current.clear();
@@ -1182,14 +1196,15 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
 
   // The click leader's clock: Realtime or Bluetooth, whichever measured it with the shorter round trip.
   const clickLeader = click && click.from !== clientId ? click.from : null;
-  const bestClock = pickClock(clickLeader, [rtClock, ble.clock]);
+  const bestClock = pickClock(clickLeader, rtClock, ble.clock);
   const clickOffset = bestClock?.offset ?? 0;
   // The playhead's sender is measured the same way (usually the same leader).
   const playheadPeer = playhead && playhead.from !== clientId ? playhead.from : null;
-  const playheadOffset = pickClock(playheadPeer, [rtClock, ble.clock])?.offset ?? 0;
+  const playheadOffset = pickClock(playheadPeer, rtClock, ble.clock)?.offset ?? 0;
 
   // The leader's phone is reachable: on the channel, or linked over Bluetooth.
-  const bleLinked = !isLeader && ble.status === 'connected';
+  // Linked in any of its states (signed, an older app's, not checkable yet: #288).
+  const bleLinked = !isLeader && linkedOverBle(ble.status);
   const leaderOnline = rtLeaders.size > 0;
   const leaderHere = !isLeader && (leaderOnline || bleLinked);
 
@@ -1243,6 +1258,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     bluetooth: ble.status,
     /** Leader: phones linked over Bluetooth. */
     bluetoothFollowers: ble.followers,
+    /** Leader: leading over Bluetooth with no key pair (the status line says so). */
+    bluetoothUnsigned: ble.unsigned,
     /** Allow Bluetooth / turn it on (the status line's button). */
     fixBluetooth: ble.fix,
     isLeader,

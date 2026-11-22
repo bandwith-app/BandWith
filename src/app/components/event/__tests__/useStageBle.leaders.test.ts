@@ -38,6 +38,8 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
     }),
     disconnect: vi.fn(async (id: string) => void air.connected.delete(id)),
     requestConnectionPriority: vi.fn(async () => {}),
+    // Phones on an app from before signing: the band-key state only.
+    getServices: vi.fn(async () => [{ uuid: 'any', characteristics: [{ uuid: STAGE_BLE_CHARACTERISTIC, properties: {}, descriptors: [] }] }]),
     startNotifications: vi.fn(async () => {}),
     read: vi.fn(async (id: string, _s: string, char: string) => {
       if (char !== STAGE_BLE_CHARACTERISTIC) throw new Error('Characteristic not found.');
@@ -55,19 +57,24 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
 }));
 
 vi.mock('@/lib/stageBleNative', () => ({
+  STAGE_KEY_EVENT: 'bw:stage-key',
   StageBle: {},
   stageBleAvailable: () => true,
   stageKey: async () => KEY,
-  // #283: the key is asked for again while Stage is open, and the server may say no.
-  STAGE_KEY_EVENT: 'bw:stage-key',
   fetchStageKey: async () => ({ key: KEY, denied: false }),
+  stageVerifyKey: async () => null,
+  fetchVerifyKey: async () => ({ answer: null, server: false }),
+  forgetStageKeys: () => {},
+  keptVerifyKey: () => null,
+  stageSigner: async () => null, signerRefused: () => false, previousStageKey: () => null,
 }));
 
-const { useStageBle, LEADER_CHECK_MS, forgetScanStarts } = await import('../useStageBle');
+const { useStageBle, LEADER_CHECK_MS, forgetSignedLeaders, forgetScanStarts } = await import('../useStageBle');
 
 const lead = (id: string, seq: number, songId: string): StageLiveState => ({ seq, from: id, songId, order: null });
 
 beforeEach(() => {
+  forgetSignedLeaders();
   forgetScanStarts();
   air.devices.clear();
   air.connects = [];

@@ -1,6 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { encodeStageState, toBase64, STAGE_BLE_CHARACTERISTIC } from '@/lib/stageBle';
+import {
+  encodeSignedState,
+  encodeStageState,
+  toBase64,
+  STAGE_BLE_CHARACTERISTIC,
+  STAGE_BLE_SIGNED_CHARACTERISTIC,
+} from '@/lib/stageBle';
+import { generateSigner } from '@/lib/stageSign';
 import { STAGE_BLE_CLOCK_CHARACTERISTIC, STAGE_BLE_LIVE_CHARACTERISTIC, encodeClock } from '@/lib/stageBleSync';
 import { nowMs } from '@/lib/stageClick';
 
@@ -12,6 +19,8 @@ if (!globalThis.crypto?.subtle) {
 }
 
 const KEY = toBase64(new Uint8Array(32).map((_, i) => i * 3));
+/** The gig's key pair (migration 190): the leader signs its state and clock. */
+const SIGNER = await generateSigner();
 const IDS = ['a1', 'b2'];
 /** The simulated leader's clock runs this far ahead of the member's. */
 const AHEAD_MS = 500;
@@ -45,6 +54,15 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
     }),
     disconnect: vi.fn(async () => {}),
     requestConnectionPriority: vi.fn(async () => {}),
+    getServices: vi.fn(async () => [
+      {
+        uuid: 'gig',
+        characteristics: (ble.oldLeader
+          ? [STAGE_BLE_CHARACTERISTIC]
+          : [STAGE_BLE_CHARACTERISTIC, STAGE_BLE_SIGNED_CHARACTERISTIC, STAGE_BLE_CLOCK_CHARACTERISTIC]
+        ).map((uuid) => ({ uuid, properties: {}, descriptors: [] })),
+      },
+    ]),
     startNotifications: vi.fn(async (_id: string, _s: string, char: string, cb: (v: DataView) => void) => {
       ble.notify.set(char, cb);
     }),
@@ -57,13 +75,15 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
         if (ble.clockBroken) return new DataView(new ArrayBuffer(3));
         // The leader stamps on arrival (5 ms each way).
         await new Promise((r) => setTimeout(r, 5));
-        const frame = await encodeClock(nowMs() + (ble.aheadMs ?? AHEAD_MS), KEY);
+        const frame = await encodeClock(nowMs() + (ble.aheadMs ?? AHEAD_MS), SIGNER.private);
         await new Promise((r) => setTimeout(r, 5));
         return new DataView(frame.buffer);
       }
-      if (char !== STAGE_BLE_CHARACTERISTIC) return new DataView(new ArrayBuffer(0));
+      const signed = char === STAGE_BLE_SIGNED_CHARACTERISTIC && !ble.oldLeader;
+      if (char !== STAGE_BLE_CHARACTERISTIC && !signed) return new DataView(new ArrayBuffer(0));
       ble.stateReads++;
-      const bytes = (await encodeStageState({ seq: ble.stateSeq, from: 'lead', songId: 'b2', order: null }, IDS, KEY))!;
+      const state = { seq: ble.stateSeq, from: 'lead', songId: 'b2', order: null };
+      const bytes = signed ? (await encodeSignedState(state, IDS, SIGNER.private))! : (await encodeStageState(state, IDS, KEY))!;
       const view = new DataView(bytes.buffer);
       const cb = ble.notify.get(char);
       if (ble.echo && cb) setTimeout(() => cb(view), 0);
@@ -84,6 +104,7 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
 const native = vi.hoisted(() => ({
   start: vi.fn(async (_o: Record<string, string>) => ({ state: 'on' })),
   update: vi.fn(async () => {}),
+  updateSigned: vi.fn(async () => {}),
   stop: vi.fn(async () => {}),
   now: vi.fn(async () => ({ now: 0 })),
   setClock: vi.fn(async (_o: { offset: number }) => {}),
@@ -95,12 +116,18 @@ vi.mock('@/lib/stageBleNative', () => ({
   StageBle: native,
   stageBleAvailable: () => true,
   stageKey: async () => KEY,
+  stageVerifyKey: async () => ({ public: SIGNER.public, version: 1 }),
+  fetchVerifyKey: async () => ({ answer: { public: SIGNER.public, version: 1 }, server: true }),
+  forgetStageKeys: () => {},
+  keptVerifyKey: () => ({ public: SIGNER.public, version: 1 }),
+  stageSigner: async () => ({ ...SIGNER, version: 1 }), signerRefused: () => false, previousStageKey: () => null,
   fetchStageKey: async () => ({ key: KEY, denied: false }),
 }));
 
-const { useStageBle, forgetScanStarts } = await import('../useStageBle');
+const { useStageBle, forgetSignedLeaders, forgetScanStarts } = await import('../useStageBle');
 
 beforeEach(() => {
+  forgetSignedLeaders();
   forgetScanStarts();
   ble.oldLeader = false;
   ble.notify.clear();
@@ -146,7 +173,7 @@ describe('useStageBle clock over Bluetooth', () => {
     // A real change notification (the 4-byte seq) still reads.
     const seq = new DataView(new ArrayBuffer(4));
     seq.setUint32(0, 4);
-    await act(async () => ble.notify.get(STAGE_BLE_CHARACTERISTIC)!(seq));
+    await act(async () => ble.notify.get(STAGE_BLE_SIGNED_CHARACTERISTIC)!(seq));
     await waitFor(() => expect(ble.stateReads).toBe(3));
     await new Promise((r) => setTimeout(r, 300));
     expect(ble.stateReads).toBe(3);
@@ -210,13 +237,15 @@ describe('useStageBle clock over Bluetooth', () => {
     );
     await waitFor(() => expect(onState).toHaveBeenCalled());
     await new Promise((r) => setTimeout(r, 300));
-    expect(result.current.status).toBe('connected');
+    // Followed, with the line asking to update the leader's app.
+    expect(result.current.status).toBe('old-leader');
     expect(result.current.clock).toBeNull();
     // It doesn't keep reading a characteristic that isn't there.
     await new Promise((r) => setTimeout(r, 1000));
     expect(ble.clockReads).toBe(0);
     const { BleClient } = await import('@capacitor-community/bluetooth-le');
-    expect(vi.mocked(BleClient.read).mock.calls.filter((c) => c[2] === STAGE_BLE_CLOCK_CHARACTERISTIC).length).toBe(1);
+    // Its band-key clock (if any) isn't trusted any more: not even read.
+    expect(vi.mocked(BleClient.read).mock.calls.filter((c) => c[2] === STAGE_BLE_CLOCK_CHARACTERISTIC).length).toBe(0);
     unmount();
   });
 
@@ -288,7 +317,8 @@ describe('useStageBle clock over Bluetooth', () => {
     expect(native.start.mock.calls[0][0]).toMatchObject({
       clockUuid: STAGE_BLE_CLOCK_CHARACTERISTIC,
       liveUuid: STAGE_BLE_LIVE_CHARACTERISTIC,
-      key: KEY,
+      signedUuid: STAGE_BLE_SIGNED_CHARACTERISTIC,
+      signKey: SIGNER.private,
     });
     expect(Math.abs(native.setClock.mock.calls[0][0].offset - 1000)).toBeLessThan(5);
     unmount();

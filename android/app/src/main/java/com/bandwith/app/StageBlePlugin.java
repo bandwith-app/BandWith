@@ -26,9 +26,6 @@ import android.os.Looper;
 import android.os.ParcelUuid;
 import android.util.Base64;
 
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
-
 import androidx.core.content.ContextCompat;
 
 import com.getcapacitor.JSObject;
@@ -40,10 +37,17 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 
+import java.security.KeyFactory;
+import java.security.PrivateKey;
+import java.security.Signature;
+import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
 
 /**
@@ -51,18 +55,22 @@ import java.util.concurrent.CopyOnWriteArraySet;
  * for the same plugin on iOS and src/lib/stageBle.ts for the bytes): the band
  * admin's phone advertises the gig's service and serves one characteristic,
  * read = full state (by offset), notify = short value (subscribers then read).
- * No encryption, so members connect without pairing.
+ * No encryption, so members connect without pairing. That state (version 2,
+ * band-key HMAC) is kept for apps from before signed states.
  *
- * Two more characteristics for members with no internet (src/lib/stageBleSync.ts,
- * frame version 3), only when `key` is given:
+ * More characteristics for members on this app (src/lib/stageBleSync.ts):
+ * - signed state (read + notify, `signedUuid`): the same state signed with the
+ *   gig's private key, which only admins get (version 4, audit #1);
  * - clock (read only, `clockUuid`): every read is answered at once with this
- *   phone's clock at that moment, 16 bytes signed with the key;
+ *   phone's clock at that moment, signed here with `signKey` (ECDSA P-256,
+ *   PKCS#8 base64); both only when `signKey` is given;
  * - live (read + notify, `liveUuid`): the click and the playhead (B3).
  * Reads, not writes: a member's write in flight can crash its app when
  * Bluetooth turns off; reads fail cleanly. Apps from before them never look at
- * them. JS also gets `updateLive({ value, notify })`, `now()` (this plugin's
- * clock, ms) and `setClock({ offset })` (the app's clock minus this plugin's,
- * so clock reads carry the app's clock).
+ * them. JS also gets `updateSigned` / `updateLive({ value, notify })`, `now()`
+ * (this plugin's clock, ms) and `setClock({ offset })` (the app's clock minus
+ * this plugin's, so clock reads carry the app's clock). `stateChange` counts
+ * the phones following on either state, once each.
  */
 @CapacitorPlugin(
     name = "StageBle",
@@ -85,13 +93,18 @@ public class StageBlePlugin extends Plugin {
     private volatile byte[] notifyValue = new byte[0];
     private final Set<BluetoothDevice> subscribers = new CopyOnWriteArraySet<>();
 
-    // Clock and live characteristics (frame version 3).
+    // Clock and live characteristics (frame version 3), signed state (version 4).
     private BluetoothGattCharacteristic liveCharacteristic;
+    private BluetoothGattCharacteristic signedCharacteristic;
     private UUID clockUuid;
     private UUID liveUuid;
-    private volatile byte[] key = new byte[0];
-    /** The last clock answer, for a read continued at an offset (never past 22 bytes in practice). */
-    private volatile byte[] lastClock = new byte[0];
+    private UUID signedUuid;
+    private volatile PrivateKey signKey;
+    /** Each phone's last clock answer, for a read continued at an offset (a small MTU). */
+    private final Map<String, byte[]> lastClock = new ConcurrentHashMap<>();
+    private volatile byte[] signedValue = new byte[0];
+    private volatile byte[] signedNotifyValue = new byte[0];
+    private final Set<BluetoothDevice> signedSubscribers = new CopyOnWriteArraySet<>();
     private volatile byte[] liveValue = new byte[0];
     private volatile byte[] liveNotifyValue = new byte[0];
     private final Set<BluetoothDevice> liveSubscribers = new CopyOnWriteArraySet<>();
@@ -170,20 +183,21 @@ public class StageBlePlugin extends Plugin {
             characteristicUuid = UUID.fromString(call.getString("characteristicUuid"));
             value = Base64.decode(call.getString("value"), Base64.NO_WRAP);
             notifyValue = Base64.decode(call.getString("notify"), Base64.NO_WRAP);
-            String k = call.getString("key");
-            byte[] newKey = k != null ? Base64.decode(k, Base64.NO_WRAP) : new byte[0];
+            PrivateKey newKey = privateKey(call.getString("signKey"));
             String clock = call.getString("clockUuid");
+            String signed = call.getString("signedUuid");
             String live = call.getString("liveUuid");
-            UUID newClock = clock != null && newKey.length > 0 ? UUID.fromString(clock) : null;
-            UUID newLive = live != null && newKey.length > 0 ? UUID.fromString(live) : null;
-            boolean extraChanged = newKey.length > 0 && (!Objects.equals(newClock, clockUuid) || !Objects.equals(newLive, liveUuid));
+            UUID newClock = clock != null && newKey != null ? UUID.fromString(clock) : null;
+            UUID newSigned = signed != null && newKey != null ? UUID.fromString(signed) : null;
+            UUID newLive = live != null ? UUID.fromString(live) : null;
+            boolean extraChanged = !Objects.equals(newClock, clockUuid) || !Objects.equals(newLive, liveUuid)
+                || !Objects.equals(newSigned, signedUuid);
             if (!newService.equals(serviceUuid) || extraChanged) teardown();
             serviceUuid = newService;
-            if (newKey.length > 0) {
-                clockUuid = newClock;
-                liveUuid = newLive;
-                key = newKey;
-            }
+            clockUuid = newClock;
+            signedUuid = newSigned;
+            liveUuid = newLive;
+            signKey = newKey;
         } catch (IllegalArgumentException e) {
             call.reject("Bad UUID or base64");
             return;
@@ -222,11 +236,21 @@ public class StageBlePlugin extends Plugin {
                     CCCD, BluetoothGattDescriptor.PERMISSION_READ | BluetoothGattDescriptor.PERMISSION_WRITE));
                 BluetoothGattService svc = new BluetoothGattService(serviceUuid, BluetoothGattService.SERVICE_TYPE_PRIMARY);
                 svc.addCharacteristic(characteristic);
-                if (clockUuid != null && key.length > 0) {
+                if (clockUuid != null && signKey != null) {
                     svc.addCharacteristic(new BluetoothGattCharacteristic(
                         clockUuid, BluetoothGattCharacteristic.PROPERTY_READ, BluetoothGattCharacteristic.PERMISSION_READ));
                 }
-                if (liveUuid != null && key.length > 0) {
+                if (signedUuid != null && signKey != null) {
+                    signedCharacteristic = new BluetoothGattCharacteristic(
+                        signedUuid,
+                        BluetoothGattCharacteristic.PROPERTY_READ | BluetoothGattCharacteristic.PROPERTY_NOTIFY,
+                        BluetoothGattCharacteristic.PERMISSION_READ
+                    );
+                    signedCharacteristic.addDescriptor(new BluetoothGattDescriptor(
+                        CCCD, BluetoothGattDescriptor.PERMISSION_READ | BluetoothGattDescriptor.PERMISSION_WRITE));
+                    svc.addCharacteristic(signedCharacteristic);
+                }
+                if (liveUuid != null) {
                     liveCharacteristic = new BluetoothGattCharacteristic(
                         liveUuid,
                         BluetoothGattCharacteristic.PROPERTY_READ | BluetoothGattCharacteristic.PROPERTY_NOTIFY,
@@ -265,10 +289,30 @@ public class StageBlePlugin extends Plugin {
         serviceUuid = null;
         clockUuid = null;
         liveUuid = null;
-        key = new byte[0];
-        lastClock = new byte[0];
+        signedUuid = null;
+        signKey = null;
+        lastClock.clear();
         liveValue = new byte[0];
         liveNotifyValue = new byte[0];
+        signedValue = new byte[0];
+        signedNotifyValue = new byte[0];
+        call.resolve();
+    }
+
+    /** Signed state: the value reads get, and a notice for its subscribers (empty: none). */
+    @PluginMethod
+    public void updateSigned(PluginCall call) {
+        String v = call.getString("value");
+        String n = call.getString("notify");
+        if (v == null || n == null) {
+            call.reject("value and notify are required");
+            return;
+        }
+        signedValue = Base64.decode(v, Base64.NO_WRAP);
+        signedNotifyValue = Base64.decode(n, Base64.NO_WRAP);
+        if (signedNotifyValue.length > 0) {
+            for (BluetoothDevice device : signedSubscribers) notifyTo(signedSubscribers, signedCharacteristic, device, signedNotifyValue);
+        }
         call.resolve();
     }
 
@@ -312,31 +356,69 @@ public class StageBlePlugin extends Plugin {
         return System.nanoTime() / 1_000_000.0;
     }
 
+    /** The gig's private key (PKCS#8 base64, as WebCrypto exports it), or null. */
+    static PrivateKey privateKey(String pkcs8) {
+        if (pkcs8 == null || pkcs8.isEmpty()) return null;
+        try {
+            return KeyFactory.getInstance("EC").generatePrivate(new PKCS8EncodedKeySpec(Base64.decode(pkcs8, Base64.NO_WRAP)));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /**
-     * Clock answer stamped `t1` (the app's clock, ms): see stageBleSync.ts.
-     * Test vector: t1 1795000000123.4, the test key → 030210534f5fb0d28cb51b043ea1b037.
+     * Clock answer stamped `t1` (the app's clock, ms), 72 bytes: see stageBleSync.ts.
+     * ECDSA signatures differ every time: stageBleSync.test.ts checks a frame made here.
      */
-    static byte[] clockFrame(double t1, byte[] key) {
+    static byte[] clockFrame(double t1, PrivateKey key) {
         long ticks = Math.round(t1 * 10);
-        byte[] out = new byte[16];
+        byte[] out = new byte[72];
         out[0] = 3;
         out[1] = 2;
         for (int i = 0; i < 6; i++) out[2 + i] = (byte) ((ticks >> (8 * (5 - i))) & 0xff);
         try {
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(key, "HmacSHA256"));
-            mac.update(out, 0, 8);
-            System.arraycopy(mac.doFinal(), 0, out, 8, 8);
+            Signature sig = Signature.getInstance("SHA256withECDSA");
+            sig.initSign(key);
+            sig.update(out, 0, 8);
+            byte[] raw = rawSignature(sig.sign());
+            if (raw == null) return null;
+            System.arraycopy(raw, 0, out, 8, 64);
         } catch (Exception e) {
             return null;
         }
         return out;
     }
 
-    @SuppressLint("MissingPermission")
+    /** Java's DER signature (SEQUENCE of two INTEGERs) as r‖s, 64 bytes (WebCrypto's form). */
+    static byte[] rawSignature(byte[] der) {
+        if (der == null || der.length < 8 || der[0] != 0x30) return null;
+        int i = (der[1] & 0x80) != 0 ? 2 + (der[1] & 0x7f) : 2;
+        byte[] out = new byte[64];
+        for (int k = 0; k < 2; k++) {
+            if (i + 2 > der.length || der[i] != 0x02) return null;
+            int len = der[i + 1] & 0xff;
+            i += 2;
+            if (i + len > der.length) return null;
+            int start = i;
+            int n = len;
+            while (n > 32 && der[start] == 0) {
+                start++;
+                n--;
+            }
+            if (n > 32) return null;
+            System.arraycopy(der, start, out, k * 32 + 32 - n, n);
+            i += len;
+        }
+        return out;
+    }
+
     private void sendLive(BluetoothDevice device, byte[] data) {
+        notifyTo(liveSubscribers, liveCharacteristic, device, data);
+    }
+
+    @SuppressLint("MissingPermission")
+    private void notifyTo(Set<BluetoothDevice> set, BluetoothGattCharacteristic c, BluetoothDevice device, byte[] data) {
         BluetoothGattServer s = server;
-        BluetoothGattCharacteristic c = liveCharacteristic;
         if (s == null || c == null || data == null) return;
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -346,8 +428,16 @@ public class StageBlePlugin extends Plugin {
                 s.notifyCharacteristicChanged(device, c, false);
             }
         } catch (Exception ignored) {
-            liveSubscribers.remove(device);
+            set.remove(device);
         }
+    }
+
+    /** Phones following: on the older state, the signed one, or both (counted once). */
+    private int followerCount() {
+        Set<String> all = new HashSet<>();
+        for (BluetoothDevice d : subscribers) all.add(d.getAddress());
+        for (BluetoothDevice d : signedSubscribers) all.add(d.getAddress());
+        return all.size();
     }
 
     @Override
@@ -372,8 +462,11 @@ public class StageBlePlugin extends Plugin {
         server = null;
         characteristic = null;
         liveCharacteristic = null;
+        signedCharacteristic = null;
         subscribers.clear();
         liveSubscribers.clear();
+        signedSubscribers.clear();
+        lastClock.clear();
     }
 
     @SuppressLint("MissingPermission")
@@ -400,7 +493,7 @@ public class StageBlePlugin extends Plugin {
         main.post(() -> {
             JSObject data = new JSObject();
             data.put("state", state);
-            data.put("subscribers", subscribers.size());
+            data.put("subscribers", followerCount());
             notifyListeners("stateChange", data);
         });
     }
@@ -441,6 +534,8 @@ public class StageBlePlugin extends Plugin {
             if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 subscribers.remove(device);
                 liveSubscribers.remove(device);
+                signedSubscribers.remove(device);
+                lastClock.remove(device.getAddress());
                 setState(state);
             }
         }
@@ -456,12 +551,16 @@ public class StageBlePlugin extends Plugin {
             byte[] v;
             if (characteristicUuid != null && characteristicUuid.equals(id)) {
                 v = value;
-            } else if (clockUuid != null && clockUuid.equals(id) && key.length > 0) {
+            } else if (clockUuid != null && clockUuid.equals(id) && signKey != null) {
+                String who = device.getAddress();
                 if (offset == 0) {
-                    byte[] frame = clockFrame(t1, key);
-                    lastClock = frame != null ? frame : new byte[0];
+                    byte[] frame = clockFrame(t1, signKey);
+                    lastClock.put(who, frame != null ? frame : new byte[0]);
                 }
-                v = lastClock;
+                byte[] last = lastClock.get(who);
+                v = last != null ? last : new byte[0];
+            } else if (signedUuid != null && signedUuid.equals(id)) {
+                v = signedValue;
             } else if (liveUuid != null && liveUuid.equals(id)) {
                 v = liveValue;
             } else {
@@ -480,9 +579,7 @@ public class StageBlePlugin extends Plugin {
         public void onDescriptorReadRequest(BluetoothDevice device, int requestId, int offset, BluetoothGattDescriptor descriptor) {
             BluetoothGattServer s = server;
             if (s == null) return;
-            boolean isLive = liveUuid != null && descriptor.getCharacteristic() != null
-                && liveUuid.equals(descriptor.getCharacteristic().getUuid());
-            byte[] v = (isLive ? liveSubscribers : subscribers).contains(device)
+            byte[] v = subscribersOf(descriptor).contains(device)
                 ? BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
                 : BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE;
             s.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, v);
@@ -492,20 +589,29 @@ public class StageBlePlugin extends Plugin {
         @Override
         public void onDescriptorWriteRequest(BluetoothDevice device, int requestId, BluetoothGattDescriptor descriptor,
                                              boolean preparedWrite, boolean responseNeeded, int offset, byte[] v) {
-            boolean isLive = liveUuid != null && descriptor.getCharacteristic() != null
-                && liveUuid.equals(descriptor.getCharacteristic().getUuid());
+            Set<BluetoothDevice> set = subscribersOf(descriptor);
             if (CCCD.equals(descriptor.getUuid())) {
-                Set<BluetoothDevice> set = isLive ? liveSubscribers : subscribers;
                 if (v != null && Arrays.equals(v, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)) {
                     set.add(device);
                 } else {
                     set.remove(device);
                 }
-                if (!isLive) setState(state);
+                if (set != liveSubscribers) setState(state);
             }
             BluetoothGattServer s = server;
             if (responseNeeded && s != null) s.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null);
-            if (!isLive && subscribers.contains(device)) sendNotify();
+            if (set == subscribers && subscribers.contains(device)) sendNotify();
+            if (set == signedSubscribers && signedSubscribers.contains(device) && signedNotifyValue.length > 0) {
+                notifyTo(signedSubscribers, signedCharacteristic, device, signedNotifyValue);
+            }
         }
     };
+
+    /** Who subscribed to this descriptor's characteristic. */
+    private Set<BluetoothDevice> subscribersOf(BluetoothGattDescriptor descriptor) {
+        UUID c = descriptor.getCharacteristic() != null ? descriptor.getCharacteristic().getUuid() : null;
+        if (c != null && c.equals(liveUuid)) return liveSubscribers;
+        if (c != null && c.equals(signedUuid)) return signedSubscribers;
+        return subscribers;
+    }
 }

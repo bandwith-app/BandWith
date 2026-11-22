@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { toBase64 } from '../stageBle';
 import { LIVE_MAX_BYTES, STAGE_BLE_SYNC_VERSION, decodeClock, decodeLive, encodeClock, encodeLive } from '../stageBleSync';
 import { CLICK_EVENT, clickWire, parseClickState, type ClickState } from '../stageClick';
+import { generateSigner } from '../stageSign';
 import { PLAYHEAD_EVENT, parsePlayheadState, type PlayheadState } from '../playhead';
 
 // jsdom has no WebCrypto; the app runs where it does (WKWebView, Android WebView).
@@ -79,10 +80,13 @@ describe('live frame (click, playhead, count-in) over Bluetooth', () => {
     expect(await decodeLive(tampered, KEY)).toBeNull();
     // Half of a long read (the value changed between the two parts).
     expect(await decodeLive(bytes.slice(0, 20), KEY)).toBeNull();
-    const clockFrame = await encodeClock(1000, KEY);
+    // The clock is signed with the admins' pair (#288), the live frame checked with the band key.
+    const pair = await generateSigner();
+    const clockFrame = await encodeClock(1000, pair.private);
+    expect(await decodeClock(clockFrame, pair.public)).toBe(1000);
     expect(await decodeLive(clockFrame, KEY)).toBeNull();
     // …and a live frame is never mistaken for a clock reading.
-    expect(await decodeClock(bytes, KEY)).toBeNull();
+    expect(await decodeClock(bytes, pair.public)).toBeNull();
   });
 
   it('drops events this app does not know (a newer leader), keeps the rest', async () => {
