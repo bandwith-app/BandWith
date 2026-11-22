@@ -15,9 +15,13 @@ import {
   beginPushSave,
   confirmPushSave,
   flushPushRevocations,
+  forgetAccountPushState,
   forgetRevocation,
   newRevokeSecret,
   nextRevocationRetry,
+  queueRevocation,
+  readPendingRevocations,
+  reclaimRevocation,
   rememberPushToken,
   rememberedPushToken,
   rememberedPushTokenAny,
@@ -121,7 +125,15 @@ export const forgetPushAccount = async (): Promise<void> => {
     pushUserId = null;
     savedToken = null;
     pushSession += 1;
-    if (isNative()) await clearNativePushUser();
+    if (!isNative()) return;
+    await clearNativePushUser();
+    // No registration remembered, but revocations still queued (the app was
+    // killed in the middle of a sign-out): the device stops anyway, and the
+    // queue is sent (Codex review #287 round 8, B1).
+    if (readPendingRevocations(revokeStore()).length && isRemotePushConfigured()) {
+      await untilDeadline(stopDevicePush(), Date.now() + DEVICE_PUSH_STOP_WAIT_MS);
+      await flushQueuedPushRevocations().catch(() => 0);
+    }
     return;
   }
   // The session is gone: no signed-in call, the queue and its flush do it.
@@ -153,6 +165,14 @@ export const DEVICE_PUSH_STOP_WAIT_MS = 2500;
 
 /** The device stop on its way, if any: one at a time (round 7, B3). */
 let deviceStop: Promise<void> | null = null;
+/**
+ * FCM's token deletion until it really finished (Codex review #287 round 8,
+ * B2): sign-out stops waiting after 2.5 s, but a registration before the end
+ * would get the old token, and its pushes die once the deletion lands.
+ */
+let pendingDelete: Promise<void> | null = null;
+/** How long a new registration waits for that deletion before it is put off. */
+export const PENDING_DELETE_WAIT_MS = 15_000;
 
 /**
  * Stops delivery on the device: on the new Android builds, waits (at most
@@ -180,11 +200,18 @@ const stopDevicePushOnce = async (gen: number): Promise<void> => {
   cachedToken = null;
   if (checksAccountNatively()) {
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const deletion = pushIdentity.deleteToken().then(
+      () => 'done' as const,
+      () => 'failed' as const,
+    );
+    const tracked = deletion.then(() => {
+      if (pendingDelete === tracked) pendingDelete = null;
+      // A token reported while it was deleting is the old one: fetch a fresh one.
+      cachedToken = null;
+    });
+    pendingDelete = tracked;
     const outcome = await Promise.race([
-      pushIdentity.deleteToken().then(
-        () => 'done' as const,
-        () => 'failed' as const,
-      ),
+      deletion,
       new Promise<'late'>((resolve) => {
         timer = setTimeout(() => resolve('late'), DEVICE_PUSH_STOP_WAIT_MS);
       }),
@@ -195,6 +222,26 @@ const stopDevicePushOnce = async (gen: number): Promise<void> => {
   }
   if (gen !== registrationGen) return; // a newer registration since: leave it
   await PushNotifications.unregister();
+};
+
+/** A registration put off while FCM was deleting: on the next resume, 'online', or once the deletion ends. */
+let laterUser: { userId: string; session: number } | null = null;
+let laterWatch = false;
+const subscribeLater = (userId: string, session: number) => {
+  laterUser = { userId, session };
+  const retry = () => {
+    const next = laterUser;
+    if (!next || pendingDelete || next.session !== pushSession || pushUserId !== next.userId) return;
+    laterUser = null;
+    void subscribeToPush(next.userId).catch(() => undefined);
+  };
+  void pendingDelete?.then(() => setTimeout(retry, 0));
+  if (laterWatch || typeof window === 'undefined') return;
+  laterWatch = true;
+  window.addEventListener('online', retry);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') retry();
+  });
 };
 
 /**
@@ -295,6 +342,28 @@ export const subscribeToPush = async (userId: string): Promise<{ success: boolea
   // A device stop from the sign-out before still running finishes first,
   // so it can't take the new registration's token with it (round 7, B3).
   if (deviceStop) await untilDeadline(deviceStop, Date.now() + DEVICE_PUSH_STOP_WAIT_MS);
+  // Never register while FCM is still deleting the old token (round 8, B2):
+  // wait 15 s at most, else try again on the next resume or 'online'.
+  if (pendingDelete) {
+    const deleting = pendingDelete;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const done = await Promise.race([
+      deleting.then(() => true),
+      new Promise<false>((resolve) => {
+        timer = setTimeout(() => resolve(false), PENDING_DELETE_WAIT_MS);
+      }),
+    ]);
+    clearTimeout(timer);
+    if (!done) {
+      subscribeLater(userId, session);
+      return { success: false, error: new Error('Device push still stopping') };
+    }
+  }
+  // The same account back on a token it had queued a revocation for (iOS
+  // keeps the token): that revocation must not switch it off (round 7, C3).
+  for (const t of new Set([cachedToken, rememberedPushToken(revokeStore(), userId)?.token])) {
+    if (t) reclaimRevocation(revokeStore(), t, userId);
+  }
   await markNativePushUser(userId);
 
   try {
@@ -439,6 +508,8 @@ const saveTokenToDatabase = (userId: string, token: string, session = pushSessio
     // The secret is kept before it goes out: if the answer is lost, the
     // server may hold it (Codex review #287 round 4).
     const secret = newRevokeSecret();
+    // Its own queued revocation for this token goes back to the record (C3).
+    reclaimRevocation(revokeStore(), token, userId);
     beginPushSave(revokeStore(), token, userId, secret);
     // Marked only when the native side holds this account: otherwise a
     // data-only push would find no account and show nothing.
@@ -512,7 +583,10 @@ const saveTokenToDatabase = (userId: string, token: string, session = pushSessio
  * (the session already ended elsewhere), no signed-in call: the revocation
  * is queued for the signed-out flush.
  */
-export const unregisterPushToken = async (userId?: string | null, opts: { sessionGone?: boolean } = {}): Promise<void> => {
+export const unregisterPushToken = async (
+  userId?: string | null,
+  opts: { sessionGone?: boolean; accountGone?: boolean } = {},
+): Promise<void> => {
   // Sign-out waits for push work SIGN_OUT_PUSH_WAIT_MS at most, native calls
   // and the permission check included: past that they go on in the
   // background (Codex review #287 rounds 6-7).
@@ -523,33 +597,57 @@ export const unregisterPushToken = async (userId?: string | null, opts: { sessio
   pushSession += 1;
   // A registration after this one makes everything late here a no-op (B3).
   const gen = registrationGen;
-  if (!isNative()) return;
+  const local = revokeStore();
+  // A deleted account (round 8, M2): its token row went with it, so no
+  // server call; nothing of it stays on the device.
+  const dropAccount = () => {
+    if (opts.accountGone && owner) forgetAccountPushState(local, owner);
+  };
+  // The saved registration is erased last, once its revocation is queued
+  // and the device stopped (Codex review #287 round 8, B1): an app killed
+  // on the way still has it at the next start.
+  const forgetSaved = () => {
+    const cur = rememberedPushTokenAny(local);
+    if (cur && (!owner || cur.userId === owner)) rememberPushToken(local, null);
+  };
+  if (!isNative()) {
+    dropAccount();
+    return;
+  }
   // First, before any network: from now on this device shows no push for
   // that account (Codex review #287 round 5).
   await untilDeadline(clearNativePushUser(), deadline);
   // After an offline cold start the native token may not be back yet: the
   // one last saved for this account is (Codex review #287).
-  const remembered = rememberedPushToken(revokeStore(), owner);
+  const remembered = rememberedPushToken(local, owner);
   const known = cachedToken ?? remembered?.token ?? null;
-  rememberPushToken(revokeStore(), null);
   // Android built without Firebase never registered, and the plugin's
   // unregister() would crash on an uninitialised Firebase (Codex review
   // #287 round 3): nothing to stop on this device.
-  if (!isRemotePushConfigured()) return;
+  if (!isRemotePushConfigured()) {
+    dropAccount();
+    forgetSaved();
+    return;
+  }
   // No token known (the first start after an upgrade, offline, before the
   // native callback): the plugin still has it (Codex review #287 round 3).
   const token = known ?? (await tokenFromPlugin(deadline));
-  if (!token) {
-    // Not even the plugin: delivery stops on the device itself.
+  if (!token || opts.accountGone) {
+    // Not even the plugin, or the account is gone: delivery stops on the
+    // device itself, and that is all.
     try {
       await untilDeadline(stopDevicePush(), deadline);
     } catch {
       /* best effort: never block sign-out */
     }
+    dropAccount();
+    forgetSaved();
     return;
   }
   const saved = remembered?.token === token ? remembered : null;
-  const store = owner ? revokeStore() : null;
+  const store = owner ? local : null;
+  // On disk before any wait (B1): the token, its account, stamp and secrets.
+  if (owner) queueRevocation(local, token, owner, saved);
   // Delivery stops on the phone itself in every case (audit 04 #6; Codex
   // review #287 round 6: also when the server says the token was not this
   // account's); the next sign-in registers again.
@@ -599,6 +697,7 @@ export const unregisterPushToken = async (userId?: string | null, opts: { sessio
     // Only the device's own deletion is still running: the server took it.
     outcome = serverTookIt ? 'server' : await revokeOnSignOut(token, owner, saved, { store, revokeOnServer: async () => false, unregisterDevice });
   }
+  forgetSaved();
   if (outcome === 'queued') console.warn('[Push] Server not reached: device unregistered, revocation queued');
 };
 
@@ -654,7 +753,7 @@ let flushing: Promise<number> | null = null;
  * Works signed out: migration 184 takes the token, its account and the
  * registration's secret.
  */
-export const flushQueuedPushRevocations = async (): Promise<number> => {
+export const flushQueuedPushRevocations = async (opts: { online?: boolean } = {}): Promise<number> => {
   if (!isNative()) return 0;
   if (flushing) return flushing;
   const session = pushSession;
@@ -664,6 +763,7 @@ export const flushQueuedPushRevocations = async (): Promise<number> => {
         supabase.rpc('bw_revoke_push_token', { p_token: p.token, p_user_id: p.userId, p_registered_at: p.registeredAt, p_secret: secret }),
       // A sign-out waiting behind the flush: stop between entries.
       alive: () => session === pushSession,
+      online: opts.online,
     }),
   );
   flushing = run;

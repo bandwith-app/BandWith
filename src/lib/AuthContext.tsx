@@ -227,9 +227,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const flush = () => {
       void flushQueuedPushRevocations().catch(() => {});
     };
+    // Back online: what waited after a network error goes at once (#287 r8).
+    const flushOnline = () => {
+      void flushQueuedPushRevocations({ online: true }).catch(() => {});
+    };
     flush();
-    window.addEventListener('online', flush);
-    return () => window.removeEventListener('online', flush);
+    window.addEventListener('online', flushOnline);
+    return () => window.removeEventListener('online', flushOnline);
   }, []);
 
   useEffect(() => {
@@ -433,8 +437,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // wiped with the offline cache below.
     const pendingQueue = opts?.discardPendingWrites ? null : await takeUnsyncedQueue(user?.id);
     // Before the session ends: this device must stop receiving this account's
-    // pushes (offline: on the device now, on the server once online).
-    await unregisterPushToken(user?.id);
+    // pushes (offline: on the device now, on the server once online). A
+    // deleted account's token row is gone: the device only (#287 r8, M2).
+    await unregisterPushToken(user?.id, { accountGone: !!opts?.discardPendingWrites });
     // The next person on this device must not see this account's badge or
     // message previews in Notification Center (0 also clears delivered ones).
     syncAppBadge(0);

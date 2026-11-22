@@ -58,6 +58,8 @@ export interface PendingRevocation {
   at: string;
   /** Refusals so far (round 7): the backoff grows with them. */
   tries: number;
+  /** Network errors in a row (round 8, M1): they back off too, but are no refusal. */
+  fails: number;
   /** Not tried again before this (device clock, ms); null: at the next flush. */
   retryAt: number | null;
 }
@@ -104,8 +106,9 @@ export function readPendingRevocations(store: Store | null): PendingRevocation[]
           .map((p) => {
             const confirmed = secretOf(p.confirmed);
             const tries = Number.isInteger(p.tries) && p.tries > 0 ? p.tries : 0;
+            const fails = Number.isInteger(p.fails) && p.fails > 0 ? p.fails : 0;
             const retryAt = typeof p.retryAt === 'number' && Number.isFinite(p.retryAt) ? p.retryAt : null;
-            return { token: p.token, userId: p.userId, registeredAt: p.registeredAt, confirmed, attempts: attemptList(p.attempts, confirmed), at: p.at, tries, retryAt };
+            return { token: p.token, userId: p.userId, registeredAt: p.registeredAt, confirmed, attempts: attemptList(p.attempts, confirmed), at: p.at, tries, fails, retryAt };
           })
       : [];
   } catch {
@@ -169,15 +172,53 @@ export function rememberedPushTokenAny(store: Store | null): SavedPushToken | nu
 }
 
 /**
- * Before a save goes out (Claude review #287 round 4): the old stamp is
- * cleared at once, and the new secret joins the unanswered ones (the save may
- * not arrive, or its answer may be lost). The confirmed secret stays pinned:
- * offline saves never push it out (Codex review #287 round 5).
+ * Before a save goes out: the new secret joins the unanswered ones (the save
+ * may not arrive, or its answer may be lost). The confirmed secret stays
+ * pinned: offline saves never push it out (Codex review #287 round 5). So
+ * does the last confirmed stamp, until the new save is confirmed (Codex
+ * review #287 round 8, B3): for a registration from before 184 it is the
+ * only credential signed out, and the revocation tries both (the server
+ * takes whichever it knows; a save that did land changed the stamp, so the
+ * old one then matches nothing).
  */
 export function beginPushSave(store: Store | null, token: string, userId: string, secret: string) {
   const prev = rememberedPushToken(store, userId);
   const same = prev?.token === token ? prev : null;
-  rememberPushToken(store, { token, userId, registeredAt: null, confirmed: same?.confirmed ?? null, attempts: [secret, ...(same?.attempts ?? [])] });
+  rememberPushToken(store, { token, userId, registeredAt: same?.registeredAt ?? null, confirmed: same?.confirmed ?? null, attempts: [secret, ...(same?.attempts ?? [])] });
+}
+
+/**
+ * The same account signs in again with the same token (iOS keeps it): its
+ * own waiting revocation must not switch off the registration it is now
+ * using (Claude review #287 round 7, C3). It leaves the queue, and what it
+ * knew (stamp, secrets) goes back to the remembered registration, so the
+ * next sign-out still holds every credential. Other accounts' entries stay.
+ */
+export function reclaimRevocation(store: Store | null, token: string, userId: string): boolean {
+  const list = readPendingRevocations(store);
+  const mine = list.find((p) => p.token === token && p.userId === userId);
+  if (!mine) return false;
+  writePending(store, list.filter((p) => p !== mine));
+  const prev = rememberedPushToken(store, userId);
+  const same = prev?.token === token ? prev : null;
+  const confirmed = same?.confirmed ?? mine.confirmed;
+  rememberPushToken(store, {
+    token,
+    userId,
+    registeredAt: same?.registeredAt ?? mine.registeredAt,
+    confirmed,
+    // The queued confirmed secret stays a candidate when the record has another one.
+    attempts: attemptList([...(same?.attempts ?? []), ...mine.attempts, ...(mine.confirmed && mine.confirmed !== confirmed ? [mine.confirmed] : [])], confirmed),
+  });
+  return true;
+}
+
+/** The account was deleted (Codex review #287 round 8, M2): nothing of it is kept on the device. */
+export function forgetAccountPushState(store: Store | null, userId: string) {
+  const list = readPendingRevocations(store);
+  const kept = list.filter((p) => p.userId !== userId);
+  if (kept.length !== list.length) writePending(store, kept);
+  if (rememberedPushTokenAny(store)?.userId === userId) rememberPushToken(store, null);
 }
 
 /**
@@ -224,6 +265,31 @@ export interface SignOutRevokeDeps {
  * revocation waits for the network, with the stamp and secrets known;
  * 'device' when the account isn't known: on the device only.
  */
+/**
+ * Writes this account's revocation for the token to the queue (merged with
+ * an earlier one of the same account): done first, before any wait, so an
+ * app killed mid sign-out still has it (Codex review #287 round 8, B1).
+ */
+export function queueRevocation(
+  store: Store | null,
+  token: string,
+  userId: string,
+  saved: Pick<SavedPushToken, 'registeredAt' | 'confirmed' | 'attempts'> | null,
+  now: Date = new Date(),
+) {
+  if (!userId) return;
+  const at = now.toISOString();
+  const list = readPendingRevocations(store);
+  // Another account's revocation for this token stays (Codex review #287
+  // round 4); this account's earlier one is merged into the new one.
+  const same = list.find((p) => p.token === token && p.userId === userId);
+  const confirmed = saved?.confirmed ?? same?.confirmed ?? null;
+  const attempts = attemptList([...(saved?.attempts ?? []), ...(same?.attempts ?? [])], confirmed);
+  // A new sign-out is a new chance: tried at the next flush.
+  const entry: PendingRevocation = { token, userId, registeredAt: saved?.registeredAt ?? same?.registeredAt ?? null, confirmed, attempts, at, tries: 0, fails: 0, retryAt: null };
+  writePending(store, [...list.filter((p) => p !== same), entry]);
+}
+
 export async function revokeOnSignOut(
   token: string,
   userId: string,
@@ -248,18 +314,7 @@ export async function revokeOnSignOut(
     return 'server';
   }
   const queue = !!userId;
-  if (queue) {
-    const at = (deps.now?.() ?? new Date()).toISOString();
-    const list = readPendingRevocations(deps.store);
-    // Another account's revocation for this token stays (Codex review #287
-    // round 4); this account's earlier one is merged into the new one.
-    const same = list.find((p) => p.token === token && p.userId === userId);
-    const confirmed = saved?.confirmed ?? same?.confirmed ?? null;
-    const attempts = attemptList([...(saved?.attempts ?? []), ...(same?.attempts ?? [])], confirmed);
-    // A new sign-out is a new chance: tried at the next flush.
-    const entry: PendingRevocation = { token, userId, registeredAt: saved?.registeredAt ?? same?.registeredAt ?? null, confirmed, attempts, at, tries: 0, retryAt: null };
-    writePending(deps.store, [...list.filter((p) => p !== same), entry]);
-  }
+  if (queue) queueRevocation(deps.store, token, userId, saved, deps.now?.() ?? new Date());
   try {
     await deps.unregisterDevice();
   } catch {
@@ -277,6 +332,8 @@ export interface FlushDeps {
   alive?: () => boolean;
   /** Device clock in ms, for the backoff. */
   now?: () => number;
+  /** The network just came back: what waits only after a network error is tried now. */
+  online?: boolean;
 }
 
 /** The wait after the n-th refusal (n >= 1). */
@@ -294,14 +351,16 @@ export function nextRevocationRetry(store: Store | null): number | null {
  * by token). Done only when the server switched it off. Refused: kept, and
  * tried again after a backoff that doubles with every refusal (main's
  * decision, round 6: never dropped); only a save of the token the server
- * confirmed clears it (forgetRevocation). Offline or an error: kept as it
- * is, for the next flush.
+ * confirmed clears it (forgetRevocation). Offline or an error: kept, with
+ * the same backoff (not counted as a refusal); the 'online' event tries it
+ * at once.
  */
 export async function flushPushRevocations(store: Store | null, deps: FlushDeps): Promise<number> {
   const list = readPendingRevocations(store);
   if (!list.length) return 0;
   const done = new Set<string>();
   const refused = new Set<string>();
+  const errored = new Set<string>();
   const now = deps.now?.() ?? Date.now();
   const keyOf = (p: PendingRevocation) => `${p.token}|${p.userId}|${p.at}`;
   let sent = 0;
@@ -314,7 +373,7 @@ export async function flushPushRevocations(store: Store | null, deps: FlushDeps)
   };
   for (const p of list) {
     if (deps.alive && !deps.alive()) break;
-    if (p.retryAt !== null && p.retryAt > now) continue;
+    if (p.retryAt !== null && p.retryAt > now && !(deps.online && p.fails > 0)) continue;
     const secrets = candidateSecrets(p);
     let failed = false;
     let revoked = false;
@@ -333,6 +392,7 @@ export async function flushPushRevocations(store: Store | null, deps: FlushDeps)
       sent++;
       done.add(keyOf(p));
     } else if (!failed) refused.add(keyOf(p));
+    else errored.add(keyOf(p));
   }
   // Something may have been queued or saved meanwhile: merge, don't overwrite.
   const current = readPendingRevocations(store);
@@ -340,7 +400,14 @@ export async function flushPushRevocations(store: Store | null, deps: FlushDeps)
     store,
     current
       .filter((p) => !done.has(keyOf(p)))
-      .map((p) => (refused.has(keyOf(p)) ? { ...p, tries: p.tries + 1, retryAt: now + revokeRetryDelay(p.tries + 1) } : p)),
+      .map((p) => {
+        if (refused.has(keyOf(p))) return { ...p, tries: p.tries + 1, fails: 0, retryAt: now + revokeRetryDelay(p.tries + 1) };
+        // Offline or an error (Codex review #287 round 8, M1): the same
+        // backoff, so an overdue entry isn't retried every second, but no
+        // refusal; the 'online' event still tries at once.
+        if (errored.has(keyOf(p))) return { ...p, fails: p.fails + 1, retryAt: now + revokeRetryDelay(p.fails + 1) };
+        return p;
+      }),
   );
   return sent;
 }

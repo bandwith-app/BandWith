@@ -123,9 +123,21 @@ DECLARE
   v_uid uuid := auth.uid();
   v_count integer;
 BEGIN
-  IF p_token IS NULL OR length(p_token) < 16 OR length(p_token) > 4096
+  -- The same token lengths the save takes (10+, Claude review #287 r7 C4).
+  IF p_token IS NULL OR length(p_token) < 10 OR length(p_token) > 4096
      OR p_user_id IS NULL THEN
     RETURN false;
+  END IF;
+
+  -- Nothing of that account's is on for this token any more (switched off
+  -- after an APNs 410 or an earlier revocation, or gone with a deleted
+  -- account): the revocation has nothing left to do, so it is done
+  -- (Claude review #287 round 7, C2; Codex M2). Never a write.
+  IF NOT EXISTS (
+    SELECT 1 FROM public.push_tokens
+     WHERE token = p_token AND user_id = p_user_id AND coalesce(is_active, true)
+  ) THEN
+    RETURN true;
   END IF;
 
   IF v_uid IS NOT NULL AND v_uid = p_user_id AND p_secret IS NULL THEN
