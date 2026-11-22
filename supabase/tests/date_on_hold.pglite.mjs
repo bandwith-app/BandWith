@@ -1053,6 +1053,53 @@ if (M175 && M181) {
     const still = await as(MEM, `SELECT id FROM chats WHERE id = '${QC}'`);
     ok(still.rows.length === 1, `${tag}, then 175 again: the confirmed gig's chat stays open to the lineup`);
   };
+  // Lineup answers that differ only in case or surrounding spaces get the
+  // same answer from bw_chat_scope_ok and get_user_chats with 175 alone and
+  // with 175 → 178 (and the right one: 'Confirmed' in, 'DECLINED' out).
+  const caseRun = async (steps) => {
+    db = new PGlite();
+    await boot(db);
+    const [CG, CC, C1, C2, C3, C4] = [2320, 2321, 2322, 2323, 2324, 2325].map(id);
+    const users = [C1, C2, C3, C4];
+    await db.exec(`
+      INSERT INTO auth.users (id) SELECT unnest(ARRAY['${ADMIN}','${C1}','${C2}','${C3}','${C4}']::uuid[]);
+      INSERT INTO profiles (id, full_name) VALUES ('${ADMIN}','Leo Admin'), ('${C1}','Ann Horn'), ('${C2}','Bo Cello'), ('${C3}','Cy Flute'), ('${C4}','Di Harp');
+      INSERT INTO bands VALUES ('${BAND}', 'Velvet Static');
+      INSERT INTO band_members (band_id, user_id, role) VALUES ('${BAND}','${ADMIN}','admin'), ('${BAND}','${C1}','member'),
+        ('${BAND}','${C2}','member'), ('${BAND}','${C3}','member'), ('${BAND}','${C4}','member');
+      INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, created_at)
+        VALUES ('${CG}','${BAND}','Ferry Gig','confirmed','gig','${ADMIN}', current_date + 6, now() - interval '1 day');
+      INSERT INTO event_members (event_id, user_id, status) VALUES ('${CG}','${C1}','Confirmed'), ('${CG}','${C2}','DECLINED'),
+        ('${CG}','${C3}','  dropped_out  '), ('${CG}','${C4}',' Confirmed ');
+      INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES ('${CC}','event','Ferry Gig','${BAND}','${CG}','${ADMIN}');`);
+    for (const st of steps) {
+      const sql = st === '175' ? readFileSync(M175, 'utf8') : readFileSync(MIG, 'utf8');
+      const err = await db.exec(sql).then(() => null, (e) => e.message);
+      if (err) console.log(`case run ${steps.join(' → ')}, ${st}:`, err);
+    }
+    // Rows written past the triggers, so the rule itself answers.
+    await db.exec(`ALTER TABLE chat_participants DISABLE TRIGGER USER;
+      INSERT INTO chat_participants (chat_id, user_id) SELECT '${CC}', u FROM unnest(ARRAY['${ADMIN}','${C1}','${C2}','${C3}','${C4}']::uuid[]) u
+        ON CONFLICT DO NOTHING;
+      ALTER TABLE chat_participants ENABLE TRIGGER USER;`);
+    const out = {};
+    const roster = ((await as(ADMIN, `SELECT public.get_user_chats('${ADMIN}') j`)).rows[0]?.j || [])
+      .find((c) => c.id === CC)?.participants?.map((x) => x.user_id) || [];
+    for (const [i, u] of users.entries()) {
+      const scope = (await tryq(`SELECT public.bw_chat_scope_ok('event', '${BAND}', '${CG}', '${u}') ok`)).rows[0]?.ok;
+      const listed = JSON.stringify((await as(u, `SELECT public.get_user_chats('${u}') j`)).rows[0]?.j || []).includes(CC);
+      out[['Confirmed', 'DECLINED', '  dropped_out  ', ' Confirmed '][i]] = `${scope}/${listed}/${roster.includes(u)}`;
+    }
+    return out;
+  };
+  {
+    const alone = await caseRun(['175']);
+    const both = await caseRun(['175', '178']);
+    const want = { 'Confirmed': 'true/true/true', 'DECLINED': 'false/false/false', '  dropped_out  ': 'false/false/false', ' Confirmed ': 'true/true/true' };
+    ok(JSON.stringify(alone) === JSON.stringify(both) && JSON.stringify(both) === JSON.stringify(want),
+      `lineup status case/spaces: 175 alone and 175 → 178 agree, and are right (scope/listed/roster; 175 ${JSON.stringify(alone)}, 175 → 178 ${JSON.stringify(both)})`);
+  }
+
   await cross('175 → 178');
   await cross('175 → 178 → 181');
   await cross('175 → 181 → 178');
@@ -1063,13 +1110,14 @@ if (M175 && M181) {
   console.log('skip: cross-PR 175 + 181 (+ 193) (set MIG_175, MIG_181, MIG_193)');
 }
 
-// ── 178's bw_chat_scope_ok has not drifted from 175's ───────────────────────
-// Main's rule: 178's own definition is 175's body plus the quote rule. Text
-// check, no database: 175's body from origin/fix/security-audit (or the repo
-// file once merged; SCOPE_175=<file> to point at another copy), 178's from
-// MIG; comments, whitespace, 175's quote placeholder (%s) and 178's quote
-// line removed, the rest must be identical. Fails as soon as #281 changes the
-// function and 178 hasn't followed.
+// ── 178's copies of 175's functions have not drifted ───────────────────────
+// Main's rule: every function 178 redefines from 175 (bw_chat_scope_ok,
+// get_user_chats) is 175's whole body plus 178's own lines. Text check, no
+// database: 175 from origin/fix/security-audit (or the repo file once merged;
+// SCOPE_175=<file> to point at another copy), 178 from MIG; comments,
+// whitespace, 175's quote placeholder (%s) and 178's own lines removed, the
+// rest must be identical. Fails as soon as #281 changes one of them and 178
+// hasn't followed, or 178 starts sharing a new one without a rule here.
 {
   const { execFileSync } = await import('node:child_process');
   let src175 = null;
@@ -1087,26 +1135,39 @@ if (M175 && M181) {
       try { src175 = migFile('175_security_audit_access.sql'); from = 'repo file'; } catch { /* not merged yet */ }
     }
   }
-  const body = (sql) => {
-    const a = sql ? sql.indexOf('CREATE OR REPLACE FUNCTION public.bw_chat_scope_ok(') : -1;
-    const b = a < 0 ? -1 : sql.indexOf('$f$;', a);
-    return b < 0 ? null : sql.slice(a, b);
+  // Every function both files define, by name (fnscan: create [or replace]
+  // function [public.]name); each needs a rule here, or the check fails.
+  const fnames = (sql) => new Set([...(sql || '').matchAll(/create\s+(?:or\s+replace\s+)?function\s+(?:public\.)?([a-z0-9_]+)/gi)].map((m) => m[1].toLowerCase()));
+  // 178's own additions on top of 175's body, and 175's quote placeholder.
+  const rules = {
+    bw_chat_scope_ok: { end: '$f$;', drop178: ['AND NOT public.bw_event_quote_hidden(e.id, w.u)'], drop175: ['%s'] },
+    get_user_chats: { end: '\n$$;', drop178: ['AND NOT (c.id = ANY (public.bw_hidden_quote_chat_ids()))'], drop175: [] },
   };
-  const norm = (t) => t.replace(/--[^\n]*/g, '')
-    .replace('AND NOT public.bw_event_quote_hidden(e.id, w.u)', '')
-    .replace('%s', '')
-    .replace(/\s+/g, ' ')
-    .replace(/\s*([(),])\s*/g, '$1')
-    .trim();
-  const b175 = body(src175);
-  if (!b175) {
-    console.log(`WARN skip: 178 vs 175 bw_chat_scope_ok (no 175 found: origin/fix/security-audit or the repo file)`);
+  const body = (sql, name, end) => {
+    const re = new RegExp(`CREATE OR REPLACE FUNCTION public\\.${name}\\(`, 'i');
+    const m = sql ? re.exec(sql) : null;
+    const b = m ? sql.indexOf(end, m.index) : -1;
+    return b < 0 ? null : sql.slice(m.index, b);
+  };
+  const norm = (t, drops) => {
+    let x = t.replace(/--[^\n]*/g, '');
+    for (const d of drops) x = x.replace(d, '');
+    return x.replace(/\s+/g, ' ').replace(/\s*([(),])\s*/g, '$1').trim();
+  };
+  const src178 = readFileSync(MIG, 'utf8');
+  if (!body(src175, 'bw_chat_scope_ok', '$f$;')) {
+    console.log(`WARN skip: 178 vs 175 function bodies (no 175 found: origin/fix/security-audit or the repo file)`);
   } else {
-    const b178 = body(readFileSync(MIG, 'utf8'));
-    const [x, y] = [norm(b175), b178 ? norm(b178) : ''];
-    let at = 0;
-    while (at < x.length && x[at] === y[at]) at++;
-    ok(!!b178 && x === y, `178's bw_chat_scope_ok = 175's (${from}) + the quote rule${x === y ? '' : `; first difference at ${at}: 175 "${x.slice(at, at + 60)}" vs 178 "${y.slice(at, at + 60)}"`}`);
+    const shared = [...fnames(src175)].filter((n) => fnames(src178).has(n));
+    ok(shared.every((n) => rules[n]), `every function 178 shares with 175 has a drift rule (${shared.join(', ')})`);
+    for (const name of Object.keys(rules)) {
+      const r = rules[name];
+      const [b75, b78] = [body(src175, name, r.end), body(src178, name, r.end)];
+      const [x, y] = [b75 ? norm(b75, r.drop175) : '', b78 ? norm(b78, r.drop178) : ''];
+      let at = 0;
+      while (at < x.length && x[at] === y[at]) at++;
+      ok(!!b75 && !!b78 && x === y, `178's ${name} = 175's (${from}) + 178's own lines${x === y ? '' : `; first difference at ${at}: 175 "${x.slice(at, at + 60)}" vs 178 "${y.slice(at, at + 60)}"`}`);
+    }
   }
 }
 
