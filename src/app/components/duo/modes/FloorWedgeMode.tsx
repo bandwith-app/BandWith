@@ -17,7 +17,7 @@ import { keyLabel, type SongChart } from '@/lib/ireal';
 import { useT } from '@/lib/i18n';
 import { exitBrowserFullScreen, requestBrowserFullScreen, useStageBarHidden, useStageSongOnly } from '@/lib/stageChrome';
 import { StageClickButton, StageClickFrame, useStageClickUi, type StageClickControls } from '@/app/components/dashboard/StageClick';
-import { CountInButton } from '@/app/components/dashboard/StageCountIn';
+import { CountInButton, CountInSheetButton } from '@/app/components/dashboard/StageCountIn';
 import { useSessionSeconds } from '@/app/components/dashboard/RehearsalSession';
 import type { RehearsalSessionControls } from '@/app/components/event/useRehearsalSession';
 import { formatClock } from '@/lib/rehearsalSession';
@@ -89,6 +89,11 @@ export interface FloorWedgeModeProps {
   click?: StageClickControls;
   /** The leader's Count in (StageCountIn), next to the click; the countdown itself is Stage mode's, above the wedge. */
   countIn?: { counting: boolean; onPress: () => void } | null;
+  /**
+   * Count-in options (this phone's vibration and sound; leader: Count in
+   * anyway, the band's direction). The setlist row's button is under the wedge.
+   */
+  countInOptions?: () => void;
   /** When the set started (elapsed time); defaults to when the mode mounted. */
   startedAt?: Date | number;
   /** See FoldSplit. Default 125 (above Stage mode). */
@@ -127,6 +132,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   follow,
   click,
   countIn,
+  countInOptions,
   startedAt,
   // Set inline, so the wedge stays when a hub (search, Calendar) lies under
   // Stage mode: the Laptop rule hides inline-less page splits while a hub is open.
@@ -402,7 +408,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   ) : (
     <div className="min-h-full flex flex-col gap-3 px-4 pt-3 pb-3 text-white">
       {(follow || hasLyrics || ownChrome || sessionToggle) && (
-        <div className="flex items-center justify-between gap-3 min-h-11 shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 min-h-11 shrink-0">
           {hasLyrics ? (
             <button
               type="button"
@@ -470,6 +476,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
                     : t('Following leader')}
             </button>
           )}
+          {countInOptions && <CountInSheetButton onPress={countInOptions} />}
           {ownChrome && (
             <span className="flex items-center gap-2 shrink-0">
               <button

@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { act, render, screen, cleanup } from '@testing-library/react';
+import { act, render, screen, cleanup, fireEvent } from '@testing-library/react';
 
 vi.mock('@/lib/haptics', () => ({
   haptic: { tap: vi.fn(), medium: vi.fn(), confirm: vi.fn(), delete: vi.fn(), selection: vi.fn() },
@@ -50,5 +50,15 @@ describe('Laptop pose, Song only (the floor wedge)', () => {
     expect(view).toHaveTextContent('Paper boats on the');
     expect(view).toHaveTextContent('01/02');
     expect(view).toHaveTextContent('Paper Boats');
+  });
+});
+
+describe('Laptop pose, Count-in options (the floor wedge)', () => {
+  it('the wedge has its own Count-in options: the setlist row’s are under it (Count in anyway on a backing-track song)', () => {
+    tabletop();
+    const open = vi.fn();
+    render(<FloorWedgeMode songs={songs} countIn={null} countInOptions={open} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Count-in options' }));
+    expect(open).toHaveBeenCalledTimes(1);
   });
 });

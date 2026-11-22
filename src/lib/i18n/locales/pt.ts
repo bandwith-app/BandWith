@@ -4665,6 +4665,7 @@ const dict: Dictionary = {
   "Count-in options": "Opções da contagem",
   "Count-in · {title}": "Contagem · {title}",
   "Every phone in the band counts this way.": "Todos os celulares da banda contam assim.",
+  "Not saved: the band still counts the old way.": "Não salvo: a banda continua contando como antes.",
   "For the whole band": "Para toda a banda",
   "GO": "JÁ",
   "Get ready": "Preparados",

@@ -53,7 +53,7 @@ import { useEventLiveRefresh } from '@/app/components/event/useEventLiveRefresh'
 import { useStageLive, SETLIST_ORDER_SAVED, type StageRegiaBridge, type StageSessionBridge } from '@/app/components/event/useStageLive';
 import { useRehearsalSession } from '@/app/components/event/useRehearsalSession';
 import { useStageRegia } from '@/app/components/event/useStageRegia';
-import { useBandCountInStyle, useCountInUi } from '@/app/components/dashboard/StageCountIn';
+import { CountInSheet, useBandCountInStyle, useCountInUi } from '@/app/components/dashboard/StageCountIn';
 import { Capacitor } from '@capacitor/core';
 import { OfflineAudioCard } from '@/app/components/event/OfflineAudioCard';
 import { inPrefetchWindow, localToday } from '@/lib/audioPrefetch';
@@ -781,7 +781,9 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   });
   const liveSong = stageLive.songs[stageLive.index];
   // The floor wedge's Count in (the countdown itself is Stage mode's).
-  const [countStyle] = useBandCountInStyle(isStageOpen ? event.band_id ?? undefined : undefined);
+  const [countStyle, setCountStyle, countStyleFailed] = useBandCountInStyle(isStageOpen ? event.band_id ?? undefined : undefined);
+  // Its Count-in options: Stage mode's setlist row, where they are, is under the wedge.
+  const [wedgeCountSheet, setWedgeCountSheet] = useState(false);
   const wedgeCount = useCountInUi({
     countIn: stageLive.countIn,
     click: stageLive.click,
@@ -3083,6 +3085,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
           skipped={stageLive.skipped}
           click={stageLive.click}
           countIn={wedgeCount.available || wedgeCountStop ? { counting: wedgeCountStop, onPress: wedgeCountStop ? wedgeCount.stop : wedgeCount.start } : null}
+          countInOptions={stageLive.countIn && stageLive.songs.length > 0 ? () => setWedgeCountSheet(true) : undefined}
           follow={{
             isLeader: stageLive.isLeader,
             following: stageLive.following,
@@ -3097,6 +3100,21 @@ export const EventDetail: React.FC<EventDetailProps> = ({
           exitLabel={isRehearsalLive ? t('Exit live mode') : undefined}
           session={isRehearsalLive ? rehearsalSession : undefined}
           notes={isRehearsalLive ? liveNotes : undefined}
+        />
+      )}
+      {isStageOpen && laptopPose && (
+        <CountInSheet
+          open={wedgeCountSheet}
+          onClose={() => setWedgeCountSheet(false)}
+          force={
+            wedgeCount.forceable && !wedgeCount.available
+              ? {
+                  reason: liveSong?.backingTrack ? t('This song is played with a backing track: the track starts the band.') : t('The stage manager is playing this song.'),
+                  start: wedgeCount.start,
+                }
+              : null
+          }
+          style={stageLive.isLeader && event.band_id ? { value: countStyle, set: setCountStyle, failed: countStyleFailed } : null}
         />
       )}
 

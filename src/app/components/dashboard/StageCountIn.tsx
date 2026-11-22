@@ -50,10 +50,16 @@ export interface CountInSong {
 
 // The band's direction, read once per band while Stage is open (two screens share it).
 const styles = new Map<string, CountInStyle>();
+// Bands whose last change couldn't be saved (shown until the next try).
+const styleErrors = new Set<string>();
 const styleListeners = new Set<() => void>();
 
-/** The band's count-in direction (bands.count_in_style), and (admins) a way to change it. */
-export function useBandCountInStyle(bandId: string | undefined): [CountInStyle, (s: CountInStyle) => void] {
+/**
+ * The band's count-in direction (bands.count_in_style), (admins) a way to
+ * change it, and whether the last change failed to save: then the old
+ * direction is back, as every other phone still has it.
+ */
+export function useBandCountInStyle(bandId: string | undefined): [CountInStyle, (s: CountInStyle) => void, boolean] {
   const [, bump] = React.useReducer((n: number) => n + 1, 0);
   React.useEffect(() => {
     styleListeners.add(bump);
@@ -74,17 +80,27 @@ export function useBandCountInStyle(bandId: string | undefined): [CountInStyle, 
   const set = React.useCallback(
     (s: CountInStyle) => {
       if (!bandId) return;
+      const before = styles.get(bandId) ?? 'down';
       styles.set(bandId, s);
+      styleErrors.delete(bandId);
       styleListeners.forEach((l) => l());
-      void setCountInStyle(bandId, s);
+      void setCountInStyle(bandId, s).then(({ error }) => {
+        if (!error || styles.get(bandId) !== s) return;
+        styles.set(bandId, before);
+        styleErrors.add(bandId);
+        styleListeners.forEach((l) => l());
+      });
     },
     [bandId],
   );
-  return [(bandId && styles.get(bandId)) || 'down', set];
+  return [(bandId && styles.get(bandId)) || 'down', set, !!bandId && styleErrors.has(bandId)];
 }
 
 /** Test hook. */
-export const __resetCountInStyles = () => styles.clear();
+export const __resetCountInStyles = () => {
+  styles.clear();
+  styleErrors.clear();
+};
 
 /**
  * The leader's count-in for the current song (plan §6): offered when the
@@ -201,28 +217,38 @@ export const StageCountInOverlay: React.FC<{
   offsetRef.current = offset;
   const vibrateRef = React.useRef(prefs.vibrate);
   vibrateRef.current = prefs.vibrate;
+  // The count last shown (kept when the loop restarts, so a count isn't buzzed twice).
+  const lastRef = React.useRef(-2);
 
-  // Draw every frame; buzz on each new count.
+  // Draw every frame; buzz on each new count. It stops once the count is over
+  // on this phone's clock, and starts again when the clock offset changes: a
+  // phone whose clock runs ahead can think the count is over until the first
+  // clock reply comes in.
   React.useEffect(() => {
     if (!state.on) return;
     const still = prefersReducedMotion();
     let raf = 0;
-    let last = -2;
     let lastStage = '';
     const draw = () => {
+      const last = lastRef.current;
       const pos = countInAt(plan, state, wallNow(), offsetRef.current);
       if (pos.stage !== lastStage) {
         lastStage = pos.stage;
         setPhase(pos.stage);
       }
-      if (pos.stage === 'done') return;
-      if (pos.stage === 'before' && last !== -1) {
-        last = -1;
-        if (subRef.current) subRef.current.textContent = t('Get ready');
+      if (pos.stage === 'done') {
+        // Gone from the screen: if it comes back, everything is drawn again.
+        lastRef.current = -2;
+        return;
+      }
+      // (Right after coming back, the elements show up on the next frame.)
+      if (pos.stage === 'before' && last !== -1 && subRef.current) {
+        lastRef.current = -1;
+        subRef.current.textContent = t('Get ready');
       }
       const e = pos.event >= 0 ? plan.events[pos.event] : null;
-      if (e && pos.event !== last) {
-        last = pos.event;
+      if (e && pos.event !== last && numRef.current) {
+        lastRef.current = pos.event;
         if (numRef.current) {
           numRef.current.textContent = e.go ? t('GO') : e.label;
           // When this beat falls on this phone's clock: what the count means, whatever the frame rate.
@@ -256,7 +282,7 @@ export const StageCountInOverlay: React.FC<{
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [plan, state, t]);
+  }, [plan, state, t, offset]);
 
   // The count in headphones, on the shared clock.
   React.useEffect(() => {
@@ -413,8 +439,8 @@ export const CountInSheet: React.FC<{
   onClose: () => void;
   /** Leader, when the button is hidden: why, and the forced start. */
   force?: { reason: string; start: () => void } | null;
-  /** Admins: the band's direction. */
-  style?: { value: CountInStyle; set: (s: CountInStyle) => void } | null;
+  /** Admins: the band's direction (`failed`: the last change wasn't saved). */
+  style?: { value: CountInStyle; set: (s: CountInStyle) => void; failed?: boolean } | null;
 }> = ({ open, onClose, force, style }) => {
   const t = useT();
   const output = useAudioOutput();
@@ -428,8 +454,9 @@ export const CountInSheet: React.FC<{
       aria-modal="true"
       aria-label={t('Count-in')}
     >
-      <div className="flex flex-col flex-1 min-h-0 w-full max-w-[560px] mx-auto px-4 gap-4 overflow-y-auto overscroll-contain">
-        <div className="flex items-center justify-between gap-3 shrink-0">
+      {/* Laptop pose (bw-fold-form): the title on the Display, the options scroll on the Deck, none on the fold. */}
+      <div className="bw-fold-form flex flex-col flex-1 min-h-0 w-full max-w-[560px] mx-auto px-4 gap-4 overflow-y-auto overscroll-contain">
+        <div className="flex items-center justify-between gap-3 shrink-0 bg-black">
           <h2 className="bw-h2 normal-case text-white">{t('Count-in')}</h2>
           <button type="button" onClick={onClose} aria-label={t('Close')} className="w-11 h-11 flex items-center justify-center rounded-full border border-white shrink-0">
             <X className="w-5 h-5" />
@@ -490,6 +517,11 @@ export const CountInSheet: React.FC<{
               </Chip>
             </div>
             <p className="bw-body-sm text-white/60">{t('Every phone in the band counts this way.')}</p>
+            {style.failed && (
+              <p role="alert" className="bw-body-sm text-white">
+                {t('Not saved: the band still counts the old way.')} {t('Check your connection and try again.')}
+              </p>
+            )}
           </section>
         )}
       </div>

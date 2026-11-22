@@ -287,7 +287,7 @@ export const StageMode: React.FC<StageModeProps> = ({
   const clickUi = useStageClickUi(click, currentSong);
   const { state: clickState, running: clickRunning, hidden: clickHidden, show: showClick, press: pressClick } = clickUi;
   // Count-in (plan §6): the leader's button by the click, the countdown on every phone.
-  const [countStyle, setCountStyle] = useBandCountInStyle(bandId);
+  const [countStyle, setCountStyle, countStyleFailed] = useBandCountInStyle(bandId);
   const regiaPlaying = (!!regia?.on && regia.status === 'playing') || !!regia?.nowPlaying?.state.playing;
   const countUi = useCountInUi({ countIn: live?.countIn, click, playhead: live?.playhead, song: currentSong, isLeader: !!live?.isLeader, regiaPlaying, style: countStyle });
   const [countSheet, setCountSheet] = useState(false);
@@ -1147,7 +1147,7 @@ export const StageMode: React.FC<StageModeProps> = ({
         open={countSheet}
         onClose={() => setCountSheet(false)}
         force={countForce}
-        style={live?.isLeader && bandId ? { value: countStyle, set: setCountStyle } : null}
+        style={live?.isLeader && bandId ? { value: countStyle, set: setCountStyle, failed: countStyleFailed } : null}
       />
       <AnimatePresence>
         {summary && session && (

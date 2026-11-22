@@ -52,7 +52,7 @@ test.describe('Song form: live mode fields', () => {
 // Count-in (plan §6): the leader's Count in, on every phone.
 
 /** Gives Rooftop Session's first song (Superstition) a tempo, meter and count-in, and the band a direction. */
-async function openWithCount(app: App, song: { bpm: number; time: string; bars?: number; pickup?: number }, style: 'down' | 'up' = 'down') {
+async function openWithCount(app: App, song: { bpm: number; time: string; bars?: number; pickup?: number; backing?: boolean }, style: 'down' | 'up' = 'down') {
   const { page } = app;
   await page.goto('/');
   await expect(page.getByRole('button', { name: app.t('Home'), exact: true }).first()).toBeVisible({ timeout: 30_000 });
@@ -62,7 +62,7 @@ async function openWithCount(app: App, song: { bpm: number; time: string; bars?:
       const k = 'bw-demo-db-v6';
       const db = JSON.parse(localStorage.getItem(k) || '{}');
       const s = db.songs.find((x: { title: string }) => x.title === 'Superstition');
-      Object.assign(s, { bpm: song.bpm, time_signature: song.time, count_in_bars: song.bars ?? 1, pickup_beats: song.pickup ?? 0, backing_track: false });
+      Object.assign(s, { bpm: song.bpm, time_signature: song.time, count_in_bars: song.bars ?? 1, pickup_beats: song.pickup ?? 0, backing_track: !!song.backing });
       for (const b of db.bands) b.count_in_style = style;
       localStorage.setItem(k, JSON.stringify(db));
     },
@@ -157,6 +157,19 @@ test.describe('Count-in: every meter', () => {
     await expect(countDialog(app.page, app)).toBeHidden({ timeout: 15_000 });
     // 1 — 2 — (half time), 1 2 3, GO on the 4 (the pickup).
     expect((await counted(app.page)).map((s) => s.text)).toEqual(['1', '2', '1', '2', '3', app.t('GO')]);
+  });
+
+  test('@smoke a backing-track song: no Count in, but Count-in options still counts in anyway (Laptop pose: the wedge’s own)', async ({ app }) => {
+    await openWithCount(app, { bpm: 120, time: '4/4', backing: true });
+    await openStage(app);
+    await expect(app.page.getByRole('button', { name: app.t('Count in the band'), exact: true })).toHaveCount(0);
+    // The one on top: the floor wedge covers Stage mode's setlist row in Laptop pose.
+    await app.page.getByRole('button', { name: app.t('Count-in options'), exact: true }).last().click();
+    // Nothing on the fold (Laptop pose: the title on the Display, the options on the Deck).
+    await app.check('count-in options, backing-track song');
+    await app.page.getByRole('button', { name: app.t('Count in anyway'), exact: true }).click();
+    await expect(countDialog(app.page, app)).toBeVisible();
+    await expect(countDialog(app.page, app)).toBeHidden({ timeout: 15_000 });
   });
 });
 

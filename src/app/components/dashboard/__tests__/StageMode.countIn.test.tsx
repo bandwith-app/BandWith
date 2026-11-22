@@ -11,7 +11,7 @@ vi.mock('@/lib/services/countInStyle', () => ({
 }));
 
 import { StageMode, type StageLiveControls, type StageSong } from '../StageMode';
-import { __resetCountInStyles } from '../StageCountIn';
+import { __resetCountInStyles, StageCountInOverlay } from '../StageCountIn';
 import { COUNTIN_LEAD_MS, countInPlan, startCountIn, type CountInState } from '@/lib/countIn';
 import { meterOf } from '@/lib/meter';
 import type { StageRegia } from '@/app/components/event/useStageRegia';
@@ -123,6 +123,37 @@ describe('Stage mode count-in (plan §6)', () => {
     // In a browser (no output route known) the hint says what to do there, in plain words.
     expect(screen.getByText('In a browser, turn this on to hear the count, also in headphones.')).toBeInTheDocument();
     localStorage.clear();
+  });
+
+  it('a member whose clock runs ahead still gets the count once the first clock reply corrects the offset', () => {
+    vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'setTimeout', 'clearTimeout'] });
+    const mine = performance.timeOrigin + performance.now();
+    // The leader's clock is 5 s behind this phone's: with no clock reply yet
+    // (offset 0) a 120 BPM count looks long over.
+    const state = startCountIn({ from: 'leader', songId: 'r1', bpm: 120, meter: meterOf('4/4'), now: mine - 5000 });
+    const props = { state, title: 'Harbor Lights', accent: '#d4ff3a', canStop: false, onStop: () => {} };
+    const { rerender } = render(<StageCountInOverlay {...props} offset={0} />);
+    act(() => void vi.advanceTimersByTime(50));
+    expect(screen.queryByRole('dialog', { name: /Count-in/ })).toBeNull();
+    // The reply: their clock minus mine.
+    rerender(<StageCountInOverlay {...props} offset={-5000} />);
+    act(() => void vi.advanceTimersByTime(50));
+    expect(screen.getByRole('dialog', { name: 'Count-in · Harbor Lights' })).toBeInTheDocument();
+    act(() => void vi.advanceTimersByTime(COUNTIN_LEAD_MS));
+    expect(screen.getByTestId('countin-number').textContent).toBe('4');
+  });
+
+  it('a direction that can’t be saved (no signal) goes back and says so', async () => {
+    vi.mocked(setCountInStyle).mockResolvedValueOnce({ error: new Error('Load failed') });
+    stage(live().controls);
+    fireEvent.click(screen.getByRole('button', { name: 'Count-in options' }));
+    await act(async () => void fireEvent.click(screen.getByRole('button', { name: 'Count up: 1 2 3 4' })));
+    expect(screen.getByRole('button', { name: 'Count down: 4 3 2 1' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('alert')).toHaveTextContent('Not saved: the band still counts the old way. Check your connection and try again.');
+    // The next try clears it.
+    await act(async () => void fireEvent.click(screen.getByRole('button', { name: 'Count up: 1 2 3 4' })));
+    expect(screen.getByRole('button', { name: 'Count up: 1 2 3 4' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('each number carries the moment of its beat on this phone (the leader’s clock, through the offset)', () => {
