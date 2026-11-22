@@ -3,7 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { encodeStageState, toBase64, STAGE_BLE_CHARACTERISTIC } from '@/lib/stageBle';
 import { STAGE_BLE_CLOCK_CHARACTERISTIC, encodeClock } from '@/lib/stageBleSync';
 import { nowMs } from '@/lib/stageClick';
-import type { StageLiveState } from '@/lib/stageLive';
+import { nextSeq, type StageLiveState } from '@/lib/stageLive';
 
 // jsdom has no WebCrypto; the app runs where it does (WKWebView, Android WebView).
 const nodeCrypto = 'node:crypto';
@@ -371,8 +371,10 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     appear('admin-b', lead('b', 3, 'a1'));
     const m = member();
     await waitFor(() => expect(air.connected).toEqual(new Set(['admin-b'])));
-    // The same phone (same leader id in its state), at a new address, a newer state.
+    // The same phone (same leader id in its state) at a new address: a newer
+    // state there is the same phone's, so the link has it too once read again.
     air.devices.set('admin-b-2', { state: lead('b', 4, 'a1'), advertising: true });
+    air.devices.get('admin-b')!.state = lead('b', 4, 'a1');
     for (let look = 0; look < 3; look++) {
       await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 3000);
       await new Promise((r) => setTimeout(r, 400));
@@ -456,6 +458,39 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     await waitFor(() => expect(air.letGoTimeouts.some((l) => l.id === 'admin-a')).toBe(true));
     for (const l of air.letGoTimeouts) expect(l.timeout ?? Infinity).toBeLessThanOrEqual(1000);
     expect(vi.mocked(BleClient.disconnect).mock.calls.filter((c) => c[0] === 'admin-a')).toEqual([]);
+    m.unmount();
+  });
+  it("a phone with the leader's id and a newer state, while the link stays behind (a stuck link), takes the member (Claude on #280)", async () => {
+    appear('admin-b', lead('b', 3, 'a1'));
+    const onState = vi.fn();
+    const m = member(onState);
+    await waitFor(() => expect(air.connected).toEqual(new Set(['admin-b'])));
+    air.devices.set('admin-b-2', { state: lead('b', 5, 'b2'), advertising: true });
+    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 3000);
+    await new Promise((r) => setTimeout(r, 400));
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'b', seq: 5 })));
+    expect(air.connected.has('admin-b-2')).toBe(true);
+    m.unmount();
+  });
+
+  it("a leader whose clock runs 20 minutes ahead is followed once its clock is measured over the link (Codex on #280, rule B)", async () => {
+    const ahead = 20 * 60_000;
+    appear('admin-b', lead('b', nextSeq(null, Date.now() + ahead), 'a1'), { clockAhead: ahead });
+    const onState = vi.fn();
+    const m = member(onState);
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'b' })), { timeout: 3000 });
+    expect(m.result.current.status).toBe('connected');
+    m.unmount();
+  });
+
+  it("such a state with no clock to measure isn't followed, and the member is told to check the time (never \"connected\")", async () => {
+    appear('admin-b', lead('b', nextSeq(null, Date.now() + 20 * 60_000), 'a1'));
+    const onState = vi.fn();
+    const m = member(onState);
+    await waitFor(() => expect(air.connected).toEqual(new Set(['admin-b'])));
+    await waitFor(() => expect(m.result.current.status).toBe('clock-off'));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(onState).not.toHaveBeenCalled();
     m.unmount();
   });
 });
