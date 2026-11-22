@@ -272,6 +272,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (event === 'PASSWORD_RECOVERY') {
         setIsPasswordRecovery(true);
       }
+      // Every end of a session, also a refused refresh or a deleted account,
+      // not only the sign-out button: the device shows none of its pushes
+      // (Codex review #287 round 6).
+      if (event === 'SIGNED_OUT') void forgetPushAccount().catch(() => {});
       // The initial state is initializeAuth's: offline, the library reports no
       // session here although the stored one is still valid.
       if (event === 'INITIAL_SESSION' && !session) return;
@@ -296,9 +300,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }, 0);
       } else if (event === 'SIGNED_OUT') {
         setProfile(null);
-        // Every end of a session, also a refused refresh or a deleted
-        // account, not only the sign-out button (Codex review #287 round 6).
-        void forgetPushAccount().catch(() => {});
       }
     });
 
