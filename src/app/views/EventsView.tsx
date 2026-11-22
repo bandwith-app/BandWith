@@ -24,6 +24,7 @@ import type { RehearsalPoll } from '@/lib/services/rehearsalPolls';
 import { EventsSkeleton } from '@/app/components/ui/EventsSkeleton';
 import { parseLocalDate } from '@/lib/dates';
 import { DotMeter, DotText, EventMark, SectionHeader, type EventKind } from '@/app/components/bw';
+import { DateHoldCard } from '@/app/components/dashboard/DateHoldCard';
 import { FIT, FitText } from '@/app/components/bw/FitText';
 import { getActiveSymbol as sym, useCurrency } from '@/lib/currency';
 import { PlannerMode, type PlannerEvent } from '@/app/components/duo';
@@ -132,6 +133,9 @@ const tagLabel = (tag: string): string => {
 };
 
 
+
+/** A date on hold in the month grid: neutral, like an empty day but marked. */
+const HOLD_CELL_BG = 'color-mix(in srgb, var(--fg) 16%, transparent)';
 
 const calendarKind = (event: EventData, isPast = false): EventKind => {
   if (isPast) return 'past';
@@ -669,6 +673,7 @@ export const EventsView: React.FC<EventsViewProps> = ({
           venue: ev.venueName || (ev.location && ev.location !== 'TBD' ? ev.location : null),
           fee: feeForViewer(ev.band_id, Number.isFinite(fee) && fee > 0 ? fee : null, adminOfBand),
           draft: !!ev.draftOf,
+          hold: !!ev.holdOf,
         });
       });
     });
@@ -803,6 +808,17 @@ export const EventsView: React.FC<EventsViewProps> = ({
 
 
   const renderEventCard = (event: EventData, isPast: boolean = false) => {
+    // A date on hold (178): the same neutral card and answers as on Home.
+    if (event.holdOf) {
+      return (
+        <DateHoldCard
+          key={event.id}
+          hold={event.holdOf}
+          showBand={bands.length > 1}
+          onShowToast={onShowToast}
+        />
+      );
+    }
     const status = event.status?.toUpperCase();
     const isRehearsal = status === 'REHEARSAL';
     const isGig = status === 'CONFIRMED' || status === 'COMPLETED';
@@ -1031,14 +1047,19 @@ export const EventsView: React.FC<EventsViewProps> = ({
 
           let style: React.CSSProperties = { backgroundColor: 'color-mix(in srgb, var(--fg) 8%, transparent)', color: 'var(--fg)' };
           // Real events lead the day; a day with only drafts is desaturated and dashed.
+          // A date on hold (178) is neutral: dashed, no event colour.
           const onlyDrafts = hasEvents && eventsOnDay.every((e) => !!e.draftOf);
-          if (hasEvents) {
-            const primary = eventsOnDay.find((e) => !e.draftOf) || eventsOnDay[0];
+          const onlyHolds = hasEvents && eventsOnDay.every((e) => !!e.holdOf);
+          const cellColor = (e: EventData) => (e.holdOf ? HOLD_CELL_BG : `var(--accent-${calendarKind(e, isPastDay)})`);
+          if (onlyHolds) {
+            style = { backgroundColor: HOLD_CELL_BG, color: 'var(--fg)', outline: '1.5px dashed currentColor', outlineOffset: -3 };
+          } else if (hasEvents) {
+            const primary = eventsOnDay.find((e) => !e.draftOf && !e.holdOf) || eventsOnDay.find((e) => !e.holdOf) || eventsOnDay[0];
             const k = calendarKind(primary, isPastDay);
             style = { backgroundColor: `var(--accent-${k})`, color: `var(--accent-${k}-fg)` };
             if (multipleEvents) {
               const ordered = [primary, ...eventsOnDay.filter((e) => e !== primary)];
-              const colors = [...new Set(ordered.map((e) => `var(--accent-${calendarKind(e, isPastDay)})`))];
+              const colors = [...new Set(ordered.map(cellColor))];
               if (colors.length > 1) style = { ...style, background: `linear-gradient(135deg, ${colors[0]} 50%, ${colors[1]} 50%)` };
             }
             if (onlyDrafts) {
@@ -1053,7 +1074,7 @@ export const EventsView: React.FC<EventsViewProps> = ({
               key={`${year}-${month}-${day}`}
               type="button"
               disabled={!isInteractive}
-              aria-label={`${dateName(new Date(year, month, day), { weekday: 'long', month: 'long', day: 'numeric' })}${hasEvents ? `, ${eventsOnDay.length > 1 ? t('{count} events', { count: eventsOnDay.length }) : t('{count} event', { count: eventsOnDay.length })}` : ''}${onlyDrafts ? `, ${t('draft')}` : ''}${isToday ? `, ${t('today')}` : ''}`}
+              aria-label={`${dateName(new Date(year, month, day), { weekday: 'long', month: 'long', day: 'numeric' })}${hasEvents ? `, ${eventsOnDay.length > 1 ? t('{count} events', { count: eventsOnDay.length }) : t('{count} event', { count: eventsOnDay.length })}` : ''}${onlyDrafts ? `, ${t('draft')}` : ''}${onlyHolds ? `, ${t('Possible gig')}` : ''}${isToday ? `, ${t('today')}` : ''}`}
               aria-current={isToday ? 'date' : undefined}
               onClick={() => {
                 if (!isInteractive) return;
@@ -1251,7 +1272,9 @@ export const EventsView: React.FC<EventsViewProps> = ({
                                   onClick={() => { setDayPickerEvents(null); onEventClick(ev); }}
                                   className="w-full flex items-center gap-3 rounded-[16px] bg-sheet-foreground/[0.08] p-3 text-left cursor-pointer active:scale-[0.99] transition-transform"
                                 >
-                                  <EventMark kind={kind} size={24} />
+                                  <span className={ev.holdOf ? 'saturate-0 opacity-70' : undefined}>
+                                    <EventMark kind={kind} size={24} />
+                                  </span>
                                   <span className="flex-1 min-w-0 flex flex-col gap-0.5">
                                     <span className="bw-h3 truncate">{ev.title}</span>
                                     <span className="bw-body-sm text-sheet-foreground/70 truncate">

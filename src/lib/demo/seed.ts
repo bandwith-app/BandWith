@@ -291,7 +291,10 @@ export const buildSeed = (): DemoDB => {
     msg(7, id(1102), IDS.me, 'Yes, sending it tonight with the stems.', 60 * 4),
   ];
 
+  // A member's hold notice for Jazz Club Night (178): day, time, place only.
+  const holdDay = new Date(`${day(14)}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
   const notifications: Row[] = [
+    { id: id(1405), user_id: IDS.me, band_id: IDS.band, type: 'date_hold', title: 'Possible gig – keep the date free', body: `${holdDay} · 22:00–01:00 · Blue Note, Milano. Are you free?`, data: { server: true, kind: 'hold', event_id: id(604), band_id: IDS.band, event_date: day(14), tag: `hold-${id(604)}` }, read: false, priority: 'high', reference_id: id(604), reference_type: 'date_hold', created_at: ago(60 * 2) },
     { id: id(1400), user_id: IDS.me, band_id: IDS.band, type: 'event_invite', title: 'Availability check: Jazz Club Night', body: 'Jazz Club Night is still a quote: the client hasn\'t accepted. Are you available?', data: { event_id: id(604), event_title: 'Jazz Club Night', event_type: 'gig', tentative: true, requires_rsvp: true }, read: false, priority: 'high', reference_id: id(604), reference_type: 'event', created_at: ago(60 * 2) },
     { id: id(1401), user_id: IDS.me, band_id: IDS.band, type: 'chat_message', title: 'Marta C.', body: '+1, then straight into September 🔥', data: { chat_id: id(1100) }, read: false, priority: 'normal', reference_id: id(1100), reference_type: 'chat', created_at: ago(12) },
     { id: id(1402), user_id: IDS.me, band_id: IDS.band, type: 'rehearsal_poll', title: 'Vote on rehearsal dates', body: 'Jonah proposed 3 dates for next week.', data: { poll_id: id(1500) }, read: false, priority: 'normal', reference_id: id(1500), reference_type: 'rehearsal_poll', created_at: ago(60 * 20) },

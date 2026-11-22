@@ -168,7 +168,7 @@ export async function allowedRecipients(
  * Recipients of a chat notice sent by a user: the other participants of
  * `chatId`, and only when the caller is in that chat too.
  */
-export async function chatRecipients(
+async function chatParticipantRecipients(
   admin: SupabaseClient,
   callerId: string,
   chatId: unknown,
@@ -190,6 +190,25 @@ export async function chatRecipients(
   if (!Array.isArray(allowed)) return [];
   const ok = new Set(allowed as string[]);
   return [...new Set(targetIds)].filter((id) => id !== callerId && ok.has(id));
+}
+
+// (Imported here, next to its only use: other PRs add imports at the top.)
+import { quoteChatReaders } from "./quote-chat.ts";
+
+/**
+ * The same, minus the people who may not read the chat any more: the event
+ * chat of a gig that is still a quote is for the band's admins (178), per
+ * recipient, whatever the participant rows say.
+ */
+export async function chatRecipients(
+  admin: SupabaseClient,
+  callerId: string,
+  chatId: unknown,
+  targetIds: string[],
+): Promise<string[]> {
+  const ids = await chatParticipantRecipients(admin, callerId, chatId, targetIds);
+  if (ids.length === 0 || typeof chatId !== "string") return ids;
+  return quoteChatReaders((fn, args) => admin.rpc(fn, args), chatId, ids);
 }
 
 export function errorResponse(error: unknown) {

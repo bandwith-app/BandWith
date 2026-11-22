@@ -610,6 +610,7 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
                 onCreate={handleCreateQuote}
                 initialData={editingQuote || undefined}
                 initialClientName={editingQuote?.clientName}
+                holdsDate={false}
               />
             )}
           </AnimatePresence>

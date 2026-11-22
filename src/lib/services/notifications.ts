@@ -20,6 +20,11 @@ export type NotificationType =
   | 'event_cancelled'
   | 'event_confirmed'
   | 'member_dropped_out'
+  // A possible gig (still a quote) to keep free, its new details, and the
+  // date free again (migration 178). Server-written, translated.
+  | 'date_hold'
+  | 'date_hold_changed'
+  | 'date_hold_released'
   // A deputy answered from the reply link (migration 084)
   | 'deputy_reply'
   // A deputy opened the app from their link (086): to the band's admins
@@ -116,7 +121,7 @@ export type NotificationCategory = 'invites' | 'events' | 'finance' | 'members' 
 // Get category from notification type
 export const getNotificationCategory = (type: NotificationType): NotificationCategory => {
   if (type.startsWith('invite_')) return 'invites';
-  if (type.startsWith('event_') || type.startsWith('rehearsal_') || type.startsWith('deputy_')) return 'events';
+  if (type.startsWith('event_') || type.startsWith('rehearsal_') || type.startsWith('deputy_') || type.startsWith('date_hold')) return 'events';
   if (type.startsWith('quote_') || type.startsWith('payment_') || type === 'fee_changed') return 'finance';
   if (type.startsWith('member_')) return 'members';
   if (type.startsWith('song_') || type.startsWith('setlist_') || type.startsWith('task_')) return 'content';
@@ -138,6 +143,9 @@ export const getNotificationIcon = (type: NotificationType): string => {
     event_update: 'calendar',
     event_cancelled: 'calendar-x',
     event_confirmed: 'calendar-check',
+    date_hold: 'calendar',
+    date_hold_changed: 'calendar',
+    date_hold_released: 'calendar-x',
     // Quotes
     quote_received: 'file-text',
     quote_accepted: 'check',

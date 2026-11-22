@@ -17,6 +17,7 @@ import { supabase, getSafeUser } from '@/lib/supabase';
 import { getOfflineItem, setOfflineItem, getCacheKey, onCachedRolesChanged } from '@/lib/offline/storage';
 import { getPendingMutations } from '@/lib/offline/syncQueue';
 import { getIsNetworkOnline } from '@/lib/offline/useNetworkStatus';
+import { DATE_HOLDS_CHANGED, refreshesDateHolds } from '@/lib/dateHolds';
 
 // ============================================
 // CACHE RULES
@@ -850,6 +851,8 @@ export const useNotifications = (options?: {
         if ((notification.type === 'rehearsal_poll' || notification.type === 'rehearsal_proposal') && onNewRehearsalPollRef.current) {
           onNewRehearsalPollRef.current(notification);
         }
+        // A date on hold came, changed or is free again (178): the Home card reloads.
+        if (refreshesDateHolds(notification.type)) window.dispatchEvent(new CustomEvent(DATE_HOLDS_CHANGED));
       },
       // On UPDATE - update existing notification (e.g., marked as read)
       (updatedNotification) => {
