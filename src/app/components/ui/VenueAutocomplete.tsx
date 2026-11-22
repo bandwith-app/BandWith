@@ -4,6 +4,13 @@ import { cn } from './utils';
 import { searchVenues, getGooglePlaceDetails, rememberPickedPlace, venueFields, type VenuePlace } from '@/lib/services/location';
 import { useT } from '@/lib/i18n';
 
+/** A field the user types text into (not a checkbox, radio or button). */
+const NO_TEXT = new Set(['button', 'checkbox', 'color', 'file', 'hidden', 'image', 'radio', 'range', 'reset', 'submit']);
+const typesText = (el: Element): boolean =>
+  el instanceof HTMLTextAreaElement ||
+  (el instanceof HTMLInputElement && !NO_TEXT.has(el.type)) ||
+  (el instanceof HTMLElement && el.isContentEditable);
+
 const newSessionToken = (): string | undefined => {
   try {
     return crypto.randomUUID();
@@ -46,6 +53,8 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
   const [suggestions, setSuggestions] = useState<VenuePlace[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  // Read out by screen readers when a venue is picked (the list closes).
+  const [announce, setAnnounce] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -53,6 +62,25 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
   // One Google session from the first keystroke to the pick (billed as one search).
   const sessionTokenRef = useRef<string | undefined>(undefined);
   const listboxId = useId();
+  const optionId = (idx: number) => `${listboxId}-option-${idx}`;
+  const activeOption = isOpen && highlightedIndex >= 0 && highlightedIndex < suggestions.length ? highlightedIndex : -1;
+  // The highlighted suggestion stays in view as the arrows move it.
+  useEffect(() => {
+    if (activeOption < 0) return;
+    document.getElementById(optionId(activeOption))?.scrollIntoView?.({ block: 'nearest' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeOption]);
+  /** At least half of the option shows in the list (no layout: it counts as shown). */
+  const optionInView = (idx: number): boolean => {
+    const el = document.getElementById(optionId(idx));
+    const list = el?.closest('[role="listbox"]');
+    if (!el || !list) return false;
+    const r = el.getBoundingClientRect();
+    const l = list.getBoundingClientRect();
+    if (!r.height || !l.height) return true;
+    const shown = Math.min(r.bottom, l.bottom) - Math.max(r.top, l.top);
+    return shown >= r.height / 2;
+  };
   // Where a touch on a suggestion started: a tap picks it, a scroll doesn't.
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -113,9 +141,29 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
     }, 280);
   };
 
+  // The latest pick: a slower, older one never lands over it.
+  const pickRef = useRef(0);
   const handleSelectPlace = async (place: VenuePlace) => {
+    const pick = ++pickRef.current;
     let selectedPlace = place;
+    // While the details load (after Tab focus has moved on), what the user
+    // types is theirs: in the venue field it replaces the pick, and in
+    // another field (Address) it is never overwritten by the late details.
+    let typedHere = false;
+    let typedElsewhere = false;
+    // Only text typed in the same form, dialog or page (its Address, city…):
+    // not a checkbox there, nor a field on another layer (the chat on the
+    // other Duo page). A host with none of those (the pricing sheet, the band
+    // edit) counts the whole page.
+    const scope = inputRef.current?.closest('form, [role=dialog], .bw-pane-detail') ?? document.body;
+    const onInput = (e: Event) => {
+      const target = e.target as Element | null;
+      if (target === inputRef.current) typedHere = true;
+      else if (target && scope.contains(target) && typesText(target)) typedElsewhere = true;
+    };
     if (place.provider === 'google' && place.placeId && (!place.latitude || !place.city || !place.address)) {
+      document.addEventListener('input', onInput, true);
+      document.addEventListener('change', onInput, true);
       try {
         const details = await getGooglePlaceDetails(place.placeId, undefined, sessionTokenRef.current);
         if (details) {
@@ -128,12 +176,19 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
         }
       } catch (err) {
         console.warn('[VenueAutocomplete] Could not fetch place details:', err);
+      } finally {
+        document.removeEventListener('input', onInput, true);
+        document.removeEventListener('change', onInput, true);
       }
     }
+    if (pick !== pickRef.current || typedHere) return;
     sessionTokenRef.current = undefined;
     rememberPickedPlace(selectedPlace);
     onChange(venueFields(selectedPlace).location);
-    onSelect(selectedPlace);
+    setAnnounce(t('Venue chosen: {name}', { name: venueFields(selectedPlace).location }));
+    // The form fills its other fields from the pick (Address, city…): not
+    // once the user has started typing in them.
+    if (!typedElsewhere) onSelect(selectedPlace);
     setIsOpen(false);
     setSuggestions([]);
   };
@@ -166,11 +221,21 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
         e.preventDefault();
         setIsOpen(false);
         break;
+      case 'Tab':
+        // Leaving the field picks the highlighted venue (ARIA 1.2 combobox),
+        // or just closes the list; focus moves on as usual.
+        // A highlighted venue scrolled out of the list is not picked unseen.
+        if (activeOption >= 0 && optionInView(activeOption)) handleSelectPlace(suggestions[activeOption]);
+        else setIsOpen(false);
+        break;
     }
   };
 
   return (
     <div ref={containerRef} className={cn('relative w-full', containerClassName)}>
+      <span role="status" aria-live="polite" className="sr-only">
+        {announce}
+      </span>
       <div className="relative flex items-center">
         <input
           ref={inputRef}
@@ -192,6 +257,7 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
           aria-autocomplete="list"
           aria-expanded={isOpen}
           aria-controls={isOpen ? listboxId : undefined}
+          aria-activedescendant={activeOption >= 0 ? optionId(activeOption) : undefined}
           className={cn(
             'w-full bg-transparent bw-body-lg text-foreground focus:outline-none placeholder:text-muted-foreground/60 transition-colors pr-8',
             className
@@ -229,8 +295,11 @@ export const VenueAutocomplete: React.FC<VenueAutocompleteProps> = ({
                 <button
                   key={`${item.placeId || item.name}-${idx}`}
                   type="button"
+                  id={optionId(idx)}
                   role="option"
                   aria-selected={isSelected}
+                  // The field keeps focus; arrows move the highlight (aria-activedescendant).
+                  tabIndex={-1}
                   onMouseEnter={() => setHighlightedIndex(idx)}
                   onClick={() => handleSelectPlace(item)}
                   // iOS with the keyboard up: the tap only blurs the field (the

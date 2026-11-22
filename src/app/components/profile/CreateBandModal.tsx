@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useId, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { X, Users, Link, Check, Plus } from '@/app/components/icons';
 import { HeaderAction, IconButton } from '@/app/components/bw/Screen';
 import { RailCover } from '@/lib/railActions';
+import { useFocusTrap } from '@/lib/focusTrap';
 import { PillButton, PillField, Selector, FormError } from '@/app/components/bw/Form';
 import { userMessage } from '@/lib/userError';
 import { cn } from '@/app/components/ui/utils';
@@ -42,7 +43,11 @@ export const CreateBandModal: React.FC<CreateBandModalProps> = ({
   const { refreshBands } = useBand();
   const { refreshProfile } = useAuth();
   const tr = useT();
-  
+  const titleId = useId();
+  // Full screen: keyboard focus moves in and stays inside until it closes.
+  const layerRef = useRef<HTMLDivElement | null>(null);
+  useFocusTrap(layerRef, isOpen);
+
   const [name, setName] = useState('');
   const [genre, setGenre] = useState('');
   const [description, setDescription] = useState('');
@@ -131,14 +136,21 @@ export const CreateBandModal: React.FC<CreateBandModalProps> = ({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="bw-pane-detail fixed inset-0 z-[115] flex flex-col overflow-hidden bg-background text-foreground"
+      // A modal dialog: on the Duo it opens beside the docked band switcher,
+      // whose focus trap hands over to it.
+      ref={layerRef}
+      tabIndex={-1}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      className="bw-pane-detail fixed inset-0 z-[115] flex flex-col overflow-hidden bg-background text-foreground outline-none"
     >
       {/* Header (Figma: Band / Create band — Kicker + Outline close) */}
       <header className="px-4 shrink-0 bg-background" style={{ paddingTop: 'calc(var(--safe-top) + 8px)' }}>
         <div className="max-w-xl mx-auto w-full flex items-end gap-3">
           <div className="flex-1 min-w-0 flex flex-col gap-1">
             <p className="bw-label-sm text-muted-foreground">{tr('New entity · Start a band or project')}</p>
-            <h2 className="bw-display-lg text-foreground">{tr('Create')}</h2>
+            <h2 id={titleId} className="bw-display-lg text-foreground">{tr('Create')}</h2>
           </div>
           <RailCover pane />
           <HeaderAction pane label={tr('Close')} icon={<X />} onClick={onClose} />

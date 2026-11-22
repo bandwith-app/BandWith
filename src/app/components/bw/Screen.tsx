@@ -8,6 +8,7 @@ import { RailHeaderActions, useRailAction, useRailBack, useRailHeaderSlot, useRa
 import { useSheetDrag } from '@/app/components/bw/useSheetDrag';
 import { useRailLayout } from '@/lib/deviceRegions';
 import { useSystemBack } from '@/lib/backStack';
+import { useFocusTrap } from '@/lib/focusTrap';
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Screen building blocks, 1:1 with the Figma components:
@@ -446,23 +447,11 @@ export const BwSheet: React.FC<BwSheetProps> = ({
     onClose();
     return true;
   });
-  // Focus moves into the sheet when it opens (screen readers, keyboard) and
+  // Focus moves into the sheet when it opens (screen readers, keyboard),
+  // Tab and Shift+Tab stay inside it while it is the top layer, and focus
   // returns to what opened it when it closes.
   const sheetRef = React.useRef<HTMLDivElement | null>(null);
-  React.useEffect(() => {
-    if (!open) return;
-    const opener = document.activeElement as HTMLElement | null;
-    const id = window.requestAnimationFrame(() => {
-      const el = sheetRef.current;
-      if (el && !el.contains(document.activeElement)) el.focus({ preventScroll: true });
-    });
-    return () => {
-      window.cancelAnimationFrame(id);
-      // Not back into a text field: that would raise the on-screen keyboard.
-      const typing = opener?.matches?.('input, textarea, select, [contenteditable="true"]');
-      if (opener && opener.isConnected && opener !== document.body && !typing) opener.focus({ preventScroll: true });
-    };
-  }, [open]);
+  useFocusTrap(sheetRef, open);
 
   const sheet = (
     <AnimatePresence>

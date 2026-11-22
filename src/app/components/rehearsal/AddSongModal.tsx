@@ -601,24 +601,11 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="add-song-title"
+      // Laptop pose: the full-screen form layout (`.bw-fold-form`, as the gig
+      // wizard): the header holds the Display, the fields scroll and the
+      // actions sit on the Deck, so a scrolled field never rests on the fold.
       className="bw-pane-detail bw-fold-form fixed inset-0 z-[100] flex flex-col overflow-hidden bg-background text-foreground"
     >
-      <UnsavedChangesSheet
-        open={leaveOpen}
-        title={t('Save your changes?')}
-        onSave={() => {
-          setLeaveOpen(false);
-          // No title yet: back to it (the form says what's missing).
-          if (canProceed()) void handleSubmit();
-          else setStep('details');
-        }}
-        onDiscard={() => {
-          setLeaveOpen(false);
-          handleClose();
-        }}
-        onKeepEditing={() => setLeaveOpen(false)}
-        saving={saving}
-      />
       {/* Header: Top Bar + wizard steps */}
       <header className="shrink-0 px-4 pb-3 flex flex-col gap-3" style={{ paddingTop: 'calc(var(--safe-top) + 8px)' }}>
         <div className="flex items-center gap-3 min-h-11">
@@ -645,6 +632,24 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
           </div>
         </div>
       </header>
+      {/* After the header: `.bw-fold-form` lays out its first child (the
+          header) and its last (the actions); an open sheet leaves a marker here. */}
+      <UnsavedChangesSheet
+        open={leaveOpen}
+        title={t('Save your changes?')}
+        onSave={() => {
+          setLeaveOpen(false);
+          // No title yet: back to it (the form says what's missing).
+          if (canProceed()) void handleSubmit();
+          else setStep('details');
+        }}
+        onDiscard={() => {
+          setLeaveOpen(false);
+          handleClose();
+        }}
+        onKeepEditing={() => setLeaveOpen(false)}
+        saving={saving}
+      />
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 pt-3 pb-8 max-w-2xl mx-auto w-full">

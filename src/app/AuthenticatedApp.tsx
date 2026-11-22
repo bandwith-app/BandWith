@@ -176,7 +176,7 @@ import type { RehearsalPoll } from "@/lib/services/rehearsalPolls";
 
 import { useBodyScrollLock } from "@/app/hooks";
 import { usePushNotifications } from "@/app/hooks/usePushNotifications";
-import { parseLocalDate } from '@/lib/dates';
+import { useTypingFocus } from "@/lib/focusTrap";
 import { addressWithoutCity } from '@/lib/eventAddress';
 import { repeatDates } from '@/lib/recurrence';
 import { MapsChooserHost } from '@/app/components/ui/MapsLink';
@@ -583,6 +583,9 @@ export default function AuthenticatedApp() {
   const layerOpen = useLayerOpen(!!urgentNotification);
   const [rsvpNotification, setRsvpNotification] = useState<import('@/lib/services/notifications').Notification | null>(null);
   const [pollNotification, setPollNotification] = useState<import('@/lib/services/notifications').Notification | null>(null);
+  // Typing in a field, or choosing in an open picker: the urgent pop-up waits
+  // (never takes the focus mid-word), and Back meanwhile leaves it alone.
+  const typing = useTypingFocus();
   const { notifications: realNotifications, loading: notificationsLoading, refetch: refetchNotifications, setNotifications: setRealNotifications } = useNotifications({
     // The inbox: chat messages are not in it (the Chat tab has them), so 20
     // means 20 inbox items however busy the band chat is.
@@ -2433,6 +2436,7 @@ export default function AuthenticatedApp() {
     rsvpNotification,
     pollNotification,
     votePollId,
+    typing,
     eventLoadError,
     selectedNotifications,
     selectedNotification,
@@ -2476,6 +2480,7 @@ export default function AuthenticatedApp() {
     rsvpNotification,
     pollNotification,
     votePollId,
+    typing,
     eventLoadError,
     selectedNotifications,
     selectedNotification,
@@ -2527,9 +2532,10 @@ export default function AuthenticatedApp() {
 
       // 1. Transient Notifications & Popups
       // The urgent popup only shows when no RSVP or poll sheet covers it, and
-      // waits while another sheet or Stage is open: Back then closes that
-      // layer (further down), and the waiting pop-up comes back after.
-      if (s.urgentNotification && !s.rsvpNotification && !s.pollNotification && !s.showAdminTour && !s.layerOpen) {
+      // waits while another sheet or Stage is open (#271) or the person is
+      // typing (#298): Back then closes that layer (further down), and the
+      // waiting pop-up comes back after.
+      if (s.urgentNotification && !s.rsvpNotification && !s.pollNotification && !s.showAdminTour && !s.layerOpen && !s.typing) {
         setUrgentNotification(null);
         return true;
       }
@@ -5229,7 +5235,7 @@ export default function AuthenticatedApp() {
 
       <AnimatePresence>
         {/* Waits for the welcome tour: one layer at a time on first launch. */}
-        {urgentNotification && !rsvpNotification && !pollNotification && !showAdminTour && !layerOpen && (
+        {urgentNotification && !rsvpNotification && !pollNotification && !showAdminTour && !layerOpen && !typing && (
           <UrgentNotificationPopup
             key={urgentNotification.id}
             notification={urgentNotification}

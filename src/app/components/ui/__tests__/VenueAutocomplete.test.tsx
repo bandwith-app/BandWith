@@ -101,3 +101,213 @@ describe('Google sessions', () => {
     expect(lastSearch()?.[2]?.sessionToken).not.toBe(token);
   });
 });
+
+describe('Venue suggestions with a keyboard and a screen reader (ARIA 1.2 combobox)', () => {
+  const second = { name: 'Bowery Ballroom', address: '6 Delancey St', city: 'New York', provider: 'osm' };
+  const open = async () => {
+    mocks.searchVenues.mockResolvedValue([place, second]);
+    const input = screen.getByRole('combobox');
+    input.focus();
+    fireEvent.change(input, { target: { value: 'Blue' } });
+    await screen.findAllByRole('option');
+    return input;
+  };
+
+  it('the field points at the highlighted option (aria-activedescendant); options stay out of the Tab order', async () => {
+    render(<Harness onSelect={() => {}} />);
+    const input = await open();
+    const options = screen.getAllByRole('option');
+    for (const o of options) expect(o.tabIndex).toBe(-1);
+    expect(input.getAttribute('aria-activedescendant')).toBeNull();
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(input.getAttribute('aria-activedescendant')).toBe(options[0].id);
+    expect(options[0].getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(input.getAttribute('aria-activedescendant')).toBe(screen.getAllByRole('option')[1].id);
+    expect(document.getElementById(input.getAttribute('aria-activedescendant')!)?.textContent).toContain('Bowery Ballroom');
+  });
+
+  it('Tab picks the highlighted venue, says so, and lets focus move on', async () => {
+    const onSelect = vi.fn();
+    render(<Harness onSelect={onSelect} />);
+    const input = await open();
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    const ev = fireEvent.keyDown(input, { key: 'Tab' });
+    expect(ev).toBe(true); // not prevented
+    await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+    expect(onSelect.mock.calls[0][0]).toMatchObject({ name: 'Blue Note Jazz Club' });
+    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+    expect(screen.getByRole('status').textContent).toContain('Blue Note Jazz Club');
+  });
+
+  it('Tab with nothing highlighted just closes the list', async () => {
+    const onSelect = vi.fn();
+    render(<Harness onSelect={onSelect} />);
+    const input = await open();
+    expect(fireEvent.keyDown(input, { key: 'Tab' })).toBe(true);
+    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(input.getAttribute('aria-expanded')).toBe('false');
+  });
+});
+
+describe('the highlighted suggestion stays in view', () => {
+  const second = { name: 'Bowery Ballroom', address: '6 Delancey St', city: 'New York', provider: 'osm' };
+  const open = async () => {
+    mocks.searchVenues.mockResolvedValue([place, second]);
+    const input = screen.getByRole('combobox');
+    input.focus();
+    fireEvent.change(input, { target: { value: 'Blue' } });
+    await screen.findAllByRole('option');
+    return input;
+  };
+
+  it('moving the highlight scrolls the option into view (nearest), keeping aria-activedescendant', async () => {
+    const spy = vi.fn();
+    const was = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = spy;
+    try {
+      render(<Harness onSelect={() => {}} />);
+      const input = await open();
+      fireEvent.keyDown(input, { key: 'ArrowDown' });
+      fireEvent.keyDown(input, { key: 'ArrowDown' });
+      const active = document.getElementById(input.getAttribute('aria-activedescendant')!)!;
+      await waitFor(() => expect(spy.mock.contexts).toContain(active));
+      expect(spy).toHaveBeenLastCalledWith({ block: 'nearest' });
+      expect(active.textContent).toContain('Bowery Ballroom');
+    } finally {
+      Element.prototype.scrollIntoView = was;
+    }
+  });
+
+  it('Tab commits only an option that is in view; else it just closes the list', async () => {
+    const onSelect = vi.fn();
+    render(<Harness onSelect={onSelect} />);
+    const input = await open();
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    const listbox = screen.getByRole('listbox');
+    const option = document.getElementById(input.getAttribute('aria-activedescendant')!)!;
+    // The list shows y 100–300; the option sits below it (scrolled away).
+    listbox.getBoundingClientRect = () => new DOMRect(0, 100, 300, 200);
+    option.getBoundingClientRect = () => new DOMRect(0, 400, 300, 48);
+    fireEvent.keyDown(input, { key: 'Tab' });
+    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('a venue whose details come late never overwrites an address typed after Tab', async () => {
+    // A Google pick without its street: the details are fetched after Tab.
+    const google = { name: 'Blue Note Jazz Club', provider: 'google', placeId: 'p1' };
+    let resolve!: (d: unknown) => void;
+    mocks.getGooglePlaceDetails.mockReturnValue(new Promise((r) => (resolve = r)));
+    mocks.searchVenues.mockResolvedValue([google]);
+    const onSelect = vi.fn();
+    const Form: React.FC = () => {
+      const [value, setValue] = useState('');
+      const [address, setAddress] = useState('');
+      return (
+        <form>
+          <VenueAutocomplete value={value} onChange={setValue} onSelect={onSelect} inputId="venue" />
+          <input aria-label="Address" value={address} onChange={(e) => setAddress(e.target.value)} />
+        </form>
+      );
+    };
+    render(<Form />);
+    const input = screen.getByRole('combobox');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'Blue Note' } });
+    await screen.findByRole('option');
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Tab' });
+    const address = screen.getByRole('textbox', { name: 'Address' }) as HTMLInputElement;
+    address.focus();
+    fireEvent.change(address, { target: { value: '131 W 3rd St' } });
+    resolve({ name: 'Blue Note Jazz Club', address: '131 West 3rd Street', city: 'New York', latitude: 40.73, longitude: -74 });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(address.value).toBe('131 W 3rd St');
+    // The venue name is still the one picked.
+    expect((input as HTMLInputElement).value).toBe('Blue Note Jazz Club');
+  });
+
+  it('with nothing typed meanwhile, the late details still fill the pick', async () => {
+    const google = { name: 'Blue Note Jazz Club', provider: 'google', placeId: 'p1' };
+    let resolve!: (d: unknown) => void;
+    mocks.getGooglePlaceDetails.mockReturnValue(new Promise((r) => (resolve = r)));
+    mocks.searchVenues.mockResolvedValue([google]);
+    const onSelect = vi.fn();
+    render(<Harness onSelect={onSelect} />);
+    const input = screen.getByRole('combobox');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'Blue Note' } });
+    await screen.findByRole('option');
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Tab' });
+    resolve({ name: 'Blue Note Jazz Club', address: '131 West 3rd Street', city: 'New York' });
+    await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+    expect(onSelect.mock.calls[0][0]).toMatchObject({ address: '131 West 3rd Street', city: 'New York' });
+  });
+
+  it('only typing in the same form counts: a checkbox there, or a field elsewhere (the chat on the other Duo page), still lets the details fill the pick', async () => {
+    const google = { name: 'Blue Note Jazz Club', provider: 'google', placeId: 'p1' };
+    let resolve!: (d: unknown) => void;
+    mocks.getGooglePlaceDetails.mockReturnValue(new Promise((r) => (resolve = r)));
+    mocks.searchVenues.mockResolvedValue([google]);
+    const onSelect = vi.fn();
+    const Page: React.FC = () => {
+      const [value, setValue] = useState('');
+      return (
+        <>
+          <form>
+            <VenueAutocomplete value={value} onChange={setValue} onSelect={onSelect} inputId="venue" />
+            <input type="checkbox" aria-label="Private event" />
+          </form>
+          <textarea aria-label="Message" />
+        </>
+      );
+    };
+    render(<Page />);
+    const input = screen.getByRole('combobox');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'Blue Note' } });
+    await screen.findByRole('option');
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Tab' });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Private event' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'On my way' } });
+    resolve({ name: 'Blue Note Jazz Club', address: '131 West 3rd Street', city: 'New York' });
+    await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+    expect(onSelect.mock.calls[0][0]).toMatchObject({ address: '131 West 3rd Street', city: 'New York' });
+  });
+
+  it('a host with no form or dialog (the pricing sheet): a value typed after Tab is still never overwritten', async () => {
+    const google = { name: 'Blue Note Jazz Club', provider: 'google', placeId: 'p1' };
+    let resolve!: (d: unknown) => void;
+    mocks.getGooglePlaceDetails.mockReturnValue(new Promise((r) => (resolve = r)));
+    mocks.searchVenues.mockResolvedValue([google]);
+    const onSelect = vi.fn();
+    const Pricing: React.FC = () => {
+      const [value, setValue] = useState('');
+      const [radius, setRadius] = useState('');
+      return (
+        <div>
+          <VenueAutocomplete value={value} onChange={setValue} onSelect={onSelect} inputId="venue" />
+          <input aria-label="Free local radius" value={radius} onChange={(e) => setRadius(e.target.value)} />
+        </div>
+      );
+    };
+    render(<Pricing />);
+    const input = screen.getByRole('combobox');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'Blue Note' } });
+    await screen.findByRole('option');
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Tab' });
+    const radius = screen.getByRole('textbox', { name: 'Free local radius' }) as HTMLInputElement;
+    fireEvent.change(radius, { target: { value: '25' } });
+    resolve({ name: 'Blue Note Jazz Club', address: '131 West 3rd Street', city: 'New York' });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(radius.value).toBe('25');
+  });
+});

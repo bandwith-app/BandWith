@@ -12,6 +12,8 @@ import { cn } from '@/app/components/ui/utils';
 import { DotText, PillButton, ScreenHeader } from '@/app/components/bw';
 import { attentionItems, type GearKit, type KitSummary } from '@/lib/gearKits';
 import { useT } from '@/lib/i18n';
+import { useRailLayout } from '@/lib/deviceRegions';
+import { useFocusTrap } from '@/lib/focusTrap';
 import { KitItemRow, kitGigLine } from './KitParts';
 
 const Stat: React.FC<{ label: string; value: number; inverse?: boolean }> = ({ label, value, inverse }) => (
@@ -31,6 +33,12 @@ export const KitDetail: React.FC<{
   onOpenGig?: (eventId: string) => void;
 }> = ({ kit, summary, canEdit, onBack, onEdit, onUseForGig, onOpenGig }) => {
   const t = useT();
+  // One page: it covers the gear hub (a modal dialog). Two pages: it sits
+  // beside the kit list, which stays usable (a labelled region).
+  const { twoPane } = useRailLayout();
+  // A modal page traps focus: in when it opens, back to the kit row on close.
+  const pageRef = React.useRef<HTMLDivElement | null>(null);
+  useFocusTrap(pageRef, !twoPane);
   const attention = attentionItems(summary.items);
   const needsLook = attention.length;
   const next = summary.nextGig;
@@ -52,8 +60,11 @@ export const KitDetail: React.FC<{
       animate={{ x: 0 }}
       exit={{ x: '100%' }}
       transition={{ type: 'tween', duration: 0.28, ease: 'easeOut' }}
-      className="bw-pane-detail fixed inset-0 z-[100] bg-background text-foreground flex flex-col"
-      role="region"
+      ref={pageRef}
+      tabIndex={-1}
+      className="bw-pane-detail fixed inset-0 z-[100] bg-background text-foreground flex flex-col outline-none"
+      role={twoPane ? 'region' : 'dialog'}
+      aria-modal={twoPane ? undefined : 'true'}
       aria-label={kit.name}
     >
       <div className="flex-1 overflow-y-auto">

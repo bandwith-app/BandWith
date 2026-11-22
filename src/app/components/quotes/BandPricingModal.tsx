@@ -1309,18 +1309,22 @@ export const BandPricingModal: React.FC<BandPricingModalProps> = ({
                     <div className="flex-1 min-w-0">
                       <VenueAutocomplete
                         value={settings.band_origin_address}
-                        onChange={(val) => setSettings({ ...settings, band_origin_address: val })}
+                        // From the latest settings too: the field hands its text
+                        // back late on a pick, just before `onSelect` below.
+                        onChange={(val) => setSettings((s) => ({ ...s, band_origin_address: val }))}
                         onSelect={(place) => {
                           const formatted =
                             place.fullAddress ||
                             [place.address, place.city, place.country].filter(Boolean).join(', ') ||
                             place.name;
-                          setSettings({
-                            ...settings,
+                          // From the latest settings: the pick can land late
+                          // (place details), after other fields changed.
+                          setSettings((s) => ({
+                            ...s,
                             band_origin_address: formatted,
                             band_origin_lat: place.latitude,
                             band_origin_lng: place.longitude,
-                          });
+                          }));
                         }}
                         placeholder={t('City or rehearsal studio')}
                         className="border-0 pb-0 text-lg font-medium normal-case placeholder:text-muted-foreground/60"

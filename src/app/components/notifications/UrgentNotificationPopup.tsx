@@ -5,6 +5,8 @@ import { PillButton } from '@/app/components/bw/Form';
 import type { Notification } from '@/lib/services/notifications';
 import { springs } from '@/styles/motion';
 import { useT } from '@/lib/i18n';
+import { useFocusTrap } from '@/lib/focusTrap';
+import { useSystemBack } from '@/lib/backStack';
 
 interface UrgentNotificationPopupProps {
   notification: Notification;
@@ -62,6 +64,17 @@ export const UrgentNotificationPopup: React.FC<UrgentNotificationPopupProps> = (
     ? `${data.venue}${data.event_date ? ` • ${data.event_date}` : ''}`
     : t('Urgent response needed');
 
+  // A modal alert dialog, above any open sheet: focus moves in, Tab stays in
+  // it, and goes back to what had it when it goes. data-bw-urgent: #271's
+  // useLayerOpen leaves it out, so the pop-up never waits for itself.
+  // Its own Close is in it: the Duo rail's actions (the sheet's) stay out of
+  // its Tab cycle, and Escape / Back close it, not the sheet beneath.
+  // (While the user types or picks, AuthenticatedApp keeps it waiting.)
+  const cardRef = React.useRef<HTMLDivElement | null>(null);
+  const titleId = React.useId();
+  useFocusTrap(cardRef, true, { rail: false });
+  useSystemBack(true, onDismiss);
+
   return (
     <>
     {/* Figma: the screen behind the urgent card is dimmed; tapping it dismisses. */}
@@ -76,9 +89,13 @@ export const UrgentNotificationPopup: React.FC<UrgentNotificationPopupProps> = (
       style={leaving}
     />
     <motion.div
-      role="alert"
-      // Not a layer for useLayerOpen: the pop-up never waits on itself (#298).
+      ref={cardRef}
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      // Not a layer for useLayerOpen: the pop-up never waits on itself (#271).
       data-bw-urgent=""
+      tabIndex={-1}
       initial={{ opacity: 0, y: -24, scale: 0.97 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -24, scale: 0.97 }}
@@ -115,7 +132,7 @@ export const UrgentNotificationPopup: React.FC<UrgentNotificationPopupProps> = (
         }}
         className="flex flex-col gap-2 min-w-0 cursor-pointer"
       >
-        <span className="bw-h3 [overflow-wrap:anywhere] line-clamp-2">{title}</span>
+        <span id={titleId} className="bw-h3 [overflow-wrap:anywhere] line-clamp-2">{title}</span>
         <span className="bw-body-md truncate">{subtitle}</span>
       </div>
 
