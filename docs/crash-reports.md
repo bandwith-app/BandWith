@@ -71,7 +71,12 @@ The server cuts everything to size again.
 - Device: each error once per session, at most 10 per session.
 - Server, per person: **no count** (review #277 round 4), so nothing per person is stored. The device sends at most 10 a session; one account sending more can only use up the global caps below (crash reports stop for everyone for that hour), nothing else.
 - Server, everyone together: 300 an hour, 1000 a day, and at most 15,000 reports kept. In the worst case that is about 65 MB, far below the Free plan's 500 MB. The counters are one row each, bumped atomically, so two reports at the limit can't both pass. The hourly prune locks the row counter before it counts, so a report committing meanwhile is never lost from the count.
-- **Unlinkable in the database**: the user id is only checked (signed in), never stored. A report's transaction writes only the report and the global counters, which everyone shares, so no stored row and no transaction id (`xmin`) ties a report to a person. Report times are kept to the minute only. Said plainly: Supabase's own API logs (outside our database, kept for a short time) see who called the function, as for any request. No one else can read any of these tables.
+- **No stored link to a person**: the user id is only checked (signed in), never stored. A report's transaction writes only the report and the global counters, which everyone shares. Report times are kept to the minute only. That is not anonymity, said plainly:
+  - ordering metadata: a row's `xmin` and its identity order put a report next to the reporter's own writes in other tables made around the same time, which undoes the minute rounding;
+  - tiny cohorts: in stages 1 and 2 only the owner and the partner run a prerelease, so `app_version` and `platform` alone say who sent it;
+  - Supabase's own API logs (outside our database, kept for a short time) see who called the function, as for any request.
+
+  So the service role is trusted not to correlate: we read reports grouped by version and screen, never joined to people. No one else can read any of these tables. The App Store label stays "not linked" because we never associate reports with an identity.
 - Pruned every hour (pg_cron `bw-prune-client-errors`, at minute 7): reports older than 14 days, the counters of past hours and days, and its own run history in `cron.job_run_details` older than a day.
 - A report the server refuses for good (a 4xx other than 401, 403, 408, 429) is dropped, so it can't hold up the others.
 - Not signed in, or no signal: up to 5 reports wait on the device and go out after sign-in, when the signal is back (`online`), when the user comes back to the app, or with the next error (a full queue is sent first, then the new one).

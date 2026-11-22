@@ -25,7 +25,7 @@ describe('174 client errors', () => {
     expect(count).toBeGreaterThan(lock);
   });
 
-  it('unlinkable: no per-person table, the user id is only checked (review #277 r4)', () => {
+  it('no stored link: no per-person table, the user id is only checked (review #277 r4)', () => {
     expect(sql).not.toMatch(/client_error_quota|client_error_keys/);
     const report = fnBody('bw_report_client_error');
     expect(report).toMatch(/IF auth\.uid\(\) IS NULL/);
@@ -47,10 +47,26 @@ describe('174 client errors', () => {
     expect(raw174.slice(0, raw174.indexOf('\nBEGIN;'))).toMatch(/no database has an earlier 174/);
   });
 
-  it('says plainly what is unlinkable and what is not (Supabase request logs)', () => {
-    const header = raw174.slice(0, raw174.indexOf('\nBEGIN;'));
-    expect(header).toMatch(/Unlinkable in the database/);
-    expect(header).toMatch(/no stored row, and no\s*\n?--\s*transaction id \(xmin\), ties a report to a person/);
+  it('says plainly what links a report to a person and what does not (review #277, Claude)', () => {
+    const header = raw174.slice(0, raw174.indexOf('\nBEGIN;')).replace(/\n--\s*/g, ' ');
+    // No stored link, but not "unlinkable": ordering metadata and tiny cohorts exist.
+    expect(header).not.toMatch(/Unlinkable/i);
+    expect(header).not.toMatch(/no transaction id/i);
+    expect(header).toMatch(/No stored link/);
+    expect(header).toMatch(/xmin/);
+    expect(header).toMatch(/identity order/);
+    expect(header).toMatch(/app_version and platform/);
+    expect(header).toMatch(/service role is trusted not to correlate/);
     expect(header).toMatch(/request logs/);
+  });
+
+  it('docs/crash-reports.md says the same', async () => {
+    const fs = (await import(/* @vite-ignore */ 'node:fs')) as { readFileSync: (p: string, e: 'utf8') => string };
+    const { process } = globalThis as unknown as { process: { cwd(): string } };
+    const doc = fs.readFileSync(`${process.cwd()}/docs/crash-reports.md`, 'utf8');
+    expect(doc).not.toMatch(/Unlinkable/i);
+    expect(doc).not.toMatch(/no transaction id/i);
+    expect(doc).toMatch(/No stored link/);
+    expect(doc).toMatch(/service role is trusted not to correlate/);
   });
 });

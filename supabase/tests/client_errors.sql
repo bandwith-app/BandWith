@@ -13,7 +13,7 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'bw-prune-client-errors' AND schedule = '7 * * * *') THEN RAISE EXCEPTION 'no hourly cron job'; END IF;
   IF has_table_privilege('authenticated', 'public.client_error_counters', 'SELECT') THEN RAISE EXCEPTION 'counters readable'; END IF;
   IF to_regclass('public.client_error_quota') IS NOT NULL OR to_regclass('public.client_error_keys') IS NOT NULL THEN
-    RAISE EXCEPTION 'a per-person table exists (reports must stay unlinkable)';
+    RAISE EXCEPTION 'a per-person table exists (no stored link to a person)';
   END IF;
 END;
 $$;
@@ -44,7 +44,7 @@ $$;
 
 -- No per-person count on the server: more than 10 from one person still
 -- go in (the app sends at most 10 a session; the global caps below bound it).
--- Report times to the minute. Unlinkable across real transactions: checked
+-- Report times to the minute. No shared xmin across real transactions: checked
 -- in client_errors.pglite.mjs (here everything is one transaction).
 DO $$
 DECLARE i int; ok int := 0;

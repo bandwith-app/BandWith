@@ -18,11 +18,19 @@
 --   two reports at the limit can't both pass). Worst case ~15000 x 4.4 kB
 --   = ~65 MB, far below the Free plan's 500 MB.
 --
--- Unlinkable in the database: a report's transaction writes only the report
--- and the global counters (shared by everyone), so no stored row, and no
--- transaction id (xmin), ties a report to a person. Report times are kept to
--- the minute. Said plainly: Supabase's own request logs (outside this
--- database, kept for a short time) record each call with its caller.
+-- No stored link to a person: the user id is checked, never stored, and a
+-- report's transaction writes only the report and the global counters
+-- (shared by everyone). Report times are kept to the minute. That is not
+-- anonymity, said plainly:
+-- - ordering metadata: a row's xmin and its identity order put a report next
+--   to the reporter's own writes in other tables made around the same time,
+--   which undoes the minute rounding;
+-- - tiny cohorts: in stages 1 and 2 only the owner and the partner run a
+--   prerelease, so app_version and platform alone say who sent it;
+-- - Supabase's own request logs (outside this database, kept for a short
+--   time) record each call with its caller.
+-- So the service role is trusted not to correlate: reports are only read
+-- grouped by version and screen, never joined to people.
 -- Kept 14 days. Pruned every hour (pg_cron bw-prune-client-errors). The
 -- prune also clears its own run history in cron.job_run_details older than
 -- a day (pg_cron keeps a row per run).

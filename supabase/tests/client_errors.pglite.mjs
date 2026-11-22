@@ -40,7 +40,7 @@ for (let i = 0; i < 14; i++) await report(U(1), `one ${i}`);
 for (const [u, n] of [[U(2), 2], [U(3), 1]]) for (let i = 0; i < n; i++) await report(u, `other ${u.slice(0, 1)} ${i}`);
 ok((await q(`SELECT count(*)::int n FROM public.client_errors`)).rows[0].n === 17, 'no per-person limit stored: all 17 kept under the global caps');
 
-// ---- unlinkable: the report's transaction writes only the report and the
+// ---- no stored link: the report's transaction writes only the report and the
 // global counters (shared by everyone), nothing made from the user id
 const tables = (await q(`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY 1`)).rows.map((r) => r.table_name);
 ok(tables.join() === 'client_error_counters,client_errors', `only reports and global counters: ${tables.join(', ')}`);
