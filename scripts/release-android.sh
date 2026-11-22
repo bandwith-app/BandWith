@@ -65,11 +65,12 @@ if [ -n "$PRERELEASE" ]; then
   RELEASE_FLAGS=(--prerelease --latest=false)
 fi
 KEYSTORE="${BW_ANDROID_KEYSTORE:-$HOME/Developer/BandWith-keys/bandwith-release.jks}"
+# Canonical versions only (1.0.14, 1.0.14.1): the tag, the version name and
+# the versionCode all come from this one spelling (scripts/android-version-code.sh).
+scripts/android-version-code.sh "$VERSION" >/dev/null || exit 1
 TAG="android-v$VERSION"
 NOTES_FILE=scripts/android-release-notes.md
 
-[[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){1,3}$ ]] || { echo "Version must look like 1.0.3: $VERSION" >&2; exit 1; }
-scripts/android-version-code.sh "$VERSION" >/dev/null || exit 1
 if [ "$PUBLISH" = "--publish" ]; then
   # Nothing ships before a passing emulator run on this exact commit
   # (scripts/emulator-check.sh, maestro/README.md).

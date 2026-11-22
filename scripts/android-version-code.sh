@@ -8,7 +8,7 @@
 # - A hotfix of an older line published later (1.0.13.1 after 1.0.14) still
 #   has a LOWER code than the newer release, so phones on 1.0.14 never see a
 #   "newer" 1.0.13.1, and 1.0.14 can be promoted after it (review #278 round 6).
-# - minor, patch and build go up to 99, major up to 2059 (Google's limit is
+# - minor and patch go up to 99, build 1–99, major up to 2059 (Google's limit is
 #   2100000000). A version outside that is refused, never wrapped.
 # - Above every code published before: those were minute-based (30000000 +
 #   minutes since 2026-01-01, highest 30467513 for 1.0.13), which stays below
@@ -32,11 +32,15 @@ fi
 
 VERSION="${1:-}"
 VERSION="${VERSION#android-v}"
-[[ "$VERSION" =~ ^([0-9]{1,4})\.([0-9]{1,2})(\.([0-9]{1,2}))?(\.([0-9]{1,2}))?$ ]] \
-  || { echo "Can't encode '$VERSION' as a versionCode: major.minor[.patch[.build]], each part after major 0–99." >&2; exit 1; }
-MAJOR=$((10#${BASH_REMATCH[1]}))
-MINOR=$((10#${BASH_REMATCH[2]}))
-PATCH=$((10#${BASH_REMATCH[4]:-0}))
-BUILD=$((10#${BASH_REMATCH[6]:-0}))
+# Canonical form only, so one version has one spelling, one tag and one code:
+# major.minor.patch, or major.minor.patch.build with build 1–99; no leading
+# zeros (1.00.14), no ".0" build (1.0.14.0 is 1.0.14), no short form (1.1 is 1.1.0).
+P='(0|[1-9][0-9]?)'
+[[ "$VERSION" =~ ^(0|[1-9][0-9]{0,3})\.$P\.$P(\.([1-9][0-9]?))?$ ]] \
+  || { echo "Not a canonical version: '$VERSION'. Use major.minor.patch[.build] (1.0.14, 1.0.14.1): parts after major 0–99, build 1–99, no leading zeros." >&2; exit 1; }
+MAJOR=${BASH_REMATCH[1]}
+MINOR=${BASH_REMATCH[2]}
+PATCH=${BASH_REMATCH[3]}
+BUILD=${BASH_REMATCH[5]:-0}
 [ "$MAJOR" -le 2059 ] || { echo "Major $MAJOR is above 2059: the code would pass Google's limit." >&2; exit 1; }
 echo $((40000000 + MAJOR * 1000000 + MINOR * 10000 + PATCH * 100 + BUILD))

@@ -30,7 +30,7 @@ describe('Android versionCode', () => {
   });
 
   it('follows the version order: a hotfix of an older line is always below the newer release', () => {
-    const order = ['1.0.13', '1.0.13.1', '1.0.13.2', '1.0.14', '1.0.14.1', '1.0.15', '1.1', '1.1.0.1', '1.2.0', '2.0.0'];
+    const order = ['1.0.13', '1.0.13.1', '1.0.13.2', '1.0.14', '1.0.14.1', '1.0.15', '1.1.0', '1.1.0.1', '1.2.0', '2.0.0'];
     const codes = order.map((v) => code(v));
     expect([...codes].sort((a, b) => a - b)).toEqual(codes);
     expect(new Set(codes).size).toBe(codes.length);
@@ -44,6 +44,21 @@ describe('Android versionCode', () => {
 
   it('refuses a version it cannot encode', () => {
     for (const v of ['soon', '1', '1.0.100', '1.100.0', '1.0.0.100', '2060.0.0', '1.0.14-beta', '']) refuses(v);
+  });
+
+  it('accepts only the canonical form: one version, one code, one tag (review #278, Claude)', () => {
+    // Each of these names a version that has a canonical spelling (or none), so two tags could share a code.
+    for (const v of ['1.0.14.0', '1.00.14', '01.0.14', '1.0.014', '1.1', '1.0']) refuses(v);
+    expect(code('1.0.0')).toBe(41000000);
+    expect(code('1.0.14.1')).toBe(41001401);
+  });
+
+  it('release-android.sh refuses a non-canonical version before anything else', () => {
+    const sh = execFileSync('cat', [`${process.cwd()}/scripts/release-android.sh`]).toString();
+    const versionCheck = sh.indexOf('scripts/android-version-code.sh "$VERSION" >/dev/null');
+    expect(versionCheck).toBeGreaterThan(-1);
+    expect(versionCheck).toBeLessThan(sh.indexOf('TAG="android-v$VERSION"'));
+    expect(sh).not.toMatch(/\[\[ "\$VERSION" =~ \^\[0-9\]\+\(\\\.\[0-9\]\+\)\{1,3\}\$ \]\]/);
   });
 
   it('the old minute-based code is still there for releases from before (scripts/android-promote-check.sh)', () => {
