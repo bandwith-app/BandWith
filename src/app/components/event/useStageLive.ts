@@ -37,6 +37,10 @@ import {
   type PeerClock,
 } from '@/lib/stageClick';
 import { REGIA_EVENT } from '@/lib/stageRegia';
+import { STAGE_KEY_EVENT } from '@/lib/stageBleNative';
+
+/** The broadcast 191's bw_stage_new_band_key sends on the stage topic. */
+const STAGE_KEY_BROADCAST = 'stage-key';
 
 /** Round trips measured when a click starts; the fastest sets the offset. */
 const PINGS = 6;
@@ -439,6 +443,13 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       .on('broadcast', { event: PING_EVENT }, (msg: { payload?: unknown }) => answerPing(msg?.payload, true))
       .on('broadcast', { event: PONG_EVENT }, (msg: { payload?: unknown }) => takePong(msg?.payload))
       .on('broadcast', { event: CLOCK_PONG_EVENT }, (msg: { payload?: unknown }) => takePong(msg?.payload))
+      // The server's word that the band key changed (191: someone left, a gig moved or was hidden).
+      // Only a hint: Bluetooth fetches the key again and restarts if it really changed.
+      .on('broadcast', { event: STAGE_KEY_BROADCAST }, (msg: { payload?: unknown }) => {
+        const p = msg?.payload as { event_id?: unknown } | undefined;
+        if (p?.event_id !== eventId || typeof window === 'undefined') return;
+        window.dispatchEvent(new CustomEvent(STAGE_KEY_EVENT, { detail: eventId }));
+      })
       .on('presence', { event: 'join' }, (msg: { key?: string; newPresences?: Array<{ lead?: unknown }> }) => {
         if (msg?.key === clientId) return;
         if (msg?.key) present.add(msg.key);

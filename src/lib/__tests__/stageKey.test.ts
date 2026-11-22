@@ -26,7 +26,7 @@ vi.mock('../supabase', () => ({
 }));
 vi.mock('../livePackFiles', () => ({ removeAllPackFiles: async () => {} }));
 
-const { stageKey, fetchStageKey, clearStageCache } = await import('../stageBleNative');
+const { stageKey, fetchStageKey, clearStageCache, previousStageKey } = await import('../stageBleNative');
 
 describe('stageKey: the server first, the kept copy offline', () => {
   beforeEach(() => {
@@ -42,6 +42,39 @@ describe('stageKey: the server first, the kept copy offline', () => {
     // Kept for offline too.
     db.offline = true;
     expect(await stageKey('e1')).toBe('a2V5Mg==');
+  });
+
+  it('keeps the key it replaced for the gig day (Claude on #283: phones that missed the change still link, signed only)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    expect(previousStageKey('e1')).toBeNull();
+    expect(await stageKey('e1')).toBe('a2V5MQ==');
+    // Same key again: nothing replaced.
+    expect(await stageKey('e1')).toBe('a2V5MQ==');
+    expect(previousStageKey('e1')).toBeNull();
+    db.key = 'a2V5Mg==';
+    expect(await stageKey('e1')).toBe('a2V5Mg==');
+    expect(previousStageKey('e1')).toBe('a2V5MQ==');
+    expect(previousStageKey('e2')).toBeNull();
+    // Gone after the gig day.
+    vi.advanceTimersByTime(36 * 3600_000 + 1);
+    expect(previousStageKey('e1')).toBeNull();
+  });
+
+  it('a no from the server, or sign-out, also drops the replaced key', async () => {
+    expect(await stageKey('e1')).toBe('a2V5MQ==');
+    db.key = 'a2V5Mg==';
+    await stageKey('e1');
+    expect(previousStageKey('e1')).toBe('a2V5MQ==');
+    db.key = null;
+    await stageKey('e1');
+    expect(previousStageKey('e1')).toBeNull();
+    db.key = 'a2V5Mw==';
+    await stageKey('e1');
+    db.key = 'a2V5NA==';
+    await stageKey('e1');
+    expect(previousStageKey('e1')).toBe('a2V5Mw==');
+    clearStageCache();
+    expect(previousStageKey('e1')).toBeNull();
   });
 
   it('a no from the server (no longer sees the gig) deletes the kept key', async () => {
@@ -68,8 +101,14 @@ describe('stageKey: the server first, the kept copy offline', () => {
     const answer = stageKey('e1');
     await vi.advanceTimersByTimeAsync(4_000);
     expect(await answer).toBe('a2V5MQ==');
+    const heard: string[] = [];
+    const onKey = (e: Event) => heard.push((e as CustomEvent<string>).detail);
+    window.addEventListener('bw:stage-key', onKey);
     db.held.forEach((go) => go());
     await vi.advanceTimersByTimeAsync(0);
+    window.removeEventListener('bw:stage-key', onKey);
+    // Stage hears of it, and starts with it (a first fetch answered late: Codex on 642676fc).
+    expect(heard).toEqual(['e1']);
     db.offline = true;
     expect(await stageKey('e1')).toBe('a2V5Mg==');
   });

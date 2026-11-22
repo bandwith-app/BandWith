@@ -87,7 +87,7 @@ describe('191 the stage clock topic', () => {
     expect(f).toMatch(/NOT COALESCE\(NEW\.is_active, true\)/);
     expect(f).toMatch(/NEW\.band_id IS DISTINCT FROM OLD\.band_id/);
     expect(f).toMatch(/e\.band_id = OLD\.band_id/);
-    expect(f).toMatch(/coalesce\(e\.event_date, e\."date"\) IS NULL OR coalesce\(e\.event_date, e\."date"\) >= current_date/);
+    expect(f).toMatch(/public\.bw_stage_gig_coming\(coalesce\(e\.event_date, e\."date"\), e\.is_recurring, e\.recurrence_rule\)/);
     expect(sql).toMatch(/CREATE TRIGGER bw_stage_member_left\s+AFTER UPDATE OF is_active, role, band_id, user_id OR DELETE ON public\.band_members/);
     expect(sql).toContain('REVOKE EXECUTE ON FUNCTION public.bw_stage_member_left() FROM PUBLIC, anon, authenticated;');
   });
@@ -97,6 +97,30 @@ describe('191 the stage clock topic', () => {
     const lock = f.search(/PERFORM 1 FROM public\.bands b WHERE b\.id = OLD\.band_id FOR NO KEY UPDATE;/);
     expect(lock).toBeGreaterThan(-1);
     expect(f.search(/bw_stage_new_band_key/)).toBeGreaterThan(lock);
+  });
+
+  it("every key trigger takes the band's row first (Claude on 642676fc): no lock cycle with 190's pair storing or a move", () => {
+    for (const name of ['bw_stage_lineup_left', 'bw_stage_event_hidden']) {
+      const f = fn(sql191, name);
+      const lock = f.search(/FOR NO KEY UPDATE;/);
+      expect(lock, name).toBeGreaterThan(-1);
+      expect(f.search(/bw_stage_new_band_key/), name).toBeGreaterThan(lock);
+    }
+  });
+
+  it('"coming" counts tonight in New York (a day of slack on UTC) and a series by its last occurrence (Claude + Codex on 642676fc)', () => {
+    const f = fn(sql191, 'bw_stage_gig_coming');
+    expect(f).toMatch(/current_date - 1/);
+    expect(f).toMatch(/until/);
+    expect(f).toMatch(/count/);
+    expect(sql).toContain('REVOKE EXECUTE ON FUNCTION public.bw_stage_gig_coming(date, boolean, jsonb) FROM PUBLIC, anon, authenticated;');
+  });
+
+  it("a new band key is announced on the gig's stage topic, and a Realtime failure never blocks the change (Codex on 642676fc)", () => {
+    const f = fn(sql191, 'bw_stage_new_band_key');
+    expect(f).toMatch(/to_regprocedure\('realtime\.send\(jsonb, text, text, boolean\)'\)/);
+    expect(f).toMatch(/realtime\.send\(jsonb_build_object\('event_id', p_event_id\), 'stage-key', 'stage:event:' \|\| p_event_id, true\)/);
+    expect(f).toMatch(/EXCEPTION WHEN others THEN/);
   });
 
   it("an admin made a member: the band's coming quote gigs get a new key (Claude on #283; behaviour: stage_topic_quote.pglite.mjs)", () => {

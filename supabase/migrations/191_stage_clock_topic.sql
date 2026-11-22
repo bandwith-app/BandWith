@@ -227,15 +227,27 @@ REVOKE EXECUTE ON FUNCTION public.bw_stage_quote_gig(uuid, text, text, uuid) FRO
 
 CREATE OR REPLACE FUNCTION public.bw_stage_new_band_key(p_event_id uuid)
 RETURNS void
-LANGUAGE sql
+LANGUAGE plpgsql
 VOLATILE SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
+BEGIN
   UPDATE public.stage_keys
      SET key = encode(
        decode(replace(gen_random_uuid()::text, '-', ''), 'hex') || decode(replace(gen_random_uuid()::text, '-', ''), 'hex'),
        'base64')
    WHERE event_id = p_event_id;
+  -- Phones in Stage hear it at once (no key in the message: they ask for it),
+  -- the leader starts again with the new key and drops the old one's service
+  -- (Codex on 642676fc). Realtime down or missing: never stops the change.
+  IF FOUND AND to_regprocedure('realtime.send(jsonb, text, text, boolean)') IS NOT NULL THEN
+    BEGIN
+      PERFORM realtime.send(jsonb_build_object('event_id', p_event_id), 'stage-key', 'stage:event:' || p_event_id, true);
+    EXCEPTION WHEN others THEN
+      NULL;
+    END;
+  END IF;
+END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.bw_stage_new_band_key(uuid) FROM PUBLIC, anon, authenticated;
 
@@ -252,6 +264,8 @@ BEGIN
   -- The gig itself going (its lineup goes with it, ON DELETE CASCADE): no row, nothing to do.
   IF EXISTS (SELECT 1 FROM public.events e WHERE e.id = OLD.event_id
               AND public.bw_stage_quote_gig(e.id, e.status::text, e.event_type::text, e.quote_id)) THEN
+    -- The band's row before the key row, as in every key change (no cycle with 190).
+    PERFORM 1 FROM public.bands b WHERE b.id = (SELECT e.band_id FROM public.events e WHERE e.id = OLD.event_id) FOR NO KEY UPDATE;
     PERFORM public.bw_stage_new_band_key(OLD.event_id);
   END IF;
   RETURN NULL;
@@ -274,6 +288,10 @@ BEGIN
   IF NEW.band_id IS DISTINCT FROM OLD.band_id
      OR (public.bw_stage_quote_gig(NEW.id, NEW.status::text, NEW.event_type::text, NEW.quote_id)
          AND NOT public.bw_stage_quote_gig(OLD.id, OLD.status::text, OLD.event_type::text, OLD.quote_id)) THEN
+    -- The band's row before the key row (Claude on 642676fc): 190's move
+    -- trigger takes the same row next, and 190's pair storing takes it before
+    -- its key row.
+    PERFORM 1 FROM public.bands b WHERE b.id = OLD.band_id FOR NO KEY UPDATE;
     PERFORM public.bw_stage_new_band_key(NEW.id);
   END IF;
   RETURN NULL;
@@ -286,8 +304,57 @@ CREATE TRIGGER bw_stage_event_hidden
   AFTER UPDATE OF band_id, status, event_type, quote_id ON public.events
   FOR EACH ROW EXECUTE FUNCTION public.bw_stage_event_hidden();
 
+-- Is a gig still to come? Its date from yesterday on (a day of slack: the
+-- database's date is UTC, and tonight in New York is already tomorrow
+-- there), no date, or a series with an occurrence from then on (by its
+-- until and count; a repeat it can't read counts as coming: a new key costs
+-- little) (Claude + Codex on 642676fc).
+CREATE OR REPLACE FUNCTION public.bw_stage_gig_coming(p_date date, p_recurring boolean, p_rule jsonb)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SET search_path TO 'public'
+AS $$
+DECLARE
+  from_day date := current_date - 1;
+  freq text;
+  step integer;
+  n integer;
+  last_day date;
+BEGIN
+  IF p_date IS NULL OR p_date >= from_day THEN
+    RETURN true;
+  END IF;
+  IF NOT coalesce(p_recurring, false) OR p_rule IS NULL OR jsonb_typeof(p_rule) <> 'object' THEN
+    RETURN false;
+  END IF;
+  BEGIN
+    IF nullif(p_rule->>'until', '') IS NOT NULL AND left(p_rule->>'until', 10)::date < from_day THEN
+      RETURN false;
+    END IF;
+    n := (p_rule->>'count')::integer;
+    IF n IS NULL THEN
+      RETURN true;
+    END IF;
+    freq := lower(coalesce(p_rule->>'freq', p_rule->>'frequency', ''));
+    step := greatest(coalesce((p_rule->>'interval')::integer, 1), 1);
+    -- The calendar's own reading (EventsView): `count` occurrences after the first.
+    last_day := CASE freq
+      WHEN 'weekly' THEN p_date + 7 * step * n
+      WHEN 'biweekly' THEN p_date + 14 * n
+      WHEN 'monthly' THEN (p_date + make_interval(months => step * n))::date
+      ELSE NULL
+    END;
+    RETURN last_day IS NULL OR last_day >= from_day;
+  EXCEPTION WHEN others THEN
+    RETURN true;
+  END;
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.bw_stage_gig_coming(date, boolean, jsonb) FROM PUBLIC, anon, authenticated;
+
 -- A member leaves the band (made inactive, removed, moved to another band or
--- account): the band key of the band's coming gigs (today on, or no date)
+-- account): the band key of the band's coming gigs (bw_stage_gig_coming)
 -- changes, so the copy on their phone finds nothing (Claude on #283). Past
 -- gigs keep theirs. An admin made a member stays in the band but no longer
 -- sees its quotes (111: off their lineup; 178: at all): the coming quote gigs
@@ -315,14 +382,14 @@ BEGIN
        FROM public.events e
        JOIN public.stage_keys s ON s.event_id = e.id
       WHERE e.band_id = OLD.band_id
-        AND (coalesce(e.event_date, e."date") IS NULL OR coalesce(e.event_date, e."date") >= current_date);
+        AND public.bw_stage_gig_coming(coalesce(e.event_date, e."date"), e.is_recurring, e.recurrence_rule);
   ELSIF TG_OP = 'UPDATE' AND COALESCE(OLD.is_active, true)
         AND OLD.role = 'admin' AND NEW.role IS DISTINCT FROM 'admin' THEN
     PERFORM public.bw_stage_new_band_key(e.id)
        FROM public.events e
        JOIN public.stage_keys s ON s.event_id = e.id
       WHERE e.band_id = OLD.band_id
-        AND (coalesce(e.event_date, e."date") IS NULL OR coalesce(e.event_date, e."date") >= current_date)
+        AND public.bw_stage_gig_coming(coalesce(e.event_date, e."date"), e.is_recurring, e.recurrence_rule)
         AND public.bw_stage_quote_gig(e.id, e.status::text, e.event_type::text, e.quote_id);
   END IF;
   RETURN NULL;

@@ -393,6 +393,19 @@ describe("useStageLive: an ordinary member measures the leader's clock (audit #9
     }
   });
 
+  it("the server's \"new band key\" message on the stage topic reaches Stage's Bluetooth (191, Codex on 642676fc)", () => {
+    phone(false);
+    const heard: string[] = [];
+    const onKey = (e: Event) => heard.push((e as CustomEvent<string>).detail);
+    window.addEventListener('bw:stage-key', onKey);
+    const stage = phones.find((p) => p.topic === 'stage:event:gig-1')!;
+    act(() => stage.handlers.filter((h) => h.type === 'broadcast' && h.event === 'stage-key').forEach((h) => h.cb({ payload: { event_id: 'gig-1' } })));
+    // Another gig's message (can't happen on this topic, but never trusted): nothing.
+    act(() => stage.handlers.filter((h) => h.type === 'broadcast' && h.event === 'stage-key').forEach((h) => h.cb({ payload: { event_id: 'gig-2' } })));
+    window.removeEventListener('bw:stage-key', onKey);
+    expect(heard).toEqual(['gig-1']);
+  });
+
   it('the clock topic refused (Realtime said no): nothing is sent there, so nothing goes over HTTP instead (Claude on #283)', async () => {
     net.refuseClock = true;
     const leader = phone(true);

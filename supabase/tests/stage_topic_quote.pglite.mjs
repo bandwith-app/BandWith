@@ -74,13 +74,14 @@ CREATE TABLE public.band_members (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   is_active boolean DEFAULT true, left_at timestamptz);
 CREATE TABLE public.quotes (id uuid PRIMARY KEY, band_id uuid, created_by uuid, client_name text, total numeric,
   status text DEFAULT 'draft', valid_until date, converted_to_event_id uuid, quote_number text,
-  event_date date, event_time_start time, event_time_end time, created_at timestamptz DEFAULT now());
+  event_date date, event_time_start time, event_time_end time, created_at timestamptz DEFAULT now(),
+  venue_name text, venue_address text, venue_city text);
 CREATE TABLE public.quote_links (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), quote_id uuid, band_id uuid, status text DEFAULT 'draft');
 CREATE TABLE public.events (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_id uuid, title text, status text, event_type text,
   quote_id uuid, created_by uuid, event_date date, "date" date, start_time time, end_time time, load_in_time time,
   soundcheck_time time, venue text, venue_name text, venue_address text, venue_city text, setlist_id uuid,
   fee numeric, client_name text, notes text, updated_at timestamptz DEFAULT now(), created_at timestamptz DEFAULT now(),
-  "time" time, duration_hours numeric, recurrence_rule jsonb);
+  "time" time, duration_hours numeric, is_recurring boolean DEFAULT false, recurrence_rule jsonb);
 CREATE TABLE public.event_members (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), event_id uuid REFERENCES public.events(id) ON DELETE CASCADE,
   user_id uuid, status text, fee numeric, paid_at timestamptz, role text, notes text);
 CREATE TABLE public.notifications (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, band_id uuid, type text,
@@ -194,6 +195,12 @@ CREATE SCHEMA realtime;
 CREATE TABLE realtime.messages (topic text, extension text, event text, payload jsonb);
 ALTER TABLE realtime.messages ENABLE ROW LEVEL SECURITY;
 CREATE FUNCTION realtime.topic() RETURNS text LANGUAGE sql STABLE AS $$ SELECT current_setting('realtime.topic', true) $$;
+-- Broadcast from the database (Supabase's realtime.send): a row per message here.
+CREATE FUNCTION realtime.send(payload jsonb, event text, topic text, private boolean DEFAULT true) RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+  IF current_setting('test.realtime_down', true) = 'on' THEN RAISE EXCEPTION 'realtime down'; END IF;
+  INSERT INTO realtime.messages (topic, extension, event, payload) VALUES (topic, 'broadcast', event, payload);
+END $$;
 `);
 
 // A band: an admin, a member on the quote's lineup, one off it, an ex-member.
@@ -327,6 +334,44 @@ INSERT INTO stage_keys (event_id, key) VALUES ('${PAST}', 'past-key'), ('${NEXT}
   await db.exec(`UPDATE events SET status = 'cancelled' WHERE id = '${FROMQ}'`);
   ok(((await keyOf(FROMQ)) === 'fromq-key') === with178,
     `a gig from a quote, cancelled: ${with178 ? "the key is kept (178's bw_event_quote_private: the band still sees it)" : 'a new key (111: a quote again)'}`);
+}
+
+// Round 8 (Codex + Claude on 642676fc).
+{
+  const [B3, A3, M3, TONIGHT, SERIES, ENDED, COUNTED] = [50, 51, 52, 53, 54, 55, 56].map(id);
+  await db.exec(`
+INSERT INTO auth.users (id) VALUES ('${A3}'), ('${M3}');
+INSERT INTO bands VALUES ('${B3}', 'Bronx Brass');
+INSERT INTO band_members (band_id, user_id, role, is_active) VALUES ('${B3}','${A3}','admin',true), ('${B3}','${M3}','member',true);
+INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, is_recurring, recurrence_rule) VALUES
+  ('${TONIGHT}','${B3}','Tonight at Smalls','confirmed','gig','${A3}', current_date - 1, false, null),
+  ('${SERIES}','${B3}','Tuesday residency','confirmed','gig','${A3}', current_date - 70, true, '{"freq":"weekly","interval":1}'),
+  ('${ENDED}','${B3}','Spring Sundays','confirmed','gig','${A3}', current_date - 70, true, '{"freq":"weekly","until":"2000-01-01"}'),
+  ('${COUNTED}','${B3}','Four Fridays','confirmed','gig','${A3}', current_date - 70, true, '{"freq":"weekly","count":4}');
+INSERT INTO stage_keys (event_id, key) SELECT unnest(ARRAY['${TONIGHT}','${SERIES}','${ENDED}','${COUNTED}']::uuid[]), 'k-before';
+`);
+  const kOf = async (ev) => (await db.query(`SELECT key FROM stage_keys WHERE event_id = '${ev}'`)).rows[0]?.key;
+  const sent = async () => (await db.query(`SELECT topic FROM realtime.messages WHERE event = 'stage-key' ORDER BY topic`)).rows.map((r) => r.topic);
+  await db.exec(`DELETE FROM realtime.messages`);
+  await db.exec(`UPDATE band_members SET is_active = false WHERE band_id = '${B3}' AND user_id = '${M3}'`);
+  ok((await kOf(TONIGHT)) !== 'k-before', "a member leaves: yesterday's date (tonight's gig in New York, already tomorrow in UTC) still gets a new key (Claude)");
+  ok((await kOf(SERIES)) !== 'k-before', 'a member leaves: a weekly series that started weeks ago (next occurrence ahead) gets a new key (Codex)');
+  ok((await kOf(ENDED)) === 'k-before', 'a member leaves: a series that ended (until in the past) keeps its key');
+  ok((await kOf(COUNTED)) === 'k-before', 'a member leaves: a series whose count ran out keeps its key');
+  const topics = await sent();
+  ok(topics.includes(`stage:event:${TONIGHT}`) && topics.includes(`stage:event:${SERIES}`) && !topics.includes(`stage:event:${ENDED}`),
+    `a new band key is announced on the gig's stage topic, so phones in Stage pick it up at once (Codex) (got ${JSON.stringify(topics)})`);
+  // Realtime failing never stops the change itself.
+  await db.exec(`INSERT INTO auth.users (id) VALUES ('${id(57)}'); INSERT INTO band_members (band_id, user_id, role, is_active) VALUES ('${B3}','${id(57)}','member',true)`);
+  const before = await kOf(SERIES);
+  let threw = null;
+  try {
+    await db.exec(`BEGIN; SET LOCAL test.realtime_down = 'on'; UPDATE band_members SET is_active = false WHERE user_id = '${id(57)}'; COMMIT;`);
+  } catch (e) {
+    threw = e.message;
+    await db.exec('ROLLBACK').catch(() => {});
+  }
+  ok(!threw && (await kOf(SERIES)) !== before, `Realtime down: the member still leaves and the key still changes${threw ? ` (error: ${threw})` : ''}`);
 }
 
 // 178's own rule is spelled out in 191's functions, not only inherited through bw_can_view_event.

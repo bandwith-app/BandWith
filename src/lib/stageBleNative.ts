@@ -57,6 +57,25 @@ const cachedKey = (eventId: string): string | null => {
   }
 };
 
+/**
+ * The key a change replaced, kept for the gig day: a phone that missed the
+ * change still links under it, and only signed states count there (#288).
+ * Same prefix as the keys, so sign-out clears it too.
+ */
+const PREV_PREFIX = KEY_PREFIX + 'prev:';
+export const PREV_KEY_MS = 36 * 3600_000;
+
+export function previousStageKey(eventId: string): string | null {
+  try {
+    const kept = JSON.parse(localStorage.getItem(PREV_PREFIX + eventId) || 'null') as { key?: unknown; until?: unknown } | null;
+    if (kept && typeof kept.key === 'string' && kept.key && typeof kept.until === 'number' && kept.until > Date.now())
+      return kept.key;
+  } catch {
+    /* nothing kept */
+  }
+  return null;
+}
+
 /** A key fetch with no answer by then counts as offline (a venue with one bar of signal). */
 export const KEY_FETCH_TIMEOUT_MS = 4_000;
 
@@ -66,15 +85,28 @@ let keyAsks = 0;
 /** The newest ask whose answer was kept, per gig: an older answer arriving later writes nothing. */
 const keyKept = new Map<string, number>();
 
-function keepAnswer(eventId: string, data: unknown, ask: number, epoch: number) {
+/** A window event (detail: the gig's id): its band key changed, Stage asks for it again (useStageBle). */
+export const STAGE_KEY_EVENT = 'bw:stage-key';
+
+function keepAnswer(eventId: string, data: unknown, ask: number, epoch: number, late: () => boolean) {
   if (epoch !== keyEpoch || ask < (keyKept.get(eventId) ?? 0)) return;
   keyKept.set(eventId, ask);
+  const before = cachedKey(eventId);
   try {
-    if (typeof data === 'string' && data) localStorage.setItem(KEY_PREFIX + eventId, data);
-    else localStorage.removeItem(KEY_PREFIX + eventId);
+    if (typeof data === 'string' && data) {
+      localStorage.setItem(KEY_PREFIX + eventId, data);
+      if (before && before !== data)
+        localStorage.setItem(PREV_PREFIX + eventId, JSON.stringify({ key: before, until: Date.now() + PREV_KEY_MS }));
+    } else {
+      localStorage.removeItem(KEY_PREFIX + eventId);
+      localStorage.removeItem(PREV_PREFIX + eventId);
+    }
   } catch {
     /* kept for this session only */
   }
+  // Answered after the caller stopped waiting: Stage takes it now (Codex on 642676fc).
+  if (late() && typeof data === 'string' && data && data !== before && typeof window !== 'undefined')
+    window.dispatchEvent(new CustomEvent(STAGE_KEY_EVENT, { detail: eventId }));
 }
 
 /**
@@ -90,17 +122,24 @@ export async function fetchStageKey(eventId: string): Promise<{ key: string | nu
   const epoch = keyEpoch;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let answer: { data: unknown; error: unknown } | null;
+  let timedOut = false;
   try {
     const call = Promise.resolve(supabase.rpc('bw_stage_key', { p_event_id: eventId })).then(
       (a: { data: unknown; error: unknown }) => {
-        if (a && !a.error) keepAnswer(eventId, a.data, ask, epoch);
+        if (a && !a.error) keepAnswer(eventId, a.data, ask, epoch, () => timedOut);
         return a;
       },
       () => null,
     );
     answer = await Promise.race([
       call,
-      new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), KEY_FETCH_TIMEOUT_MS))),
+      new Promise<null>(
+        (resolve) =>
+          (timer = setTimeout(() => {
+            timedOut = true;
+            resolve(null);
+          }, KEY_FETCH_TIMEOUT_MS)),
+      ),
     ]);
   } catch {
     answer = null;
