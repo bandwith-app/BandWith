@@ -12,7 +12,8 @@
 //   node song_files_adopted.pglite.mjs <repo> <repo>/supabase/migrations/197_song_files_adopted.sql
 //   (with /dev/null as the migration the new checks FAIL)
 import { PGlite } from '@electric-sql/pglite';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 const [REPO, MIG] = process.argv.slice(2);
 const db = new PGlite();
@@ -76,6 +77,30 @@ await db.exec(m108.slice(start, end).join('\n'));
 const rpcStart = m108.findIndex((l) => l.includes('-- review RPC --'));
 const rpcEnd = m108.findIndex((l, i) => i > rpcStart && l.includes('-- songs RLS --'));
 await db.exec(m108.slice(rpcStart, rpcEnd).join('\n'));
+
+// Apply order: 180 (fix/account-deletion, #282) runs before 197 and also
+// redefines bw_withdraw_song_suggestion (NULL-safe author check, B1). Load
+// its real function from that branch head (by name, not line numbers), so
+// the check below proves 197 keeps 180's fix.
+const M180 = 'supabase/migrations/180_account_deletion_safety.sql';
+const src180 = (() => {
+  try {
+    return execFileSync('git', ['-C', REPO, 'show', `origin/fix/account-deletion:${M180}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch {
+    return existsSync(`${REPO}/${M180}`) ? readFileSync(`${REPO}/${M180}`, 'utf8') : null; // merged: the file is on main
+  }
+})();
+const fnFrom = (sql, name) => {
+  const a = sql.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`);
+  if (a < 0) return null;
+  const body = sql.indexOf('$$', sql.indexOf('AS $$', a) + 5);
+  const end = sql.indexOf(';', body);
+  const grants = sql.slice(end + 1).match(new RegExp(`^(?:\\s*(?:REVOKE|GRANT)[^;]*public\\.${name}\\([^;]*;)+`))?.[0] ?? '';
+  return sql.slice(a, end + 1) + grants;
+};
+const w180 = src180 && fnFrom(src180, 'bw_withdraw_song_suggestion');
+ok(!!w180 && /created_by IS DISTINCT FROM v_uid/.test(w180), '180’s real bw_withdraw_song_suggestion loaded (NULL-safe author check)');
+if (w180) await db.exec(w180);
 
 const mig = readFileSync(MIG, 'utf8');
 await db.exec(mig);
@@ -278,7 +303,7 @@ const rej2 = await review(ADMIN, id(32), 'reject');
 ok(rej2 && JSON.stringify(rej2.files) === JSON.stringify([`sb://song-files/${U}`]), `reject still returns a file only that song used (${JSON.stringify(rej2?.files ?? rej2)})`);
 ok((await q(`SELECT count(*)::int AS n FROM songs WHERE id IN ('${id(24)}','${id(25)}','${id(26)}')`)).rows[0].n === 0, 'the rejected / withdrawn songs are gone');
 // 180 (account deletion, B1): a former member's suggestion has created_by NULL.
-// 197 redefines withdraw: it must keep 180's IS DISTINCT FROM.
+// 180's real withdraw was loaded before 197; after 197 its fix must hold.
 await db.exec(`INSERT INTO songs VALUES ('${id(27)}','${BAND}','Former member song','suggested',NULL,NULL);
   INSERT INTO song_suggestions (id, band_id, song_id, kind, created_by) VALUES ('${id(33)}','${BAND}','${id(27)}','new_song',NULL)`);
 const wdNull = await withdraw(MEM2, id(33));

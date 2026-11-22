@@ -46,8 +46,8 @@
 --
 -- 3. A file another song (or a suggestion) uses is never removed:
 --    bw_review_song_suggestion / bw_withdraw_song_suggestion (108, otherwise
---    unchanged; withdraw as 180 lines 643-678 on fix/account-deletion at
---    898303a2, with IS DISTINCT FROM for a NULL author) return only the
+--    unchanged; withdraw as 180 lines 751-786 on fix/account-deletion at
+--    b91fd064, with IS DISTINCT FROM for a NULL author) return only the
 --    files nothing else uses, and the app asks
 --    bw_song_files_unused before removing any (deleting a song, replacing a
 --    file). A member's song can't link a file another song uses
@@ -594,9 +594,10 @@ REVOKE ALL ON FUNCTION public.bw_review_song_suggestion(uuid, text, text, jsonb,
 GRANT EXECUTE ON FUNCTION public.bw_review_song_suggestion(uuid, text, text, jsonb, boolean) TO authenticated;
 
 -- The author takes a pending suggestion back (a suggested song is deleted).
--- Mirrors 180_account_deletion_safety.sql lines 643-678 (fix/account-deletion
--- at 898303a2: "As 108, with IS DISTINCT FROM", created_by can be NULL)
--- plus 197's file filter. Re-check against 180 if that file changes.
+-- Mirrors 180_account_deletion_safety.sql lines 751-786 (fix/account-deletion
+-- at b91fd064, unchanged since 898303a2: "As 108, with IS DISTINCT FROM",
+-- created_by can be NULL) plus 197's file filter. Re-check against 180 if
+-- that file changes (the PGlite test loads 180's real function first).
 CREATE OR REPLACE FUNCTION public.bw_withdraw_song_suggestion(p_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
