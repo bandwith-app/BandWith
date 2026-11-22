@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BleClient, ConnectionPriority } from '@capacitor-community/bluetooth-le';
+import { BleClient, BluetoothLe, ConnectionPriority } from '@capacitor-community/bluetooth-le';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { StageBle, keptVerifyKey, stageBleAvailable, stageKey, stageSigner, stageVerifyKey } from '@/lib/stageBleNative';
@@ -61,6 +61,10 @@ export const IDLE_LEADER_CHECK_MS = 4_000;
 const LEADER_SCAN_MS = 2_000;
 /** A look's short link to another phone: a phone out of range mustn't hold up the leader's reads. */
 export const PROBE_TIMEOUT_MS = 2_000;
+/** A probed phone is let go within this (a phone gone out of range would otherwise take the plugin's 5 s). */
+export const PROBE_LET_GO_MS = 1_000;
+/** What a leader's state says about how recent it is: enough to compare two leaders. */
+type Heard = Pick<StageLiveState, 'seq' | 'from'>;
 /** Searching with nothing found: start the scan again this often (the radio can end one by itself). */
 export const SEARCH_RESTART_MS = 10_000;
 /** A phone whose states aren't the leader's (a failed signature) is skipped this long. */
@@ -83,11 +87,11 @@ const STALE_RETRY_MS = 5_000;
 const VERIFY_REFRESH_MS = 30_000;
 /**
  * How good a phone is to follow: one that leads (signed above band-key),
- * then one leading a setlist this phone lacks (the member is told to get it),
- * then one that leads nothing (signed above band-key). The newer state breaks
- * a tie between two that lead.
+ * this phone's setlist or not (on another, the member is told to get it),
+ * then one that leads nothing (signed above band-key). The newer state
+ * breaks a tie between two that lead.
  */
-const leaderRank = (state: StageLiveState | null, signed: boolean, outdated: boolean) => (state ? (signed ? 4 : 3) : outdated ? 2 : signed ? 1 : 0);
+const leaderRank = (leads: boolean, signed: boolean) => (leads ? (signed ? 3 : 2) : signed ? 1 : 0);
 /**
  * Band-key states (older apps, and anyone posing as one) are refused this long
  * after this phone last checked a signed state for the gig: the admins lead
@@ -352,6 +356,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     let link = 0;
     /** The newest valid state from the linked phone (null: it has served none). */
     let linkState: StageLiveState | null = null;
+    /** The newest state the linked phone served, this phone's setlist or not (null: none). */
+    let linkHeard: Heard | null = null;
     let checkTimer: ReturnType<typeof setTimeout> | undefined;
     /** Looks in a row that found nothing while the linked phone served nothing: they slow down. */
     let idleChecks = 0;
@@ -469,8 +475,6 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
 
     /** Band-key states are refused: this phone can check signatures and saw the admins sign lately. */
     const legacyRefused = () => !!verify && Date.now() - (signedSeen.get(gig) ?? -Infinity) < SIGNED_TRUST_MS;
-    /** The linked phone leads a setlist this phone doesn't have. */
-    let linkOutdated = false;
 
     /** Leave the linked phone (its goodbye is ignored), skip it for `skipMs`, and search again. */
     const dropLink = (id: string, skipMs: number) => {
@@ -478,6 +482,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       link++;
       setDevice(null);
       linkState = null;
+      linkHeard = null;
       clearTimeout(checkTimer);
       stopSync();
       void BleClient.disconnect(id).catch(() => {});
@@ -552,9 +557,13 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         }
         // Far ahead of the clock: made up (anyone with the band key can), never followed.
         if (result.ok && !seqPlausible(result.state.seq)) return;
+        if (!result.ok && result.reason === 'setlist' && !seqPlausible(result.seq)) return;
+        if (deviceId === id && (result.ok || result.reason === 'setlist')) {
+          const heard = result.ok ? result.state : result;
+          if (isNewer(heard, linkHeard)) linkHeard = { seq: heard.seq, from: heard.from };
+        }
         if (result.ok) {
           authFails = [];
-          linkOutdated = false;
           staleKey = false;
           if (!linkState || isNewer(result.state, linkState)) linkState = result.state;
           setStatus(linkedStatus());
@@ -565,7 +574,6 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           if (signedLink) onStateRef.current(result.state, true);
           else onStateRef.current(result.state);
         } else if (result.reason === 'setlist') {
-          linkOutdated = true;
           // Not silently "connected": this phone needs the setlist again (internet).
           setStatus('outdated');
         }
@@ -575,11 +583,12 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     };
 
     /**
-     * Another phone advertising the gig, over a short link: its state (signed
-     * or band-key), or `outdated` (it leads a setlist this phone doesn't have
-     * yet), or nothing valid.
+     * Another phone advertising the gig, over a short link: what it leads
+     * (seq and leader id), with its state when this phone has that setlist
+     * (none: it leads a setlist this phone doesn't have yet), signed or
+     * band-key, or nothing valid.
      */
-    const probe = async (id: string): Promise<{ state: StageLiveState; signed: boolean } | { outdated: true; signed: boolean } | null> => {
+    const probe = async (id: string): Promise<{ heard: Heard; state: StageLiveState | null; signed: boolean } | null> => {
       // A phone linked as the leader (this session's, or a reopened one's): connecting again would replace its goodbye.
       if (leaderLinks.has(id)) return null;
       try {
@@ -587,15 +596,17 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         const signed = !!verify && (await servedBy(id)).includes(STAGE_BLE_SIGNED_CHARACTERISTIC);
         // Short as well: the radio does one thing at a time, the leader's reads wait meanwhile.
         const result = await readState(id, signed, PROBE_TIMEOUT_MS);
-        if (result.ok) return seqPlausible(result.state.seq) ? { state: result.state, signed } : null;
+        if (result.ok) return seqPlausible(result.state.seq) ? { heard: result.state, state: result.state, signed } : null;
         // A newer pair on that phone: this one's key may be out of date.
         if (result.reason === 'stale') void refreshVerify();
-        return result.reason === 'setlist' ? { outdated: true, signed } : null;
+        if (result.reason === 'setlist' && seqPlausible(result.seq)) return { heard: { seq: result.seq, from: result.from }, state: null, signed };
+        return null;
       } catch {
         return null;
       } finally {
         // Let go fully before anything links to it, unless something linked to it meanwhile (that link stays).
-        if (!leaderLinks.has(id)) await BleClient.disconnect(id).catch(() => {});
+        // Through the plugin itself, with a short timeout: its queue (the leader's reads) never waits on a phone gone out of range.
+        if (!leaderLinks.has(id)) await BluetoothLe.disconnect({ deviceId: id, timeout: PROBE_LET_GO_MS } as { deviceId: string }).catch(() => {});
       }
     };
 
@@ -603,7 +614,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       clearTimeout(checkTimer);
       // Sooner while the linked phone has served nothing, slowing down if that lasts.
       const idle = Math.min(IDLE_LEADER_CHECK_MS * 2 ** idleChecks, LEADER_CHECK_MS);
-      if (!cancelled && deviceId) checkTimer = setTimeout(() => void checkLeaders(), linkState ? LEADER_CHECK_MS : idle);
+      if (!cancelled && deviceId) checkTimer = setTimeout(() => void checkLeaders(), linkHeard ? LEADER_CHECK_MS : idle);
     };
 
     /** Two admins in Stage: follow the one that leads (the newer state), not the first one found. */
@@ -637,19 +648,20 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         /* Bluetooth off meanwhile: its own handler takes over */
       }
       // Every phone found, then the best of them: not the first one better than ours.
-      const candidates: { id: string; state: StageLiveState | null; signed: boolean }[] = [];
+      const candidates: { id: string; heard: Heard; signed: boolean }[] = [];
       for (const id of found) {
         // Never while the leader's song or clock reads wait (the radio does one thing at a time).
         while (radioBusy() && !cancelled && deviceId === current) await wait(100);
         if (cancelled || deviceId !== current) return;
         const theirs = await probe(id);
         if (cancelled || deviceId !== current) return;
+        if (!theirs) continue;
         // The linked leader itself at another address (Android rotates it): the same leader id in its state.
-        if (theirs && 'state' in theirs && linkState && theirs.state.from === linkState.from) {
+        if (linkHeard && theirs.heard.from === linkHeard.from) {
           sameLeader.add(id);
           continue;
         }
-        if (theirs) candidates.push({ id, state: 'state' in theirs ? theirs.state : null, signed: theirs.signed });
+        candidates.push({ id, heard: theirs.heard, signed: theirs.signed });
       }
       // After the probes: one of them may just have shown the admins' signature.
       const refused = legacyRefused();
@@ -657,14 +669,16 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       let bestRank = -1;
       for (const c of candidates) {
         if (!c.signed && refused) continue;
-        const r = leaderRank(c.state, c.signed, !c.state);
-        if (r > bestRank || (r === bestRank && c.state && best?.state && isNewer(c.state, best.state))) {
+        const r = leaderRank(true, c.signed);
+        if (r > bestRank || (r === bestRank && best && isNewer(c.heard, best.heard))) {
           best = c;
           bestRank = r;
         }
       }
-      const ours = !signedLink && refused ? -1 : leaderRank(linkState, signedLink, linkOutdated);
-      const next = best && (bestRank > ours || (bestRank === ours && best.state && linkState && isNewer(best.state, linkState))) ? best.id : null;
+      // Ours: what the linked phone served, followable or not (a setlist this phone lacks).
+      const ours = !signedLink && refused ? -1 : leaderRank(!!linkHeard, signedLink);
+      // Only a strictly better one takes the link, so two admins on a setlist this phone lacks don't take turns.
+      const next = best && (bestRank > ours || (bestRank === ours && isNewer(best.heard, linkHeard))) ? best.id : null;
       if (!next && ours < 0) {
         // Linked to a band-key phone once the admins signed, and no one better: leave it.
         dropLink(current, REFUSED_SKIP_MS);
@@ -675,13 +689,14 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         link++;
         setDevice(null);
         linkState = null;
+        linkHeard = null;
         stopSync();
         await BleClient.disconnect(current).catch(() => {});
         if (cancelled) return;
         linkTo(next);
         return;
       }
-      if (!linkState) idleChecks++;
+      if (!linkHeard) idleChecks++;
       scheduleCheck();
     };
 
@@ -695,6 +710,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       link++;
       setDevice(null);
       linkState = null;
+      linkHeard = null;
       clearTimeout(checkTimer);
       stopSync();
       if (cancelled) return;
@@ -749,6 +765,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       clearTimeout(retry);
       setDevice(id);
       linkState = null;
+      linkHeard = null;
       idleChecks = 0;
       sameLeader = new Set();
       if (bookDevice !== id) {
@@ -760,7 +777,6 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       }
       signedLink = false;
       linkKind = 'signed';
-      linkOutdated = false;
       authFails = [];
       const gen = ++link;
       void (async () => {
@@ -851,6 +867,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
               link++;
               setDevice(null);
               linkState = null;
+              linkHeard = null;
               clearTimeout(checkTimer);
               stopSync();
               if (id) void BleClient.disconnect(id).catch(() => {});

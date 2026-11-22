@@ -60,7 +60,7 @@ describe('the leader signs, members only check (audit #1)', () => {
   it("another setlist on this phone is told apart from a bad signature", async () => {
     const leader = await generateSigner();
     const bytes = (await encodeSignedState(state, IDS, leader.private))!;
-    expect(await decodeSignedState(bytes, ['a1', 'b2'], leader.public)).toEqual({ ok: false, reason: 'setlist' });
+    expect(await decodeSignedState(bytes, ['a1', 'b2'], leader.public)).toMatchObject({ ok: false, reason: 'setlist' });
   });
 
   it('signatures are 64 bytes (r‖s), the WebCrypto form the native plugins also produce', async () => {

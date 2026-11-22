@@ -186,7 +186,9 @@ async function stateBody(state: StageLiveState, savedIds: string[], version: num
 
 export type DecodeResult =
   | { ok: true; state: StageLiveState }
-  | { ok: false; reason: 'format' | 'auth' | 'setlist' }
+  | { ok: false; reason: 'format' | 'auth' }
+  /** A real state for a setlist this phone doesn't have: its seq and sender still tell which leader is newest. */
+  | { ok: false; reason: 'setlist'; seq: number; from: string }
   /** Signed with a newer pair than this phone's public key: it needs the new one (internet). */
   | { ok: false; reason: 'stale' };
 
@@ -235,7 +237,7 @@ async function parseBody(body: Uint8Array, savedIds: string[]): Promise<DecodeRe
   const m = hasTail && !signed ? body[tailAt] : 0;
   if (hasTail && !signed && tailAt + 1 + m !== body.length) return { ok: false, reason: 'format' };
   const mine = await setlistFingerprint(savedIds);
-  if (hex(fp) !== hex(mine)) return { ok: false, reason: 'setlist' };
+  if (hex(fp) !== hex(mine)) return { ok: false, reason: 'setlist', seq, from };
   const ids = sortedIds(savedIds);
   if (hasTail && signed && body.length - tailAt !== Math.ceil(ids.length / 8)) return { ok: false, reason: 'format' };
   if (current !== NONE && current >= ids.length) return { ok: false, reason: 'format' };

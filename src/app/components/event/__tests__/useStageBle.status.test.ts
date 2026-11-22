@@ -53,6 +53,7 @@ const ble = vi.hoisted(() => ({
 
 vi.mock('@capacitor-community/bluetooth-le', () => ({
   BleClient: ble,
+  BluetoothLe: { disconnect: vi.fn(async () => {}) },
   ConnectionPriority: { CONNECTION_PRIORITY_HIGH: 1 },
 }));
 

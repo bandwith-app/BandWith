@@ -101,6 +101,7 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
     startEnabledNotifications: vi.fn(async () => {}),
     stopEnabledNotifications: vi.fn(async () => {}),
   },
+  BluetoothLe: { disconnect: vi.fn(async ({ deviceId }: { deviceId: string }) => void air.connected.delete(deviceId)) },
   ConnectionPriority: { CONNECTION_PRIORITY_HIGH: 1 },
 }));
 
