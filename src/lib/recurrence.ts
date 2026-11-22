@@ -13,12 +13,20 @@ export interface RepeatRule {
   freq?: string;
   frequency?: string;
   interval?: number;
+  /** Last day (YYYY-MM-DD), included. */
+  until?: string | null;
 }
+
 
 /**
  * The repeats after `startYmd` (YYYY-MM-DD; the first date itself is not
  * included), up to `until` and at most `maxCount`, as local-noon Dates (noon,
  * so a daylight-saving change never moves the day). Unknown rules: none.
+ *
+ * The cut-off day is included, to its last minute in local time: `rule.until`
+ * as written ("2027-01-21" is that local day, not its UTC midnight, which is
+ * the day before west of Greenwich and before noon everywhere), else the
+ * local day of `until`.
  */
 export function repeatDates(startYmd: string, rule: RepeatRule, until: Date, maxCount: number): Date[] {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(startYmd || '');
@@ -42,11 +50,20 @@ export function repeatDates(startYmd: string, rule: RepeatRule, until: Date, max
     return null;
   };
 
+  // The cut-off: the end of that day, local time.
+  const written = /^(\d{4})-(\d{2})-(\d{2})/.exec(typeof rule?.until === 'string' ? rule.until : '');
+  const day0 = written
+    ? new Date(Number(written[1]), Number(written[2]) - 1, Number(written[3]))
+    : until instanceof Date && !Number.isNaN(until.getTime())
+      ? until
+      : null;
+  if (!day0) return [];
+  const endOfDay = new Date(day0.getFullYear(), day0.getMonth(), day0.getDate(), 23, 59, 59, 999);
+
   const out: Date[] = [];
   for (let k = 1; out.length < maxCount; k++) {
     const d = nth(k);
-    // `!(d <= until)` also stops on an invalid `until`.
-    if (!d || !(d <= until)) break;
+    if (!d || d > endOfDay) break;
     out.push(d);
   }
   return out;

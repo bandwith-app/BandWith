@@ -47,6 +47,16 @@ describe('repeatDates (recurring rehearsals)', () => {
     expect(repeatDates('not a date', { frequency: 'monthly' }, far, 5)).toEqual([]);
   });
 
+  it('`until` is a calendar date and counts, whatever the time zone (until = new Date(rule.until))', () => {
+    const rule = { frequency: 'weekly', until: '2027-01-21' };
+    expect(repeatDates('2027-01-07', rule, new Date(rule.until), 24).map(ymd)).toEqual(['2027-01-14', '2027-01-21']);
+    // A local-midnight cutoff (the default "until the end of that month") includes its own day too.
+    expect(repeatDates('2027-01-07', { frequency: 'weekly' }, new Date(2027, 0, 21), 24).map(ymd)).toEqual([
+      '2027-01-14',
+      '2027-01-21',
+    ]);
+  });
+
   it('occurrences fall at local noon, so a date never shifts with the time zone', () => {
     const [d] = repeatDates('2027-01-31', { frequency: 'monthly' }, far, 1);
     expect(d.getHours()).toBe(12);

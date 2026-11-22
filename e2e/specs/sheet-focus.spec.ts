@@ -48,3 +48,25 @@ test('@smoke Tab stays inside the iPad composer', async ({ app }) => {
   await cycle(app, composer, 'Shift+Tab', 4);
   await cycle(app, composer, 'Tab', stops + 2);
 });
+
+test('@smoke iPad composer: Rider & stage → Edit list from the keyboard opens an editor focus can reach', async ({ app }) => {
+  test.skip(!(await isWide(app)), 'the composer is the tablet layout');
+  await openCreate(app, 'New gig');
+  const composer = app.page.locator('[data-bw-composer]').last();
+  await expect(composer).toBeVisible();
+  // Keyboard only: focus the button, press Enter.
+  const riderButton = composer.getByRole('button', { name: new RegExp(`^${app.t('Rider & stage')}`) }).first();
+  await riderButton.focus();
+  await app.page.keyboard.press('Enter');
+  const sheet = app.page.getByRole('dialog').filter({ hasText: app.t('Rider & stage') }).last();
+  await expect(sheet).toBeVisible();
+  await expect.poll(() => focusInside(sheet)).toBe(true);
+  const editList = sheet.getByRole('button', { name: app.t('EDIT LIST') }).first();
+  await editList.focus();
+  await app.page.keyboard.press('Enter');
+  const editor = app.page.getByRole('dialog', { name: app.t('Edit input list') });
+  await expect(editor).toBeVisible();
+  await expect.poll(() => focusInside(editor), 'focus moves into the editor').toBe(true);
+  await cycle(app, editor, 'Tab', (await tabStops(editor)) + 2);
+  await cycle(app, editor, 'Shift+Tab', 4);
+});

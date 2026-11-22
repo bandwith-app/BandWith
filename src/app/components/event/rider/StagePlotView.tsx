@@ -185,9 +185,13 @@ export const StagePlotView: React.FC<{
     onChange?.(moveItem(plot, p.id!, x, y));
   };
 
+  // When a finger or the mouse last let go of an item: the click the browser
+  // sends right after is that same tap, already handled.
+  const pointerUpAt = useRef(0);
   const onUp = (e: React.PointerEvent) => {
     const p = press.current;
     if (!p || e.pointerId !== p.pointerId) return;
+    pointerUpAt.current = Date.now();
     if (p.lifted) {
       if (p.moved) haptic.tap();
       else setSelected(p.id);
@@ -210,6 +214,12 @@ export const StagePlotView: React.FC<{
         : item.kind === 'speaker'
           ? t('Speaker')
           : t('DI box');
+  // A click with no pointer press before it (a screen reader activating the
+  // button) selects the item like Enter.
+  const onMarkClick = (item: PlotItem) => {
+    if (Date.now() - pointerUpAt.current < 700) return;
+    setSelected(selected === item.id ? null : item.id);
+  };
   const onMarkKey = (e: React.KeyboardEvent, item: PlotItem) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -293,6 +303,7 @@ export const StagePlotView: React.FC<{
             name={editable ? markName(item) : undefined}
             describedBy={editable ? hintId : undefined}
             onKeyDown={editable ? (e) => onMarkKey(e, item) : undefined}
+            onClick={editable ? () => onMarkClick(item) : undefined}
             onPointerDown={
               editable
                 ? (e) => {
@@ -459,7 +470,8 @@ const PlotMark: React.FC<{
   name?: string;
   describedBy?: string;
   onKeyDown?: (e: React.KeyboardEvent) => void;
-}> = ({ item, size, selected, lifted, onPointerDown, name, describedBy, onKeyDown }) => {
+  onClick?: () => void;
+}> = ({ item, size, selected, lifted, onPointerDown, name, describedBy, onKeyDown, onClick }) => {
   const d = DIAMETER[size];
   const control = name
     ? {
@@ -469,6 +481,7 @@ const PlotMark: React.FC<{
         'aria-pressed': !!selected,
         'aria-describedby': describedBy,
         onKeyDown,
+        onClick,
       }
     : { 'aria-hidden': true as const };
   const focusRing = name ? 'outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-foreground focus-visible:ring-offset-white' : '';

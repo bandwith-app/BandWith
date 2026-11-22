@@ -73,6 +73,21 @@ describe('Stage plot, keyboard only', () => {
     expect(latest.items[0].x).toBe(0);
   });
 
+  it("a screen reader's click (no pointer) selects the item; a pointer tap still selects it once", () => {
+    render(<Harness />);
+    const singer = stage().getByRole('button', { name: /Lead vocals/ });
+    fireEvent.click(singer);
+    expect(singer.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(singer);
+    expect(singer.getAttribute('aria-pressed')).toBe('false');
+    // Mouse: press and release select it, the click that follows changes nothing.
+    const wedge = stage().getByRole('button', { name: /Wedge/ });
+    fireEvent.pointerDown(wedge, { pointerType: 'mouse', button: 0, pointerId: 7, clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(wedge, { pointerType: 'mouse', button: 0, pointerId: 7, clientX: 10, clientY: 10 });
+    fireEvent.click(wedge);
+    expect(wedge.getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('a read-only plot stays one picture (no controls inside)', () => {
     render(<StagePlotView plot={start} />);
     expect(screen.getByRole('img', { name: /Stage plot/ })).toBeTruthy();

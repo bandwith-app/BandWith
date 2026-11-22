@@ -6,12 +6,33 @@ import { useEffect, type RefObject } from 'react';
  * reach the controls behind the scrim; on close, focus goes back to what
  * opened it (not into a text field: that would raise the on-screen keyboard).
  *
- * Only the top layer traps. A layer opened above (a picker sheet, a popover
- * or menu on <body>) keeps its own focus. Pointer input is left alone: on the
- * iPhone Duo the rail beside a sheet stays usable.
+ * Only the top layer traps, and the order the layers opened in decides which
+ * one that is, not where they sit in the page. Any dialog, popover or menu
+ * that opens while a trap is on (a portal on <body> such as the input-list
+ * editor, a nested sheet, a select's list) becomes the top layer by itself:
+ * focus moves into a dialog (a popover places its own), and when the layer
+ * goes, focus returns to what opened it in the layer beneath. Pointer input
+ * is left alone: on the iPhone Duo the rail beside a sheet stays usable.
  */
 
-const stack: HTMLElement[] = [];
+interface Layer {
+  el: HTMLElement;
+  /** What had focus when the layer opened. */
+  opener: HTMLElement | null;
+  /** Found on the page (a layer that opened above), not registered by useFocusTrap. */
+  auto: boolean;
+  /** A popover or menu: it handles Tab and focus itself while it is on top. */
+  ownFocus?: boolean;
+}
+
+const stack: Layer[] = [];
+const topLayer = (): Layer | undefined => stack[stack.length - 1];
+/** The layer that traps, if the top one leaves focus to the trap. */
+const top = (): HTMLElement | undefined => {
+  const l = topLayer();
+  return l && !l.ownFocus ? l.el : undefined;
+};
+const entryOf = (el: HTMLElement) => stack.find((l) => l.el === el);
 
 const TABBABLE = [
   'a[href]',
@@ -28,8 +49,10 @@ const TABBABLE = [
   '[tabindex]',
 ].join(',');
 
-/** Layers that sit above a sheet when they are portaled to <body>. */
-const LAYER = '[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"],[data-radix-popper-content-wrapper]';
+/** Dialogs: a new one above the top layer takes the focus over. */
+const DIALOG = '[role="dialog"],[role="alertdialog"],[aria-modal="true"]';
+/** Popovers and menus, which handle their own focus. */
+const POPOVER = '[role="menu"],[role="listbox"],[data-radix-popper-content-wrapper]';
 
 const visible = (el: HTMLElement): boolean => {
   if (el.closest('[hidden],[inert]')) return false;
@@ -43,18 +66,17 @@ const visible = (el: HTMLElement): boolean => {
 export const tabbables = (root: HTMLElement): HTMLElement[] =>
   Array.from(root.querySelectorAll<HTMLElement>(TABBABLE)).filter((el) => el.tabIndex >= 0 && visible(el));
 
-/** Focus the first of `list` that takes it (some can't, e.g. hidden by CSS). */
+/**
+ * Focus the first of `list` that takes it (some can't, e.g. hidden by CSS),
+ * and bring it into view: wrapping can land on a control far below.
+ */
 const focusFirstOf = (list: HTMLElement[]): boolean =>
   list.some((el) => {
     el.focus({ preventScroll: true });
-    return document.activeElement === el;
+    if (document.activeElement !== el) return false;
+    el.scrollIntoView?.({ block: 'nearest' });
+    return true;
   });
-
-/** A layer above `root` (a popover or picker on <body>) keeps its own focus. */
-const inLayerAbove = (el: Element, root: HTMLElement): boolean => {
-  const layer = el.closest(LAYER);
-  return !!layer && layer !== root && !layer.contains(root);
-};
 
 const wrapInto = (root: HTMLElement, backwards: boolean) => {
   const items = tabbables(root);
@@ -66,11 +88,11 @@ let tabbing: { backwards: boolean } | null = null;
 
 const onKeyDown = (e: KeyboardEvent) => {
   if (e.key !== 'Tab' || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
-  const root = stack[stack.length - 1];
+  const root = top();
   if (!root || !root.isConnected) return;
   const active = document.activeElement as HTMLElement | null;
+  // Anything outside the top layer is beneath it (layers above it would be on top).
   const inside = !!active && root.contains(active);
-  if (!inside && active && active !== document.body && inLayerAbove(active, root)) return;
   const items = tabbables(root);
   if (!inside || !items.length) {
     // Focus behind the layer (or nothing to focus in it): bring it back in.
@@ -93,10 +115,9 @@ const onKeyDown = (e: KeyboardEvent) => {
 };
 
 const onFocusIn = (e: FocusEvent) => {
-  const root = stack[stack.length - 1];
+  const root = top();
   const target = e.target as Element | null;
   if (!tabbing || !root || !root.isConnected || !target || root.contains(target)) return;
-  if (!target.hasAttribute?.('data-bw-focus-guard') && inLayerAbove(target, root)) return;
   wrapInto(root, tabbing.backwards);
 };
 
@@ -114,29 +135,113 @@ const makeGuard = () => {
   return g;
 };
 
-let listening = false;
-const push = (el: HTMLElement) => {
-  stack.push(el);
-  if (!listening) {
-    document.addEventListener('keydown', onKeyDown);
-    document.addEventListener('focusin', onFocusIn, true);
-    guards = [makeGuard(), makeGuard()];
-    document.body.prepend(guards[0]);
-    document.body.append(guards[1]);
-    listening = true;
+/** Focus into a layer that just opened (unless something in it took it already). */
+const focusInto = (el: HTMLElement) => {
+  if (!el.isConnected || el.contains(document.activeElement)) return;
+  if (el.hasAttribute('tabindex') || !focusFirstOf(tabbables(el))) {
+    if (!el.hasAttribute('tabindex')) el.tabIndex = -1;
+    el.focus({ preventScroll: true });
   }
 };
-const remove = (el: HTMLElement) => {
-  const i = stack.lastIndexOf(el);
-  if (i >= 0) stack.splice(i, 1);
-  if (!stack.length && listening) {
-    document.removeEventListener('keydown', onKeyDown);
-    document.removeEventListener('focusin', onFocusIn, true);
-    guards.forEach((g) => g.remove());
-    guards = [];
-    tabbing = null;
-    listening = false;
+
+const restore = (opener: HTMLElement | null) => {
+  const typing = opener?.matches?.('input, textarea, select, [contenteditable="true"]');
+  if (opener && opener.isConnected && opener !== document.body && !typing) opener.focus({ preventScroll: true });
+};
+
+/** A layer closed: focus back to what opened it, or else into the layer now on top. */
+const backToTrap = (opener: HTMLElement | null) => {
+  restore(opener);
+  const root = top();
+  if (root && root.isConnected && !root.contains(document.activeElement)) {
+    const typing = opener?.matches?.('input, textarea, select, [contenteditable="true"]');
+    // A text field that opened it keeps the on-screen keyboard down: leave focus be.
+    if (!(typing && opener?.isConnected && root.contains(opener))) focusInto(root);
   }
+};
+
+/**
+ * While a layer is trapped, dialogs, popovers and menus that appear (portals
+ * on <body>, nested sheets) join the stack on top on their own, and leave it
+ * when they go.
+ */
+const onMutations = (records: MutationRecord[]) => {
+  // Layers added later go after the end guard: keep it last on the page.
+  const end = guards[1];
+  if (end && document.body.lastElementChild !== end && document.activeElement !== end) document.body.append(end);
+  for (const r of records) {
+    r.addedNodes.forEach((n) => {
+      if (!(n instanceof HTMLElement)) return;
+      const LAYERS = `${DIALOG},${POPOVER}`;
+      const found = [...(n.matches(LAYERS) ? [n] : []), ...Array.from(n.querySelectorAll<HTMLElement>(LAYERS))];
+      for (const el of found) {
+        const below = topLayer()?.el;
+        // Opened after the top layer, so above it, wherever it is in the page.
+        if (entryOf(el) || el.closest('[hidden]') || !below || el.contains(below)) continue;
+        const ownFocus = !el.matches(DIALOG) && !!el.closest(POPOVER);
+        stack.push({ el, opener: document.activeElement as HTMLElement | null, auto: true, ownFocus });
+        if (!ownFocus)
+          window.requestAnimationFrame(() => {
+            if (top() === el) focusInto(el);
+          });
+      }
+    });
+  }
+  // A dialog that went: back to what opened it, if focus went with it.
+  for (let i = stack.length - 1; i >= 0; i--) {
+    const l = stack[i];
+    if (!l.auto || l.el.isConnected) continue;
+    stack.splice(i, 1);
+    const active = document.activeElement;
+    if (!active || active === document.body || !active.isConnected) backToTrap(l.opener);
+  }
+  if (!stack.length) stop();
+};
+
+let observer: MutationObserver | null = null;
+let listening = false;
+const start = () => {
+  if (listening) return;
+  document.addEventListener('keydown', onKeyDown);
+  document.addEventListener('focusin', onFocusIn, true);
+  guards = [makeGuard(), makeGuard()];
+  document.body.prepend(guards[0]);
+  document.body.append(guards[1]);
+  if (typeof MutationObserver !== 'undefined') {
+    observer = new MutationObserver(onMutations);
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+  listening = true;
+};
+const stop = () => {
+  if (!listening) return;
+  document.removeEventListener('keydown', onKeyDown);
+  document.removeEventListener('focusin', onFocusIn, true);
+  observer?.disconnect();
+  observer = null;
+  guards.forEach((g) => g.remove());
+  guards = [];
+  tabbing = null;
+  listening = false;
+};
+
+/** A layer registered by useFocusTrap (it may already be on the stack, found as it opened). */
+const push = (el: HTMLElement, opener: HTMLElement | null): Layer => {
+  const found = entryOf(el);
+  if (found) {
+    found.auto = false;
+    return found;
+  }
+  const layer: Layer = { el, opener, auto: false };
+  stack.push(layer);
+  start();
+  return layer;
+};
+const remove = (layer: Layer) => {
+  const i = stack.indexOf(layer);
+  if (i >= 0) stack.splice(i, 1);
+  // Layers that opened above it and are still around stay on the stack.
+  if (!stack.length) stop();
 };
 
 /**
@@ -149,20 +254,17 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>, active: boolean
     const opener = document.activeElement as HTMLElement | null;
     // Registered at once (above the layer that opened it); focus moves on the
     // next frame, once the layer is on screen.
-    let el: HTMLElement | null = ref.current;
-    if (el) push(el);
+    let layer: Layer | null = ref.current ? push(ref.current, opener) : null;
     const id = window.requestAnimationFrame(() => {
-      if (!el) {
-        el = ref.current;
-        if (el) push(el);
-      }
+      if (!layer && ref.current) layer = push(ref.current, opener);
+      const el = layer?.el;
       if (el && !el.contains(document.activeElement)) el.focus({ preventScroll: true });
     });
     return () => {
       window.cancelAnimationFrame(id);
-      if (el) remove(el);
-      const typing = opener?.matches?.('input, textarea, select, [contenteditable="true"]');
-      if (opener && opener.isConnected && opener !== document.body && !typing) opener.focus({ preventScroll: true });
+      if (!layer) return;
+      remove(layer);
+      backToTrap(layer.opener);
     };
   }, [active, ref]);
 }
