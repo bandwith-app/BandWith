@@ -826,6 +826,15 @@ const dmBefore = (await db.query(`SELECT count(*)::int AS n FROM messages m JOIN
 r = await asRole('service_role', `SELECT public.zz_purge_dm_messages('${MEM2}') AS n`);
 ok(!r.error && dmBefore > 0 && r.rows[0]?.n === dmBefore, `a definer purge of a user's direct messages still deletes them (${r.error ?? `${r.rows[0]?.n} of ${dmBefore}`})`);
 await db.exec(`DROP FUNCTION public.zz_purge_dm_messages(uuid)`);
+// And the real one: a member's "Delete chat" in a two-person direct chat
+// (bw_delete_chat_history, SECURITY DEFINER) still wipes it under the guard.
+const DM2 = id(88);
+await db.exec(`INSERT INTO chats (id, type, name, created_by) VALUES ('${DM2}','direct',NULL,'${NEWM}');
+  INSERT INTO chat_participants (chat_id, user_id) VALUES ('${DM2}','${NEWM}'),('${DM2}','${ADMIN}');
+  INSERT INTO messages (chat_id, sender_id, content) VALUES ('${DM2}','${NEWM}','dm to admin'),('${DM2}','${ADMIN}','dm back');`);
+r = await as(NEWM, `SELECT public.bw_delete_chat_history('${DM2}') AS n`);
+const dm2Left = (await db.query(`SELECT count(*)::int AS n FROM messages WHERE chat_id = '${DM2}'`)).rows[0].n;
+ok(!r.error && r.rows[0]?.n > 0 && dm2Left === 0, `bw_delete_chat_history on a two-person direct chat, as a member: deletes both sides (${r.error ?? `${r.rows[0]?.n} deleted, ${dm2Left} left`})`);
 // 5. One set-based recipients call (send-push), server only.
 const srv = (sql) => db.query(sql).catch((e) => ({ rows: [{}], error: e.message }));
 r = await srv(`SELECT public.bw_chat_recipients_shared('${ADMIN}', ARRAY['${NEWM}','${staleUsers.LEFT}','${EXM}','${ADMIN}']::uuid[]) AS ids`);
