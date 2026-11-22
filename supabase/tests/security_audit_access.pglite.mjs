@@ -544,8 +544,13 @@ if (process.env.M193) {
   ok(!!r.error && !inChat.includes(EXM), `193: a former member on the lineup can't open the gig chat (${r.error ? 'refused' : 'opened'})`);
   // 181: put back on the lineup, a musician finds the same gig chat.
   await db.exec(`DELETE FROM event_members WHERE event_id = '${GIG3}' AND user_id = '${NEWM}'`);
-  inChat = (await db.query(`SELECT user_id FROM chat_participants WHERE chat_id = '${EVCHAT3}'`)).rows.map((x) => x.user_id);
-  ok(!inChat.includes(NEWM), '181 + 193: off the lineup, out of the gig chat');
+  r = await as(NEWM, `SELECT id FROM messages WHERE chat_id = '${EVCHAT3}'`);
+  const offRoster = await as(ADMIN, `SELECT user_id FROM chat_participants WHERE chat_id = '${EVCHAT3}'`);
+  const offOwn = await as(NEWM, `SELECT chat_id FROM chat_participants WHERE user_id = '${NEWM}' AND chat_id = '${EVCHAT3}'`);
+  const offArch = (await db.query(`SELECT count(*)::int AS n FROM chat_participants_removed_175 WHERE chat_id = '${EVCHAT3}' AND user_id = '${NEWM}'`)).rows[0].n;
+  const offKept = (await db.query(`SELECT count(*)::int AS n FROM chat_participants WHERE chat_id = '${EVCHAT3}' AND user_id = '${NEWM}'`)).rows[0].n;
+  ok(r.rows.length === 0 && offRoster.rows.length > 0 && !offRoster.rows.some((x) => x.user_id === NEWM) && offOwn.rows.length === 0 && offArch > 0 && offKept === 1,
+    `181 + 193: off the lineup, out of the gig chat: no access, not in the roster, row kept + archived (${r.rows.length} read, roster ${offRoster.rows.length}, own ${offOwn.rows.length}, archive ${offArch}, kept ${offKept})`);
   await db.exec(`INSERT INTO event_members VALUES ('${GIG3}','${NEWM}','confirmed')`);
   r = await as(NEWM, `SELECT id FROM chats WHERE type = 'event' AND event_id = '${GIG3}'`);
   ok(r.rows.length === 1 && r.rows[0].id === EVCHAT3, `181 + 193: back on the lineup, an old build's lookup finds the gig chat (${r.rows.length})`);
