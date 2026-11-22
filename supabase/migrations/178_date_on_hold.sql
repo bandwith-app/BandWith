@@ -209,9 +209,10 @@ REVOKE ALL ON FUNCTION public.bw_event_quote_private(uuid, text, text, uuid) FRO
 -- p_user_id is not an active admin of its band.) Asked about someone else by
 -- a caller who doesn't run the band, the answer treats them as a member: it
 -- never tells who the band's admins are, and stays "hidden" for a quote.
--- Non-members of the band learn nothing: false unless the person asked
--- about, and the caller, are members of the band or already on this event
--- (a lineup row, a row in its chat), where the answer gates what they see.
+-- Callers outside the band learn nothing: false when the caller is signed
+-- in and neither a member of the band nor on this event's lineup (where the
+-- answer gates their own row). The server, members and admins get the real
+-- answer, also about someone outside the band (guards, push readers).
 CREATE OR REPLACE FUNCTION public.bw_event_quote_hidden(p_event_id uuid, p_user_id uuid DEFAULT auth.uid())
 RETURNS boolean
 LANGUAGE sql
@@ -222,13 +223,9 @@ AS $$
     SELECT 1 FROM events e
      WHERE e.id = p_event_id
        AND e.band_id IS NOT NULL
-       AND NOT EXISTS (
-         SELECT 1 FROM (VALUES (p_user_id), (auth.uid())) AS w(u)
-          WHERE w.u IS NOT NULL
-            AND NOT public.bw_is_band_member(e.band_id, w.u)
-            AND NOT EXISTS (SELECT 1 FROM event_members em WHERE em.event_id = e.id AND em.user_id = w.u)
-            AND NOT EXISTS (SELECT 1 FROM chats c JOIN chat_participants cp ON cp.chat_id = c.id
-                             WHERE c.event_id = e.id AND cp.user_id = w.u))
+       AND (auth.uid() IS NULL
+            OR public.bw_is_band_member(e.band_id, auth.uid())
+            OR EXISTS (SELECT 1 FROM event_members em WHERE em.event_id = e.id AND em.user_id = auth.uid()))
        AND public.bw_event_quote_private(e.id, e.status::text, e.event_type::text, e.quote_id)
        AND NOT (public.bw_is_band_admin(e.band_id, p_user_id)
                 AND (auth.uid() IS NULL OR auth.uid() = p_user_id OR public.bw_is_band_admin(e.band_id, auth.uid())))

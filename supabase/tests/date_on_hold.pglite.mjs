@@ -1159,7 +1159,7 @@ ok(orderA?.c === true, `order 178 → 181: confirmed, the lineup member is back 
   const memSees = (await as(MEM, `SELECT id FROM events WHERE id = '${Q5}'`)).rows.length;
   ok(/permission denied/i.test(priv.error || '') && hidOut.rows[0]?.h === false && hidOutMem.rows[0]?.h === false
      && hidMem.rows[0]?.h === true && hidAdm.rows[0]?.h === true && admSees === 1 && memSees === 0,
-    `M2: _private refused to apps, _hidden false for a non-member (also asking about a member), true for the member and the admin's question; the events rule still works (${priv.error || 'callable'}, ${hidOut.error || hidOut.rows[0]?.h}, ${hidOutMem.error || hidOutMem.rows[0]?.h}, ${hidMem.rows[0]?.h}, ${hidAdm.rows[0]?.h}, admin ${admSees}, member ${memSees})`);
+    `M2: _private refused to apps, _hidden false for a caller outside the band (also asking about a member), true for the member and the admin's question; the events rule still works (${priv.error || 'callable'}, ${hidOut.error || hidOut.rows[0]?.h}, ${hidOutMem.error || hidOutMem.rows[0]?.h}, ${hidMem.rows[0]?.h}, ${hidAdm.rows[0]?.h}, admin ${admSees}, member ${memSees})`);
 
   // M1: the hidden-chat list and the cut-offs start from the caller's rows.
   const defs = (await tryq(`SELECT pg_get_functiondef('public.bw_hidden_quote_chat_ids()'::regprocedure) h, pg_get_functiondef('public.bw_quote_chat_cutoffs()'::regprocedure) c`)).rows[0] || {};
