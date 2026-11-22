@@ -90,6 +90,11 @@ function stmt(sql, head, drop) {
   return (d >= 0 ? sql.slice(d, sql.indexOf(';', d) + 1) + '\n' : '') + sql.slice(p, end);
 }
 
+// The same, when the head has it: [] otherwise.
+function optStmt(sql, head, drop) {
+  return sql.indexOf(head) < 0 ? [] : [stmt(sql, head, drop)];
+}
+
 const db = new PGlite();
 process.on('unhandledRejection', (e) => { console.log('ERROR', e.message); process.exit(2); });
 let fails = 0;
@@ -210,6 +215,10 @@ const parts175 = [
   stmt(M175, 'CREATE POLICY chats_select_participant', 'DROP POLICY IF EXISTS chats_select_participant'),
   stmt(M175, 'CREATE POLICY chats_select_creator', 'DROP POLICY IF EXISTS chats_select_creator'),
   stmt(M175, 'CREATE POLICY chat_participants_select_same_chat', 'DROP POLICY IF EXISTS chat_participants_select_same_chat'),
+  // 175 r4 final (#281 cc542575): the roster rule moved into a RESTRICTIVE
+  // guard plus the own-row policy; older heads (d9971705) have neither.
+  ...optStmt(M175, 'CREATE POLICY chat_participants_select_own', 'DROP POLICY IF EXISTS chat_participants_select_own'),
+  ...optStmt(M175, 'CREATE POLICY chat_participants_scope_guard', 'DROP POLICY IF EXISTS chat_participants_scope_guard'),
   fn(M175, 'bw_trg_band_member_left_chats'),
   stmt(M175, 'CREATE TRIGGER bw_band_member_left_chats', 'DROP TRIGGER IF EXISTS bw_band_member_left_chats'),
 ];
