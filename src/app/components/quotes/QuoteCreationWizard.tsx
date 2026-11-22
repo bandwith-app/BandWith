@@ -697,8 +697,6 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
 
   // Smart Initialization on Load
   const hasInitializedPricingRef = useRef(false);
-  // The band's pricing has arrived (what the form settles on load follows it).
-  const [pricingReady, setPricingReady] = useState(false);
 
   useEffect(() => {
     const effectiveBandId = selectedBand?.id || 'default';
@@ -707,7 +705,6 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
     getBandPricing(effectiveBandId).then(settings => {
       if (isCancelled) return;
       setPricingSettings(settings);
-      setPricingReady(true);
 
       if (
         !hasInitializedPricingRef.current &&
@@ -3144,9 +3141,10 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
   // - what only the user sets (client, date and times, venue, notes…) is
   //   compared with the quote as it opened;
   // - what the form also settles by itself from the band's pricing (fees,
-  //   totals, currency, extras, deposit…) is compared with the form once
-  //   settled: its baseline follows it until a moment after the pricing has
-  //   arrived (at the latest 3 s after opening), then stays.
+  //   totals, currency, extras, deposit…) is compared per field: its baseline
+  //   follows the form only for a moment after opening and after the pricing
+  //   arrives (however late), and only for fields the user hasn't changed. A
+  //   field changed at any other time is the user's from then on.
   const SETTLED_BY_FORM = [
     'currency', 'baseFee', 'musicianCount', 'musicians', 'performanceType',
     'travelIncluded', 'travelFee', 'travelDistanceKm', 'travelMode',
@@ -3155,32 +3153,43 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
     'depositAmount', 'depositRequired', 'depositPercentage', 'validityDays', 'validUntil',
     'subtotal', 'discountAmount', 'netAmount', 'vatAmount', 'total', 'totalWithVat',
   ];
-  const editBaselineRef = useRef<{ own: string; settled: string } | null>(null);
-  const editSettledRef = useRef(false);
+  const SETTLE_MS = 400;
+  const editBaselineRef = useRef<{ own: string; settled: Record<string, string> } | null>(null);
+  const editTouchedRef = useRef(new Set<string>());
+  const editPricingRef = useRef<{ settings: BandPricingSettings; at: number } | null>(null);
   const editSnapshot = isEditing
     ? (() => {
         const { createdAt: _c, updatedAt: _u, ...rest } = buildQuoteData() as Record<string, unknown>;
         const own: Record<string, unknown> = {};
-        const settled: Record<string, unknown> = {};
-        for (const [k, v] of Object.entries(rest)) (SETTLED_BY_FORM.includes(k) ? settled : own)[k] = v;
-        return { own: JSON.stringify(own), settled: JSON.stringify(settled) };
+        const settled: Record<string, string> = {};
+        for (const [k, v] of Object.entries(rest)) {
+          if (SETTLED_BY_FORM.includes(k)) settled[k] = JSON.stringify(v ?? null);
+          else own[k] = v;
+        }
+        return { own: JSON.stringify(own), settled };
       })()
     : null;
   if (editSnapshot) {
-    if (!editBaselineRef.current) editBaselineRef.current = editSnapshot;
-    else if (!editSettledRef.current) editBaselineRef.current = { ...editBaselineRef.current, settled: editSnapshot.settled };
+    const now = Date.now();
+    if (!editPricingRef.current || editPricingRef.current.settings !== pricingSettings) {
+      editPricingRef.current = { settings: pricingSettings, at: now };
+    }
+    const settling = now - editPricingRef.current.at < SETTLE_MS;
+    const base = editBaselineRef.current;
+    if (!base) editBaselineRef.current = { own: editSnapshot.own, settled: { ...editSnapshot.settled } };
+    else {
+      for (const [k, v] of Object.entries(editSnapshot.settled)) {
+        if (base.settled[k] === v) continue;
+        if (settling && !editTouchedRef.current.has(k)) base.settled[k] = v;
+        else editTouchedRef.current.add(k);
+      }
+    }
   }
-  React.useEffect(() => {
-    if (!isEditing || editSettledRef.current) return;
-    const id = window.setTimeout(() => {
-      editSettledRef.current = true;
-    }, pricingReady ? 300 : 3000);
-    return () => window.clearTimeout(id);
-  }, [isEditing, pricingReady]);
   const editDirty =
     !!editSnapshot &&
     !!editBaselineRef.current &&
-    (editSnapshot.own !== editBaselineRef.current.own || editSnapshot.settled !== editBaselineRef.current.settled);
+    (editSnapshot.own !== editBaselineRef.current.own ||
+      Object.entries(editSnapshot.settled).some(([k, v]) => editBaselineRef.current!.settled[k] !== v));
   const [editLeaveOpen, setEditLeaveOpen] = useState(false);
   const requestEditClose = () => (editDirty ? setEditLeaveOpen(true) : onClose());
   useSystemBack(isEditing, () => {

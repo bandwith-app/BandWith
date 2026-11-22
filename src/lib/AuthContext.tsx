@@ -60,7 +60,8 @@ interface AuthContextType {
   ) => Promise<{ error: AuthError | null; session: Session | null; existing: boolean }>;
   signInWithGoogle: () => Promise<{ error: AuthError | null }>;
   signInWithApple: () => Promise<{ error: AuthError | null }>;
-  signOut: () => Promise<{ error: AuthError | null }>;
+  /** `discardPendingWrites`: the account is gone (deleted), drop its unsent changes too. */
+  signOut: (opts?: { discardPendingWrites?: boolean }) => Promise<{ error: AuthError | null }>;
   resetPassword: (email: string) => Promise<{ error: AuthError | null }>;
   /** True after the user opened a password-reset link: the app must ask for a new password. */
   isPasswordRecovery: boolean;
@@ -483,6 +484,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     await refreshProfile();
   };
 
+  // Changes still waiting on this phone (notes, suggestions, a setlist order):
+  // asked first, "Send now" or "Sign out anyway" (signOutGate.ts); closed,
+  // still signed in. A deleted account is not asked.
+  const signOutAfterAsking = async (opts?: { discardPendingWrites?: boolean }) => {
+    if (!opts?.discardPendingWrites) {
+      const { askBeforeSignOut } = await import('./signOutGate');
+      if (!(await askBeforeSignOut(user?.id))) return { error: null, cancelled: true as const };
+    }
+    return (handleSignOut as (o?: typeof opts) => ReturnType<typeof handleSignOut>)(opts);
+  };
+
   const value: AuthContextType = {
     user,
     profile,
@@ -495,7 +507,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signUp: handleSignUp,
     signInWithGoogle: handleSignInWithGoogle,
     signInWithApple: handleSignInWithApple,
-    signOut: handleSignOut,
+    signOut: signOutAfterAsking,
     resetPassword: handleResetPassword,
     isPasswordRecovery,
     completePasswordRecovery,

@@ -3878,6 +3878,11 @@ const dict: Dictionary = {
   // Live mode offline A3: changes kept on this phone until there is signal
   "1 change waiting for signal": "1 alteração aguardando sinal",
   "{n} changes waiting for signal": "{n} alterações aguardando sinal",
+  "You have 1 unsent change": "Você tem 1 alteração não enviada",
+  "You have {n} unsent changes": "Você tem {n} alterações não enviadas",
+  "Notes, suggestions or a setlist order made on this phone haven’t reached the band yet. Send them before you sign out.": "Notas, sugestões ou uma ordem de setlist feitas neste telefone ainda não chegaram à banda. Envie-as antes de sair.",
+  "Send now": "Enviar agora",
+  "Sign out anyway": "Sair mesmo assim",
   "Saved on this phone, sent when you’re back online.": "Salvo neste celular, enviado quando você voltar a ficar online.",
   "Saved on this phone": "Salvo neste celular",
   "Saved on this phone. It goes to the admin when you’re back online.": "Salvo neste celular. Chega ao admin quando você voltar a ficar online.",

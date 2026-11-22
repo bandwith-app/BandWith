@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, cleanup, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 
 // Round 3 (Claude M5): two admins on the same setlist. Admin B added a song
 // while A was editing: A's save must not silently drop it. A sees it and
@@ -45,6 +45,7 @@ globalThis.ResizeObserver = class {
 } as unknown as typeof ResizeObserver;
 
 import { SetlistManagerView } from '../SetlistManagerView';
+import { handleBackFromStack } from '@/lib/backStack';
 
 afterEach(() => {
   cleanup();
@@ -88,5 +89,26 @@ describe('SetlistManagerView: saved only over the setlist as loaded', () => {
     fireEvent.click(await screen.findByRole('button', { name: /load the latest version/i }));
     await waitFor(() => expect(svc.getSetlist).toHaveBeenCalledTimes(2));
     expect(screen.queryByText(/someone else changed this setlist/i)).toBeNull();
+  });
+
+  // Round 4 (Codex MINOR): Save from the "Save the setlist changes?" sheet
+  // hits a conflict: the sheet closes and the choice shows; never a retry
+  // with the old version.
+  it('Save in the leave sheet, changed meanwhile: the sheet closes and the choice shows', async () => {
+    svc.replaceSetlistSongs.mockResolvedValue({ error: null, conflict: current });
+    render(<SetlistManagerView onClose={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: /^setlists/i }));
+    fireEvent.click(await screen.findByText('Rooftop Session'));
+    fireEvent.change(await screen.findByDisplayValue('Rooftop Session'), { target: { value: 'Rooftop Session · Saturday' } });
+    act(() => {
+      handleBackFromStack();
+    });
+    const sheet = (await screen.findByText('Save the setlist changes?')).closest('[role="dialog"]') as HTMLElement;
+    fireEvent.click(within(sheet).getByRole('button', { name: /^save/i }));
+    await waitFor(() => expect(svc.replaceSetlistSongs).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByText('Save the setlist changes?')).toBeNull());
+    expect(await screen.findByRole('button', { name: /load the latest version/i })).toBeTruthy();
+    expect(screen.getByDisplayValue('Rooftop Session · Saturday')).toBeTruthy();
+    expect(svc.replaceSetlistSongs).toHaveBeenCalledTimes(1);
   });
 });

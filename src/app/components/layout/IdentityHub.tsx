@@ -33,6 +33,7 @@ import { VenueAutocomplete } from '@/app/components/ui/VenueAutocomplete';
 import { Band } from '@/app/data/bands';
 import { NotificationItem } from '@/app/data/notifications';
 import { useAuth } from '@/lib/AuthContext';
+import { signOutCancelled } from '@/lib/signOutGate';
 import { useTheme } from '@/lib/ThemeContext';
 import { useBand } from '@/lib/BandContext';
 import { updateBand } from '@/lib/services/bands';
@@ -284,7 +285,13 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
     setSigningOut(true);
     setSignOutError(null);
     try {
-      const { error } = await signOut();
+      const res = await signOut();
+      // Called off ("You have N unsent changes" closed): still signed in.
+      if (signOutCancelled(res)) {
+        setSigningOut(false);
+        return;
+      }
+      const { error } = res;
       if (error) {
         // Still signed in: reloading would only bring the session back.
         console.error('Logout failed:', error);

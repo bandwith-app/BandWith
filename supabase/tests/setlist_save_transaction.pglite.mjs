@@ -225,7 +225,7 @@ CREATE TRIGGER t_row_ops AFTER INSERT OR UPDATE OR DELETE ON public.setlist_song
 const opsOf = async () => (await db.query(`SELECT op, id FROM public.row_ops`)).rows;
 const rr = await save(ADMIN, [{ song_id: S3, set_number: 1 }, { song_id: S1 }, { song_id: S2 }]);
 const reorderOps = await opsOf();
-ok(!rr?.error && reorderOps.every((o) => o.op === 'UPDATE') && reorderOps.length === 3,
+ok(!rr?.error && reorderOps.length > 0 && reorderOps.every((o) => o.op === 'UPDATE') && new Set(reorderOps.map((o) => o.id)).size === 3,
   `a reorder updates the rows in place (${reorderOps.map((o) => o.op).join(',') || 'nothing'})`);
 const reordered = await rows();
 ok(reordered.map((r) => r.id).join() === [R3, R1, R2].join() && reordered.map((r) => r.position).join() === '1,2,3', 'same ids, new positions');
@@ -266,6 +266,17 @@ const renamedMeanwhile = await (async () => {
 ok(renamedMeanwhile?.conflict === true && (await setlist())?.name === 'Renamed by B', 'a rename meanwhile is a conflict too');
 const overloads = (await db.query(`SELECT count(*)::int AS n FROM pg_proc WHERE proname = 'bw_save_setlist_songs'`)).rows[0].n;
 ok(overloads === 1, `one bw_save_setlist_songs only (no PostgREST overload ambiguity): ${overloads}`);
+
+// Round 4 (Codex): databases built from 002 have UNIQUE(setlist_id, position)
+// (prod doesn't). Swapping songs in place must not trip it.
+await seed();
+await db.exec(`ALTER TABLE public.setlist_songs ADD CONSTRAINT t_pos_unique UNIQUE (setlist_id, position)`);
+const sw = await save(ADMIN, [{ song_id: S2 }, { song_id: S1 }, { song_id: S3, set_number: 2 }]);
+ok(!sw?.error && (await rows()).map((r) => r.id).join() === [R2, R1, R3].join(), `a swap works with UNIQUE(setlist_id, position) (${sw?.error ?? 'ok'})`);
+const rot = await save(ADMIN, [{ song_id: S3 }, { song_id: S2 }, { song_id: S4 }, { song_id: S1 }]);
+ok(!rot?.error && (await rows()).map((r) => r.song_id).join() === [S3, S2, S4, S1].join() && (await rows()).map((r) => r.position).join() === '1,2,3,4',
+  `a rotation with a new song too (${rot?.error ?? 'ok'})`);
+await db.exec(`ALTER TABLE public.setlist_songs DROP CONSTRAINT t_pos_unique`);
 
 // Older builds: their own delete + insert keeps working for admins, not for members.
 await seed();

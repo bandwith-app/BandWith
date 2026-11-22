@@ -629,8 +629,11 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
   // A song row's menu is the top layer: Back and Escape close just the menu.
   useSystemBack(!!actionMenuId, () => setActionMenuId(null));
 
-  /** `over`: save over this state instead of the loaded one ("Save mine instead"). */
-  const saveSetlist = useCallback(async (over?: SetlistState) => {
+  /**
+   * `over`: save over this state instead of the loaded one ("Save mine instead").
+   * true: saved; 'conflict': changed meanwhile, nothing saved (the choice shows).
+   */
+  const saveSetlist = useCallback(async (over?: SetlistState): Promise<boolean | 'conflict'> => {
     if (!editingSetlistId || !editingSetlistName.trim() || setlistEditorSaving || editorLoadFailed) return false;
     // Only what was loaded for this very setlist is saved to it.
     if (editorLoadedId !== editingSetlistId) return false;
@@ -652,7 +655,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
       }
       if (conflict) {
         setEditorConflict(conflict);
-        return false;
+        return 'conflict';
       }
       setEditorConflict(null);
       editorLoadedStateRef.current = { name, songs: rows };
@@ -1164,10 +1167,11 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
         }}
         onSave={async () => {
           const go = editorLeaveAction;
-          if (await handleSaveSetlist()) {
-            setEditorLeaveAction(null);
-            go?.();
-          }
+          const saved = await handleSaveSetlist();
+          // Changed meanwhile: back to the editor, where the choice shows
+          // (load the latest or save mine); nothing retried with the old version.
+          if (saved) setEditorLeaveAction(null);
+          if (saved === true) go?.();
         }}
       />
 

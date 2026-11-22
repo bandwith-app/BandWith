@@ -21,7 +21,7 @@ import {
 import { IconButton, NavBackButton, PillButton, PillField, Selector, FormError } from '@/app/components/bw';
 import { useRailAction } from '@/lib/railActions';
 import { cn } from '@/app/components/ui/utils';
-import { createSong, saveSongLyricsIfUnchanged, updateSong, type Song } from '@/lib/services/songs';
+import { createSong, getSong, saveSongLyricsIfUnchanged, updateSong, type Song } from '@/lib/services/songs';
 import { lyricsTooLong, MAX_LYRICS_LENGTH, replacedFiles, savedLyricsLength, songCreatePayload, songIdentity, songUpdatePayload, type SongFormValues } from '@/lib/songPayload';
 import { UserError, userMessage } from '@/lib/userError';
 import {
@@ -148,9 +148,8 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
     }
   }, [isOpen, bandId]);
 
-  // Edit: start from the song's current values.
-  useEffect(() => {
-    if (!isOpen || !song) return;
+  // Edit: start from the song's current values (also after "Load the latest version").
+  const fillFrom = (song: Song) => {
     setTitle(song.title || '');
     setArtist(song.artist || '');
     setBpm(song.bpm ? String(song.bpm) : '');
@@ -182,6 +181,11 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
       key: song.key || '',
       durationSeconds: song.duration_seconds && song.duration_seconds > 0 ? song.duration_seconds : 0,
     };
+  };
+  useEffect(() => {
+    if (!isOpen || !song) return;
+    fillFrom(song);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per song opened
   }, [isOpen, song?.id]);
 
   // Another title or artist: check for a duplicate again.
@@ -419,16 +423,27 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
     }
   };
 
-  // After a conflict: their version replaces the draft (mine dropped), and
-  // from now on lyrics are saved over it; or the draft is saved over theirs.
-  const loadLatestLyrics = () => {
-    if (!lyricsConflict) return;
-    const latest = lyricsConflict.stored;
-    storedLyricsRef.current = latest;
-    if (openedRef.current) openedRef.current = { ...openedRef.current, lyrics: latest ?? '' };
-    setLyrics(latest ?? '');
-    setLyricsConflict(null);
+  // After a conflict: the whole latest song replaces the draft (key, chart,
+  // transpose and files of mine dropped, never their lyrics with my key), or
+  // the draft is saved over theirs. Not loaded: the conflict stays.
+  const loadLatestLyrics = async () => {
+    if (!lyricsConflict || !song || savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    const { data: latest, error: loadError } = await getSong(song.id);
+    savingRef.current = false;
+    setSaving(false);
+    if (loadError || !latest) {
+      setError(userMessage(loadError, t("Couldn't load this")));
+      return;
+    }
+    fillFrom(latest);
+    setTransposed(0);
+    setAudioFile(null);
+    setChartFile(null);
+    setChordsUrl('');
     setError(null);
+    setBaselineTick((n) => n + 1);
   };
   const saveMyLyricsInstead = () => {
     if (!lyricsConflict) return;
@@ -453,6 +468,8 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
       onSongAdded?.();
     }
     openedRef.current = null;
+    storedLyricsRef.current = null;
+    setLyricsConflict(null);
     setDuplicateOf(null);
     setStep('details');
     setTitle('');

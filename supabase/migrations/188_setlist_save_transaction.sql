@@ -181,6 +181,17 @@ BEGIN
    WHERE ss.setlist_id = p_setlist_id
      AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_plan) x WHERE (x ->> 'id')::uuid = ss.id);
 
+  -- Rows that move go to a free (negative) position first: databases built
+  -- from 002 have UNIQUE(setlist_id, position), and a swap would otherwise
+  -- collide half-way. The final positions are 1..n, all different.
+  UPDATE public.setlist_songs ss
+     SET position = -k.pos
+    FROM jsonb_to_recordset(v_plan) AS k(id uuid, pos int)
+   WHERE k.id IS NOT NULL
+     AND ss.id = k.id
+     AND ss.setlist_id = p_setlist_id
+     AND ss.position IS DISTINCT FROM k.pos;
+
   UPDATE public.setlist_songs ss
      SET position = k.pos,
          set_number = k.set_number,

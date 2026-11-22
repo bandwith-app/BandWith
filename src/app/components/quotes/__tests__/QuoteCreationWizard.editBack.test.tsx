@@ -134,4 +134,40 @@ describe('editing a quote: Android Back', () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(await screen.findByText('Save your changes?')).toBeTruthy();
   });
+
+  // Round 4 (Codex BLOCKER): the deposit changed while the pricing was still
+  // loading is the user's: the pricing arriving never takes it into the baseline.
+  it('the deposit changed while pricing loads: Back still asks', { timeout: 15000 }, async () => {
+    let arrive: (v: unknown) => void = () => {};
+    pricing.load = () => new Promise((r) => (arrive = r));
+    const { onClose } = await renderEdit();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 500));
+    });
+    fireEvent.click(screen.getByRole('button', { name: /pricing, logistics & billing/i }));
+    fireEvent.change(await screen.findByLabelText('Booking deposit'), { target: { value: '50' } });
+    await act(async () => arrive({ ...DEFAULT_BAND_PRICING }));
+    act(() => {
+      handleBackFromStack();
+    });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(await screen.findByText('Save your changes?')).toBeTruthy();
+  });
+
+  // Round 4 (Codex MINOR): pricing that arrives late (after 3 s) in another
+  // currency is still the form settling, not an edit.
+  it('pricing arrives after 3 s in another currency: Back just closes', { timeout: 15000 }, async () => {
+    let arrive: (v: unknown) => void = () => {};
+    pricing.load = () => new Promise((r) => (arrive = r));
+    const { onClose } = await renderEdit();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 3300));
+    });
+    await act(async () => arrive({ ...DEFAULT_BAND_PRICING, currency: 'USD' }));
+    act(() => {
+      handleBackFromStack();
+    });
+    expect(screen.queryByText('Save your changes?')).toBeNull();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

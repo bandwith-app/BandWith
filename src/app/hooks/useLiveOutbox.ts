@@ -40,6 +40,12 @@ export function useWaitingChanges(userId?: string | null): number {
   return n;
 }
 
+/** Send everything waiting for this person now; how many changes still wait. */
+export async function sendWaitingNow(userId: string): Promise<number> {
+  await Promise.all([flushLiveOutbox(userId, liveOutboxApi), flushOutbox(userId, rehearsalApi)]);
+  return waitingChanges(userId);
+}
+
 /**
  * Sends what waits on this phone: at start, when the signal comes back, when
  * the app comes to the front, and every 30 s while something waits (a weak

@@ -89,6 +89,29 @@ export function writeLiveOutbox(userId: string, ops: LiveOp[]) {
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(LIVE_OUTBOX_EVENT, { detail: { userId } }));
 }
 
+/**
+ * Changes the server refused for their own account (note gone, no longer
+ * allowed, setlist changed meanwhile): kept on this phone, never deleted,
+ * out of the queue so they don't block the rest. Newest last.
+ */
+const REFUSED_PREFIX = 'bw:live_refused:';
+export function readRefusedLiveOps(userId: string | null | undefined): LiveOp[] {
+  if (!userId) return [];
+  try {
+    const v = JSON.parse(localStorage.getItem(`${REFUSED_PREFIX}${userId}`) || '[]');
+    return Array.isArray(v) ? (v as LiveOp[]) : [];
+  } catch {
+    return [];
+  }
+}
+function keepRefused(userId: string, op: LiveOp) {
+  try {
+    localStorage.setItem(`${REFUSED_PREFIX}${userId}`, JSON.stringify([...readRefusedLiveOps(userId), op].slice(-100)));
+  } catch {
+    /* storage full or blocked */
+  }
+}
+
 export function queueLiveOp(userId: string, op: LiveOp) {
   writeLiveOutbox(userId, addLiveOp(readLiveOutbox(userId), op));
 }
@@ -107,8 +130,8 @@ type Res = Promise<{ error: unknown }>;
 export interface LiveOutboxApi {
   note: (op: Extract<LiveOp, { kind: 'note' }>, userId: string) => Res;
   noteDelete: (op: Extract<LiveOp, { kind: 'noteDelete' }>, userId: string) => Res;
-  suggestion: (op: Extract<LiveOp, { kind: 'suggestion' }>) => Res;
-  order: (op: Extract<LiveOp, { kind: 'order' }>) => Res;
+  suggestion: (op: Extract<LiveOp, { kind: 'suggestion' }>, userId: string) => Res;
+  order: (op: Extract<LiveOp, { kind: 'order' }>, userId: string) => Res;
   /** Is `userId` the account signed in now? Not: the flush stops, the change waits. */
   isSessionUser?: (userId: string) => Promise<boolean>;
 }
@@ -120,9 +143,9 @@ const send = (api: LiveOutboxApi, op: LiveOp, userId: string): Res => {
     case 'noteDelete':
       return api.noteDelete(op, userId);
     case 'suggestion':
-      return api.suggestion(op);
+      return api.suggestion(op, userId);
     case 'order':
-      return api.order(op);
+      return api.order(op, userId);
   }
 };
 
@@ -130,8 +153,10 @@ let flushing: Promise<{ sent: number; dropped: number; left: number }> | null = 
 
 /**
  * Send the waiting changes in order. Still no signal: stop and keep the rest.
- * Refused by the server (no longer allowed, song gone, setlist changed by
- * someone else): dropped, so one bad change never blocks the others.
+ * Sent only when the server wrote it (a write that matched no row is not).
+ * Refused for its own account (no longer allowed, song gone, setlist changed
+ * by someone else): moved to the refused list, so one bad change never blocks
+ * the others. Refused because another account is signed in: kept in the queue.
  */
 export function flushLiveOutbox(userId: string, api: LiveOutboxApi) {
   if (flushing) return flushing;
@@ -148,6 +173,7 @@ export function flushLiveOutbox(userId: string, api: LiveOutboxApi) {
       if (error && (await notMine())) break;
       if (error) dropped++;
       else sent++;
+      if (error) keepRefused(userId, op);
       const same = JSON.stringify(op);
       writeLiveOutbox(userId, readLiveOutbox(userId).filter((o) => JSON.stringify(o) !== same));
     }

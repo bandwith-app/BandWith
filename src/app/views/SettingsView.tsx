@@ -325,8 +325,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       await import('@/lib/services/biometric')
         .then((m) => m.forgetQuickSignInFor(user?.id, user?.email))
         .catch(() => {});
-      // The account no longer exists: clear the local session.
-      await signOut().catch(() => {});
+      // The account no longer exists: clear the local session and its unsent changes.
+      await signOut({ discardPendingWrites: true }).catch(() => {});
       onClose();
       return;
     }

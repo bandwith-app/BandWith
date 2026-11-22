@@ -3,6 +3,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { saveSetlistOrder } from '@/lib/services/songs';
 import { keepOrderOffline } from '@/lib/services/liveOutboxApi';
+import { sessionUserId } from '@/lib/sessionUser';
 import { notifySetlistSaved } from '@/lib/services/setlistNotify';
 import { diffSetlist } from '@/lib/setlistChanges';
 import { useStageBle } from './useStageBle';
@@ -368,6 +369,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         return;
       }
       const rows = reorderRows(list, saved, inOrder);
+      const owner = await sessionUserId(); // queued offline only for this account
       const { error } = await saveSetlistOrder(rows);
       // The gig open behind Stage mode reloads its setlist in the new order.
       if (!error) {
@@ -392,7 +394,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         const eventIdNow = saveCtx.current.eventId;
         // No signal at the venue: the new order stands (on screen, over
         // Bluetooth) and is saved when back online (plan §3.5).
-        if (await keepOrderOffline(error, { setlistId: list, eventId: eventIdNow, rows, before })) {
+        if (await keepOrderOffline(error, { setlistId: list, eventId: eventIdNow, rows, before }, owner)) {
           if (!closing) setSaveState('waiting');
           return;
         }

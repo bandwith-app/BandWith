@@ -45,6 +45,8 @@ export async function suggestSongChange(input: {
   message?: string;
 }): Promise<{ data: SongSuggestion | null; error: Error | null; queued?: true }> {
   let row: Record<string, unknown> | null = null;
+  // Whose change it is, read before the request: queued only for that account.
+  const owner = await sessionUserId();
   try {
     const proposed =
       input.kind === 'note'
@@ -59,6 +61,7 @@ export async function suggestSongChange(input: {
       kind: input.kind,
       proposed,
       message: input.message?.trim() || null,
+      ...(owner ? { created_by: owner } : {}),
     };
     const { data, error } = await supabase.from('song_suggestions').insert(row).select('*').single();
     if (error) throw error;
@@ -66,8 +69,9 @@ export async function suggestSongChange(input: {
     return { data: data as unknown as SongSuggestion, error: null };
   } catch (error: any) {
     // No signal (a venue, a basement): kept on this phone, sent when back online.
-    const me = row && isOfflineError(error) ? await sessionUserId() : null;
-    if (row && me) {
+    // Re-read now: a tab switched to another account meanwhile queues nothing.
+    const me = row && owner && isOfflineError(error) ? await sessionUserId() : null;
+    if (row && me && me === owner) {
       queueLiveOp(me, { kind: 'suggestion', id: newLocalId(), row });
       return { data: null, error: null, queued: true };
     }

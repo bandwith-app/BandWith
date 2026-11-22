@@ -17,8 +17,11 @@ vi.mock('@/lib/services/setlistNotify', () => ({ notifySongUpdated: vi.fn() }));
 const svc = vi.hoisted(() => ({
   updateSong: vi.fn(async (..._a: unknown[]) => ({ data: {}, error: null })),
   saveLyrics: vi.fn(async (..._a: unknown[]): Promise<{ error: null; conflict?: string | null }> => ({ error: null })),
+  getSong: vi.fn(async (..._a: unknown[]): Promise<{ data: unknown; error: null }> => ({ data: null, error: null })),
 }));
-vi.mock('@/lib/services/songs', () => ({ createSong: vi.fn(), updateSong: svc.updateSong, saveSongLyricsIfUnchanged: svc.saveLyrics }));
+vi.mock('@/lib/services/songs', () => ({
+  createSong: vi.fn(), updateSong: svc.updateSong, saveSongLyricsIfUnchanged: svc.saveLyrics, getSong: svc.getSong,
+}));
 vi.mock('@/lib/services/songFiles', () => ({
   uploadSongFile: vi.fn(), removeSongFiles: vi.fn(async () => {}), isStoredSongFile: () => false,
   classifySongFile: () => 'audio', validateSongFile: () => null, normalizeSongFile: async (f: File) => f,
@@ -133,6 +136,7 @@ describe('song form: one write, a conflict that can be resolved, a quiet length 
 
   it('after a conflict, "Load the latest version" shows their text and a merge saves over it', { timeout: 60000 }, async () => {
     svc.saveLyrics.mockImplementationOnce(async () => ({ error: null, conflict: theirs }));
+    svc.getSong.mockImplementationOnce(async () => ({ data: { ...(keyed as object), lyrics: theirs }, error: null }));
     await toLyrics(keyed);
     fireEvent.change(await screen.findByDisplayValue('[C]Uptown lights'), { target: { value: '[C]Uptown lights, mine' } });
     fireEvent.click(screen.getByRole('button', { name: /save song/i }));
@@ -167,5 +171,53 @@ describe('song form: one write, a conflict that can be resolved, a quiet length 
     const once = live();
     fireEvent.change(field, { target: { value: `${long} and more` } });
     expect(live()).toBe(once);
+  });
+});
+
+// Round 4 (Codex): after a conflict, the latest version is the whole song,
+// never their lyrics with my transposed key and chart.
+describe('song form: "Load the latest version" reloads the whole song', () => {
+  const keyed = { id: 's4', band_id: 'b1', title: 'Hudson Line', artist: 'Hudson Line', status: 'ready', key: 'C', lyrics: '[C]Uptown lights' } as never;
+  const theirs = '[C]Uptown lights\n\n# Verse 2\nTheir new verse';
+
+  it('my transposed key goes too: a save then writes nothing of my version', { timeout: 60000 }, async () => {
+    svc.saveLyrics.mockImplementationOnce(async () => ({ error: null, conflict: theirs }));
+    svc.getSong.mockImplementationOnce(async () => ({ data: { ...(keyed as object), lyrics: theirs, key: 'C' }, error: null }));
+    render(<AddSongModal isOpen onClose={() => {}} bandId="b1" song={keyed} />);
+    fireEvent.click(screen.getByRole('button', { name: /next/i }));
+    fireEvent.change(await screen.findByDisplayValue('C'), { target: { value: 'D' } });
+    fireEvent.click(screen.getByRole('button', { name: /next/i }));
+    fireEvent.change(await screen.findByDisplayValue('[C]Uptown lights'), { target: { value: '[D]Uptown lights' } });
+    fireEvent.click(screen.getByRole('button', { name: /save song/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /load the latest version/i }));
+    await screen.findByDisplayValue(/Their new verse/);
+    expect(svc.getSong).toHaveBeenCalledWith('s4');
+    fireEvent.click(screen.getByRole('button', { name: /save song/i }));
+    // Nothing changed against the latest version: no write mixes the two.
+    await waitFor(() => expect(screen.queryByRole('button', { name: /load the latest version/i })).toBeNull());
+    expect(svc.saveLyrics).toHaveBeenCalledTimes(1);
+    expect(svc.updateSong).not.toHaveBeenCalled();
+  });
+
+  it('a conflict left behind never shows in the next, new song', { timeout: 60000 }, async () => {
+    svc.saveLyrics.mockImplementationOnce(async () => ({ error: null, conflict: theirs }));
+    const view = render(<AddSongModal isOpen onClose={() => {}} bandId="b1" song={keyed} />);
+    fireEvent.click(screen.getByRole('button', { name: /next/i }));
+    fireEvent.click(screen.getByRole('button', { name: /next/i }));
+    fireEvent.change(await screen.findByDisplayValue('[C]Uptown lights'), { target: { value: '[C]Mine' } });
+    fireEvent.click(screen.getByRole('button', { name: /save song/i }));
+    await screen.findByRole('button', { name: /load the latest version/i });
+    // Discarded: Close, then Discard in the sheet.
+    fireEvent.click(screen.getByRole('button', { name: /^close$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^discard$/i }));
+    view.rerender(<AddSongModal isOpen={false} onClose={() => {}} bandId="b1" song={keyed} />);
+    view.rerender(<AddSongModal isOpen onClose={() => {}} bandId="b1" />);
+    fireEvent.change(screen.getAllByRole('textbox')[0], { target: { value: 'Brand New Song' } });
+    fireEvent.click(screen.getByRole('button', { name: /next/i }));
+    fireEvent.click(screen.getByRole('button', { name: /next/i }));
+    // The step's content animates in: wait for the lyrics field.
+    expect(await screen.findByText(/lyrics · text/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /load the latest version/i })).toBeNull();
+    expect(screen.queryByText(/someone else changed these lyrics/i)).toBeNull();
   });
 });

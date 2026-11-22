@@ -176,6 +176,17 @@ export const createSong = async (songData: Partial<Song>): Promise<{ data: Song 
   }
 };
 
+/** One song as stored now (the form reloads it after a save conflict). */
+export const getSong = async (songId: string): Promise<{ data: Song | null; error: Error | null }> => {
+  try {
+    const { data, error } = await supabase.from('songs').select('*').eq('id', songId).single();
+    if (error) throw error;
+    return { data: data as Song, error: null };
+  } catch (error: any) {
+    return { data: null, error };
+  }
+};
+
 export const updateSong = async (
   songId: string,
   updates: SongChanges
@@ -638,6 +649,8 @@ export const setlistOrder = (rows: { id?: string; song_id: string; position: num
     .sort((a, b) => (a.set_number ?? 1) - (b.set_number ?? 1) || a.position - b.position || String(a.id ?? '').localeCompare(String(b.id ?? '')))
     .map((r) => ({ song_id: r.song_id, set_number: r.set_number ?? 1 }));
 
+type SetlistExpected = SetlistState | Pick<SetlistState, 'songs'>;
+
 const sameSetlist = (a: SetlistState, b: SetlistState) =>
   a.name === b.name &&
   a.songs.length === b.songs.length &&
@@ -677,7 +690,8 @@ const setlistEntry = (entry: SetlistSongInput) => {
 export const replaceSetlistSongs = async (
   setlistId: string,
   songs: SetlistSongInput[],
-  opts?: { name?: string; expected?: SetlistState }
+  /** expected without a name: only the songs are checked (a Stage order). */
+  opts?: { name?: string; expected?: SetlistExpected }
 ): Promise<{ error: Error | null; previous?: PreviousSetlistRow[]; conflict?: SetlistState }> => {
   const entries = songs.map(setlistEntry);
   const name = opts?.name?.trim() || null;
@@ -713,7 +727,7 @@ const replaceSetlistSongsStepwise = async (
   setlistId: string,
   entries: ReturnType<typeof setlistEntry>[],
   name: string | null = null,
-  expected?: SetlistState
+  expected?: SetlistExpected
 ): Promise<{ error: Error | null; previous?: PreviousSetlistRow[]; conflict?: SetlistState }> => {
   try {
     // Read the current rows first so a failed insert can be undone. Every
@@ -744,7 +758,7 @@ const replaceSetlistSongsStepwise = async (
       const { data: head, error: headError } = await supabase.from('setlists').select('name').eq('id', setlistId).single();
       if (headError) throw headError;
       const current: SetlistState = { name: (head as { name?: string } | null)?.name ?? '', songs: setlistOrder(previousRows) };
-      if (!sameSetlist(current, expected)) return { error: null, conflict: current };
+      if (!sameSetlist(current, { name: current.name, ...expected })) return { error: null, conflict: current };
     }
     const hasVoices = previousRows.some((r) => 'vocal_parts' in r);
     const bySong = new Map<string, StoredRow[]>();
