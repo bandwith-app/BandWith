@@ -12,7 +12,7 @@ import { Capacitor } from '@capacitor/core';
 import { cleanupPresence } from './services/presence';
 import { clearOfflineCache, getOfflineItem, setOfflineItem, getCacheKey } from './offline/storage';
 import { clearStageCache } from './stageBleNative';
-import { flushQueuedPushRevocations, unregisterPushToken } from './services/pushNotifications';
+import { flushQueuedPushRevocations, forgetPushAccount, unregisterPushToken } from './services/pushNotifications';
 import { clearRecoveryProof, hasAnyRecoveryProof, hasRecoveryProof, updatePasswordForProvenAccount } from './recoveryProof';
 import { syncAppBadge } from './services/appBadge';
 import { realName } from '@/lib/personName';
@@ -252,6 +252,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           if (profileData) {
             setProfile(profileData);
           }
+        } else {
+          // No session at start: the device shows no account's pushes
+          // (Codex review #287 round 6).
+          void forgetPushAccount().catch(() => {});
         }
       } catch (error) {
         console.error('Error initializing auth:', error);
@@ -292,6 +296,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }, 0);
       } else if (event === 'SIGNED_OUT') {
         setProfile(null);
+        // Every end of a session, also a refused refresh or a deleted
+        // account, not only the sign-out button (Codex review #287 round 6).
+        void forgetPushAccount().catch(() => {});
       }
     });
 

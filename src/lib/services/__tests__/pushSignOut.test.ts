@@ -171,14 +171,30 @@ describe('sign-out stops pushes (Codex review #287 rounds 2-4)', () => {
     expect(h.unregister).toHaveBeenCalledOnce();
   });
 
-  it('online: the server switches it off, the device registration is left alone', async () => {
+  it('online: the server switches it off, and the device stops too', async () => {
     const push = await load();
-    h.rpc.mockImplementation(async (fn: string) => (fn === 'bw_register_push_token_stamped' ? SAVED : { data: null, error: null }));
+    h.rpc.mockImplementation(async (fn: string) => (fn === 'bw_register_push_token_stamped' ? SAVED : { data: true, error: null }));
     await push.subscribeToPush('alice');
     await push.unregisterPushToken('alice');
     expect(h.rpc).toHaveBeenCalledWith('bw_unregister_push_token', { p_token: TOKEN });
     expect(pending()).toEqual([]);
-    expect(h.unregister).not.toHaveBeenCalled();
+    expect(h.unregister).toHaveBeenCalledOnce();
+  });
+
+  // Codex review #287 round 6 (B2): Bob's save never got through, so the
+  // token is still Alice's. The server's "no error" switched nothing off; the
+  // device must stop anyway, or Alice's previews keep coming.
+  it("the token is still Alice's, Bob signs out: the native unregistration runs anyway", async () => {
+    const push = await load();
+    h.rpc.mockImplementation(async (fn: string) =>
+      fn === 'bw_register_push_token_stamped' ? offline() : fn === 'bw_unregister_push_token' ? { data: false, error: null } : offline(),
+    );
+    h.from.mockImplementation(() => builder(offline));
+    await push.subscribeToPush('bob');
+    await push.unregisterPushToken('bob');
+    expect(h.unregister).toHaveBeenCalledOnce();
+    expect(h.from).not.toHaveBeenCalled(); // false is an answer: no table fallback
+    expect(pending()).toEqual([expect.objectContaining({ token: TOKEN, userId: 'bob' })]);
   });
 
   it('Android without Firebase: sign-out never calls the native unregister', async () => {
@@ -369,5 +385,55 @@ describe('sign-out stops pushes (Codex review #287 rounds 2-4)', () => {
     await push.unregisterPushToken('bob');
     expect(h.identity.deleteToken).not.toHaveBeenCalled();
     expect(h.unregister).toHaveBeenCalledOnce();
+  });
+
+  // Codex review #287 round 6 (B3): FCM's deletion never finishes. Sign-out
+  // still completes within the 5 s; the deletion goes on in the background.
+  it('a deleteToken that never resolves still lets the session close within about 5 s', async () => {
+    vi.useFakeTimers();
+    try {
+      h.platform = 'android';
+      vi.stubEnv('VITE_ANDROID_PUSH', 'true');
+      h.identityAvailable = true;
+      h.identity.deleteToken.mockImplementation(() => new Promise(() => {}));
+      const push = await load();
+      h.rpc.mockImplementation(async (fn: string) => (fn === 'bw_register_push_token_stamped' ? SAVED : { data: true, error: null }));
+      h.from.mockImplementation(() => builder(offline));
+      await push.subscribeToPush('alice');
+      let done = false;
+      const out = push.unregisterPushToken('alice').then(() => (done = true));
+      await vi.advanceTimersByTimeAsync(4900);
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(200);
+      await out;
+      expect(done).toBe(true);
+      expect(h.identity.deleteToken).toHaveBeenCalled();
+      // The server took it: nothing queued although the device's part is still running.
+      expect(pending()).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Codex review #287 round 6 (B1): a refused refresh (or a deleted account)
+  // ends the session without the sign-out button: the native account goes
+  // too, so a push still tagged for it is dropped on the phone
+  // (PushIdentity.decide(target, null) == DROP, PushIdentityTest).
+  it('a session that ends without sign-out (refused refresh) empties the native account', async () => {
+    h.platform = 'android';
+    vi.stubEnv('VITE_ANDROID_PUSH', 'true');
+    h.identityAvailable = true;
+    const push = await load();
+    h.rpc.mockImplementation(async (fn: string) => (fn === 'bw_register_push_token_stamped' ? SAVED : offline()));
+    h.from.mockImplementation(() => builder(offline));
+    await push.subscribeToPush('alice');
+    expect(h.identity.setUser).toHaveBeenCalledWith({ uid: 'alice' });
+    h.log = [];
+    await push.forgetPushAccount();
+    expect(h.log).toEqual(['clear']);
+    // A registration answering afterwards saves nothing for the old account.
+    h.rpc.mockClear();
+    await Promise.all([...(h.listeners.registration ?? [])].map((f) => f({ value: 'device-token-rotated-0123456789' })));
+    expect(h.rpc.mock.calls.filter((c) => c[0] === 'bw_register_push_token_stamped')).toHaveLength(0);
   });
 });

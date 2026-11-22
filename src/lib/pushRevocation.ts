@@ -42,7 +42,7 @@ export interface PendingRevocation {
   registeredAt: string | null;
   /** The secret of the last save the server confirmed: never evicted (Codex review #287 round 5). */
   confirmed: string | null;
-  /** Secrets of saves whose answer never came, newest first, at most 3. */
+  /** Secrets of saves whose answer never came, newest first (at most 20; the newest is never dropped). */
   attempts: string[];
   /** When it was queued (device clock): only for the queue's order. */
   at: string;
@@ -57,8 +57,13 @@ export interface SavedPushToken {
   attempts: string[];
 }
 
-/** At most this many unanswered saves' secrets per registration. */
-const MAX_ATTEMPTS = 3;
+/**
+ * At most this many unanswered saves' secrets per registration. Any of them
+ * may be the one the server holds (a lost answer, then saves that never got
+ * out): none is dropped before that, the oldest first (Codex review #287
+ * round 6).
+ */
+export const MAX_UNCONFIRMED_SECRETS = 20;
 
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
@@ -66,7 +71,7 @@ const isSecret = (x: unknown): x is string => typeof x === 'string' && x.length 
 const secretOf = (v: unknown): string | null => (isSecret(v) ? v : null);
 /** Unanswered saves' secrets: unique, never the confirmed one, newest first. */
 const attemptList = (v: unknown, confirmed: string | null = null): string[] =>
-  Array.isArray(v) ? v.filter(isSecret).filter((x, i, a) => x !== confirmed && a.indexOf(x) === i).slice(0, MAX_ATTEMPTS) : [];
+  Array.isArray(v) ? v.filter(isSecret).filter((x, i, a) => x !== confirmed && a.indexOf(x) === i).slice(0, MAX_UNCONFIRMED_SECRETS) : [];
 
 /** Every secret the server may hold for it: the unanswered saves first, then the confirmed one. */
 export const candidateSecrets = (p: Pick<PendingRevocation, 'confirmed' | 'attempts'>): string[] =>
@@ -186,11 +191,11 @@ export interface SignOutRevokeDeps {
 }
 
 /**
- * Run while the session is still valid. 'server' when the server switched
- * the token off; 'queued' when it couldn't (offline): delivery stopped on
- * the device and the revocation waits for the network, with the stamp and
- * secrets known; 'device' when the account isn't known: delivery stopped on
- * the device only.
+ * Run while the session is still valid. Delivery stops on the device in
+ * every case. 'server' when the server switched the token off too; 'queued'
+ * when it couldn't (offline, or the token is not this account's): the
+ * revocation waits for the network, with the stamp and secrets known;
+ * 'device' when the account isn't known: on the device only.
  */
 export async function revokeOnSignOut(
   token: string,
@@ -206,6 +211,13 @@ export async function revokeOnSignOut(
   }
   if (ok) {
     forgetRevocation(deps.store, token, userId);
+    // The device stops too, whatever the server answered (Codex review #287
+    // round 6): another account's registration of this token may still be on.
+    try {
+      await deps.unregisterDevice();
+    } catch {
+      /* the server already switched it off */
+    }
     return 'server';
   }
   const queue = !!userId;

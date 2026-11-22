@@ -32,6 +32,11 @@ INSERT INTO push_tokens (user_id, token, platform, updated_at) VALUES
   ('${ALICE}', '${TOK}', 'ios', '2026-11-20T10:00:00Z'),
   ('${BOB}', '${TOK2}', 'android', '2026-11-20T10:00:00Z');
 GRANT SELECT ON public.push_tokens TO service_role;
+-- 046 as live: returns void, so a sign-out can't tell whether it switched anything off.
+CREATE OR REPLACE FUNCTION public.bw_unregister_push_token(p_token text) RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  UPDATE public.push_tokens SET is_active = false, updated_at = now() WHERE token = p_token AND user_id = auth.uid(); $$;
+REVOKE ALL ON FUNCTION public.bw_unregister_push_token(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_unregister_push_token(text) TO authenticated;
 `);
 
 await db.exec(readFileSync(MIG, 'utf8'));
@@ -137,6 +142,19 @@ for (const fn of ['public.bw_revoke_push_token(text,uuid,timestamptz,text)']) {
   ok(await priv('anon', fn) === true && await priv('authenticated', fn) === true, `${fn} callable without a session`);
   ok(await priv('public', fn) === false, `${fn} not granted to PUBLIC`);
 }
+// Codex review #287 round 6 (B2): the signed-in unregister says whether it
+// switched a token off. Same name and argument, so older builds (which read
+// only the error) keep working.
+const TOKU = 'unreg-token-' + 'e'.repeat(40);
+await registerGated(ALICE, TOKU, S1, 'ios', false);
+const unreg = (uid, tok) => as(uid, async () => (await db.query(`SELECT public.bw_unregister_push_token($1) AS r`, [tok])).rows[0].r);
+ok(await unreg(BOB, TOKU) === false && await active(TOKU) === true, "Bob signing out while the token is still Alice's: false, nothing switched off");
+ok(await unreg(ALICE, 'no-such-token-' + 'x'.repeat(30)) === false, 'an unknown token: false');
+ok(await unreg(ALICE, TOKU) === true && await active(TOKU) === false, 'the owner: true, switched off');
+ok(String(await unreg(null, TOKU)).startsWith('ERR'), 'still not open to anon');
+ok((await db.query(`SELECT pg_get_function_result('public.bw_unregister_push_token(text)'::regprocedure) AS r`)).rows[0].r === 'boolean', 'one argument as before, now returns boolean');
+ok(await priv('authenticated', 'public.bw_unregister_push_token(text)') === true && await priv('anon', 'public.bw_unregister_push_token(text)') === false, 'grants as in 046');
+
 const cols = (await db.query(`SELECT column_name FROM information_schema.columns WHERE table_name = 'push_tokens' AND column_name IN ('revoke_secret_hash', 'uid_gated')`)).rows;
 ok(cols.length === 2, 'push_tokens.revoke_secret_hash and uid_gated exist');
 

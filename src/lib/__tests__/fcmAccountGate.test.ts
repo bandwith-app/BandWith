@@ -4,7 +4,7 @@
 // data-only push tagged with its recipient; every other token keeps the
 // notification message (an older APK would show nothing for a data-only one).
 import { describe, expect, it } from 'vitest';
-import { accountTagged, fcmAccountGates, gatedFcmMessage } from '../../../supabase/functions/_shared/fcm-account-gate';
+import { accountTagged, clientPushData, fcmAccountGates, gatedFcmMessage } from '../../../supabase/functions/_shared/fcm-account-gate';
 import { silentFcmMessage } from '../../../supabase/functions/_shared/push-silent';
 import sendPush from '../../../supabase/functions/send-push/index.ts?raw';
 import manifest from '../../../android/app/src/main/AndroidManifest.xml?raw';
@@ -68,5 +68,18 @@ describe('Android pushes only the signed-in account sees', () => {
     expect(service).toMatch(/PushIdentity\.decide\(target, PushIdentity\.current\(this\)\)/);
     expect(service).toMatch(/case DROP:\s*return;/);
     expect(activity).toMatch(/registerPlugin\(PushIdentityPlugin\.class\)/);
+  });
+
+  // Codex review #287 round 6 (minor): only the server sets silent and the
+  // bw_* keys. A chat sender's data.silent="1" would hide the push on phones.
+  it('a sender passing data.silent="1" (or a bw_uid) still produces a shown notification', () => {
+    const sent = { chat_id: 'c1', silent: '1', bw_uid: 'mallory', bw_title: 'x', bw_body: 'y', bw_tag: 'z' };
+    expect(clientPushData(sent)).toEqual({ chat_id: 'c1' });
+    expect(clientPushData(undefined)).toBeUndefined();
+    const m = gatedFcmMessage('tok', 'alice', { displayTitle: 'T', title: 'T', body: 'B', data: sent });
+    expect(m.data).not.toHaveProperty('silent');
+    expect(m.data).toMatchObject({ chat_id: 'c1', bw_uid: 'alice', bw_title: 'T', bw_body: 'B' });
+    // Every FCM send drops them before anything else, gated or not.
+    expect(sendPush).toMatch(/\): Promise<\{ success: boolean; error\?: string \}> \{\s*\/\/ The keys only the server sets[^\n]*\n\s*data = clientPushData\(data\);/);
   });
 });

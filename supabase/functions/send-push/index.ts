@@ -1,5 +1,5 @@
 // Supabase Edge Function: Send Push Notification (Zero External Dependencies)
-import { accountTagged, fcmAccountGates, gatedFcmMessage } from '../_shared/fcm-account-gate.ts';
+import { accountTagged, clientPushData, fcmAccountGates, gatedFcmMessage } from '../_shared/fcm-account-gate.ts';
 import { adminClient, chatRecipients, HttpError, requireCaller } from '../_shared/auth.ts';
 import { localizePushLabel, pushCollapseId, pushLanguage, pushThreadId } from '../_shared/push-labels.ts';
 import { isSilentRequest, silentApns, silentFcmMessage } from '../_shared/push-silent.ts';
@@ -330,6 +330,8 @@ async function sendFcmMessage(
   collapseId?: string,
   silent = false
 ): Promise<{ success: boolean; error?: string }> {
+  // The keys only the server sets never come from the caller (#287 round 6).
+  data = clientPushData(data);
   if (!FCM_PROJECT_ID) return { success: false, error: 'FCM not configured' };
   const accessToken = await getFCMAccessToken();
   if (!accessToken) return { success: false, error: 'Could not get FCM access token' };

@@ -43,8 +43,15 @@
 -- as bw_register_push_token (046), storing the secret's hash and returning
 -- the row's updated_at in the same reply.
 --
--- Older app builds: nothing they call changes (bw_register_push_token and
--- bw_unregister_push_token keep their shape and body). They never queued a
+-- bw_unregister_push_token (046) now returns whether it switched a token off
+-- (Codex review #287 round 6): "no error" for 0 rows (the token is still
+-- another account's) is not a revocation. Same name and argument; older
+-- builds read only the error, so the return type is all that changes (DROP +
+-- CREATE, as Postgres requires for a new return type).
+--
+-- Older app builds: nothing they call changes shape (bw_register_push_token
+-- keeps its shape and body; bw_unregister_push_token its name, argument and
+-- update). They never queued a
 -- signed-out revocation. What a registration they made loses: it has no
 -- secret, so a later signed-out revocation of it is refused; signed in, the
 -- owner still switches it off. The new app falls back to 046 when this
@@ -141,6 +148,26 @@ $$;
 
 REVOKE ALL ON FUNCTION public.bw_revoke_push_token(text, uuid, timestamptz, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.bw_revoke_push_token(text, uuid, timestamptz, text) TO anon, authenticated, service_role;
+
+-- 046's sign-out, now telling whether it switched something off.
+DROP FUNCTION IF EXISTS public.bw_unregister_push_token(text);
+CREATE FUNCTION public.bw_unregister_push_token(p_token text)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_n integer;
+BEGIN
+  UPDATE public.push_tokens SET is_active = false, updated_at = now()
+  WHERE token = p_token AND user_id = auth.uid();
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  RETURN v_n > 0;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_unregister_push_token(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_unregister_push_token(text) TO authenticated;
 
 -- From earlier drafts, never live: no lookup by token at all.
 DROP FUNCTION IF EXISTS public.bw_push_token_registered(text, uuid);

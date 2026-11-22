@@ -4,6 +4,7 @@
 // round 5: no lookup by token, the confirmed secret is pinned.
 import { describe, expect, it, vi } from 'vitest';
 import {
+  MAX_UNCONFIRMED_SECRETS,
   PUSH_REVOKE_MAX_QUEUED,
   beginPushSave,
   confirmPushSave,
@@ -37,12 +38,14 @@ const server = (revoked: boolean | 'offline') => ({
 });
 
 describe('push revocation on sign-out', () => {
-  it('online: the server takes it, nothing queued, device untouched', async () => {
+  // Codex review #287 round 6 (B2): the device stops too, whatever the
+  // server answered.
+  it('online: the server takes it, nothing queued, and the device stops too', async () => {
     const store = mem();
     const unregisterDevice = vi.fn(async () => {});
     expect(await revokeOnSignOut(TOKEN, 'alice', saved(REG, S1), { store, revokeOnServer: async () => true, unregisterDevice })).toBe('server');
     expect(readPendingRevocations(store)).toEqual([]);
-    expect(unregisterDevice).not.toHaveBeenCalled();
+    expect(unregisterDevice).toHaveBeenCalledOnce();
   });
 
   it('offline: delivery stops on the device and the revocation waits, with the stamp and the secret', async () => {
@@ -175,13 +178,41 @@ describe('push revocation on sign-out', () => {
     confirmPushSave(store, TOKEN, 'alice', S1, REG);
     for (const s of [S2, S3, S4, 'e'.repeat(64)]) beginPushSave(store, TOKEN, 'alice', s);
     const kept = rememberedPushToken(store, 'alice');
-    expect(kept).toMatchObject({ confirmed: S1, attempts: ['e'.repeat(64), S4, S3] });
+    // Round 6: no unconfirmed secret is dropped either (cap 20).
+    expect(kept).toMatchObject({ confirmed: S1, attempts: ['e'.repeat(64), S4, S3, S2] });
     await revokeOnSignOut(TOKEN, 'alice', kept, { store, revokeOnServer: offline, unregisterDevice: async () => {}, now: () => new Date(0) });
     await revokeOnSignOut(TOKEN, 'alice', saved(null, null, ['f'.repeat(64), S2]), { store, revokeOnServer: offline, unregisterDevice: async () => {}, now: () => new Date(1) });
     expect(readPendingRevocations(store)[0].confirmed).toBe(S1);
     const s = server(false);
     await flushPushRevocations(store, s);
     expect(s.revoke.mock.calls.map((c) => c[1])).toContain(S1);
+  });
+
+  // Codex review #287 round 6 (minor): the answer of a save is lost (the
+  // server holds its secret), then 3 saves never get out: that secret must
+  // still be tried once the network is back.
+  it('a lost answer plus 3 offline saves: the revocation still works on reconnect', async () => {
+    const store = mem();
+    const LOST = 'f'.repeat(64);
+    beginPushSave(store, TOKEN, 'alice', S1);
+    confirmPushSave(store, TOKEN, 'alice', S1, REG);
+    beginPushSave(store, TOKEN, 'alice', LOST); // reached the server, the answer didn't come back
+    for (const s of [S2, S3, S4]) beginPushSave(store, TOKEN, 'alice', s); // never got out
+    await revokeOnSignOut(TOKEN, 'alice', rememberedPushToken(store, 'alice'), { store, revokeOnServer: offline, unregisterDevice: async () => {}, now: () => new Date(0) });
+    const holds = { revoke: vi.fn(async (_p: unknown, secret: string | null) => ({ data: secret === LOST, error: null })) };
+    expect(await flushPushRevocations(store, holds)).toBe(1);
+    expect(holds.revoke.mock.calls.map((c) => c[1])).toContain(LOST);
+    expect(readPendingRevocations(store)).toEqual([]);
+  });
+
+  it('unconfirmed secrets are kept up to 20, the newest never dropped', () => {
+    const store = mem();
+    const many = Array.from({ length: MAX_UNCONFIRMED_SECRETS + 5 }, (_, i) => i.toString(16).padStart(64, '0'));
+    for (const s of many) beginPushSave(store, TOKEN, 'alice', s);
+    const kept = rememberedPushToken(store, 'alice')!.attempts;
+    expect(MAX_UNCONFIRMED_SECRETS).toBe(20);
+    expect(kept).toHaveLength(20);
+    expect(kept[0]).toBe(many[many.length - 1]);
   });
 
   it('secrets are random, 256 bits', () => {
@@ -199,5 +230,8 @@ describe('push revocation on sign-out', () => {
     expect(ctx).toMatch(/await unregisterPushToken\(user\?\.id\)/);
     // Round 4 (B3): a sign-in no longer drops anyone's revocation.
     expect(ctx).not.toMatch(/forgetQueuedPushRevocationsFor/);
+    // Round 6 (B1): every end of a session clears the native push account.
+    expect(ctx).toMatch(/event === 'SIGNED_OUT'\) \{\s*setProfile\(null\);[\s\S]{0,200}forgetPushAccount\(\)/);
+    expect(ctx).toMatch(/\} else \{\s*\/\/ No session at start[\s\S]{0,120}forgetPushAccount\(\)/);
   });
 });

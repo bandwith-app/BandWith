@@ -97,6 +97,36 @@ const clearNativePushUser = async (): Promise<void> => {
   }
 };
 
+/**
+ * The session ended without a sign-out here (refresh refused, account
+ * deleted, an app start with no session): from now on the device shows no
+ * push for the account that was signed in (Codex review #287 round 6). Saves
+ * started for it save nothing.
+ */
+export const forgetPushAccount = async (): Promise<void> => {
+  pushUserId = null;
+  savedToken = null;
+  pushSession += 1;
+  if (!isNative()) return;
+  await clearNativePushUser();
+};
+
+/** Resolves with the work, or at the deadline with nothing while the work goes on. */
+const untilDeadline = (work: Promise<unknown>, deadline: number): Promise<void> =>
+  new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, Math.max(0, deadline - Date.now()));
+    work.then(
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+    );
+  });
+
 /** Stops delivery on the device: on the new Android builds, waits for FCM to delete the token. */
 const stopDevicePush = async (): Promise<void> => {
   cachedToken = null;
@@ -425,9 +455,12 @@ export const unregisterPushToken = async (userId?: string | null): Promise<void>
   savedToken = null;
   pushSession += 1;
   if (!isNative()) return;
+  // Sign-out waits for push work SIGN_OUT_PUSH_WAIT_MS at most, native calls
+  // included: past that they go on in the background (Codex review #287 r6).
+  const deadline = Date.now() + SIGN_OUT_PUSH_WAIT_MS;
   // First, before any network: from now on this device shows no push for
   // that account (Codex review #287 round 5).
-  await clearNativePushUser();
+  await untilDeadline(clearNativePushUser(), deadline);
   // After an offline cold start the native token may not be back yet: the
   // one last saved for this account is (Codex review #287).
   const remembered = rememberedPushToken(revokeStore(), owner);
@@ -443,7 +476,7 @@ export const unregisterPushToken = async (userId?: string | null): Promise<void>
   if (!token) {
     // Not even the plugin: delivery stops on the device itself.
     try {
-      await stopDevicePush();
+      await untilDeadline(stopDevicePush(), deadline);
     } catch {
       /* best effort: never block sign-out */
     }
@@ -451,33 +484,37 @@ export const unregisterPushToken = async (userId?: string | null): Promise<void>
   }
   const saved = remembered?.token === token ? remembered : null;
   const store = owner ? revokeStore() : null;
-  // Offline (audit 04 #6): stop delivery on the phone itself; the next
-  // sign-in registers again.
-  const unregisterDevice = stopDevicePush;
+  // Delivery stops on the phone itself in every case (audit 04 #6; Codex
+  // review #287 round 6: also when the server says the token was not this
+  // account's); the next sign-in registers again.
+  const unregisterDevice = () => untilDeadline(stopDevicePush(), deadline);
   // After a save already on its way: it can't switch the token back on later.
   let gaveUp = false;
+  let serverTookIt = false;
   const job = exclusive(async () => {
     if (gaveUp) return 'queued' as const;
     return revokeOnSignOut(token, owner, saved, {
       store,
       revokeOnServer: async () => {
-        const { error } = await supabase.rpc('bw_unregister_push_token', { p_token: token });
-        if (!error) return true;
-        // "No error" for 0 rows (RLS, a row that moved) switched nothing off:
+        // 184: true only when it switched this account's token off; false
+        // when the token is (still) another account's.
+        const { data: switchedOff, error } = await supabase.rpc('bw_unregister_push_token', { p_token: token });
+        if (!error && typeof switchedOff === 'boolean') return (serverTookIt = switchedOff);
+        // A database without 184 answers nothing ("no error" for 0 rows too):
         // only a row actually updated counts (Claude review #287).
         const { data, error: updateError } = await supabase
           .from('push_tokens')
           .update({ is_active: false })
           .eq('token', token)
           .select('id');
-        return !updateError && Array.isArray(data) && data.length > 0;
+        return (serverTookIt = !updateError && Array.isArray(data) && data.length > 0);
       },
       unregisterDevice,
     });
   });
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<'late'>((resolve) => {
-    timer = setTimeout(() => resolve('late'), SIGN_OUT_PUSH_WAIT_MS);
+    timer = setTimeout(() => resolve('late'), Math.max(0, deadline - Date.now()));
   });
   let outcome = await Promise.race([job, late]);
   clearTimeout(timer);
@@ -486,7 +523,8 @@ export const unregisterPushToken = async (userId?: string | null): Promise<void>
     // If that work does reach the server later, the queue still holds what
     // it needs (Claude review #287 round 5).
     gaveUp = true;
-    outcome = await revokeOnSignOut(token, owner, saved, { store, revokeOnServer: async () => false, unregisterDevice });
+    // Only the device's own deletion is still running: the server took it.
+    outcome = serverTookIt ? 'server' : await revokeOnSignOut(token, owner, saved, { store, revokeOnServer: async () => false, unregisterDevice });
   }
   if (outcome === 'queued') console.warn('[Push] Server not reached: device unregistered, revocation queued');
 };

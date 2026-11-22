@@ -14,6 +14,21 @@
 
 type PushData = Record<string, unknown>;
 
+/**
+ * Keys only the server sets (Codex review #287 round 6): a caller's data
+ * carrying silent="1" would hide a chat push on the phone, a bw_uid would
+ * aim the account check at someone else.
+ */
+export const RESERVED_PUSH_KEYS = ['silent', 'bw_uid', 'bw_title', 'bw_body', 'bw_tag'] as const;
+
+/** The caller's data without the keys only the server sets. */
+export function clientPushData<T extends PushData | undefined>(data: T): T {
+  if (!data) return data;
+  const out: PushData = { ...data };
+  for (const k of RESERVED_PUSH_KEYS) delete out[k];
+  return out as T;
+}
+
 export interface GateTokenRow {
   platform?: unknown;
   token?: unknown;
@@ -64,7 +79,7 @@ export function gatedFcmMessage(deviceToken: string, uid: string, c: GatedFcmCon
     token: deviceToken,
     android: { priority: 'high' as const },
     data: {
-      ...strings(c.data),
+      ...strings(clientPushData(c.data)),
       title: c.title,
       subtitle: c.subtitle || '',
       tag: c.tag || '',
