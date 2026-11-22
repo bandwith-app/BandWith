@@ -5,8 +5,8 @@ import { cn } from '@/app/components/ui/utils';
 import { haptic } from '@/lib/haptics';
 import { dateName, useT } from '@/lib/i18n';
 import type { LivePack } from '@/lib/livePack';
-import { refreshPack } from '@/lib/livePackStore';
-import { readChoice, writeChoice } from '@/lib/livePackConsent';
+import { chooseThisEvent, hasAnswered, readChoice } from '@/lib/livePackConsent';
+import { downloadPackNow } from './LivePackConsentSheet';
 
 type T = ReturnType<typeof useT>;
 
@@ -26,8 +26,9 @@ export function packSavedLabel(savedAt: string, t: T, now: Date = new Date()): s
 /**
  * "Offline ready ✓ · updated 14:32" on the event screen (plan §3.4), or
  * "Download for offline": this event's setlist, lyrics, chords and my notes
- * kept on this device for live mode with no signal. Tapping Download is the
- * person's yes for this event (livePackConsent).
+ * kept on this device for live mode with no signal. The first time,
+ * Download opens the consent sheet (onAsk); after that it is the person's yes
+ * for this event (livePackConsent).
  */
 export const OfflineReadyRow: React.FC<{
   pack: LivePack | null;
@@ -36,22 +37,44 @@ export const OfflineReadyRow: React.FC<{
   occurrenceDate?: string;
   online: boolean;
   className?: string;
-}> = ({ pack, userId, event, occurrenceDate, online, className }) => {
+  /** Not answered yet: open the consent sheet instead of downloading. */
+  onAsk?: () => void;
+  /** A download the sheet started: show it here. */
+  pending?: Promise<boolean> | null;
+}> = ({ pack, userId, event, occurrenceDate, online, className, onAsk, pending }) => {
   const t = useT();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const ready = !!pack && pack.songs.length > 0;
+  React.useEffect(() => {
+    if (!pending) return;
+    let alive = true;
+    setBusy(true);
+    setFailed(false);
+    void pending.then((ok) => {
+      if (!alive) return;
+      setBusy(false);
+      setFailed(!ok);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [pending]);
   const download = async () => {
     if (!userId || busy) return;
+    if (onAsk && !hasAnswered(readChoice(userId))) {
+      onAsk();
+      return;
+    }
     haptic.tap();
     const eventId = String(event.id ?? '');
     const choice = readChoice(userId);
-    if (!choice.auto && !choice.events.includes(eventId)) writeChoice(userId, { ...choice, events: [...choice.events, eventId] });
+    if (!choice.auto && !choice.events.includes(eventId)) chooseThisEvent(userId, eventId);
     setBusy(true);
     setFailed(false);
-    const p = await refreshPack({ userId, event, occurrenceDate, withFiles: true, unknownTitle: t('Unknown Song') }).catch(() => null);
+    const ok = await downloadPackNow({ userId, event, occurrenceDate, unknownTitle: t('Unknown Song') });
     setBusy(false);
-    setFailed(!p);
+    setFailed(!ok);
   };
   return (
     <div className={cn('bg-card rounded-[16px] p-4 flex flex-wrap items-center gap-x-4 gap-y-3', className)} role="group" aria-label={t('Offline')}>

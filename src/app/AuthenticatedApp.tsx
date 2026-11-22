@@ -1224,6 +1224,9 @@ export default function AuthenticatedApp() {
     window.setTimeout(() => setStageOnOpen((cur) => (cur === eventDbId ? null : cur)), 5000);
   }, [navigateToEvent]);
 
+  // The live_pack_ready push: open the event with the offline consent sheet.
+  const [livePackOnOpen, setLivePackOnOpen] = useState<string | null>(null);
+
   // "Review payouts" (Home's payouts due): open the gig on its Fee & payouts sheet.
   const [feeOnOpen, setFeeOnOpen] = useState<string | null>(null);
   const handleReviewPayouts = useCallback((eventDbId: string) => {
@@ -1337,6 +1340,11 @@ export default function AuthenticatedApp() {
           setSelectedChat(known ? { ...known, unread: 0 } : { id: Date.now(), uuid: d.chatId, type: "direct", name: t("Chat"), initials: "CH", lastMessage: "", time: "now", unread: 0, status: "received" });
         }, 100);
       } else if (d.screen === "event" && d.eventId) {
+        if (d.livePack) {
+          const id = String(d.eventId);
+          setLivePackOnOpen(id);
+          window.setTimeout(() => setLivePackOnOpen((cur) => (cur === id ? null : cur)), 5000);
+        }
         // After it: a deleted event is named from this notification.
         await navigateToEvent(d.eventId);
       } else if (d.screen === "poll" && d.pollId) {
@@ -2976,7 +2984,8 @@ export default function AuthenticatedApp() {
   useEffect(() => {
     if (stageOnOpen && selectedEvent?.eventId === stageOnOpen) setStageOnOpen(null);
     if (feeOnOpen && selectedEvent?.eventId === feeOnOpen) setFeeOnOpen(null);
-  }, [stageOnOpen, feeOnOpen, selectedEvent]);
+    if (livePackOnOpen && selectedEvent?.eventId === livePackOnOpen) setLivePackOnOpen(null);
+  }, [stageOnOpen, feeOnOpen, livePackOnOpen, selectedEvent]);
 
   // Figma "Duo · Home" (open): the next gig / commitment is already shown on
   // the trailing page, next to the dashboard. Once per visit to Home (see
@@ -4823,6 +4832,7 @@ export default function AuthenticatedApp() {
             event={selectedEvent}
             startInStage={!!stageOnOpen && stageOnOpen === selectedEvent.eventId}
             startOnFee={!!feeOnOpen && feeOnOpen === selectedEvent.eventId}
+            startOnLivePack={!!livePackOnOpen && livePackOnOpen === selectedEvent.eventId}
             currentUserId={user?.id}
             onClose={() => closeSelectedEventRef.current()}
             onOpenBandSettings={isAdmin ? () => { setPricingModalInitialTab('branding'); setPricingReturnTo(null); setShowPricingModal(true); } : undefined}

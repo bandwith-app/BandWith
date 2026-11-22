@@ -31,8 +31,10 @@ import {
   Crown,
   Calendar,
   BarChart3,
+  WifiOff,
 } from '@/app/components/icons';
 import { CalendarSyncSection } from '@/app/components/settings/CalendarSyncSection';
+import { OfflineLiveSection } from '@/app/components/settings/OfflineLiveSection';
 import { PlanSection } from '@/app/components/plans/PlanSection';
 import { useOptionalBand } from '@/lib/BandContext';
 import { usePlan } from '@/lib/usePlan';
@@ -58,7 +60,7 @@ import { useT, useLocalePref, setLocalePref, getLocale, deviceLocale, formatList
 import { appLockSupported, authenticateDevice, setAppLockEnabled, useAppLockEnabled } from '@/lib/appLock';
 import { analyticsAvailable, setAnalyticsConsent, useAnalyticsConsent } from '@/lib/appAnalytics';
 
-type SettingsSection = 'notifications' | 'calendar' | 'plan' | 'appearance' | 'units' | 'privacy' | 'duo' | 'help' | 'about' | 'language';
+type SettingsSection = 'notifications' | 'calendar' | 'offline' | 'plan' | 'appearance' | 'units' | 'privacy' | 'duo' | 'help' | 'about' | 'language';
 
 interface SettingsViewProps {
   onClose: () => void;
@@ -149,6 +151,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   }[] = [
     { id: 'notifications', label: t('Notifications'), hint: t('Push and email'), icon: Bell },
     { id: 'calendar', label: t('Calendar sync'), hint: t('Your events in Apple or Google Calendar'), icon: Calendar },
+    { id: 'offline', label: t('Offline & live'), hint: t('Setlists on this device for no signal'), icon: WifiOff },
     ...(planBand ? [{ id: 'plan' as const, label: t('Plan'), hint: t('Your band’s plan'), value: planName(plan), icon: Crown }] : []),
     { id: 'appearance', label: t('Appearance'), hint: t('Light, dark or system'), value: themeLabel, icon: Sun },
     { id: 'units', label: t('Units'), hint: t('Distances in km or miles'), value: distanceUnit === 'mi' ? t('Miles') : t('Kilometres'), icon: Navigation },
@@ -341,6 +344,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     switch (section) {
       case 'notifications': return t('Notifications');
       case 'calendar': return t('Calendar sync');
+      case 'offline': return t('Offline & live');
       case 'plan': return t('Plan');
       case 'appearance': return t('Appearance');
       case 'units': return t('Units');
@@ -761,6 +765,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {section === null && renderMenu()}
       {section === 'notifications' && renderNotificationsSection()}
       {section === 'calendar' && <CalendarSyncSection />}
+      {section === 'offline' && <OfflineLiveSection userId={user?.id} />}
       {section === 'plan' && <PlanSection />}
       {section === 'appearance' && renderAppearanceSection()}
       {section === 'units' && renderUnitsSection()}

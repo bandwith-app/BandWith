@@ -1,3 +1,5 @@
+import { saveProfileChoice } from './livePackStatus';
+
 /**
  * May the live packs come down by themselves on this device (plan §3.2–3.3)?
  * Only after the person said yes: "Download and keep it automatic" (every
@@ -20,6 +22,8 @@ export interface LivePackChoice {
   /** Last time the sheet was answered "Not now" (ISO). */
   notNowAt?: string;
 }
+
+const MAX_EVENTS = 50;
 
 const EMPTY: LivePackChoice = { auto: false, events: [], wifiOnly: false };
 const keyOf = (userId: string) => `bw-live-pack:${userId}`;
@@ -55,3 +59,43 @@ export const packAllowed = (choice: LivePackChoice, eventId: string): boolean =>
 
 /** Anything may come down ahead at all. */
 export const anyPackAllowed = (choice: LivePackChoice): boolean => choice.auto || choice.events.length > 0;
+
+/** The sheet was answered at least once on this device (any answer). */
+export const hasAnswered = (choice: LivePackChoice): boolean =>
+  choice.auto || choice.events.length > 0 || !!choice.notNowAt;
+
+const withEvent = (events: string[], eventId?: string) =>
+  eventId ? [...events.filter((e) => e !== eventId), eventId].slice(-MAX_EVENTS) : events;
+
+/** "Download and keep it automatic": this and every future setlist, silently. */
+export function chooseAutomatic(userId: string, eventId?: string, now: Date = new Date()) {
+  const c = readChoice(userId);
+  writeChoice(userId, { ...c, auto: true, events: withEvent(c.events, eventId), notNowAt: undefined });
+  void saveProfileChoice(userId, { auto: true, askedAt: now.toISOString() });
+}
+
+/** "Only this gig". */
+export function chooseThisEvent(userId: string, eventId: string, now: Date = new Date()) {
+  const c = readChoice(userId);
+  writeChoice(userId, { ...c, events: withEvent(c.events, eventId), notNowAt: undefined });
+  void saveProfileChoice(userId, { askedAt: now.toISOString() });
+}
+
+/** "Not now": asked again at most once, the day before (server, migration 170). */
+export function chooseNotNow(userId: string, now: Date = new Date()) {
+  const c = readChoice(userId);
+  writeChoice(userId, { ...c, notNowAt: now.toISOString() });
+  void saveProfileChoice(userId, { askedAt: now.toISOString() });
+}
+
+/** Settings → Offline & live: automatic on/off. */
+export function setAutomatic(userId: string, on: boolean) {
+  const c = readChoice(userId);
+  writeChoice(userId, { ...c, auto: on });
+  void saveProfileChoice(userId, { auto: on });
+}
+
+/** Settings → Offline & live: download only on Wi-Fi (this device). */
+export function setWifiOnly(userId: string, on: boolean) {
+  writeChoice(userId, { ...readChoice(userId), wifiOnly: on });
+}

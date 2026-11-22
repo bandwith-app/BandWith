@@ -1707,6 +1707,13 @@ const rpc = (fn: string, args: Row = {}) => {
       data = 0;
       break;
     }
+    // Offline readiness "Remind" (170): one push to that member; kept for checks.
+    case 'bw_live_pack_remind': {
+      const g = globalThis as { __bwDemoNotifications?: unknown[] };
+      (g.__bwDemoNotifications ||= []).push({ fn, args });
+      data = true;
+      break;
+    }
     case 'update_setlist_song_count': {
       const id = args.p_setlist_id ?? args.setlist_id;
       const s = table('setlists').find((r) => r.id === id);

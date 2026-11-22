@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { onAppResume } from '@/lib/appResume';
-import { packRowFromItem, type LivePackItem } from '@/lib/livePack';
+import { LIVE_PACK_REFRESH_EVENT, packRowFromItem, type LivePackItem } from '@/lib/livePack';
 import { runLivePackPrefetch, type PrefetchEvent } from '@/lib/livePackStore';
-import { LIVE_PACK_CHOICE_EVENT } from '@/lib/livePackConsent';
+import { LIVE_PACK_CHOICE_EVENT, hasAnswered, readChoice, writeChoice } from '@/lib/livePackConsent';
+import { readProfileAuto } from '@/lib/livePackStatus';
 import { t } from '@/lib/i18n';
 
 const isOnline = () => (typeof navigator === 'undefined' ? true : navigator.onLine !== false);
@@ -18,6 +19,8 @@ export const onCellular = (): boolean => {
  * App open, resume and back online (plan §3.2): tidy the live packs (24 h
  * after the event, bands left), then, in the native apps and only after the
  * person said yes, download the gigs and rehearsals of the next 7 days.
+ * A silent push (170) refreshes the event it names at once. "Keep it
+ * automatic" chosen on another device (profiles.live_pack_auto) counts here.
  */
 export function useLivePackPrefetch(
   events: Array<LivePackItem & { band_id?: string }>,
@@ -45,7 +48,7 @@ export function useLivePackPrefetch(
 
   useEffect(() => {
     if (!userId) return;
-    const run = () =>
+    const run = (force?: string[]) =>
       void runLivePackPrefetch({
         userId,
         bandIds: ref.current.bandIds,
@@ -53,17 +56,37 @@ export function useLivePackPrefetch(
         online: Capacitor.isNativePlatform() && isOnline(),
         onWifi: !onCellular(),
         unknownTitle: t('Unknown Song'),
+        force,
       }).catch(() => undefined);
-    const timer = window.setTimeout(run, 1500);
-    const offResume = onAppResume(run);
-    window.addEventListener('online', run);
-    window.addEventListener(LIVE_PACK_CHOICE_EVENT, run);
+    const again = () => run();
+    const refresh = (e: Event) => {
+      const id = (e as CustomEvent).detail?.eventId ?? (e as Event & { eventId?: string }).eventId;
+      run(id ? [String(id)] : undefined);
+    };
+    const timer = window.setTimeout(again, 1500);
+    const offResume = onAppResume(again);
+    window.addEventListener('online', again);
+    window.addEventListener(LIVE_PACK_CHOICE_EVENT, again);
+    window.addEventListener(LIVE_PACK_REFRESH_EVENT, refresh);
     return () => {
       window.clearTimeout(timer);
       offResume();
-      window.removeEventListener('online', run);
-      window.removeEventListener(LIVE_PACK_CHOICE_EVENT, run);
+      window.removeEventListener('online', again);
+      window.removeEventListener(LIVE_PACK_CHOICE_EVENT, again);
+      window.removeEventListener(LIVE_PACK_REFRESH_EVENT, refresh);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
+
+  // Answered "keep it automatic" on another device: this one follows.
+  useEffect(() => {
+    if (!userId || hasAnswered(readChoice(userId))) return;
+    let alive = true;
+    void readProfileAuto(userId).then((auto) => {
+      if (alive && auto && !hasAnswered(readChoice(userId))) writeChoice(userId, { ...readChoice(userId), auto: true });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [userId]);
 }

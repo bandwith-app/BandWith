@@ -70,6 +70,8 @@ import { fetchSetlistRows, readPack, readPackBySetlist, refreshPack, savePackSon
 import { packAllowed, readChoice } from '@/lib/livePackConsent';
 import { useLivePack, useOnline } from '@/app/components/event/useLivePack';
 import { OfflineReadyRow } from '@/app/components/event/OfflineReadyRow';
+import { OfflineMembersRow } from '@/app/components/event/OfflineMembersRow';
+import { LivePackConsentSheet, downloadPackNow } from '@/app/components/event/LivePackConsentSheet';
 import { useLinkedQuote, QuoteSummaryCard, QuoteLineItems, QuoteClientSection } from '@/app/components/event/QuoteSections';
 import { RsvpChoiceCard, type RsvpAnswer } from '@/app/components/event/RsvpChoiceCard';
 import {
@@ -150,6 +152,8 @@ interface EventDetailProps {
   startInStage?: boolean;
   /** Opened from Home's "Review payouts": start on the Fee & payouts sheet. */
   startOnFee?: boolean;
+  /** Opened from the live_pack_ready push: show the offline consent sheet. */
+  startOnLivePack?: boolean;
   isAdmin?: boolean;
   currentUserId?: string;
 }
@@ -347,6 +351,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   memberFee,
   startInStage,
   startOnFee,
+  startOnLivePack,
   isAdmin = true,
   currentUserId,
 }) => {
@@ -418,6 +423,19 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   // The live pack (plan §3.1): this event's setlist kept on the device.
   const packRow = useMemo(() => packRowFromItem({ ...event, eventType }), [event, eventType]);
   const livePack = useLivePack(currentUserId, event.band_id, event.eventId);
+  // The consent sheet (plan §3.3): from the live_pack_ready push, or the first "Download for offline".
+  const [packSheetOpen, setPackSheetOpen] = useState(false);
+  const [packPending, setPackPending] = useState<Promise<boolean> | null>(null);
+  useEffect(() => {
+    if (!startOnLivePack) return;
+    // Already a yes (automatic, or this event): no sheet again, just bring it down.
+    if (currentUserId && event.eventId && packAllowed(readChoice(currentUserId), event.eventId)) {
+      setPackPending(
+        downloadPackNow({ userId: currentUserId, event: packRow, occurrenceDate: occurrenceDate(event.date) ?? undefined, unknownTitle: t('Unknown Song') }),
+      );
+    } else setPackSheetOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the push opens it
+  }, [startOnLivePack]);
   const online = useOnline();
   const [setlistLoading, setSetlistLoading] = useState(false);
   /** The setlist couldn't be fetched and no copy is kept on the device (offline). */
@@ -769,16 +787,22 @@ export const EventDetail: React.FC<EventDetailProps> = ({
       />
     ) : null;
   // Live mode with no signal (plan §3.4): this event's pack on the device.
-  const offlineReady =
-    !isPersonalGig && !isQuote && !isPast && !!event.setlistId && !!event.band_id && !setlistLoading && setlistSongs.length > 0 ? (
+  const packable =
+    !isPersonalGig && !isQuote && !isPast && !!event.setlistId && !!event.band_id && !setlistLoading && setlistSongs.length > 0;
+  const offlineReady = packable ? (
+    <>
       <OfflineReadyRow
         pack={livePack}
         userId={currentUserId}
         event={packRow}
         occurrenceDate={occurrenceDate(event.date) ?? undefined}
         online={online}
+        onAsk={() => setPackSheetOpen(true)}
+        pending={packPending}
       />
-    ) : null;
+      {isAdmin && !!event.eventId && <OfflineMembersRow eventId={event.eventId} members={resolvedMembers} online={online} />}
+    </>
+  ) : null;
   const rehearsalSession = useRehearsalSession({
     enabled: sessionsOn && isRehearsal && !isPersonalGig && !!event.band_id,
     bandId: event.band_id,
@@ -3074,6 +3098,18 @@ export const EventDetail: React.FC<EventDetailProps> = ({
           tasks={eventTasks}
           allEvents={allEvents}
           currentUserId={currentUserId}
+        />
+      )}
+      {!isPersonalGig && !isQuote && !!event.band_id && (
+        <LivePackConsentSheet
+          open={packSheetOpen}
+          onClose={() => setPackSheetOpen(false)}
+          userId={currentUserId}
+          event={packRow}
+          occurrenceDate={occurrenceDate(event.date) ?? undefined}
+          songs={setlistSongs}
+          rehearsal={isRehearsal}
+          onAnswered={(_a, download) => setPackPending(download ?? null)}
         />
       )}
     </>

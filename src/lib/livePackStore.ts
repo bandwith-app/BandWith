@@ -12,6 +12,7 @@
  * - readPack / readPackBySetlist: Stage and the event screen with no signal.
  */
 import { supabase, isDemoMode } from './supabase';
+import { forgetPackStatus, reportPackStatus } from './livePackStatus';
 import { getCacheKey, getOfflineItem, listOfflineKeys, removeOfflineItem, setOfflineItem } from './offline/storage';
 import { isOfflineError } from './offline/networkErrors';
 import {
@@ -130,6 +131,8 @@ async function dropPack(key: string, pack: LivePack | null) {
     } catch {
       /* storage blocked */
     }
+    // Admins' "N of M ready" no longer counts this device.
+    void forgetPackStatus(pack.userId, [pack.eventId]);
     changed(pack.eventId);
   }
 }
@@ -203,14 +206,23 @@ export async function savePackSongs(args: {
 
 // ── downloading ───────────────────────────────────────────────────────────
 
-/** null = the database doesn't have the other parts' columns yet (asked again after a while). */
+/**
+ * The other parts' columns this database doesn't have yet (each part's
+ * migration lands on its own), asked for again after a while.
+ */
+const EXTRA_COLUMNS = EXTRA_SONG_COLUMNS.split(',').map((c) => c.trim());
+const missingExtras = new Set<string>();
 let extrasMissingAt: number | null = null;
 const EXTRAS_RETRY_MS = 10 * 60 * 1000;
 
+/** "column songs.time_signature does not exist" → time_signature. */
+const missingColumn = (error: unknown): string | undefined =>
+  /column\s+(?:"?\w+"?\.)?"?(\w+)"?\s+does not exist/i.exec(String((error as { message?: unknown })?.message ?? ''))?.[1];
+
 /**
  * The setlist's rows with their songs. Asks for the live fields of the other
- * parts too; a database without those columns answers with an error, then
- * the plain columns are asked for.
+ * parts too; when the database lacks one, only that column is dropped (voice
+ * parts stay when the tempo columns aren't there yet, and the other way round).
  */
 export async function fetchSetlistRows(setlistId: string): Promise<{ rows: any[] | null; error: unknown }> {
   const ask = (cols: string) =>
@@ -220,22 +232,22 @@ export async function fetchSetlistRows(setlistId: string): Promise<{ rows: any[]
       .eq('setlist_id', setlistId)
       .order('set_number', { ascending: true })
       .order('position', { ascending: true });
-  const tryExtras = extrasMissingAt === null || Date.now() - extrasMissingAt > EXTRAS_RETRY_MS;
-  if (tryExtras) {
-    const { data, error } = await ask(`${BASE_SONG_COLUMNS}, ${EXTRA_SONG_COLUMNS}`);
-    if (!error) {
-      extrasMissingAt = null;
-      return { rows: data ?? [], error: null };
-    }
-    if (isOfflineError(error)) return { rows: null, error };
+  if (extrasMissingAt !== null && Date.now() - extrasMissingAt > EXTRAS_RETRY_MS) resetExtrasProbe();
+  for (;;) {
+    const extras = EXTRA_COLUMNS.filter((c) => !missingExtras.has(c));
+    const { data, error } = await ask(extras.length ? `${BASE_SONG_COLUMNS}, ${extras.join(', ')}` : BASE_SONG_COLUMNS);
+    if (!error) return { rows: data ?? [], error: null };
+    if (isOfflineError(error) || !extras.length) return { rows: null, error };
+    const named = missingColumn(error);
+    if (named && extras.includes(named)) missingExtras.add(named);
+    else for (const c of extras) missingExtras.add(c);
     extrasMissingAt = Date.now();
   }
-  const { data, error } = await ask(BASE_SONG_COLUMNS);
-  return error ? { rows: null, error } : { rows: data ?? [], error: null };
 }
 
 /** Tests: ask for the extra columns again. */
 export const resetExtrasProbe = () => {
+  missingExtras.clear();
   extrasMissingAt = null;
 };
 
@@ -341,6 +353,8 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
     expiresAt: packExpiresAt(event),
   };
   await savePack(pack);
+  // The full pack is on this device: tell the band's admins (native only).
+  void reportPackStatus(pack);
   return pack;
 }
 
@@ -402,15 +416,17 @@ export function runLivePackPrefetch(args: {
   onWifi?: boolean;
   unknownTitle?: string;
   now?: Date;
+  /** Refresh these events even if their pack is fresh (silent push: something changed). */
+  force?: string[];
 }): Promise<number> {
-  if (running) return running;
+  if (running) return running.then(() => (args.force?.length ? runLivePackPrefetch(args) : 0));
   running = prefetchOnce(args).finally(() => {
     running = null;
   });
   return running;
 }
 
-async function prefetchOnce({ userId, bandIds, events, online, onWifi = true, unknownTitle, now = new Date() }: Parameters<typeof runLivePackPrefetch>[0]): Promise<number> {
+async function prefetchOnce({ userId, bandIds, events, online, onWifi = true, unknownTitle, now = new Date(), force = [] }: Parameters<typeof runLivePackPrefetch>[0]): Promise<number> {
   const rows = new Map(events.map((e) => [e.eventId, e.row]));
   await migrateLegacySetlists(userId, events, rows);
   if (bandIds) await sweepPacks(userId, bandIds, now);
@@ -429,7 +445,8 @@ async function prefetchOnce({ userId, bandIds, events, online, onWifi = true, un
   let done = 0;
   for (const e of candidates) {
     const prev = await readPack(userId, e.bandId, e.eventId);
-    if (prev && prev.event.event_date === e.date && now.getTime() - new Date(prev.savedAt).getTime() < FRESH_MS) continue;
+    const fresh = prev && prev.event.event_date === e.date && now.getTime() - new Date(prev.savedAt).getTime() < FRESH_MS;
+    if (fresh && !force.includes(e.eventId)) continue;
     const pack = await refreshPack({ userId, event: e.row, occurrenceDate: e.date, withFiles: true, unknownTitle });
     if (pack) done++;
   }

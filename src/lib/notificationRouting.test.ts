@@ -54,6 +54,11 @@ describe('notificationTarget', () => {
     expect(notificationTarget('rehearsal_notes_added', { kind: 'summary', event_id: 'r1', session_id: 's1' })).toEqual({ screen: 'event', eventId: 'r1' });
   });
 
+  it('setlist ready for offline (170): the event, with the consent sheet', () => {
+    expect(notificationTarget('live_pack_ready', { kind: 'invite', event_id: 'e1' })).toEqual({ screen: 'event', eventId: 'e1', livePack: true });
+    expect(notificationTarget('live_pack_refresh', { event_id: 'e1' })).toBeNull();
+  });
+
   it('falls back to the type inside the push payload', () => {
     expect(notificationTarget('', { type: 'event_confirmed', eventId: 'e' })).toEqual({ screen: 'event', eventId: 'e' });
   });
