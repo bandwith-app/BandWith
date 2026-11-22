@@ -221,31 +221,50 @@ export const subscribeToPush = async (userId: string): Promise<{ success: boolea
  * After a save: no revocation is waiting for this token any more, and the
  * token and its server stamp are remembered for the next sign-out (audit
  * 04 #6, Codex review #287). The stamp is the row's updated_at, so the
- * offline revocation matches exactly this registration.
+ * offline revocation matches exactly this registration. It comes back with
+ * the save itself (184, bw_register_push_token_stamped); only an older
+ * database needs the separate read, which a dropped connection can lose.
  */
-const afterSave = async (userId: string, token: string) => {
+const afterSave = async (userId: string, token: string, stamp: string | null = null) => {
   savedToken = token;
   savedAt = Date.now();
   forgetRevocation(revokeStore(), token);
-  let registeredAt: string | null = null;
-  try {
-    const { data } = await supabase
-      .from('push_tokens')
-      .select('updated_at')
-      .eq('token', token)
-      .eq('user_id', userId)
-      .maybeSingle();
-    registeredAt = typeof data?.updated_at === 'string' ? data.updated_at : null;
-  } catch {
-    registeredAt = null;
+  let registeredAt: string | null = stamp;
+  if (!registeredAt) {
+    try {
+      const { data } = await supabase
+        .from('push_tokens')
+        .select('updated_at')
+        .eq('token', token)
+        .eq('user_id', userId)
+        .maybeSingle();
+      registeredAt = typeof data?.updated_at === 'string' ? data.updated_at : null;
+    } catch {
+      registeredAt = null;
+    }
   }
   rememberPushToken(revokeStore(), { token, userId, registeredAt });
 };
+
+/** The database has no such function yet (migration 184 not applied). */
+const isMissingFunction = (error: { code?: string; message?: string } | null | undefined) =>
+  !!error && (error.code === 'PGRST202' || error.code === '42883' || /could not find the function/i.test(error.message ?? ''));
 
 const saveTokenToDatabase = async (userId: string, token: string): Promise<{ success: boolean; error: Error | null }> => {
   const platform = Capacitor.getPlatform();
 
   try {
+    // 184: the same save as bw_register_push_token (046, which older builds
+    // keep calling unchanged), returning the row's stamp in one round trip.
+    const { data: stamp, error: stampedError } = await supabase.rpc('bw_register_push_token_stamped', { p_token: token, p_platform: platform });
+    if (!stampedError) {
+      await afterSave(userId, token, typeof stamp === 'string' ? stamp : null);
+      return { success: true, error: null };
+    }
+    if (!isMissingFunction(stampedError)) {
+      console.warn('[Push] Stamped token save failed:', stampedError.message);
+    }
+
     const { error: rpcError } = await supabase.rpc('bw_register_push_token', { p_token: token, p_platform: platform });
     if (!rpcError) {
       await afterSave(userId, token);
@@ -291,15 +310,32 @@ export const unregisterPushToken = async (userId?: string | null): Promise<void>
   const remembered = rememberedPushToken(revokeStore(), owner);
   const token = cachedToken ?? remembered?.token ?? null;
   rememberPushToken(revokeStore(), null);
-  if (!token) return;
+  if (!token) {
+    // No token known at all (a registration made by an older build, signed
+    // out before the native token came back): the server row can't be
+    // named, so delivery stops on the device itself (Codex review #287).
+    cachedToken = null;
+    try {
+      await PushNotifications.unregister();
+    } catch {
+      /* best effort: never block sign-out */
+    }
+    return;
+  }
   const registeredAt = remembered?.token === token ? remembered.registeredAt : null;
   const outcome = await revokeOnSignOut(token, owner, registeredAt, {
     store: owner ? revokeStore() : null,
     revokeOnServer: async () => {
       const { error } = await supabase.rpc('bw_unregister_push_token', { p_token: token });
       if (!error) return true;
-      const { error: updateError } = await supabase.from('push_tokens').update({ is_active: false }).eq('token', token);
-      return !updateError;
+      // "No error" for 0 rows (RLS, a row that moved) switched nothing off:
+      // only a row actually updated counts (Claude review #287).
+      const { data, error: updateError } = await supabase
+        .from('push_tokens')
+        .update({ is_active: false })
+        .eq('token', token)
+        .select('id');
+      return !updateError && Array.isArray(data) && data.length > 0;
     },
     // Offline (audit 04 #6): stop delivery on the phone itself; the next
     // sign-in registers again.

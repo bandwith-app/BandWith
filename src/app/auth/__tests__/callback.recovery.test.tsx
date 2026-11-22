@@ -3,7 +3,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { callbackProblemText } from '@/lib/authCallback';
-import { clearRecoveryProof, noteRecovery } from '@/lib/recoveryProof';
+import { clearRecoveryProof, noteOwnExchange, noteRecovery, resetOwnExchange } from '@/lib/recoveryProof';
 
 const BOB = '00000000-0000-0000-0000-00000000b0b0';
 const auth = vi.hoisted(() => ({
@@ -20,6 +20,7 @@ const problemTitle = callbackProblemText('other_browser', true).title;
 describe('reset link callback', () => {
   beforeEach(() => {
     clearRecoveryProof();
+    resetOwnExchange();
     // Bob is signed in here; the link carries Alice's code, and this
     // browser has no verifier for it, so the library leaves Bob's session.
     window.history.replaceState(null, '', '/auth/callback?code=alice-code&bw_recovery=1');
@@ -34,8 +35,19 @@ describe('reset link callback', () => {
     await waitFor(() => expect(screen.getByText(problemTitle)).toBeTruthy());
   });
 
+  // Codex review #287 round 2 (B1): Bob finished his own reset in another
+  // tab; the library broadcasts PASSWORD_RECOVERY for him to this tab too.
+  it("a reset finished in another tab doesn't vouch for this link", async () => {
+    noteRecovery(BOB); // the broadcast event, in this tab
+    render(<AuthCallback />);
+    await waitFor(() => expect(screen.getByText(problemTitle)).toBeTruthy());
+  });
+
   it('opens the reset when the link really signed this account in here', async () => {
-    noteRecovery(BOB); // what the PASSWORD_RECOVERY event records
+    // This tab exchanged the link's own code for Bob (recoveryExchangeFetch),
+    // then the library's PASSWORD_RECOVERY event for that session.
+    noteOwnExchange('alice-code', BOB);
+    noteRecovery(BOB);
     render(<AuthCallback />);
     await waitFor(() => expect(auth.getSession).toHaveBeenCalled());
     await new Promise((r) => setTimeout(r, 20));

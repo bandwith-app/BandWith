@@ -21,8 +21,13 @@ const TOK = 'a1b2c3d4'.repeat(8), TOK2 = 'f0e1d2c3'.repeat(8);
 
 await db.exec(`
 CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
+CREATE SCHEMA auth;
+CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+GRANT USAGE ON SCHEMA auth TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated;
+-- 009 + 031: one row per token.
 CREATE TABLE public.push_tokens (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL, token text NOT NULL,
-  platform text, is_active boolean DEFAULT true, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now(), UNIQUE (user_id, token));
+  platform text, is_active boolean DEFAULT true, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now(), UNIQUE (token));
 INSERT INTO push_tokens (user_id, token, platform, updated_at) VALUES
   ('${ALICE}', '${TOK}', 'ios', '2026-11-20T10:00:00Z'),
   ('${BOB}', '${TOK2}', 'android', '2026-11-20T10:00:00Z');
@@ -63,6 +68,29 @@ ok(await revoke('anon', TOK, ALICE, REG) === false, 'a newer registration is lef
 ok(await revoke('anon', TOK, ALICE, '2099-01-01T00:00:00Z') === false, 'and a future time cannot reach it either');
 ok(await active(TOK) === true, 'still active after the late revocation');
 ok(await active(TOK2) === true, "Bob's token untouched throughout");
+
+// Codex review #287 round 2 (B3): the save returns its own stamp, so the app
+// needs no second request (which a dropped connection could lose).
+const register = async (uid, tok, platform = 'ios') => {
+  try {
+    await db.exec(`SET ROLE authenticated; SELECT set_config('request.jwt.claim.sub', '${uid ?? ''}', false)`);
+    return (await db.query(`SELECT public.bw_register_push_token_stamped($1, $2)::text AS at`, [tok, platform])).rows[0].at;
+  } catch (e) { return `ERR ${e.message}`; }
+  finally { await db.exec(`RESET ROLE; SELECT set_config('request.jwt.claim.sub', '', false)`); }
+};
+const TOK3 = 'c0ffee00'.repeat(8);
+const stamp = await register(ALICE, TOK3);
+ok(typeof stamp === 'string' && !stamp.startsWith('ERR'), `the save returns a stamp: ${stamp}`);
+const row = (await db.query(`SELECT user_id, is_active, updated_at::text AS at FROM push_tokens WHERE token = $1`, [TOK3])).rows[0];
+ok(row?.user_id === ALICE && row?.is_active === true && row?.at === stamp, 'it is exactly the row the save wrote');
+ok(await revoke('anon', TOK3, ALICE, stamp) === true, 'that stamp revokes exactly that registration');
+const again = await register(BOB, TOK3, 'android'); // the device moves to Bob (046 behaviour)
+ok(typeof again === 'string' && !again.startsWith('ERR') && again !== stamp, 'a new save moves the token and gives a new stamp');
+ok(await revoke('anon', TOK3, ALICE, stamp) === false && await active(TOK3) === true, "Alice's old stamp can't touch Bob's registration");
+ok(String(await register(null, TOK3)).startsWith('ERR'), 'needs a session');
+ok(String(await register(ALICE, 'short')).startsWith('ERR'), 'malformed token refused');
+const anonReg = (await db.query(`SELECT has_function_privilege('anon', 'public.bw_register_push_token_stamped(text,text)', 'EXECUTE') AS x`).catch(() => ({ rows: [{ x: null }] }))).rows[0].x;
+ok(anonReg === false, 'the stamped save is not open to anon');
 
 const grants = (await db.query(`SELECT r AS role, has_function_privilege(r, 'public.bw_revoke_push_token(text,uuid,timestamptz)', 'EXECUTE') AS x
   FROM unnest(ARRAY['anon','authenticated']) r`).catch(() => ({ rows: [] }))).rows;

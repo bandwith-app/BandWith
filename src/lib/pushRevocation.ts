@@ -12,15 +12,20 @@
  *      account only, and never undoes a newer registration).
  *
  * Codex review #287: the server matches the registration itself (its own
- * push_tokens.updated_at, read back when the token was saved), never a device
- * clock; and the last saved token is remembered here, so a sign-out right
- * after an offline cold start (before the native token arrives) still works.
+ * push_tokens.updated_at, returned by the save), never a device clock; and
+ * the last saved token is remembered here, so a sign-out right after an
+ * offline cold start (before the native token arrives) still works. With no
+ * token known at all, delivery still stops on the device.
  */
 
 export const PUSH_REVOKE_KEY = 'bandwith.push-revoke';
 export const PUSH_TOKEN_KEY = 'bandwith.push-token';
-/** Give up after this long: the token has surely been replaced by then. */
-export const PUSH_REVOKE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+/**
+ * At most this many wait on one device (the oldest go first). Age alone never
+ * drops one unsent (Codex review #287 round 2): the server registration has
+ * no expiry, and its exact-stamp match makes a late call harmless.
+ */
+export const PUSH_REVOKE_MAX_QUEUED = 20;
 
 export interface PendingRevocation {
   token: string;
@@ -58,7 +63,7 @@ export function readPendingRevocations(store: Store | null): PendingRevocation[]
 function writePending(store: Store | null, list: PendingRevocation[]) {
   if (!store) return;
   try {
-    if (list.length) store.setItem(PUSH_REVOKE_KEY, JSON.stringify(list));
+    if (list.length) store.setItem(PUSH_REVOKE_KEY, JSON.stringify(list.slice(-PUSH_REVOKE_MAX_QUEUED)));
     else store.removeItem(PUSH_REVOKE_KEY);
   } catch {
     /* storage blocked: the device-side unregister still holds */
@@ -144,14 +149,12 @@ export async function revokeOnSignOut(
 export async function flushPushRevocations(
   store: Store | null,
   rpc: (p: PendingRevocation) => Promise<{ error: unknown }>,
-  now: () => number = Date.now,
 ): Promise<number> {
   const list = readPendingRevocations(store);
   if (!list.length) return 0;
   const left: PendingRevocation[] = [];
   let sent = 0;
   for (const p of list) {
-    if (now() - Date.parse(p.at) > PUSH_REVOKE_MAX_AGE_MS) continue;
     let error: unknown = null;
     try {
       ({ error } = await rpc(p));
@@ -164,6 +167,6 @@ export async function flushPushRevocations(
   // Something may have been queued or saved meanwhile: merge, don't overwrite.
   const current = readPendingRevocations(store);
   const done = new Set(list.filter((p) => !left.includes(p)).map((p) => `${p.token}|${p.at}`));
-  writePending(store, current.filter((p) => !done.has(`${p.token}|${p.at}`) && now() - Date.parse(p.at) <= PUSH_REVOKE_MAX_AGE_MS));
+  writePending(store, current.filter((p) => !done.has(`${p.token}|${p.at}`)));
   return sent;
 }

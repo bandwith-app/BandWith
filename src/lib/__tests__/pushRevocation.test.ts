@@ -3,7 +3,7 @@
 // clock), and a sign-out before the native token arrives still revokes.
 import { describe, expect, it, vi } from 'vitest';
 import {
-  PUSH_REVOKE_MAX_AGE_MS,
+  PUSH_REVOKE_MAX_QUEUED,
   flushPushRevocations,
   forgetRevocation,
   readPendingRevocations,
@@ -38,11 +38,10 @@ describe('push revocation on sign-out', () => {
     expect(unregisterDevice).toHaveBeenCalledOnce();
     expect(readPendingRevocations(store)).toEqual([{ token: TOKEN, userId: 'alice', registeredAt: REG, at: '2026-11-22T10:00:00.000Z' }]);
 
-    const t = Date.parse('2026-11-22T11:00:00Z');
-    expect(await flushPushRevocations(store, async () => ({ error: new Error('offline') }), () => t)).toBe(0);
+    expect(await flushPushRevocations(store, async () => ({ error: new Error('offline') }))).toBe(0);
     expect(readPendingRevocations(store)).toHaveLength(1);
     const rpc = vi.fn(async () => ({ error: null }));
-    expect(await flushPushRevocations(store, rpc, () => t)).toBe(1);
+    expect(await flushPushRevocations(store, rpc)).toBe(1);
     expect(rpc).toHaveBeenCalledWith({ token: TOKEN, userId: 'alice', registeredAt: REG, at: '2026-11-22T10:00:00.000Z' });
     expect(readPendingRevocations(store)).toEqual([]);
   });
@@ -55,16 +54,36 @@ describe('push revocation on sign-out', () => {
     expect(readPendingRevocations(store)).toEqual([]);
   });
 
-  it('a new sign-in on the device cancels it; very old ones are dropped', async () => {
+  it('a new sign-in on the device cancels it', async () => {
     const store = mem();
     await revokeOnSignOut(TOKEN, 'alice', REG, { store, revokeOnServer: async () => false, unregisterDevice: async () => {}, now: () => new Date(0) });
     forgetRevocation(store, TOKEN);
     expect(readPendingRevocations(store)).toEqual([]);
+  });
+
+  // Codex review #287 round 2 (MINOR): a phone opened again after a month
+  // must still tell the server; the server's exact-stamp match makes a late
+  // call harmless, so age alone never drops one.
+  it('an old revocation is still sent, never dropped unsent', async () => {
+    const store = mem();
     await revokeOnSignOut(TOKEN, 'alice', REG, { store, revokeOnServer: async () => false, unregisterDevice: async () => {}, now: () => new Date(0) });
     const rpc = vi.fn(async () => ({ error: null }));
-    expect(await flushPushRevocations(store, rpc, () => PUSH_REVOKE_MAX_AGE_MS + 1)).toBe(0);
-    expect(rpc).not.toHaveBeenCalled();
+    // Queued at the epoch: far older than any former cut-off.
+    expect(await flushPushRevocations(store, async () => ({ error: new Error('offline') }))).toBe(0);
+    expect(readPendingRevocations(store)).toHaveLength(1);
+    expect(await flushPushRevocations(store, rpc)).toBe(1);
+    expect(rpc).toHaveBeenCalledOnce();
     expect(readPendingRevocations(store)).toEqual([]);
+  });
+
+  it('the queue stays bounded: the oldest go first', async () => {
+    const store = mem();
+    for (let i = 0; i < PUSH_REVOKE_MAX_QUEUED + 5; i++) {
+      await revokeOnSignOut(`${TOKEN}-${i}`, 'alice', REG, { store, revokeOnServer: async () => false, unregisterDevice: async () => {}, now: () => new Date(i * 1000) });
+    }
+    const list = readPendingRevocations(store);
+    expect(list).toHaveLength(PUSH_REVOKE_MAX_QUEUED);
+    expect(list[0].token).toBe(`${TOKEN}-5`);
   });
 
   it('the last saved token is remembered per account, across a cold start', () => {
