@@ -2985,13 +2985,7 @@ export default function AuthenticatedApp() {
     if (selectedEvent && eventKeyOf(selectedEvent) === eventKeyOf(event)) return void openEventCard(event);
     runGuarded(() => void openEventCard(event));
   };
-  const openEventCard = async (opened: EventData) => {
-    // A later date of a series (Calendar, Home): remember where the series
-    // starts, so editing that date does not move it (Codex #297).
-    const series = opened.eventId && !opened.seriesDate && opened.is_recurring
-      ? eventsRef.current.find((e) => e.eventId === opened.eventId)
-      : undefined;
-    const event: EventData = series?.date && series.date !== opened.date ? { ...opened, seriesDate: series.date } : opened;
+  const openEventCard = async (event: EventData) => {
     // A saved draft: its own sheet (only the author has it).
     if (event.draftId) {
       setPreviewDraftId(event.draftId);
@@ -3005,6 +2999,12 @@ export default function AuthenticatedApp() {
         return; // Member is not added to this event
       }
     }
+    // A later date of a series (Calendar, Home): remember where the series
+    // starts, so editing that date does not move it (Codex #297).
+    const series = event.eventId && !event.seriesDate && event.is_recurring
+      ? eventsRef.current.find((e) => e.eventId === event.eventId)
+      : undefined;
+    if (series?.date && series.date !== event.date) event = { ...event, seriesDate: series.date };
     setSelectedEvent(event);
     setSelectedEventMembership(null);
     const key = eventKeyOf(event);
@@ -4412,9 +4412,8 @@ export default function AuthenticatedApp() {
                 onClose={() => {
                   // Cancelling an edit returns to the event it was opened from (saving has its own path).
                   const back = editingEventData?.eventId;
-                  const backDate = editingEventData?.date;
                   setIsCreateEventOpen(false); setEditingEventData(null); setCreateEventInitialDate(null); setCreateEventInitialTasks(undefined); setActiveEventDraft(null);
-                  if (back) void navigateToEvent(back, backDate);
+                  if (back) void navigateToEvent(back);
                 }}
                 onCreate={handleEventCreate}
                 draft={editingEventData ? null : activeEventDraft}
