@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Download, Trash2, Wifi } from '@/app/components/icons';
 import { PillButton, Toggle } from '@/app/components/bw';
 import { cn } from '@/app/components/ui/utils';
+import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 import { localDecimal, useT } from '@/lib/i18n';
 import { packSizeMb, type LivePack } from '@/lib/livePack';
 import { LIVE_PACK_CHANGED, deleteAllPacks, listPacks } from '@/lib/livePackStore';
@@ -85,9 +86,12 @@ export const OfflineLiveSection: React.FC<{ userId?: string }> = ({ userId }) =>
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="bw-body-sm text-muted-foreground px-1">
-        {t('Lyrics, chords, structures and your own notes for your next gigs, on this device for when there is no signal. No fees, no contracts.')}
-      </p>
+      <div className="flex items-start gap-3 px-1">
+        <p className="bw-body-sm text-muted-foreground flex-1 min-w-0">
+          {t('Lyrics, chords, structures and your own notes for your next gigs, on this device for when there is no signal. No fees, no contracts.')}
+        </p>
+        <AcademyHelpButton article="offline-and-live-settings" size="sm" />
+      </div>
 
       <div className={cn(CARD, ROW)}>
         <Tile>

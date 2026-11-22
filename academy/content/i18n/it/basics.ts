@@ -250,8 +250,8 @@ const basics: AreaText = {
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Quattro schede: la tua band in un solo posto, mettere un gig in calendario, chi vede quali compensi e le tue tariffe. L’ultima scheda ha **Configura tariffe**, che apre **Prezzi, compensi e servizi**." },
-            { role: "member", text: "Tre schede: la Home, rispondere a un invito a un gig e i brani (accordi, testi, le tue note e la Modalità palco)." },
+            { role: "admin", text: "Cinque schede: la tua band in un solo posto, mettere un gig in calendario, le scalette pronte anche senza segnale, chi vede quali compensi e le tue tariffe. L’ultima scheda ha **Configura tariffe**, che apre **Prezzi, compensi e servizi**." },
+            { role: "member", text: "Quattro schede: la Home, rispondere a un invito a un gig, i brani (accordi, testi, le tue note e la Modalità palco) e le scalette pronte anche senza segnale." },
             { role: "deputy", text: "Tre schede su **Date da sostituto**: rispondere a una richiesta, cosa la band condivide con te e aggiungere le tue date da sostituto al calendario." },
           ],
         },

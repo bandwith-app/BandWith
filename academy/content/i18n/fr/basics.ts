@@ -250,8 +250,8 @@ const basics: AreaText = {
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Quatre cartes : ton groupe au même endroit, ajouter un concert au calendrier, qui voit quels cachets, et tes tarifs. La dernière carte a **Configurer les tarifs**, qui ouvre **Tarifs, cachets et prestations**." },
-            { role: "member", text: "Trois cartes : l’accueil, répondre à une invitation de concert, et les morceaux (accords, paroles, tes notes et le mode scène)." },
+            { role: "admin", text: "Cinq cartes : ton groupe au même endroit, ajouter un concert au calendrier, les setlists prêtes sans réseau, qui voit quels cachets, et tes tarifs. La dernière carte a **Configurer les tarifs**, qui ouvre **Tarifs, cachets et prestations**." },
+            { role: "member", text: "Quatre cartes : l’accueil, répondre à une invitation de concert, les morceaux (accords, paroles, tes notes et le mode scène), et les setlists prêtes sans réseau." },
             { role: "deputy", text: "Trois cartes sur **Dates de remplaçant** : répondre à une demande, ce que le groupe partage avec toi, et ajouter tes dates de remplaçant à ton calendrier." },
           ],
         },

@@ -3,6 +3,8 @@ import { CheckCircle2, Download } from '@/app/components/icons';
 import { PillButton } from '@/app/components/bw/Form';
 import { WaitingChangesTag } from './WaitingChangesTag';
 import { cn } from '@/app/components/ui/utils';
+import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
+import { useWaitingChanges } from '@/app/hooks/useLiveOutbox';
 import { haptic } from '@/lib/haptics';
 import { dateName, useT } from '@/lib/i18n';
 import type { LivePack } from '@/lib/livePack';
@@ -44,6 +46,7 @@ export const OfflineReadyRow: React.FC<{
   pending?: Promise<boolean> | null;
 }> = ({ pack, userId, event, occurrenceDate, online, className, onAsk, pending }) => {
   const t = useT();
+  const waiting = useWaitingChanges(userId);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const ready = !!pack && pack.songs.length > 0;
@@ -98,6 +101,9 @@ export const OfflineReadyRow: React.FC<{
           </span>
           <WaitingChangesTag userId={userId} className="mt-1" />
         </span>
+        <span className="flex-1" />
+        {/* With changes waiting for signal, the "?" explains those. */}
+        <AcademyHelpButton article={waiting > 0 ? 'changes-without-signal' : 'live-mode-offline'} size="sm" className="shrink-0 -mt-1" />
       </span>
       {!ready && online && userId && (
         <PillButton

@@ -249,8 +249,8 @@ const basics: AreaText = {
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Cuatro tarjetas: tu banda en un solo sitio, cómo poner un concierto en el calendario, quién ve cada caché y tus tarifas. La última tarjeta tiene **Configurar tarifas**, que abre **Precios, cachés y servicios**." },
-            { role: "member", text: "Tres tarjetas: Inicio, cómo responder a una invitación a un concierto y las canciones (acordes, letras, tus notas y el Modo escenario)." },
+            { role: "admin", text: "Cinco tarjetas: tu banda en un solo sitio, cómo poner un concierto en el calendario, los setlists listos sin señal, quién ve cada caché y tus tarifas. La última tarjeta tiene **Configurar tarifas**, que abre **Precios, cachés y servicios**." },
+            { role: "member", text: "Cuatro tarjetas: Inicio, cómo responder a una invitación a un concierto, las canciones (acordes, letras, tus notas y el Modo escenario) y los setlists listos sin señal." },
             { role: "deputy", text: "Tres tarjetas en **Bolos como sustituto**: cómo responder a una petición, qué comparte la banda contigo y cómo añadir tus bolos como sustituto a tu calendario." },
           ],
         },

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Bell, ChevronDown, Wifi } from '@/app/components/icons';
 import { PillButton } from '@/app/components/bw/Form';
 import { cn } from '@/app/components/ui/utils';
+import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 import { haptic } from '@/lib/haptics';
 import { useT } from '@/lib/i18n';
 import { LIVE_PACK_CHANGED } from '@/lib/livePackStore';
@@ -73,22 +74,25 @@ export const OfflineMembersRow: React.FC<{
   const all = counts.ready === counts.total;
   return (
     <div className={cn('bg-card rounded-[16px] p-4 flex flex-col gap-3', className)} role="group" aria-label={t('Offline')}>
-      <button
-        type="button"
-        className="flex items-center gap-3 text-left min-h-11"
-        onClick={() => !all && setOpen((o) => !o)}
-        aria-expanded={all ? undefined : open}
-        disabled={all}
-      >
-        <Wifi className={cn('w-5 h-5 shrink-0', all ? 'text-success' : 'text-muted-foreground')} aria-hidden />
-        <span className="flex flex-col gap-0.5 flex-1 min-w-0">
-          <span className="bw-body-md">{t('Offline: {n} of {m} members ready', { n: counts.ready, m: counts.total })}</span>
-          <span className="bw-body-sm text-muted-foreground">
-            {all ? t('Everyone has the setlist on their phone.') : t('Who has the setlist on their phone for no signal.')}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          className="flex items-center gap-3 text-left min-h-11 flex-1 min-w-0"
+          onClick={() => !all && setOpen((o) => !o)}
+          aria-expanded={all ? undefined : open}
+          disabled={all}
+        >
+          <Wifi className={cn('w-5 h-5 shrink-0', all ? 'text-success' : 'text-muted-foreground')} aria-hidden />
+          <span className="flex flex-col gap-0.5 flex-1 min-w-0">
+            <span className="bw-body-md">{t('Offline: {n} of {m} members ready', { n: counts.ready, m: counts.total })}</span>
+            <span className="bw-body-sm text-muted-foreground">
+              {all ? t('Everyone has the setlist on their phone.') : t('Who has the setlist on their phone for no signal.')}
+            </span>
           </span>
-        </span>
-        {!all && <ChevronDown className={cn('w-4 h-4 shrink-0 transition-transform', open && 'rotate-180')} aria-hidden />}
-      </button>
+          {!all && <ChevronDown className={cn('w-4 h-4 shrink-0 transition-transform', open && 'rotate-180')} aria-hidden />}
+        </button>
+        <AcademyHelpButton article="offline-members-ready" size="sm" />
+      </div>
       {open && !all && (
         <ul className="flex flex-col gap-2" aria-label={t('Not ready yet')}>
           {counts.notReady.map((m) => {

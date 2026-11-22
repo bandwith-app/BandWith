@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Download } from '@/app/components/icons';
 import { BwSheet } from '@/app/components/bw/Screen';
+import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 import { PillButton } from '@/app/components/bw/Form';
 import { haptic } from '@/lib/haptics';
 import { localDecimal, useT } from '@/lib/i18n';
@@ -67,6 +68,7 @@ export const LivePackConsentSheet: React.FC<{
       closeLabel={t('Close')}
       zIndex={160}
       portal
+      headerAction={<AcademyHelpButton article="live-mode-offline" size="sm" variant="sheet" />}
       footer={
         <div className="dark flex flex-col gap-2">
           <PillButton icon={<Download className="w-4 h-4" />} onClick={() => answer('auto')} disabled={!userId}>
