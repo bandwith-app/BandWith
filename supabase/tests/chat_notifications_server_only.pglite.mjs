@@ -162,6 +162,19 @@ await db.exec(`UPDATE notifications SET data = data || '{"push_claimed_at":"2026
 const w3 = await write(MSG3, ALICE, CAROL, MEM2);
 ok(JSON.stringify(w3) === JSON.stringify([MEM2, ALICE, CAROL].sort()), `malformed claims count as unclaimed, nothing aborts (${w3})`);
 
+// Codex #284 r7 B4: edited between send-push's check and the insert: the
+// notice shows the message as stored (under its lock), not the text that
+// came in p_rows. Cut like chatPreview (120 UTF-16 units, no half emoji).
+const [MSG8, MSG9] = [id(608), id(609)];
+const LONGE = 'y'.repeat(119) + '🎸🎸';
+await db.exec(`INSERT INTO messages (id, chat_id, sender_id, content) VALUES ('${MSG8}', '${id(900)}', '${MEM}', 'meet at 9'), ('${MSG9}', '${id(900)}', '${MEM}', '${LONGE}')`);
+await write(MSG8, ALICE);
+const n8 = await db.query(`SELECT body, data->>'content' AS c FROM notifications WHERE data->>'message_id' = '${MSG8}'`).then((r) => r.rows, () => []);
+ok(n8.length === 1 && n8[0].body === 'meet at 9' && n8[0].c === 'meet at 9', `the notice reads the stored text, not p_rows' (${JSON.stringify(n8)})`);
+await write(MSG9, ALICE);
+const n9 = await db.query(`SELECT body, data->>'content' AS c FROM notifications WHERE data->>'message_id' = '${MSG9}'`).then((r) => r.rows, () => []);
+ok(n9.length === 1 && n9[0].body === 'y'.repeat(119) && n9[0].c === 'y'.repeat(119), `cut like chatPreview, no half emoji (${n9[0]?.body?.length})`);
+
 // Round 4 (Codex #284): the token lookup failed after the claim: the claim
 // is released so a retry right away delivers.
 const MSG4 = id(604);
@@ -172,7 +185,7 @@ const rel = await db.query(`SELECT public.bw_release_chat_notice_claims($1::uuid
 ok(rel === 'ok', `claims can be released (${rel})`);
 ok(JSON.stringify(await write(MSG4, ALICE, CAROL)) === JSON.stringify([ALICE]), 'a retry right away delivers the released one (Carol still claimed)');
 const pushedIds = await db.query(`SELECT id FROM notifications WHERE data->>'message_id' = '${MSG4}'`).then((r) => r.rows.map((x) => x.id));
-await db.query(`SELECT public.bw_mark_chat_notices_pushed($1::uuid[])`, [pushedIds]);
+await db.query(`SELECT public.bw_mark_chat_notices_pushed($1::uuid[])`, [pushedIds]).catch(() => {}); // /dev/null: FAILs, not a crash
 await db.query(`SELECT public.bw_release_chat_notice_claims($1::uuid[])`, [pushedIds]).catch(() => {});
 ok(JSON.stringify(await write(MSG4, ALICE, CAROL)) === '[]', 'releasing never un-pushes');
 const relAsUser = await db.exec(`BEGIN; SET LOCAL ROLE authenticated; SELECT public.bw_release_chat_notice_claims('{}'::uuid[]); COMMIT;`).then(() => 'ran', async (e) => { await db.exec('ROLLBACK'); return e.message; });
@@ -208,7 +221,7 @@ const MSG6 = id(906);
 await db.exec(`INSERT INTO messages (id, chat_id, sender_id, content) VALUES ('${MSG6}', '${id(900)}', '${MEM}', 'claims')`);
 const claim6 = (...users) => db.query(`SELECT u::text AS u FROM public.bw_claim_chat_push_only('${MSG6}', $1::uuid[]) u ORDER BY 1`, [users])
   .then((r) => r.rows.map((x) => x.u), (e) => `error: ${e.message}`);
-const setPO = (when) => db.exec(`UPDATE chat_push_only_log SET claimed_at = now() + interval '${when}' WHERE message_id = '${MSG6}'`);
+const setPO = (when) => db.exec(`UPDATE chat_push_only_log SET claimed_at = now() + interval '${when}' WHERE message_id = '${MSG6}'`).catch(() => {});
 ok(JSON.stringify(await claim6(ALICE)) === JSON.stringify([ALICE]), 'push only: claimed');
 await setPO('-5 minutes');
 ok(JSON.stringify(await claim6(ALICE)) === '[]', 'push only: a 5-minute-old claim still holds');
@@ -228,10 +241,10 @@ await setN('30 minutes');
 ok(JSON.stringify(await write(MSG7, ALICE)) === JSON.stringify([ALICE]), 'notice: a claim 30 minutes in the future counts as unclaimed');
 // Account deletion (#282, 180) removes the profile: its log rows go with it.
 const fk = await db.query(`SELECT confdeltype FROM pg_constraint WHERE conrelid = 'public.chat_push_only_log'::regclass AND conname = 'chat_push_only_log_user_id_fkey'`)
-  .then((r) => r.rows[0]?.confdeltype ?? null);
+  .then((r) => r.rows[0]?.confdeltype ?? null, () => null);
 ok(fk === 'c', `push only: user_id references profiles ON DELETE CASCADE (${fk})`);
 const del = await db.exec(`DELETE FROM profiles WHERE id = '${CAROL}'`).then(() => 'ok', (e) => e.message);
-const left = await db.query(`SELECT count(*)::int AS n FROM chat_push_only_log WHERE user_id = '${CAROL}'`).then((r) => r.rows[0].n);
+const left = await db.query(`SELECT count(*)::int AS n FROM chat_push_only_log WHERE user_id = '${CAROL}'`).then((r) => r.rows[0].n, () => -1);
 ok(del === 'ok' && left === 0, `push only: deleting the account deletes its log rows (${del}, ${left} left)`);
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');

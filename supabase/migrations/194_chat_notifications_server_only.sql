@@ -52,6 +52,10 @@
 -- rings twice. Same claim rule as the notices (7 minutes, released when
 -- every device failed for now or the push could not be attempted).
 --
+-- Round 7 (Codex #284 B4): a notice's body and data.content are the preview
+-- of the message as stored, read under its FOR SHARE lock (bw_chat_preview,
+-- the same function 192 defines), not the text send-push passed in.
+--
 -- Deploy order: apply 194 before deploying send-push (send-push falls back
 -- to a plain insert while the function is missing).
 --
@@ -167,8 +171,58 @@ $function$;
 REVOKE ALL ON FUNCTION public.bw_chat_push_claim_free(timestamptz) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.bw_chat_push_claim_free(timestamptz) TO service_role;
 
+-- The preview of a message, as send-push's chatPreview cuts it (B4, Codex
+-- #284 r7): bw_write_chat_notices builds it from the message as stored.
+-- Byte-identical to 192's copy (#291 applies after this one and keeps it;
+-- a test there compares the two).
+-- JS `s.substring(0, n)`: n UTF-16 code units (characters above U+FFFF take
+-- two). A cut through such a character drops it (Postgres text can't hold
+-- half of it).
+CREATE OR REPLACE FUNCTION public.bw_js_left(p_text text, p_units integer)
+RETURNS text
+LANGUAGE plpgsql
+IMMUTABLE STRICT
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_units integer := 0;
+  v_i integer := 0;
+  v_len integer;
+BEGIN
+  -- Each UTF-16 unit is at least one UTF-8 byte: short texts fit whole.
+  IF octet_length(p_text) <= p_units THEN
+    RETURN p_text;
+  END IF;
+  v_len := char_length(p_text);
+  WHILE v_i < v_len LOOP
+    v_units := v_units + CASE WHEN ascii(substr(p_text, v_i + 1, 1)) > 65535 THEN 2 ELSE 1 END;
+    EXIT WHEN v_units > p_units;
+    v_i := v_i + 1;
+  END LOOP;
+  RETURN left(p_text, v_i);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_js_left(text, integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_js_left(text, integer) TO authenticated, service_role;
+
+-- The preview the app and send-push store for a message (chat-push.ts chatPreview).
+CREATE OR REPLACE FUNCTION public.bw_chat_preview(p_content text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+SET search_path TO 'public'
+AS $$
+  SELECT coalesce(nullif(public.bw_js_left(coalesce(p_content, ''), 120), ''), 'New message');
+$$;
+REVOKE ALL ON FUNCTION public.bw_chat_preview(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_chat_preview(text) TO authenticated, service_role;
+
 -- Writes the chat notices of one message and claims those to push now.
 -- p_rows: [{user_id, type, title, body, data, band_id, action_url}].
+-- body and data.content are the preview of the message as it reads now,
+-- under its FOR SHARE lock, never p_rows' text (Codex #284 r7 B4: an edit
+-- between send-push's check and this insert left the old text). An edit
+-- after it waits for this transaction; 192 then rewrites the notices.
 CREATE OR REPLACE FUNCTION public.bw_write_chat_notices(p_message_id uuid, p_rows jsonb)
 RETURNS TABLE (id uuid, user_id uuid)
 LANGUAGE plpgsql
@@ -176,10 +230,12 @@ SECURITY DEFINER
 SET search_path TO 'public'
 AS $function$
 #variable_conflict use_column
+DECLARE
+  v_preview text;
 BEGIN
   -- The message must still be there, and not marked deleted (read through
   -- to_jsonb: works with or without messages.deleted).
-  PERFORM 1 FROM messages m
+  SELECT public.bw_chat_preview(m.content) INTO v_preview FROM messages m
    WHERE m.id = p_message_id
      AND NOT coalesce((to_jsonb(m) ->> 'deleted')::boolean, false)
      FOR SHARE;
@@ -188,8 +244,9 @@ BEGIN
   END IF;
 
   INSERT INTO notifications AS n (user_id, type, title, body, data, read, band_id, action_url)
-  SELECT r.user_id, r.type, r.title, r.body,
-         coalesce(r.data, '{}'::jsonb) || jsonb_build_object('message_id', p_message_id::text),
+  SELECT r.user_id, r.type, r.title, v_preview,
+         coalesce(r.data, '{}'::jsonb)
+           || jsonb_build_object('message_id', p_message_id::text, 'content', v_preview),
          false, r.band_id, r.action_url
     FROM jsonb_to_recordset(coalesce(p_rows, '[]'::jsonb))
          AS r(user_id uuid, type text, title text, body text, data jsonb, band_id uuid, action_url text)
