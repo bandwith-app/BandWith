@@ -396,7 +396,7 @@ AS $$
           SELECT 1 FROM event_members em
           WHERE em.event_id = e.id AND em.user_id = p_user_id
             -- Off the gig like declined (046, 181): dropped out, removed.
-            AND COALESCE(em.status, '') NOT IN ('declined', 'dropped_out', 'removed')
+            AND lower(btrim(COALESCE(em.status::text, ''))) NOT IN ('declined', 'dropped_out', 'removed')
         )
       )
   );
@@ -872,7 +872,7 @@ BEGIN
     JOIN event_members em ON em.event_id = c.event_id
    WHERE c.type::text = 'event' AND c.event_id = p_event_id
      AND em.user_id IS NOT NULL
-     AND coalesce(em.status, 'invited') NOT IN ('declined', 'dropped_out', 'removed')
+     AND lower(btrim(coalesce(em.status::text, 'invited'))) NOT IN ('declined', 'dropped_out', 'removed')
      AND public.bw_is_band_member(v_band, em.user_id)
      AND EXISTS (SELECT 1 FROM profiles p WHERE p.id = em.user_id)
      AND NOT EXISTS (SELECT 1 FROM chat_participants cp WHERE cp.chat_id = c.id AND cp.user_id = em.user_id);
@@ -1114,7 +1114,7 @@ AS $$
   ),
   mine AS (
     SELECT em.user_id,
-           lower(coalesce(em.status, '')) AS answer,
+           lower(btrim(coalesce(em.status::text, ''))) AS answer,
            em.fee,
            em.paid_at,
            ev.event_date,
@@ -1239,7 +1239,7 @@ AS $$
            SELECT 1 FROM event_members em
            WHERE em.event_id = e.id
              AND em.user_id = m.user_id
-             AND lower(coalesce(em.status, '')) NOT IN ('declined', 'dropped_out', 'removed')
+             AND lower(btrim(coalesce(em.status::text, ''))) NOT IN ('declined', 'dropped_out', 'removed')
          )
          OR (e.band_id IS NULL AND e.created_by = m.user_id)
        )
@@ -1473,7 +1473,7 @@ BEGIN
     SELECT coalesce(array_agg(DISTINCT em.user_id), '{}'::uuid[]) INTO v_lineup
       FROM event_members em
      WHERE em.event_id = p_event_id
-       AND coalesce(em.status, 'invited') NOT IN ('declined', 'dropped_out', 'removed');
+       AND lower(btrim(coalesce(em.status::text, 'invited'))) NOT IN ('declined', 'dropped_out', 'removed');
     IF coalesce(array_length(v_lineup, 1), 0) = 0 THEN
       v_people := '{}'::uuid[];
     ELSE
@@ -1622,7 +1622,7 @@ BEGIN
     SELECT p.u, public.bw_display_name(p.u)::text, a.answer, a.answered_at,
            EXISTS (SELECT 1 FROM event_members em
                     WHERE em.event_id = p_event_id AND em.user_id = p.u
-                      AND coalesce(em.status, 'invited') NOT IN ('declined', 'dropped_out', 'removed'))
+                      AND lower(btrim(coalesce(em.status::text, 'invited'))) NOT IN ('declined', 'dropped_out', 'removed'))
       FROM people p
       LEFT JOIN event_hold_answers a ON a.event_id = p_event_id AND a.user_id = p.u
      ORDER BY CASE a.answer WHEN 'free' THEN 0 WHEN 'busy' THEN 1 ELSE 2 END, 2;
@@ -2176,13 +2176,13 @@ ON CONFLICT (event_id) DO NOTHING;
 -- so a re-run never brings back answers cleared by a change of date.
 INSERT INTO public.event_hold_answers (event_id, user_id, answer, answered_at)
 SELECT DISTINCT ON (em.event_id, em.user_id) em.event_id, em.user_id,
-       CASE WHEN lower(em.status) IN ('confirmed', 'accepted') THEN 'free' ELSE 'busy' END, now()
+       CASE WHEN lower(btrim(em.status::text)) IN ('confirmed', 'accepted') THEN 'free' ELSE 'busy' END, now()
   FROM event_date_holds h
   JOIN events e ON e.id = h.event_id
   JOIN event_members em ON em.event_id = h.event_id
  WHERE h.released_at IS NULL
    AND h.answers_carried_at IS NULL
-   AND lower(coalesce(em.status, '')) IN ('confirmed', 'accepted', 'declined')
+   AND lower(btrim(coalesce(em.status::text, ''))) IN ('confirmed', 'accepted', 'declined')
    AND em.user_id = ANY (public.bw_date_hold_people(e.band_id))
    AND EXISTS (SELECT 1 FROM auth.users u WHERE u.id = em.user_id)
 ON CONFLICT (event_id, user_id) DO NOTHING;

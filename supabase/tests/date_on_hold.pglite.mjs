@@ -794,6 +794,22 @@ await db.exec(`SELECT public.bw_date_hold_sweep()`).catch(() => {});
   ok(at(52).free_count === at(52).total_count - 1, `free slots: a one-off gig is still busy (${JSON.stringify(at(52))})`);
 }
 
+// #291's integrated test: lineup answers in another case ('Declined',
+// 'Dropped_Out ', as older builds and imports wrote them) are off the gig
+// too; 'confirmed' still on it.
+{
+  const MIXED = id(2310);
+  await asServer(ADMIN, `INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, start_time, end_time)
+    VALUES ('${MIXED}','${BAND}','Dock Party','confirmed','gig','${ADMIN}', current_date + 54, '19:00', '21:00');
+    INSERT INTO event_members (event_id, user_id, status) VALUES ('${MIXED}','${MEM}','Declined'), ('${MIXED}','${MEM2}','Dropped_Out ')`);
+  const part = async (ev, u) => (await tryq(`SELECT public.bw_is_event_participant('${ev}', '${u}') p`)).rows[0]?.p;
+  const [dec, drop, conf] = [await part(MIXED, MEM), await part(MIXED, MEM2), await part(GIG, MEM)];
+  ok(dec === false && drop === false && conf === true,
+    `bw_is_event_participant: 'Declined' and 'Dropped_Out ' are off the gig, 'confirmed' on it (${dec}, ${drop}, ${conf})`);
+  const fs = (await as(ADMIN, `SELECT free_count, total_count FROM public.bw_band_free_slots('${BAND}', current_date + 54, current_date + 54)`)).rows[0];
+  ok(fs?.free_count === fs?.total_count, `free slots: mixed-case declined / dropped out are free (${JSON.stringify(fs)})`);
+}
+
 // Claude: deputies of a gig that went back to a quote.
 {
   await db.exec(`ALTER TABLE band_deputies ADD COLUMN IF NOT EXISTS user_id uuid;
