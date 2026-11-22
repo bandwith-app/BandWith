@@ -109,11 +109,15 @@ function repo() {
   git('init', '-q');
   git('-c', 'user.email=t@example.com', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'x');
   const sha = git('rev-parse', 'HEAD');
+  // A gh with no credentials (CI, another machine): every call fails. The
+  // gate must answer first, whatever gh says (review #278 round 5).
+  const noAuthGh = path.join(root, 'gh-no-auth');
+  writeFileSync(noAuthGh, '#!/usr/bin/env bash\necho "gh auth login required" >&2\nexit 4\n', { mode: 0o755 });
   const run = (script: string, args: string[]) =>
     spawnSync('bash', [path.join(root, 'scripts', script), ...args], {
       cwd: root,
       encoding: 'utf8',
-      env: { ...process.env, BW_EMULATOR_CHECK_DIR: path.join(root, '.emulator-check'), GH_TOKEN: '', PATH: process.env.PATH },
+      env: { ...process.env, BW_EMULATOR_CHECK_DIR: path.join(root, '.emulator-check'), GH_TOKEN: '', GH: noAuthGh, PATH: process.env.PATH },
     });
   const pass = () => {
     mkdirSync(path.join(root, '.emulator-check'), { recursive: true });
@@ -183,6 +187,32 @@ describe('scripts/release-android.sh --publish', () => {
     const notes = readFileSync(path.join(r.root, 'dist-android', 'release-notes.md'), 'utf8');
     expect(notes).toMatch(/emulators down, hotfix/);
     rmSync(r.root, { recursive: true, force: true });
+  });
+
+  // Staged rollout (docs/release-checklist.md): a prerelease reaches only the
+  // testers who get its link; the in-app updater and releases/latest skip it.
+  it('--prerelease without --publish is refused', () => {
+    const r = repo();
+    const out = r.run('release-android.sh', ['9.9.9', '--prerelease']);
+    expect(out.status).not.toBe(0);
+    expect(out.stderr).toMatch(/--prerelease needs --publish/);
+    rmSync(r.root, { recursive: true, force: true });
+  });
+
+  it('--publish --prerelease goes through the same emulator gate', () => {
+    const r = repo();
+    const out = r.run('release-android.sh', ['9.9.9', '--publish', '--prerelease']);
+    expect(out.status).not.toBe(0);
+    expect(out.stderr).toMatch(/emulator check/i);
+    expect(out.stderr).not.toMatch(/usage:/);
+    rmSync(r.root, { recursive: true, force: true });
+  });
+
+  it('marks the GitHub release as a prerelease, never as latest', () => {
+    const src = readFileSync(path.join(SCRIPTS, 'release-android.sh'), 'utf8');
+    const create = src.slice(src.indexOf('release create "$TAG"'));
+    expect(create).toMatch(/"\$\{RELEASE_FLAGS\[@\]\}"/);
+    expect(src).toMatch(/RELEASE_FLAGS=\(--prerelease --latest=false\)/);
   });
 
   it('a build without --publish needs no emulator check', () => {

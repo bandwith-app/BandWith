@@ -38,6 +38,27 @@ jobs:
       # Product site (site/): its own static build.
       - run: pnpm build:site
 
+  # Every supabase/tests/*.pglite.mjs suite (supabase/tests/pglite-runner/run.mjs).
+  # fetch-depth 0: suites that read a release migration not merged yet do it
+  # with git show origin/<branch>; their failures warn until that branch is
+  # merged, and the run turns strict once every migration of
+  # supabase/checks/release-sources.txt is on main.
+  pglite:
+    name: PGlite suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: supabase/tests/pglite-runner/package-lock.json
+      - run: npm ci --prefix supabase/tests/pglite-runner --ignore-scripts
+      - run: node supabase/tests/pglite-runner/run.mjs
+
   e2e:
     name: E2E (${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
