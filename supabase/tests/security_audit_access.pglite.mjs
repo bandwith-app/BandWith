@@ -18,6 +18,8 @@ import { readFileSync } from 'node:fs';
 
 const REPO = process.argv[2];
 const MIG = process.argv[3] ?? `${REPO}/supabase/migrations/175_security_audit_access.sql`;
+// 181 (05 #2) builds on 175: `node … <repo> <175> /dev/null` shows its checks failing first.
+const MIG181 = process.argv[4] ?? `${REPO}/supabase/migrations/181_event_chat_lineup.sql`;
 const migFile = (n) => readFileSync(`${REPO}/supabase/migrations/${n}`, 'utf8');
 const lines = (n, a, b) => migFile(n).split('\n').slice(a - 1, b).join('\n');
 
@@ -252,7 +254,25 @@ if (process.env.NO_GUCI) {
   const pub = (await db.query(`SELECT has_function_privilege('public', 'public.get_user_chat_ids(uuid)', 'EXECUTE') AS p`)).rows[0].p;
   ok(pub === false, 'get_user_chat_ids: PUBLIC has no EXECUTE');
 }
-ok(true, 'migration runs twice');
+// Round 4 (#289 181:40/43): 181 refuses to run without 193, and without
+// 175's final rule (marker bw:175-r4; round 2/3 rules also say dropped_out).
+let guard181 = null;
+try { await db.exec(readFileSync(MIG181, 'utf8')); } catch (e) { guard181 = e.message; await db.exec('ROLLBACK'); }
+ok(/apply 193/.test(guard181 ?? ''), `181 refuses to run without 193's bw_open_group_chat (${guard181 ?? 'ran'})`);
+// Stand-in for 193's bw_open_group_chat (the real one replaces it with M193).
+await db.exec(`CREATE FUNCTION public.bw_open_group_chat(p_type text, p_band_id uuid DEFAULT NULL, p_event_id uuid DEFAULT NULL, p_name text DEFAULT NULL)
+  RETURNS jsonb LANGUAGE sql AS $f$ SELECT NULL::jsonb $f$`);
+const def175r4 = (await db.query(`SELECT pg_get_functiondef('public.bw_chat_scope_ok(text,uuid,uuid,uuid)'::regprocedure) AS d`)).rows[0].d;
+await db.exec(`CREATE OR REPLACE FUNCTION public.bw_chat_scope_ok(p_type text, p_band_id uuid, p_event_id uuid, p_user_id uuid)
+  RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $f$
+  SELECT p_user_id IS NOT NULL AND public.bw_is_event_participant(p_event_id, p_user_id) AND 'dropped_out' IS NOT NULL $f$`);
+guard181 = null;
+try { await db.exec(readFileSync(MIG181, 'utf8')); } catch (e) { guard181 = e.message; await db.exec('ROLLBACK'); }
+ok(/bw:175-r4/.test(guard181 ?? ''), `181 refuses an earlier round's 175 rule (no marker) (${guard181 ?? 'ran'})`);
+await db.exec(def175r4);
+await db.exec(readFileSync(MIG181, 'utf8'));
+await db.exec(readFileSync(MIG181, 'utf8'));
+ok(true, 'migrations run twice');
 
 // ── 1. Invitations
 let r = await as(INVITEE, `UPDATE band_invitations SET role = 'admin', band_id = '${OTHERBAND}' WHERE id = '${INV}'`);
@@ -339,6 +359,71 @@ ok(r.rows.length === 1, 'active admin reads the quote');
 r = await as(MEM2, `SELECT id FROM quotes WHERE id = '${QUOTE}'`);
 ok(r.rows.length === 0, `quote creator no longer an admin cannot read it (${r.rows.length})`);
 
+// ── 6. Taken off the gig (05 #2, migration 181)
+await db.exec(`UPDATE band_members SET role = 'member' WHERE band_id = '${BAND}' AND user_id = '${LINE}';
+  UPDATE band_members SET is_active = true WHERE band_id = '${BAND}' AND user_id = '${MEM2}';
+  INSERT INTO event_members VALUES ('${GIG}','${MEM2}','confirmed');
+  INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${MEM2}');
+  INSERT INTO messages (chat_id, sender_id, content) VALUES ('${EVCHAT}','${ADMIN}','load-in at 6');`);
+r = await as(MEM2, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
+ok(r.rows.length === 1, 'musician on the gig reads its chat');
+await db.exec(`DELETE FROM event_members WHERE event_id = '${GIG}' AND user_id = '${MEM2}'`);
+r = await as(MEM2, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
+ok(r.rows.length === 0, `taken off the gig: no more gig chat messages (${r.rows.length})`);
+const part = (await db.query(`SELECT 1 FROM chat_participants WHERE chat_id = '${EVCHAT}' AND user_id = '${MEM2}'`)).rows;
+ok(part.length === 1, 'taken off the gig: row kept (round 4), the rule closes it');
+let rcpt = (await db.query(`SELECT public.bw_chat_recipient_ids('${EVCHAT}', '${ADMIN}') AS r`)).rows[0].r;
+ok(!rcpt.includes(MEM2), `taken off the gig: no push of the next message (${rcpt.length})`);
+r = await as(MEM2, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${MEM2}') ON CONFLICT (chat_id, user_id) DO NOTHING`);
+r = await as(MEM2, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
+ok(r.rows.length === 0, `re-adding themselves does not open it again (${r.rows.length})`);
+r = await as(MEM2, `SELECT id FROM chats WHERE id = '${EVCHAT}'`);
+ok(r.rows.length === 0, `taken off the gig: the chat row is hidden too (${r.rows.length})`);
+await db.exec(`INSERT INTO event_members VALUES ('${GIG}','${MEM2}','confirmed')`);
+r = await as(MEM2, `SELECT id FROM chats WHERE type = 'event' AND event_id = '${GIG}'`);
+ok(r.rows.length === 1 && r.rows[0].id === EVCHAT, `round 4: back on the lineup, an old build's lookup finds the same gig chat (${r.rows.length})`);
+r = await as(MEM2, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
+ok(r.rows.length === 1, `and reads it again, no second chat (${r.rows.length})`);
+await db.exec(`DELETE FROM event_members WHERE event_id = '${GIG}' AND user_id = '${MEM2}'`);
+await db.exec(`DELETE FROM chat_participants WHERE chat_id = '${EVCHAT}' AND user_id = '${MEM2}'`);
+
+await db.exec(`UPDATE event_members SET status = 'declined' WHERE event_id = '${GIG}' AND user_id = '${LINE}'`);
+r = await as(LINE, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
+ok(r.rows.length === 0, `declined the gig: gig chat closed (${r.rows.length})`);
+rcpt = (await db.query(`SELECT public.bw_chat_recipient_ids('${EVCHAT}', '${ADMIN}') AS r`)).rows[0].r;
+ok(!rcpt.includes(LINE), 'declined the gig: no push');
+await db.exec(`UPDATE event_members SET status = 'confirmed' WHERE event_id = '${GIG}' AND user_id = '${LINE}'`);
+r = await as(LINE, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${LINE}') ON CONFLICT (chat_id, user_id) DO NOTHING`);
+r = await as(LINE, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
+ok(r.rows.length === 1, 'back on the gig: reads its chat again');
+r = await as(ADMIN, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
+ok(r.rows.length === 1, 'band admin, not on the lineup, still reads the gig chat');
+const archivedGig = (await db.query(`SELECT count(*)::int AS n FROM chat_participants_removed_175 WHERE chat_id = '${EVCHAT}'`)).rows[0].n;
+ok(archivedGig >= 2, `removed gig chat rows archived, not lost (${archivedGig})`);
+// Round 2 (Claude #289): dropped out or removed counts as off the gig too,
+// as for the server's notices (046).
+// Round 4: also in mixed case ('Declined' is declined, 181:57-58).
+const arch181 = async () => (await db.query(`SELECT count(*)::int AS n FROM chat_participants_removed_175 WHERE chat_id = '${EVCHAT}' AND user_id = '${MEM2}'`)).rows[0].n;
+for (const st of ['dropped_out', 'removed', 'Declined', 'Dropped_Out ']) { // ('Dropped_Out ': trailing space, #294's btrim rule)
+  const archBefore = await arch181();
+  await db.exec(`INSERT INTO event_members VALUES ('${GIG}','${MEM2}','confirmed');
+    INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${MEM2}') ON CONFLICT DO NOTHING`);
+  r = await as(MEM2, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
+  ok(r.rows.length === 1, `on the gig (before ${st}): reads its chat`);
+  await db.exec(`UPDATE event_members SET status = '${st}' WHERE event_id = '${GIG}' AND user_id = '${MEM2}'`);
+  r = await as(MEM2, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
+  ok(r.rows.length === 0, `${st}: gig chat closed (${r.rows.length})`);
+  const still = (await db.query(`SELECT 1 FROM chat_participants WHERE chat_id = '${EVCHAT}' AND user_id = '${MEM2}'`)).rows.length;
+  ok(still === 1 && (await arch181()) === archBefore + 1, `${st}: row kept and archived (round 4)`);
+  rcpt = (await db.query(`SELECT public.bw_chat_recipient_ids('${EVCHAT}', '${ADMIN}') AS r`)).rows[0].r;
+  ok(!rcpt.includes(MEM2), `${st}: no push`);
+  r = await as(MEM2, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${MEM2}')`);
+  r = await as(MEM2, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
+  ok(r.rows.length === 0, `${st}: re-adding themselves does not open it again`);
+  await db.exec(`DELETE FROM chat_participants WHERE chat_id = '${EVCHAT}' AND user_id = '${MEM2}';
+    DELETE FROM event_members WHERE event_id = '${GIG}' AND user_id = '${MEM2}'`);
+}
+
 // ── 7. Review fixes (Codex #281)
 // MEM left the band but is still on GIG's lineup (confirmed).
 await db.exec(`DELETE FROM chat_participants WHERE chat_id = '${EVCHAT}' AND user_id = '${MEM}'`);
@@ -408,6 +493,12 @@ await db.exec(readFileSync(MIG, 'utf8'));
 const def = (await db.query(`SELECT pg_get_functiondef('public.bw_chat_scope_ok(text,uuid,uuid,uuid)'::regprocedure) AS d`)).rows[0].d;
 ok(def.includes('bw_is_event_participant') && def.includes('dropped_out'),
   're-running 175 puts the lineup rule back (and 178 keeps it: it calls bw_is_event_participant)');
+// With 181 loaded, in either order: 181 no longer redefines the rule (round 3).
+await db.exec(readFileSync(MIG181, 'utf8'));
+await db.exec(readFileSync(MIG, 'utf8'));
+await db.exec(readFileSync(MIG181, 'utf8'));
+const def181 = (await db.query(`SELECT pg_get_functiondef('public.bw_chat_scope_ok(text,uuid,uuid,uuid)'::regprocedure) AS d`)).rows[0].d;
+ok(def181 === def, "re-running 175 and 181 in any order keeps the one lineup rule (175's)");
 
 // ── 9. With 193 (#291: one chat per band / gig, bw_open_group_chat), when
 // M193=<path to 193_one_chat_per_gig.sql> is set. A member who left has no
@@ -451,6 +542,34 @@ if (process.env.M193) {
   r = await as(EXM, `SELECT public.bw_open_group_chat('event', NULL, '${GIG3}', NULL) AS j`);
   inChat = (await db.query(`SELECT user_id FROM chat_participants WHERE chat_id = '${EVCHAT3}'`)).rows.map((x) => x.user_id);
   ok(!!r.error && !inChat.includes(EXM), `193: a former member on the lineup can't open the gig chat (${r.error ? 'refused' : 'opened'})`);
+  // 181: put back on the lineup, a musician finds the same gig chat.
+  await db.exec(`DELETE FROM event_members WHERE event_id = '${GIG3}' AND user_id = '${NEWM}'`);
+  r = await as(NEWM, `SELECT id FROM messages WHERE chat_id = '${EVCHAT3}'`);
+  const offRoster = await as(ADMIN, `SELECT user_id FROM chat_participants WHERE chat_id = '${EVCHAT3}'`);
+  const offOwn = await as(NEWM, `SELECT chat_id FROM chat_participants WHERE user_id = '${NEWM}' AND chat_id = '${EVCHAT3}'`);
+  const offArch = (await db.query(`SELECT count(*)::int AS n FROM chat_participants_removed_175 WHERE chat_id = '${EVCHAT3}' AND user_id = '${NEWM}'`)).rows[0].n;
+  const offKept = (await db.query(`SELECT count(*)::int AS n FROM chat_participants WHERE chat_id = '${EVCHAT3}' AND user_id = '${NEWM}'`)).rows[0].n;
+  ok(r.rows.length === 0 && offRoster.rows.length > 0 && !offRoster.rows.some((x) => x.user_id === NEWM) && offOwn.rows.length === 0 && offArch > 0 && offKept === 1,
+    `181 + 193: off the lineup, out of the gig chat: no access, not in the roster, row kept + archived (${r.rows.length} read, roster ${offRoster.rows.length}, own ${offOwn.rows.length}, archive ${offArch}, kept ${offKept})`);
+  await db.exec(`INSERT INTO event_members VALUES ('${GIG3}','${NEWM}','confirmed')`);
+  r = await as(NEWM, `SELECT id FROM chats WHERE type = 'event' AND event_id = '${GIG3}'`);
+  ok(r.rows.length === 1 && r.rows[0].id === EVCHAT3, `181 + 193: back on the lineup, an old build's lookup finds the gig chat (${r.rows.length})`);
+  r = await as(NEWM, `SELECT public.bw_open_group_chat('event', NULL, '${GIG3}', NULL) AS j`);
+  ok(!r.error && r.rows[0]?.j?.id === EVCHAT3, `181 + 193: bw_open_group_chat rejoins it (${r.error ?? r.rows[0]?.j?.id})`);
+  r = await as(NEWM, `SELECT id FROM messages WHERE chat_id = '${EVCHAT3}'`);
+  ok(r.rows.length > 0, '181 + 193: and its history is there');
+  r = await as(NEWM, `INSERT INTO chats (type, name, band_id, event_id, created_by) VALUES ('event','Harbor Lights','${BAND}','${GIG3}','${NEWM}')`);
+  ok(!!r.error, '181 + 193: a second gig chat is refused');
+  // Dropped out: with 178 first (bw_is_event_participant), 193 refuses to
+  // open it; either way the messages stay closed.
+  await db.exec(`UPDATE event_members SET status = 'dropped_out' WHERE event_id = '${GIG3}' AND user_id = '${NEWM}'`);
+  r = await as(NEWM, `SELECT public.bw_open_group_chat('event', NULL, '${GIG3}', NULL) AS j`);
+  if (process.env.M178) ok(!!r.error, `175 -> 178 -> 193 -> 181: dropped out, bw_open_group_chat refuses (${r.error ? 'refused' : 'opened'})`);
+  const rd = await as(NEWM, `SELECT id FROM messages WHERE chat_id = '${EVCHAT3}'`);
+ok(rd.rows.length === 0, `181 + 193: dropped out, opening the gig chat shows no messages (${r.error ? 'refused' : 'opened'}, ${rd.rows.length})`);
+  // Back on the gig for the checks below.
+  await db.exec(`UPDATE event_members SET status = 'confirmed' WHERE event_id = '${GIG3}' AND user_id = '${NEWM}'`);
+  await as(NEWM, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT3}','${NEWM}')`);
 }
 
 // ── 10. Stale participant rows (main's check): someone who left the band or
@@ -856,6 +975,105 @@ ok(!r.error, `chat keys: the service role may change them, no DISABLE TRIGGER ($
 // Marker for later migrations that keep a live definition (178, 181).
 const defR4 = (await db.query(`SELECT pg_get_functiondef('public.bw_chat_scope_ok(text,uuid,uuid,uuid)'::regprocedure) AS d`)).rows[0].d;
 ok(defR4.includes('-- bw:175-r4'), 'bw_chat_scope_ok carries the marker bw:175-r4');
+
+// ── 12. #289 round 3
+// MINOR (181:96): off the lineup and back: cleared history stays cleared.
+const [R2, R3] = [70, 71].map(id);
+const [GIG6, EVCHAT6] = [id(72), id(73)];
+await db.exec(`INSERT INTO auth.users VALUES ('${R2}','r2@example.invalid'), ('${R3}','r3@example.invalid');
+  INSERT INTO profiles (id, email) VALUES ('${R2}','r2@example.invalid'), ('${R3}','r3@example.invalid');
+  INSERT INTO band_members (band_id, user_id, role) VALUES ('${BAND}','${R2}','member'), ('${BAND}','${R3}','member');
+  INSERT INTO event_members VALUES ('${GIG3}','${R2}','confirmed');
+  INSERT INTO chat_participants (chat_id, user_id, cleared_at, last_read_at) VALUES ('${EVCHAT3}','${R2}','2026-11-03T09:00:00Z','2026-11-03T09:30:00Z');`);
+await db.exec(`UPDATE event_members SET status = 'dropped_out' WHERE event_id = '${GIG3}' AND user_id = '${R2}'`);
+ok((await db.query(`SELECT 1 FROM chat_participants WHERE chat_id = '${EVCHAT3}' AND user_id = '${R2}'`)).rows.length === 1, 'dropped out: row kept (round 4)');
+r = await as(R2, `SELECT id FROM messages WHERE chat_id = '${EVCHAT3}'`);
+ok(r.rows.length === 0, `dropped out: reads nothing (${r.rows.length})`);
+await db.exec(`UPDATE event_members SET status = 'confirmed' WHERE event_id = '${GIG3}' AND user_id = '${R2}'`);
+r = await as(R2, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT3}','${R2}') ON CONFLICT (chat_id, user_id) DO NOTHING`);
+const r2row = (await db.query(`SELECT cleared_at, last_read_at FROM chat_participants WHERE chat_id = '${EVCHAT3}' AND user_id = '${R2}'`)).rows[0];
+ok(!r.error && r2row?.cleared_at?.toISOString() === '2026-11-03T09:00:00.000Z' && r2row?.last_read_at?.toISOString() === '2026-11-03T09:30:00.000Z',
+  `back on the lineup: cleared_at and last read come back (${r.error ?? JSON.stringify(r2row)})`);
+// Main's decision: a gig with no lineup is for its admins and creator only.
+await db.exec(`INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, venue_name)
+    VALUES ('${GIG6}','${BAND}','Open Mic','confirmed','gig','${R2}', current_date + 50, 'Astoria');
+  INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES ('${EVCHAT6}','event','Open Mic','${BAND}','${GIG6}','${R2}');
+  INSERT INTO messages (chat_id, sender_id, content) VALUES ('${EVCHAT6}','${ADMIN}','sign-up at 7');`);
+for (const [u, label, want] of [[R2, 'its creator (a member)', 1], [ADMIN, 'a band admin', 1], [R3, 'a member not on it', 0]]) {
+  await as(u, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT6}','${u}')`);
+  r = await as(u, `SELECT id FROM messages WHERE chat_id = '${EVCHAT6}'`);
+  ok(r.rows.length === want, `gig without lineup: ${label} ${want ? 'uses' : 'does not use'} its chat (${r.rows.length})`);
+}
+// The read-only preview for prod (PR body) counts exactly what the cleanups archive.
+await staleRow(EVCHAT6, R3);
+const preview = readFileSync(`${REPO}/supabase/tests/181_archive_preview.sql`, 'utf8');
+// (On prod nothing is archived yet; here earlier checks archived some rows,
+// which a re-run does not archive twice.)
+await db.exec(`DELETE FROM chat_participants_removed_175`);
+const predicted = (await db.query(preview)).rows;
+const before = (await db.query(`SELECT count(*)::int AS n FROM chat_participants_removed_175`)).rows[0].n;
+await db.exec(readFileSync(MIG, 'utf8'));
+await db.exec(readFileSync(MIG181, 'utf8'));
+const after = (await db.query(`SELECT count(*)::int AS n FROM chat_participants_removed_175`)).rows[0].n;
+const total = predicted.reduce((t, x) => t + x.rows_to_archive, 0);
+ok(total > 0 && total === after - before && predicted.some((x) => x.reason.startsWith('not on the lineup')),
+  `archive preview: ${JSON.stringify(predicted)} = ${after - before} archived`);
+
+// ── 13. #289 round 5 (Claude on 657b943d)
+// 181:89: a lineup row moved to another person or gig takes the old pair off the old gig.
+const trgDef = (await db.query(`SELECT pg_get_triggerdef(oid) AS d FROM pg_trigger WHERE tgname = 'bw_event_member_left_chat'`)).rows[0]?.d ?? '';
+ok(/AFTER DELETE OR UPDATE OF status, user_id, event_id ON/.test(trgDef), `181 archive trigger: AFTER UPDATE OF status, user_id, event_id OR DELETE (${trgDef.replace(/.*AFTER/, 'AFTER').slice(0, 70)})`);
+const R4 = id(74);
+const archOf = async (c, u) => (await db.query(`SELECT count(*)::int AS n FROM chat_participants_removed_175 WHERE chat_id = '${c}' AND user_id = '${u}'`)).rows[0].n;
+await db.exec(`INSERT INTO auth.users VALUES ('${R4}','r4@example.invalid'); INSERT INTO profiles (id, email) VALUES ('${R4}','r4@example.invalid');
+  INSERT INTO band_members (band_id, user_id, role) VALUES ('${BAND}','${R4}','member');
+  INSERT INTO event_members VALUES ('${GIG3}','${R3}','confirmed');
+  INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT3}','${R3}') ON CONFLICT DO NOTHING;`);
+r = await as(R3, `SELECT count(*)::int AS n FROM messages WHERE chat_id = '${EVCHAT3}'`);
+ok(r.rows[0]?.n > 0, `on the lineup: reads the gig chat (${r.error ?? r.rows[0]?.n})`);
+let a0 = await archOf(EVCHAT3, R3);
+await db.exec(`UPDATE event_members SET user_id = '${R4}' WHERE event_id = '${GIG3}' AND user_id = '${R3}'`);
+r = await as(R3, `SELECT count(*)::int AS n FROM messages WHERE chat_id = '${EVCHAT3}'`);
+ok(r.rows[0]?.n === 0 && (await archOf(EVCHAT3, R3)) === a0 + 1, `lineup row given to someone else: out of the gig chat, row archived (${r.rows[0]?.n}, archive ${a0} -> ${await archOf(EVCHAT3, R3)})`);
+a0 = await archOf(EVCHAT3, R4);
+await db.exec(`INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT3}','${R4}') ON CONFLICT DO NOTHING;
+  UPDATE event_members SET event_id = '${GIG6}' WHERE event_id = '${GIG3}' AND user_id = '${R4}'`);
+r = await as(R4, `SELECT count(*)::int AS n FROM messages WHERE chat_id = '${EVCHAT3}'`);
+ok(r.rows[0]?.n === 0 && (await archOf(EVCHAT3, R4)) === a0 + 1, `lineup row moved to another gig: out of the old gig's chat, row archived (${r.rows[0]?.n}, archive ${a0} -> ${await archOf(EVCHAT3, R4)})`);
+// 181 (073:690): a gig with a chat or a lineup keeps its band.
+const bandOf = async (e) => (await db.query(`SELECT band_id, title FROM events WHERE id = '${e}'`)).rows[0];
+await db.exec(`UPDATE events SET band_id = '${OTHERBAND}', title = 'Harbor Lights (edited)' WHERE id = '${GIG3}'`);
+let b = await bandOf(GIG3);
+ok(b.band_id === BAND && b.title === 'Harbor Lights (edited)', `gig with a chat and a lineup: band_id stays, the rest of the edit saves (${JSON.stringify(b)})`);
+await db.exec(`INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date) VALUES ('${id(75)}','${BAND}','Lineup only','confirmed','gig','${ADMIN}', current_date + 80);
+  INSERT INTO event_members VALUES ('${id(75)}','${NEWM}','confirmed');
+  UPDATE events SET band_id = '${OTHERBAND}' WHERE id = '${id(75)}';`);
+ok((await bandOf(id(75))).band_id === BAND, 'gig with a lineup and no chat: band_id stays');
+await db.exec(`INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date) VALUES ('${id(76)}','${BAND}','Bare','confirmed','gig','${ADMIN}', current_date + 90);
+  UPDATE events SET band_id = '${OTHERBAND}' WHERE id = '${id(76)}';`);
+ok((await bandOf(id(76))).band_id === OTHERBAND, 'gig with no chat and no lineup: may move band');
+r = await asRole('service_role', `UPDATE events SET band_id = '${OTHERBAND}' WHERE id = '${id(75)}'`);
+b = await bandOf(id(75));
+ok(!r.error && b.band_id === OTHERBAND, `the service role may still move it (${r.error ?? b.band_id === OTHERBAND})`);
+await asRole('service_role', `UPDATE events SET band_id = '${BAND}' WHERE id = '${id(75)}'`);
+// Main's decision (dry run, 11-22): the change is dropped silently, never an
+// error; who may still move a gig's band: the service role (any gig), and
+// anyone allowed to update a gig that has neither a chat nor a lineup.
+// Here as an authenticated admin (a PostgREST write; no RLS on this stand-in).
+const BARE2 = id(77);
+await db.exec(`INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date) VALUES ('${BARE2}','${BAND}','Bare 2','confirmed','gig','${ADMIN}', current_date + 95);
+  GRANT UPDATE ON public.events TO authenticated;`);
+r = await as(ADMIN, `UPDATE events SET band_id = '${OTHERBAND}' WHERE id = '${BARE2}'`);
+ok(!r.error && r.n === 1 && (await bandOf(BARE2)).band_id === OTHERBAND, `an admin moves a gig with no chat and no lineup to another band (${r.error ?? (await bandOf(BARE2)).band_id === OTHERBAND})`);
+r = await as(ADMIN, `UPDATE events SET band_id = '${OTHERBAND}', title = 'Lineup only (edited)' WHERE id = '${id(75)}'`);
+b = await bandOf(id(75));
+ok(!r.error && r.n === 1 && b.band_id === BAND && b.title === 'Lineup only (edited)', `an admin's edit of a gig with a lineup: no error, band kept, the rest saved (${r.error ?? JSON.stringify(b)})`);
+r = await as(ADMIN, `UPDATE events SET band_id = '${OTHERBAND}' WHERE id = '${GIG3}'`);
+ok(!r.error && (await bandOf(GIG3)).band_id === BAND, `an admin's edit of a gig with a chat: no error, band kept (${r.error ?? 'ok'})`);
+r = await asRole('service_role', `UPDATE events SET band_id = '${OTHERBAND}' WHERE id = '${GIG3}'`);
+ok(!r.error && (await bandOf(GIG3)).band_id === OTHERBAND, `a service_role write moves even a gig with a chat and a lineup (${r.error ?? 'ok'})`);
+await asRole('service_role', `UPDATE events SET band_id = '${BAND}' WHERE id IN ('${GIG3}', '${BARE2}')`);
+await db.exec(`REVOKE UPDATE ON public.events FROM authenticated`);
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);
