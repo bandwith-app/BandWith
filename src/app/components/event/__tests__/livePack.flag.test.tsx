@@ -107,7 +107,8 @@ describe('live_pack off', () => {
     h.waiting = 2;
     __setAppFlagsForTest({ live_pack: false });
     render(<OfflineReadyRow pack={null} userId="u-1" event={EVENT} online />);
-    expect(screen.getByRole('status').textContent).toMatch(/2 changes waiting for signal/);
+    // Online here: the pill says "waiting to send" ("for signal" only with no signal, #271).
+    expect(screen.getByRole('status').textContent).toMatch(/2 changes waiting to send/);
     expect(screen.queryByText('Download for offline')).toBeNull();
     h.waiting = 0;
   });
