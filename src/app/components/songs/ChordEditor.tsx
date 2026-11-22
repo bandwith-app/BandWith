@@ -6,6 +6,7 @@ import { FormError, PillButton } from '@/app/components/bw';
 import { UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
 import { AlertTriangle, Check, Copy, Music2, Plus, RotateCcw, Sparkles } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
+import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 import { supabase } from '@/lib/supabase';
 import { useT } from '@/lib/i18n';
 import { userMessage } from '@/lib/userError';
@@ -615,6 +616,7 @@ export const ChordEditor: React.FC = () => {
                             {words ? t('Just these words') : t('Whole line')}
                           </button>
                         ))}
+                        <AcademyHelpButton article="mark-voice-parts" size="sm" className="ml-auto" />
                       </div>
                       {wordsMode && <p className="bw-body-sm text-muted-foreground">{t('Tap more words of this line to add them.')}</p>}
                       <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4">

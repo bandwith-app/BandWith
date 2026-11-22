@@ -1,6 +1,7 @@
 import { test, expect, type App } from '../fixtures';
 import { openEvent, eventDetail, escapeRe, SEED } from '../support/flows';
 import { openHubPage } from '../support/hub';
+import { expectHelp } from '../support/academy';
 
 /**
  * The offline live pack, asked and followed (plan docs/plans/live-offline-and-tempo.md
@@ -47,6 +48,8 @@ test.describe('Live pack consent as member', () => {
     await expect(s).toBeVisible();
     await expect(s.getByText(app.t('Lyrics, chords, structures and your own notes for the songs of this gig. No fees, no contracts.'))).toBeVisible();
     await expect(s.getByText(app.t('About {size} MB, plus your own files.', { size: '§' }).split('§')[0], { exact: false })).toBeVisible();
+    await expectHelp(app, s, 'live-mode-offline', true);
+    await expect(s).toBeVisible();
     await app.check('offline consent sheet');
     await s.getByRole('button', { name: app.t('Only this gig'), exact: true }).click();
     await app.settle();
@@ -100,6 +103,7 @@ test.describe('Offline readiness as admin', () => {
     await row.click();
     const remind = app.page.getByRole('button', { name: app.t('Remind {name}', { name: 'Lena P.' }), exact: true }).filter({ visible: true }).first();
     await remind.scrollIntoViewIfNeeded();
+    await expectHelp(app, app.page.getByRole('group', { name: app.t('Offline') }).filter({ has: row }), 'offline-members-ready');
     await app.check('offline readiness, not ready list');
     await remind.click();
     await expect(app.page.getByText(app.t('Reminded'), { exact: true }).filter({ visible: true }).first()).toBeVisible();
@@ -117,9 +121,11 @@ test.describe('Settings › Offline & live', () => {
   test('@smoke automatic, Wi-Fi only, space used and delete all', async ({ app }) => {
     // A gig opened online keeps its setlist on the device.
     await openEvent(app, SEED.gigToday);
-    await expect(
-      eventDetail(app).getByText(app.t('Offline ready · updated {time}', { time: '§' }).split('§')[0], { exact: false }).first(),
-    ).toBeAttached();
+    const readyText = app.t('Offline ready · updated {time}', { time: '§' }).split('§')[0];
+    const ready = eventDetail(app).getByText(readyText, { exact: false }).first();
+    await expect(ready).toBeAttached();
+    await ready.scrollIntoViewIfNeeded();
+    await expectHelp(app, eventDetail(app).getByRole('group', { name: app.t('Offline') }).filter({ hasText: readyText }), 'live-mode-offline');
     await app.page.keyboard.press('Escape');
     await app.settle();
 
@@ -142,6 +148,12 @@ test.describe('Settings › Offline & live', () => {
 
     const one = app.t('1 setlist · {size} MB', { size: '§' }).split('§')[0];
     await expect(app.page.getByText(one, { exact: false }).filter({ visible: true }).first()).toBeVisible();
+    await expectHelp(
+      app,
+      app.page.getByText(app.t('Lyrics, chords, structures and your own notes for your next gigs, on this device for when there is no signal. No fees, no contracts.')).filter({ visible: true }).first().locator('..'),
+      'offline-and-live-settings',
+      true,
+    );
     await app.check('Settings › Offline & live');
     await app.button('Delete all', { exact: true }).first().click();
     await expect(app.page.getByText(app.t('Delete all offline setlists?'), { exact: true }).filter({ visible: true }).first()).toBeVisible();

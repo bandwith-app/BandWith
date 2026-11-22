@@ -250,8 +250,8 @@ const basics: AreaText = {
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Quatro cartões: sua banda num só lugar, como pôr um show no calendário, quem vê quais cachês e as suas tarifas. O último cartão tem **Configurar tarifas**, que abre **Preços, cachês e serviços**." },
-            { role: "member", text: "Três cartões: a tela Início, como responder a um convite para show e as músicas (acordes, letras, suas notas e o Modo palco)." },
+            { role: "admin", text: "Cinco cartões: sua banda num só lugar, como pôr um show no calendário, os setlists prontos sem sinal, quem vê quais cachês e as suas tarifas. O último cartão tem **Configurar tarifas**, que abre **Preços, cachês e serviços**." },
+            { role: "member", text: "Quatro cartões: a tela Início, como responder a um convite para show, as músicas (acordes, letras, suas notas e o Modo palco) e os setlists prontos sem sinal." },
             { role: "deputy", text: "Três cartões em **Shows como substituto**: como responder a um pedido, o que a banda compartilha com você e como pôr seus shows como substituto no seu calendário." },
           ],
         },

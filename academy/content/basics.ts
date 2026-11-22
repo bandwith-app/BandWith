@@ -257,8 +257,8 @@ const basics: AreaModule = {
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Four cards: your band in one place, putting a gig on the calendar, who sees which fees, and your rates. The last card has **Configure rates**, which opens **Pricing, fees & services**." },
-            { role: "member", text: "Three cards: Home, answering a gig invitation, and the songs (chords, lyrics, your notes and Stage mode)." },
+            { role: "admin", text: "Five cards: your band in one place, putting a gig on the calendar, setlists ready without signal, who sees which fees, and your rates. The last card has **Configure rates**, which opens **Pricing, fees & services**." },
+            { role: "member", text: "Four cards: Home, answering a gig invitation, the songs (chords, lyrics, your notes and Stage mode), and setlists ready without signal." },
             { role: "deputy", text: "Three cards on **Deputy gigs**: answering a request, what the band shares with you, and adding your deputy gigs to your calendar." },
           ],
         },

@@ -97,6 +97,14 @@ describe('the Voice picker in the chord editor', () => {
     expect(screen.getByRole('button', { name: 'comes' }).querySelector('[data-voice]')).toBeNull();
   });
 
+  it('has a "?" for the guide to marking voice parts', async () => {
+    render(<ChordEditor />);
+    act(() => openChordEditor('s1'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Morning' }));
+    const voice = screen.getByRole('group', { name: 'Voice' });
+    expect(within(voice).getByRole('button', { name: 'Help for this screen' })).toHaveAttribute('data-academy', 'mark-voice-parts');
+  });
+
   it('draws the backing bar once per run of words, not on every word', async () => {
     render(<ChordEditor />);
     act(() => openChordEditor('s1'));

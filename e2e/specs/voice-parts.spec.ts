@@ -2,6 +2,7 @@ import { test, expect, type App } from '../fixtures';
 import { openEvent } from '../support/flows';
 import { openHub } from '../support/hub';
 import { isLaptop, liveDialog, openLive, openWithFocusSongs, WEEKLY } from '../support/live';
+import { expectHelp } from '../support/academy';
 
 /**
  * Voice parts (plan "live offline & tempo" §5): lines marked in the lyrics
@@ -71,6 +72,8 @@ test.describe('voice parts in Live mode', () => {
     await expect(line('all')).not.toHaveAttribute('data-voice-dim', 'true');
     await expect(line('v2')).toHaveAttribute('data-voice-dim', 'true');
     await expect(line('sp')).toHaveAttribute('data-voice-dim', 'true');
+    // The "?" beside Highlight my part explains it (Academy).
+    await expectHelp(app, legend, 'highlight-my-part', true);
     await app.check('live mode, voice parts');
     await hint.getByRole('button', { name: app.t('Got it') }).click();
     await expect(hint).toHaveCount(0);
@@ -104,6 +107,7 @@ test.describe('voice parts in Live mode', () => {
     await area.getByRole('group', { name: app.t('Voice parts') }).getByRole('button', { name: app.t('Who sings what') }).click();
     const sheet = app.page.getByRole('dialog', { name: app.t('Who sings what') });
     await expect(sheet).toBeVisible();
+    await expectHelp(app, sheet, 'who-sings-what');
     await app.check('who sings what');
     // Nothing set yet: it starts from the instruments (Leo plays lead vocals) and says so.
     await expect(sheet).toContainText(app.t('Filled in from each member’s instrument. Change it and save.'));

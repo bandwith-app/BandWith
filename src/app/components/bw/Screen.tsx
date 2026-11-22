@@ -392,6 +392,8 @@ export interface BwSheetProps {
    * menu) instead of a centred card.
    */
   navAnchor?: boolean;
+  /** An extra button beside Close in the header, e.g. the Academy "?". */
+  headerAction?: React.ReactNode;
 }
 
 /**
@@ -412,6 +414,7 @@ export const BwSheet: React.FC<BwSheetProps> = ({
   portal = true,
   picker = false,
   navAnchor = false,
+  headerAction,
 }) => {
   const titleId = React.useId();
   const dark = tone === 'dark';
@@ -497,6 +500,7 @@ export const BwSheet: React.FC<BwSheetProps> = ({
                   {overline && <p className={cn('bw-label-sm', dark ? 'text-sheet-foreground/85' : 'text-muted-foreground')}>{overline}</p>}
                   <h2 id={titleId} className="bw-h1 [overflow-wrap:anywhere]">{title}</h2>
                 </div>
+                {headerAction}
                 <IconButton label={closeLabel} icon={<X />} size="sm" variant={dark ? 'sheet' : 'outline'} onClick={onClose} />
               </div>
             </div>

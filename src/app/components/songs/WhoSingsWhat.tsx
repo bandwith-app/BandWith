@@ -1,5 +1,6 @@
 import React from 'react';
 import { BwSheet } from '@/app/components/bw/Screen';
+import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 import { FormError, PillButton } from '@/app/components/bw';
 import { Check } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
@@ -178,6 +179,7 @@ export const WhoSingsWhatSheet: React.FC<{
       overline={songTitle}
       title={t('Who sings what')}
       zIndex={165}
+      headerAction={<AcademyHelpButton article="who-sings-what" size="sm" variant="sheet" />}
       footer={
         <div className="flex flex-col gap-2">
           {error && <FormError>{error}</FormError>}

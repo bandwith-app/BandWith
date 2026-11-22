@@ -250,8 +250,8 @@ const basics: AreaText = {
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Vier Karten: deine Band an einem Ort, einen Gig in den Kalender eintragen, wer welche Gagen sieht, und deine Preise. Die letzte Karte hat **Preise festlegen**, das **Preise, Gagen & Leistungen** öffnet." },
-            { role: "member", text: "Drei Karten: Start, auf eine Gig-Einladung antworten und die Songs (Akkorde, Texte, deine Notizen und Bühnenmodus)." },
+            { role: "admin", text: "Fünf Karten: deine Band an einem Ort, einen Gig in den Kalender eintragen, Setlists bereit auch ohne Netz, wer welche Gagen sieht, und deine Preise. Die letzte Karte hat **Preise festlegen**, das **Preise, Gagen & Leistungen** öffnet." },
+            { role: "member", text: "Vier Karten: Start, auf eine Gig-Einladung antworten, die Songs (Akkorde, Texte, deine Notizen und Bühnenmodus) und Setlists bereit auch ohne Netz." },
             { role: "deputy", text: "Drei Karten zu **Vertretungs-Gigs**: auf eine Anfrage antworten, was die Band mit dir teilt und wie du deine Vertretungs-Gigs in deinen Kalender holst." },
           ],
         },
