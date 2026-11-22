@@ -16,6 +16,21 @@ import { Capacitor } from '@capacitor/core';
 export type AnalyticsConsent = 'granted' | 'denied';
 
 export const ANALYTICS_CONSENT_KEY = 'bw.analytics.consent';
+/**
+ * The wording the answer was given under. 2 (#277): the question also names
+ * crash details (Crashlytics). A yes without it (an older build) still
+ * covers usage statistics, never Crashlytics, and the question comes back.
+ */
+export const ANALYTICS_CONSENT_VERSION_KEY = 'bw.analytics.consent_version';
+export const ANALYTICS_CONSENT_VERSION = 2;
+
+/**
+ * This run's answer while storage refuses to keep it: it wins over what the
+ * disk still says (a no must hold), and the write is tried again.
+ */
+let unsaved: AnalyticsConsent | null = null;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+const RETRY_MS = [1_000, 5_000, 15_000, 60_000, 300_000];
 
 const listeners = new Set<(consent: AnalyticsConsent | null) => void>();
 let lastScreen: string | null = null;
@@ -24,6 +39,7 @@ let loggedScreen: string | null = null;
 export const analyticsAvailable = (): boolean => Capacitor.isNativePlatform();
 
 export const readAnalyticsConsent = (): AnalyticsConsent | null => {
+  if (unsaved) return unsaved;
   try {
     const value = localStorage.getItem(ANALYTICS_CONSENT_KEY);
     return value === 'granted' || value === 'denied' ? value : null;
@@ -32,9 +48,28 @@ export const readAnalyticsConsent = (): AnalyticsConsent | null => {
   }
 };
 
-/** The one-time question: on a phone or tablet, until the user answers. */
-export const shouldAskAnalyticsConsent = (): boolean =>
-  analyticsAvailable() && readAnalyticsConsent() === null;
+const consentVersion = (): number => {
+  if (unsaved) return ANALYTICS_CONSENT_VERSION;
+  try {
+    return Number(localStorage.getItem(ANALYTICS_CONSENT_VERSION_KEY)) || 1;
+  } catch {
+    return 1;
+  }
+};
+
+/** Crashlytics (src/lib/crashReports.ts): only a yes given under the wording that names crash details. */
+export const readCrashlyticsConsent = (): boolean =>
+  readAnalyticsConsent() === 'granted' && consentVersion() >= ANALYTICS_CONSENT_VERSION;
+
+/**
+ * The question: on a phone or tablet, until the user answers, and once more
+ * for a yes given before the wording named crash details. A no stays a no.
+ */
+export const shouldAskAnalyticsConsent = (): boolean => {
+  if (!analyticsAvailable()) return false;
+  const consent = readAnalyticsConsent();
+  return consent === null || (consent === 'granted' && consentVersion() < ANALYTICS_CONSENT_VERSION);
+};
 
 export const onAnalyticsConsentChange = (fn: (consent: AnalyticsConsent | null) => void) => {
   listeners.add(fn);
@@ -78,12 +113,34 @@ export const initAppAnalytics = async (): Promise<void> => {
   await apply(readAnalyticsConsent() ?? 'denied', null);
 };
 
+const save = (consent: AnalyticsConsent): boolean => {
+  try {
+    localStorage.setItem(ANALYTICS_CONSENT_VERSION_KEY, String(ANALYTICS_CONSENT_VERSION));
+    localStorage.setItem(ANALYTICS_CONSENT_KEY, consent);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const retrySave = (attempt: number) => {
+  if (retryTimer) clearTimeout(retryTimer);
+  retryTimer = null;
+  if (!unsaved || attempt >= RETRY_MS.length) return;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    if (unsaved && save(unsaved)) unsaved = null;
+    else retrySave(attempt + 1);
+  }, RETRY_MS[attempt]);
+};
+
 export const setAnalyticsConsent = async (consent: AnalyticsConsent): Promise<void> => {
   const previous = readAnalyticsConsent();
-  try {
-    localStorage.setItem(ANALYTICS_CONSENT_KEY, consent);
-  } catch {
-    // Private storage unavailable: the answer still applies to this run.
+  unsaved = null;
+  if (!save(consent)) {
+    // Storage refused it: the answer holds for this run (a no over a yes on disk), and is saved later.
+    unsaved = consent;
+    retrySave(0);
   }
   listeners.forEach((fn) => fn(consent));
   await apply(consent, previous);
@@ -174,6 +231,9 @@ export const screenNameFor = (s: ScreenState): string => {
 
 export const resetAppAnalyticsForTests = () => {
   listeners.clear();
+  unsaved = null;
+  if (retryTimer) clearTimeout(retryTimer);
+  retryTimer = null;
   lastScreen = null;
   loggedScreen = null;
 };

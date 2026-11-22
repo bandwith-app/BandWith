@@ -70,6 +70,7 @@ vi.mock('@/lib/minVersion', () => ({ currentPlatform: () => (h.native ? 'android
 vi.mock('@/lib/appAnalytics', () => ({
   currentScreenName: () => 'Stage',
   readAnalyticsConsent: () => h.consent,
+  readCrashlyticsConsent: () => h.consent === 'granted',
   onAnalyticsConsentChange: (fn: (c: 'granted' | 'denied' | null) => void) => {
     h.consentListeners.push(fn);
     return () => {
@@ -374,6 +375,106 @@ describe('native: Crashlytics only with the usage statistics consent', () => {
     await flush();
     expect(h.setEnabled).toEqual([true, false]);
     expect(h.deleted).toBe(1);
+    stop();
+  });
+});
+
+describe('scrubbing, round 2 (review #277)', () => {
+  it('quoted text that spans lines goes, in the message and in the stack', () => {
+    expect(scrubMessage(`Error: no song 'Mary Smith\nverse two' here`)).toBe(`Error: no song '…' here`);
+    expect(scrubMessage('Error: lyric "first line\n\tsecond line" too long')).toBe('Error: lyric "…" too long');
+    const s = scrubStack(
+      'Error: lyric "first line\nsecond line" too long\n    at f (https://app.bandwith.fun/assets/index-B4xK9q1a.js:1:2)',
+    )!;
+    expect(s).not.toMatch(/first|second/);
+    expect(s).toContain('https://app.bandwith.fun/assets/index-B4xK9q1a.js:1:2');
+    // A quote left open on a line that is not the last one.
+    expect(scrubStack("Error: open 'Mary Smith\n    at f (https://app.bandwith.fun/assets/a.js:1:2)")).not.toMatch(/Mary|Smith/);
+  });
+
+  it('/assets/ is kept only on our own origins', () => {
+    const m = scrubMessage('Error: failed https://files.test/assets/Mary-Smith/Yesterday.mp3 and https://cdn.evil.test/assets/Mirage.js');
+    expect(m).not.toMatch(/Mary|Smith|Yesterday|Mirage/);
+    expect(m).toContain('https://files.test/…');
+    for (const own of [
+      'https://app.bandwith.fun/assets/index-B4xK9q1a.js',
+      'https://bandwith.fun/assets/site-Q1w2e3r4.js',
+      'capacitor://localhost/assets/index-Q1w2e3r4.js',
+      'https://localhost/assets/index-Q1w2e3r4.js',
+      'http://localhost:5173/assets/index-Q1w2e3r4.js',
+    ]) {
+      expect(scrubMessage(`Error: at ${own}`), own).toContain(own);
+    }
+  });
+
+  it('file:// paths: only an app bundle file keeps its name', () => {
+    const m = scrubMessage('Error: cannot read file:///var/mobile/Containers/Data/Application/ABC/Documents/Mary Smith - Yesterday.mp3 now');
+    expect(m).not.toMatch(/var|mobile|Documents|Mary|Smith|Yesterday/);
+    expect(m).toContain('file://…');
+    expect(scrubMessage('Error: at file:///private/var/containers/Bundle/Application/X1/App.app/public/assets/index-B4xK9q1a.js')).toContain(
+      'file://…/index-B4xK9q1a.js',
+    );
+    expect(scrubMessage('Error: at file:///android_asset/public/assets/index-B4xK9q1a.js')).toContain('file://…/index-B4xK9q1a.js');
+    expect(scrubMessage('Error: at file:///android_asset/../../data/Mirage/Mary.mp3')).not.toMatch(/Mirage|Mary/);
+  });
+
+  it('prefixed tokens, encoded emails and Postgres key values go', () => {
+    const m = scrubMessage(
+      'Error: sk_live_abcdefghijklmnopqrst pk_test_abcdefghijk rk_abcdefghij Bearer abcdefghij.klmno eyJhbGciOiJIUzI1NiJ9 mary.smith%40gmail.com',
+    );
+    expect(m).not.toMatch(/abcdefghij|klmno|eyJ|mary|gmail/);
+    expect(m).toContain('Bearer <token>');
+    expect(m).toContain('<email>');
+    expect(scrubMessage('duplicate key value violates unique constraint. Key (email, band_id)=(mary@x.com, Mirage Music) already exists.')).toBe(
+      'duplicate key value violates unique constraint. Key (email, band_id)=(…) already exists.',
+    );
+  });
+});
+
+describe('queued reports go out on reconnect and on return (review #277)', () => {
+  it('five kept offline, a sixth error still flushes, and "online" or coming back sends them', async () => {
+    const stop = installCrashReports();
+    h.rpcResult = { data: null, error: { message: 'offline' } };
+    for (let i = 0; i < 5; i++) await reportClientError('error', new Error(`offline ${i}`));
+    h.rpcResult = { data: true, error: null };
+    h.wire = [];
+    await reportClientError('error', new Error('sixth'));
+    await flush();
+    expect(h.wire.map((a) => a.p_message)).toEqual([
+      'Error: offline 0',
+      'Error: offline 1',
+      'Error: offline 2',
+      'Error: offline 3',
+      'Error: offline 4',
+      'Error: sixth',
+    ]);
+    stop();
+  });
+
+  it('"online" sends what was kept', async () => {
+    const stop = installCrashReports();
+    h.rpcResult = { data: null, error: { message: 'offline' } };
+    await reportClientError('error', new Error('kept'));
+    h.rpcResult = { data: true, error: null };
+    h.wire = [];
+    window.dispatchEvent(new Event('online'));
+    await flush();
+    await flush();
+    expect(h.wire.map((a) => a.p_message)).toEqual(['Error: kept']);
+    stop();
+  });
+
+  it('coming back to the app sends what was kept', async () => {
+    const stop = installCrashReports();
+    h.rpcResult = { data: null, error: { message: 'offline' } };
+    await reportClientError('error', new Error('kept'));
+    h.rpcResult = { data: true, error: null };
+    h.wire = [];
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await flush();
+    await flush();
+    expect(h.wire.map((a) => a.p_message)).toEqual(['Error: kept']);
     stop();
   });
 });

@@ -39,6 +39,16 @@ describe('174 client errors', () => {
     expect(prune).toMatch(/DELETE FROM public\.client_error_keys WHERE hour < date_trunc\('hour', now\(\)\)/);
   });
 
+  it('the hourly prune clears its own old cron run history (review #277)', () => {
+    const prune = fnBody('bw_prune_client_errors');
+    expect(prune).toMatch(/to_regclass\('cron\.job_run_details'\)/);
+    expect(prune).toMatch(/DELETE FROM cron\.job_run_details[\s\S]*jobname = 'bw-prune-client-errors'/);
+  });
+
+  it('the header says no database has an earlier 174 (review #277)', () => {
+    expect(raw174.slice(0, raw174.indexOf('\nBEGIN;'))).toMatch(/no database has an earlier 174/);
+  });
+
   it('says plainly: linkable during the live hour, nothing stored links a report to a user once pruned', () => {
     expect(raw174).not.toMatch(/unlinkable/i);
     expect(raw174).toMatch(/During the live hour, the counter row can be linked to that hour's/);

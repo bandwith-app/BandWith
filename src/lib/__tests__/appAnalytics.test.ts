@@ -36,6 +36,8 @@ import {
   trackScreen,
   screenNameFor,
   resetAppAnalyticsForTests,
+  readCrashlyticsConsent,
+  ANALYTICS_CONSENT_VERSION_KEY,
 } from '../appAnalytics';
 
 const consentCalls = () =>
@@ -158,5 +160,58 @@ describe('when to ask', () => {
     expect(analyticsAskBlocked({ urgent: true })).toBe(true);
     expect(analyticsAskBlocked({ rsvp: true })).toBe(true);
     expect(analyticsAskBlocked({ poll: true })).toBe(true);
+  });
+});
+
+describe('consent wording versions (review #277)', () => {
+  it('a yes given before crash details were in the wording does not turn Crashlytics on, and asks again', () => {
+    localStorage.setItem(ANALYTICS_CONSENT_KEY, 'granted'); // an older build, no version
+    expect(readAnalyticsConsent()).toBe('granted'); // usage statistics keep their yes
+    expect(readCrashlyticsConsent()).toBe(false);
+    expect(shouldAskAnalyticsConsent()).toBe(true);
+  });
+
+  it('a yes under the current wording covers crash details, and is not asked again', async () => {
+    localStorage.setItem(ANALYTICS_CONSENT_KEY, 'granted');
+    await setAnalyticsConsent('granted');
+    expect(localStorage.getItem(ANALYTICS_CONSENT_VERSION_KEY)).toBe('2');
+    expect(readCrashlyticsConsent()).toBe(true);
+    expect(shouldAskAnalyticsConsent()).toBe(false);
+  });
+
+  it('an older no stays a no: not asked again, no Crashlytics', () => {
+    localStorage.setItem(ANALYTICS_CONSENT_KEY, 'denied');
+    expect(shouldAskAnalyticsConsent()).toBe(false);
+    expect(readCrashlyticsConsent()).toBe(false);
+  });
+});
+
+describe('a no always wins (review #277)', () => {
+  it('storage reads but the write fails: the no holds in memory, and the write is tried again', async () => {
+    vi.useFakeTimers();
+    try {
+      const disk = new Map<string, string>([[ANALYTICS_CONSENT_KEY, 'granted'], [ANALYTICS_CONSENT_VERSION_KEY, '2']]);
+      let failing = true;
+      vi.stubGlobal('localStorage', {
+        getItem: (k: string) => disk.get(k) ?? null,
+        setItem: (k: string, v: string) => {
+          if (failing) throw new DOMException('full', 'QuotaExceededError');
+          disk.set(k, v);
+        },
+        removeItem: (k: string) => disk.delete(k),
+        clear: () => disk.clear(),
+      });
+      await setAnalyticsConsent('denied');
+      expect(disk.get(ANALYTICS_CONSENT_KEY)).toBe('granted'); // the disk still says yes
+      expect(readAnalyticsConsent()).toBe('denied');
+      expect(readCrashlyticsConsent()).toBe(false);
+      failing = false;
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(disk.get(ANALYTICS_CONSENT_KEY)).toBe('denied');
+      expect(readAnalyticsConsent()).toBe('denied');
+      vi.unstubAllGlobals();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

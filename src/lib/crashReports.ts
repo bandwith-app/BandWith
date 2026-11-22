@@ -22,7 +22,7 @@ import { useSyncExternalStore } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { supabase } from '@/lib/supabase';
 import { currentPlatform, installedVersion } from '@/lib/minVersion';
-import { currentScreenName, onAnalyticsConsentChange, readAnalyticsConsent } from '@/lib/appAnalytics';
+import { currentScreenName, onAnalyticsConsentChange, readCrashlyticsConsent } from '@/lib/appAnalytics';
 
 export type ClientErrorKind = 'error' | 'rejection' | 'render';
 
@@ -55,8 +55,11 @@ export function readCrashReportsEnabled(): boolean {
 let pluginPromise: Promise<typeof import('@capacitor-firebase/crashlytics')> | null = null;
 const loadPlugin = () => (pluginPromise ??= import('@capacitor-firebase/crashlytics'));
 
-/** Crashlytics: only with the usage statistics consent and this switch on. */
-const nativeAllowed = () => readCrashReportsEnabled() && readAnalyticsConsent() === 'granted';
+/**
+ * Crashlytics: only with a usage statistics yes given under the wording that
+ * names crash details (an older yes is asked again), and this switch on.
+ */
+const nativeAllowed = () => readCrashReportsEnabled() && readCrashlyticsConsent();
 
 /** Native only; no Firebase config in a build → nothing happens. */
 async function applyNative() {
@@ -110,9 +113,16 @@ export const useCrashReportsEnabled = (): boolean =>
 
 // ------------------------------------------------------------- scrubbing --
 
-const EMAIL = /[\w.+-]+@[\w-]+(\.[\w-]+)+/g;
+/** Also URL-encoded (mary%40gmail.com). */
+const EMAIL = /[\w.+-]+(?:@|%40)[\w-]+(\.[\w-]+)+/gi;
+/** Postgres detail: "Key (email)=(mary@x.com) already exists": the columns stay, the values go. */
+const KEY_DETAIL = /\bKey \(([^()]*)\)=\([^)]*\)/g;
+const BEARER = /\bBearer\s+[^\s'"`]+/gi;
+/** Keys with a known prefix (sk_live_…, pk_test_…, sb_publishable_…, whsec_…), even without a digit. */
+const PREFIXED_KEY = /\b(?:sk|pk|rk|sb|whsec)_[A-Za-z0-9_]{6,}/g;
 const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
-const JWT = /\beyJ[\w-]*\.[\w-]+\.[\w-]+/g;
+/** A JWT, or just its first part (eyJhbGciOi…). */
+const JWT = /\beyJ[\w-]{6,}(?:\.[\w-]*)*/g;
 /** Random-looking: 16+ characters with a digit, or 40+ of anything (long function names stay). */
 const LONG_TOKEN = /\b(?:(?=[A-Za-z_-]*\d)[A-Za-z0-9_-]{16,}|[A-Za-z0-9_-]{40,})\b/g;
 /** Any query string, on full and relative links alike (/deputy.html?deputy=…, /quote.html?t=…). */
@@ -136,13 +146,40 @@ const LINK = new RegExp(
   'gi',
 );
 const APP_FILE = /^\/(?:assets\/[^\s/]+(?:\/[^\s/]+)*|[\w.-]+\.(?:html|js))$/;
+/** Our own origins: only there is /assets/… the app's bundle (any host can have an /assets/ folder). */
+const OWN_ORIGIN = /^(?:https:\/\/(?:app\.)?bandwith\.fun|capacitor:\/\/localhost|https?:\/\/localhost(?::\d+)?)$/i;
+const ownOrigin = (origin: string | undefined) => {
+  if (!origin) return true; // a relative path is the page's own
+  if (OWN_ORIGIN.test(origin)) return true;
+  try {
+    return typeof location !== 'undefined' && origin.toLowerCase() === location.origin.toLowerCase();
+  } catch {
+    return false;
+  }
+};
 
 function scrubLinks(s: string): string {
   return s.replace(LINK, (all, origin: string | undefined, path: string, tail: string | undefined, offset: number) => {
     // A relative path only after a space, a bracket, a quote or the start ("a/b" is not a link).
     if (!origin && offset > 0 && !/[\s('"=,:[]/.test(s[offset - 1])) return all;
-    if (!tail && APP_FILE.test(path)) return all;
+    if (!tail && APP_FILE.test(path) && ownOrigin(origin)) return all;
     return `${origin ?? ''}/…`;
+  });
+}
+
+/**
+ * file:// paths (a WebView, a download): the whole path goes, with the words
+ * after it up to a file extension (…/Documents/Mary Smith - Yesterday.mp3).
+ * Only a file of the app's own bundle keeps its name.
+ */
+const FILE_LINK = /file:\/\/[^\s'"`()<>]*(?:(?:\s+[^\s/'"`()<>]+)*?\.[A-Za-z0-9]{2,5}\b)?/gi;
+const BUNDLE_PATH = /^file:\/\/(?:\/[^\s]*\/App\.app\/public\/|\/android_asset\/public\/)/i;
+const BUNDLE_FILE = /\/([\w.-]+\.(?:js|mjs|css|html))$/;
+
+function scrubFileLinks(s: string): string {
+  return s.replace(FILE_LINK, (all) => {
+    const name = BUNDLE_PATH.test(all) && !all.includes('..') ? BUNDLE_FILE.exec(all)?.[1] : undefined;
+    return name ? `file://…/${name}` : 'file://…';
   });
 }
 
@@ -160,9 +197,16 @@ const pairRe = ([o, c]: [string, string], apostrophes: boolean) => {
   const [O, C] = [esc(o), esc(c)];
   // Single quotes: not opened by the apostrophe of a word (can't), not closed by one (Don't).
   const body = apostrophes ? `(?:[^${C}\\n]|${C}(?=[\\p{L}\\p{N}]))*` : `[^${C}\\n]*`;
-  const lead = apostrophes ? '(?<![\\p{L}\\p{N}])' : '';
+  // No lookbehind (Safari before 16.4 throws at load): the character before is captured and put back.
+  const lead = apostrophes ? '(^|[^\\p{L}\\p{N}])' : '()';
   const trail = apostrophes ? '(?![\\p{L}\\p{N}])' : '';
-  return { closed: new RegExp(`${lead}${O}${body}${C}${trail}`, 'gu'), open: new RegExp(`${lead}${O}[^${C}\\n]*$`, 'u'), o, c };
+  return {
+    closed: new RegExp(`${lead}${O}${body}${C}${trail}`, 'gu'),
+    // Left open: the rest of that line ('m': a stack has more lines after it).
+    open: new RegExp(`${lead}${O}[^${C}\\n]*$`, 'mu'),
+    o,
+    c,
+  };
 };
 const QUOTE_RES = [...DOUBLE_PAIRS.map((p) => pairRe(p, false)), ...SINGLE_PAIRS.map((p) => pairRe(p, true))];
 
@@ -171,17 +215,19 @@ function scrubQuotes(s: string): string {
   const done: string[] = [];
   const mark = (text: string) => `\u0001${done.push(text) - 1}\u0001`;
   let out = s;
-  for (const q of QUOTE_RES) out = out.replace(q.closed, () => mark(`${q.o}…${q.c}`));
-  for (const q of QUOTE_RES) out = out.replace(q.open, () => mark(`${q.o}…`));
+  for (const q of QUOTE_RES) out = out.replace(q.closed, (_m, pre: string) => pre + mark(`${q.o}…${q.c}`));
+  for (const q of QUOTE_RES) out = out.replace(q.open, (_m, pre: string) => pre + mark(`${q.o}…`));
   return out.replace(/\u0001(\d+)\u0001/g, (_m, i: string) => done[Number(i)]);
 }
 
 /** The one scrub, for the message and for every stack line. */
 function scrubText(s: string): string {
-  const out = scrubLinks(s.replace(QUERY, '').replace(FRAGMENT, '$1'))
+  const out = scrubFileLinks(scrubLinks(s.replace(KEY_DETAIL, 'Key ($1)=(…)').replace(QUERY, '').replace(FRAGMENT, '$1')))
     .replace(EMAIL, '<email>')
     .replace(UUID, '<id>')
-    .replace(JWT, '<token>');
+    .replace(JWT, '<token>')
+    .replace(BEARER, 'Bearer <token>')
+    .replace(PREFIXED_KEY, '<token>');
   return scrubQuotes(out)
     .replace(LONG_TOKEN, (t, offset: number, all: string) => (insideAppFile(all, offset) ? t : '<token>'))
     .replace(PHONE_OR_NUMBER, '<n>');
@@ -193,23 +239,32 @@ function insideAppFile(all: string, offset: number): boolean {
   return before !== -1 && !/[\s'"`()<>]/.test(all.slice(before, offset));
 }
 
+/** One line first: quoted text across a line break (a lyric) is still one quote. */
 export function scrubMessage(raw: string): string {
-  return scrubText(String(raw ?? ''))
-    .replace(/\s+/g, ' ')
+  return scrubText(String(raw ?? '').replace(/\s+/g, ' '))
     .trim()
     .slice(0, MESSAGE_MAX);
 }
 
+/** A stack frame: "    at f (…:1:2)" (Chrome, Android), "f@…:1:2" (Safari), "[native code]". */
+const FRAME = /^\s*at\s|:\d+:\d+\)?$|\[native code\]$/;
+
 export function scrubStack(raw: string | undefined | null): string | null {
   if (!raw) return null;
-  const lines = String(raw)
-    .split('\n')
-    .slice(0, STACK_LINES)
+  const all = String(raw).split('\n');
+  // The lines before the first frame repeat the message (Chrome): one line, scrubbed like it.
+  let first = all.findIndex((l) => FRAME.test(l));
+  if (first === -1) first = all.length;
+  const head = all.slice(0, first).join(' ').trim();
+  const frames = all
+    .slice(first)
+    .slice(0, STACK_LINES - (head ? 1 : 0))
     .map((l) => {
       // The position's numbers are not a phone number: scrub the rest, keep it.
       const pos = POSITION.exec(l)?.[0] ?? '';
       return (scrubText(pos ? l.slice(0, -pos.length) : l) + pos).trimEnd();
     });
+  const lines = head ? [scrubMessage(head), ...frames] : frames;
   return lines.join('\n').slice(0, STACK_MAX) || null;
 }
 
@@ -298,6 +353,9 @@ export async function reportClientError(kind: ClientErrorKind, err: unknown): Pr
       p_route: currentScreenName()?.slice(0, 60) ?? null,
     };
     // Switched off while the version was read: not sent, not kept.
+    if (!readCrashReportsEnabled()) return;
+    // Queue full (no signal for a while): try to send the kept ones first.
+    if (pending.length >= MAX_PENDING) await flushPending();
     if (!readCrashReportsEnabled() || pending.length >= MAX_PENDING) return;
     pending.push(args);
     await flushPending();
@@ -326,6 +384,13 @@ export function installCrashReports(): () => void {
   const onRejection = (e: PromiseRejectionEvent) => void reportClientError('rejection', (e as { reason?: unknown }).reason);
   window.addEventListener('error', onError);
   window.addEventListener('unhandledrejection', onRejection as EventListener);
+  // Kept reports go out when the signal is back, and when the user comes back to the app.
+  const onOnline = () => void flushPending();
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') void flushPending();
+  };
+  window.addEventListener('online', onOnline);
+  document.addEventListener('visibilitychange', onVisible);
   // Errors from before sign-in go out once there is a session.
   let unsubscribe: (() => void) | undefined;
   try {
@@ -339,6 +404,8 @@ export function installCrashReports(): () => void {
   return () => {
     installed = false;
     window.removeEventListener('storage', onStorage);
+    window.removeEventListener('online', onOnline);
+    document.removeEventListener('visibilitychange', onVisible);
     offConsent();
     window.removeEventListener('error', onError);
     window.removeEventListener('unhandledrejection', onRejection as EventListener);

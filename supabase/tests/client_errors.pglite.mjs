@@ -18,8 +18,9 @@ CREATE ROLE anon; CREATE ROLE authenticated; GRANT USAGE ON SCHEMA public TO ano
 CREATE SCHEMA auth; CREATE SCHEMA cron; GRANT USAGE ON SCHEMA auth TO authenticated, anon;
 CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT (nullif(current_setting('request.jwt.claims', true), '')::json ->> 'sub')::uuid $$;
 GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated, anon;
-CREATE TABLE cron.job (jobname text PRIMARY KEY, schedule text, command text);
-CREATE FUNCTION cron.schedule(n text, s text, c text) RETURNS bigint LANGUAGE sql AS $$ INSERT INTO cron.job VALUES (n, s, c) ON CONFLICT (jobname) DO UPDATE SET schedule = EXCLUDED.schedule, command = EXCLUDED.command RETURNING 1::bigint $$;
+CREATE TABLE cron.job (jobid bigserial PRIMARY KEY, jobname text UNIQUE, schedule text, command text);
+CREATE TABLE cron.job_run_details (runid bigserial PRIMARY KEY, jobid bigint, status text, end_time timestamptz);
+CREATE FUNCTION cron.schedule(n text, s text, c text) RETURNS bigint LANGUAGE sql AS $$ INSERT INTO cron.job (jobname, schedule, command) VALUES (n, s, c) ON CONFLICT (jobname) DO UPDATE SET schedule = EXCLUDED.schedule, command = EXCLUDED.command RETURNING 1::bigint $$;
 CREATE FUNCTION cron.unschedule(n text) RETURNS boolean LANGUAGE sql AS $$ DELETE FROM cron.job WHERE jobname = n RETURNING true $$;
 `);
 const mig = readFileSync(process.argv[2], 'utf8');
@@ -65,8 +66,18 @@ ok((await q(`SELECT n FROM public.client_error_counters WHERE bucket = 'rows'`))
 ok((await joinable()) === 0 && (await q(`SELECT count(*)::int n FROM public.client_errors`)).rows[0].n > 0, 'after the prune: reports kept, nothing stored links them to a person');
 
 // ---- cron
-const jobs = (await q(`SELECT jobname, schedule FROM cron.job ORDER BY jobname`)).rows.map((r) => `${r.jobname} ${r.schedule}`);
+const jobs = (await q(`SELECT jobname, schedule FROM cron.job WHERE jobname LIKE 'bw-%' ORDER BY jobname`)).rows.map((r) => `${r.jobname} ${r.schedule}`);
 ok(jobs.join() === 'bw-prune-client-errors 7 * * * *', `one cron job, hourly prune: ${jobs.join('; ')}`);
+
+// ---- the prune clears its own old run history, nothing else
+await db.exec(`
+INSERT INTO cron.job (jobname, schedule, command) VALUES ('someone-else', '0 * * * *', 'SELECT 1');
+INSERT INTO cron.job_run_details (jobid, status, end_time)
+SELECT j.jobid, 'succeeded', t FROM cron.job j, (VALUES (now() - interval '3 days'), (now() - interval '2 hours')) v(t);
+`);
+await q(`SELECT public.bw_prune_client_errors()`);
+const runs = (await q(`SELECT j.jobname, (d.end_time < now() - interval '1 day') AS old FROM cron.job_run_details d JOIN cron.job j USING (jobid) ORDER BY 1, 2`)).rows.map((r) => `${r.jobname}:${r.old ? 'old' : 'new'}`);
+ok(runs.join(',') === 'bw-prune-client-errors:new,someone-else:new,someone-else:old', `run history: ${runs.join(', ')}`);
 
 console.log(fails ? `\n${fails} FAILED` : '\nALL OK');
 process.exit(fails ? 1 : 0);

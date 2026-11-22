@@ -10,9 +10,19 @@ We learn about errors before users report them.
 **Settings › Privacy & account › Send crash reports**: on by default, per device. It covers our own scrubbed JavaScript reports, and it can stop Crashlytics too.
 
 **Crashlytics only with consent** (owner decision 2026-11-22, for ePrivacy: Crashlytics stores an installation ID on the device):
-- Off from the very first launch: `FirebaseCrashlyticsCollectionEnabled` = false in `Info.plist`, `firebase_crashlytics_collection_enabled` = false in the Android manifest. So nothing is uploaded and no installation ID is made before the app has asked.
-- On only when **both** are true: the user said yes to **Anonymous usage statistics** (the same one-time question and Settings row as analytics, #238; its copy says crash details are included), and **Send crash reports** is on.
+- Collection off from the very first launch: `FirebaseCrashlyticsCollectionEnabled` = false in `Info.plist`, `firebase_crashlytics_collection_enabled` = false in the Android manifest. So nothing is **uploaded** before the app has asked. Something is still **created on the device**: see "Before the yes" below.
+- On only when **both** are true: the user said yes to **Anonymous usage statistics** under the current wording (the same question and Settings row as analytics, #238; its copy says crash details are included), and **Send crash reports** is on.
+- **The wording is versioned** (`bw.analytics.consent_version` = 2). A yes given in an older build, before the question named crash details, still covers usage statistics but never Crashlytics, and the question is asked once more. An older no stays a no.
+- **A no always wins**: if the device can read storage but not write it, the no holds in memory for the run (over the yes still on disk), and the write is tried again (1 s, 5 s, 15 s, 1 min, 5 min).
 - While it is off, crash reports Crashlytics kept but hasn't sent are deleted at every start and at every change.
+
+**Before the yes: what Crashlytics creates on the device** (read in the SDK source, FirebaseCrashlytics 12.19; not measured on a device). Nothing of it leaves the phone while collection is off.
+- **iOS**: both Capacitor plugins call `FirebaseApp.configure()` when they load, at launch, whenever `GoogleService-Info.plist` is in the bundle. Crashlytics is an eager component, so it starts then too:
+  - a random installation UUID in the app's user defaults (`com.crashlytics.iuuid`, `FIRCLSInstallIdentifierModel`);
+  - its folder `Library/Caches/com.crashlytics.data` and a report for the current run (`FIRCLSReportManager startWithProfiling`); the crash handler is installed, so a crash is written there;
+  - no settings fetch and no upload: those wait for `isCrashlyticsCollectionEnabled`. Our start-up `deleteUnsentReports()` removes the written reports while it is off.
+- **Android** (from the SDK's documented behaviour, not read in source here): `FirebaseInitProvider` starts Firebase at process start, which push (FCM) needs anyway; Crashlytics is eager there too, keeps its files under the app's files folder and an installation id in its shared preferences. Same: no upload while off.
+- Keeping Crashlytics from starting at all before the yes is an open question for the main session: see the #277 report (options: patch the iOS plugins to configure Firebase only after the yes; on Android it can only be removed, not delayed, because push needs Firebase).
 
 Switching **Send crash reports** off:
 - no more rows in `client_errors`;
@@ -36,14 +46,16 @@ Before sending, the device scrubs the message and **every line** of the stack (t
 
 | Found | Sent as |
 | --- | --- |
-| Emails | `<email>` |
+| Emails, URL-encoded ones too (`mary%40gmail.com`) | `<email>` |
 | UUIDs | `<id>` |
-| JWTs and long tokens | `<token>` |
+| JWTs (even just their first part, `eyJ…`), `Bearer …`, keys with a known prefix (`sk_`, `pk_`, `rk_`, `sb_`, `whsec_`) and long tokens | `<token>` |
+| Postgres details: `Key (email)=(mary@x.com)` | `Key (email)=(…)` |
+| `file://` paths, with the words after them up to a file extension. Only a file of the app's own bundle (`…/App.app/public/…`, `file:///android_asset/public/…`) keeps its name | `file://…`, `file://…/index-B4xK9q1a.js` |
 | Numbers of 7+ digits (phone numbers, ids) | `<n>` |
 | Query strings on any link, relative ones too (`/deputy.html?deputy=…`, `/quote.html?t=…`), and fragments after a path | removed |
-| Link paths: everything after the origin, except the app's own files (`/assets/…`, a page like `/quote.html`). A path can name a band, a person or a file (`/storage/v1/object/sign/audio/Mirage/Mary Smith - Yesterday.mp3`), so the words after it up to a file extension go too | `https://xyz.supabase.co/…` |
+| Link paths: everything after the origin, except the app's own files (`/assets/…`, a page like `/quote.html`) on **our own origins** only (`app.bandwith.fun`, `bandwith.fun`, `capacitor://localhost`, `localhost`, the page's own origin): any host can have an `/assets/` folder. A path can name a band, a person or a file (`/storage/v1/object/sign/audio/Mirage/Mary Smith - Yesterday.mp3`), so the words after it up to a file extension go too | `https://xyz.supabase.co/…` |
 | Random-looking strings: 16+ characters with a digit, or 40+ of anything (the app's own bundle names under `/assets/` stay) | `<token>` |
-| **All** quoted text, even one word (a song called "Yesterday"). Each opening quote with its own closing one, typographic ones too (`“ ” ‘ ’ „ ‚ « » ‹ ›`); double quotes first, so an apostrophe inside ("Don't Stop Me Now") is just text; a quote left open hides the rest of the line | `"…"` (so `(reading 'map')` is sent as `(reading '…')`: the stack's file, line and column still point at the code) |
+| **All** quoted text, even one word (a song called "Yesterday"). Each opening quote with its own closing one, typographic ones too (`“ ” ‘ ’ „ ‚ « » ‹ ›`); double quotes first, so an apostrophe inside ("Don't Stop Me Now") is just text; a quote left open hides the rest of the line. The message is made one line first, so a quote across a line break (a lyric) still goes, in the stack's first lines too | `"…"` (so `(reading 'map')` is sent as `(reading '…')`: the stack's file, line and column still point at the code) |
 
 Kept: error names, function names, file names, and each stack line's `:line:column`.
 
@@ -59,8 +71,8 @@ The server cuts everything to size again.
   - **once the hourly prune has deleted the counter and the secret, nothing stored links a report to a user**;
   - the Supabase API logs see who called the function, as for any request.
   No one else can read any of these tables.
-- Pruned every hour (pg_cron `bw-prune-client-errors`, at minute 7): reports older than 14 days, and the counters and secrets of past hours and days.
-- Not signed in: a few reports wait and go out after sign-in.
+- Pruned every hour (pg_cron `bw-prune-client-errors`, at minute 7): reports older than 14 days, the counters and secrets of past hours and days, and its own run history in `cron.job_run_details` older than a day.
+- Not signed in, or no signal: up to 5 reports wait on the device and go out after sign-in, when the signal is back (`online`), when the user comes back to the app, or with the next error (a full queue is sent first, then the new one).
 
 ## Reading them
 
@@ -88,7 +100,7 @@ SELECT created_at, platform, app_version, route, message, stack
 - Android: `com.bandwith.app`;
 - iOS: `app.bandwith.mobile`.
 
-Readable iOS stacks need the dSYMs. The Xcode phase **Crash reports dSYM upload** uploads them on Release builds, but only when `ios/App/App/GoogleService-Info.plist` is present. The plist is local-only, so copy it into the release worktree before archiving, as for analytics.
+Readable iOS stacks need the dSYMs. The Xcode phase **Crash reports dSYM upload** uploads them on Release builds, but only when `ios/App/App/GoogleService-Info.plist` is present. The plist is local-only, so copy it into the release worktree before archiving, as for analytics. Its inputs are the dSYM (so it runs after `dsymutil`), never the plist: a build without the plist still passes, and the script also waits up to 60 s for a dSYM newer than the binary.
 
 **Android**
 - The Crashlytics Gradle plugin is applied only when `android/app/google-services.json` is present (also local-only).
@@ -119,5 +131,5 @@ Readable iOS stacks need the dSYMs. The Xcode phase **Crash reports dSYM upload*
 - what is sent: the error, the screen, the app version and the device type;
 - what never is: no content, no account details;
 - BandWith's own server (Supabase) keeps JavaScript errors for 14 days; on by default, switched off in Settings › Privacy & account › Send crash reports;
-- on the phone apps, Google Firebase Crashlytics processes native crash reports **only if the user allows Anonymous usage statistics** (the same question as analytics); before that, no Crashlytics collection and no Firebase installation ID;
+- on the phone apps, Google Firebase Crashlytics processes native crash reports **only if the user allows Anonymous usage statistics** (the same question as analytics); before that nothing is sent, though the Crashlytics library keeps a random installation ID and its crash files on the device (see "Before the yes"; wording to settle with the main session's answer);
 - both can be switched off at any time in Settings › Privacy & account.

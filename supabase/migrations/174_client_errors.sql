@@ -23,7 +23,13 @@
 --   transaction id, xmin), and with the hour's secret to the user.
 -- - Once the hourly prune has deleted the counter and the secret, nothing
 --   stored links a report to a user. Report times are kept to the minute.
--- Kept 14 days. Pruned every hour (pg_cron bw-prune-client-errors).
+-- Kept 14 days. Pruned every hour (pg_cron bw-prune-client-errors). The
+-- prune also clears its own run history in cron.job_run_details older than
+-- a day (pg_cron keeps a row per run).
+--
+-- First version: no database has an earlier 174 (prod checked 11-22: not
+-- applied), so the CREATE TABLE IF NOT EXISTS below never meets an older
+-- shape of these tables. If a local database ran an early draft, reset it.
 --
 -- Read (service role): SELECT created_at, platform, app_version, route, message
 --   FROM public.client_errors ORDER BY created_at DESC LIMIT 50;
@@ -185,6 +191,14 @@ BEGIN
   UPDATE public.client_error_counters
      SET n = (SELECT count(*) FROM public.client_errors)
    WHERE bucket = 'rows';
+  -- pg_cron keeps a row per run, for ever: keep a day of this job's.
+  IF to_regclass('cron.job_run_details') IS NOT NULL THEN
+    EXECUTE $q$
+      DELETE FROM cron.job_run_details
+       WHERE jobid IN (SELECT jobid FROM cron.job WHERE jobname = 'bw-prune-client-errors')
+         AND end_time < now() - interval '1 day'
+    $q$;
+  END IF;
   RETURN v_n;
 END;
 $$;
