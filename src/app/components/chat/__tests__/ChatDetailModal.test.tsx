@@ -682,9 +682,9 @@ describe('ChatDetailModal offline: who may write', () => {
     await settle();
     expect(svc.sendMessage).not.toHaveBeenCalled();
     expect(screen.getByText('Waiting for connection')).toBeTruthy();
-    const { readChatOutbox } = await import('@/lib/chatOutbox');
-    expect(readChatOutbox('me').map((x) => x.body)).toEqual(['Set list is final']);
-    expect(readChatOutbox('someone-else')).toEqual([]);
+    const { listChatOutbox } = await import('@/lib/chatOutbox');
+    expect((await listChatOutbox('me')).map((x) => x.body)).toEqual(['Set list is final']);
+    expect(await listChatOutbox('someone-else')).toEqual([]);
   });
 
   // Claude #291 r5 (4): the server's no at send time locks the chat.

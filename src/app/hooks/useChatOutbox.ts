@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { flushChatOutbox, readChatOutbox } from '@/lib/chatOutbox';
+import { flushChatOutbox, listChatOutbox } from '@/lib/chatOutbox';
 import { onAppResume } from '@/lib/appResume';
 
 /**
@@ -11,15 +11,16 @@ import { onAppResume } from '@/lib/appResume';
 export function useChatOutboxFlush(userId?: string | null) {
   useEffect(() => {
     if (!userId) return;
-    const go = () => {
+    const go = async () => {
       if (typeof navigator !== 'undefined' && !navigator.onLine) return;
-      if (readChatOutbox(userId).some((x) => x.refused === undefined)) void flushChatOutbox(userId);
+      if ((await listChatOutbox(userId)).some((x) => x.refused === undefined)) void flushChatOutbox(userId);
     };
-    go();
-    window.addEventListener('online', go);
-    const offResume = onAppResume(go);
+    const kick = () => void go();
+    kick();
+    window.addEventListener('online', kick);
+    const offResume = onAppResume(kick);
     return () => {
-      window.removeEventListener('online', go);
+      window.removeEventListener('online', kick);
       offResume();
     };
   }, [userId]);

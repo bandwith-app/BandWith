@@ -3,9 +3,11 @@
  * server has them (main's decision, #291 r4): closing the chat or the app
  * offline never loses the text.
  *
- * `localStorage['bw:chat_outbox:<uid>']` = JSON array of
- * `{ chatId, clientId, body, createdAt }` (the format agreed with #292, which
- * keeps the key at sign-out and counts it in "You have N unsent messages").
+ * Key `bw:chat_outbox:<uid>`, a JSON array of
+ * `{ chatId, clientId, body, createdAt }`. #292 owns the key and its storage
+ * (src/lib/offline/storage.ts): it keeps it at sign-out, erases it on account
+ * deletion and counts it in "You have N unsent messages". Read and written
+ * only through the two store functions below.
  * Optional, for this file only: `replyToId` (the quoted message) and
  * `refused` (the server said no: the reason, maybe ''): a refused message is
  * never sent again by itself; it shows as "Not sent" with Try again / Delete
@@ -46,42 +48,70 @@ const valid = (x: unknown): x is ChatOutboxItem => {
   return !!o && typeof o.chatId === 'string' && typeof o.clientId === 'string' && typeof o.body === 'string' && typeof o.createdAt === 'string';
 };
 
-export function readChatOutbox(userId: string | null | undefined): ChatOutboxItem[] {
-  if (!userId) return [];
+// ---------------------------------------------------------------------------
+// Storage: the ONLY two places that touch `bw:chat_outbox:<uid>`.
+// #292 owns that key and its storage (src/lib/offline/storage.ts, main's
+// decision on #292 Claude r5 M3: localStorage and IndexedDB). Until #292's
+// helper block lands (a byte-identical copy goes into storage.ts here), these
+// two bodies are the stand-in; then they become calls to #292's read and
+// write helpers and nothing else in this file changes.
+// ---------------------------------------------------------------------------
+async function loadStoredOutbox(userId: string): Promise<unknown[]> {
   try {
     const raw = localStorage.getItem(chatOutboxKey(userId));
     const list = raw ? JSON.parse(raw) : [];
-    return Array.isArray(list) ? list.filter(valid) : [];
+    return Array.isArray(list) ? list : [];
   } catch {
     return [];
   }
 }
 
-function writeChatOutbox(userId: string, items: ChatOutboxItem[]): void {
+async function saveStoredOutbox(userId: string, entries: ChatOutboxItem[]): Promise<void> {
   try {
-    if (items.length) localStorage.setItem(chatOutboxKey(userId), JSON.stringify(items));
+    if (entries.length) localStorage.setItem(chatOutboxKey(userId), JSON.stringify(entries));
     else localStorage.removeItem(chatOutboxKey(userId));
   } catch {
     // Storage full or blocked: the bubble on screen still has the text.
   }
 }
 
+// Every read and change waits for the ones before it (the store is async):
+// a Delete tapped while a flush runs is seen by the flush's next re-read.
+let storeQueue: Promise<unknown> = Promise.resolve();
+function inOrder<T>(job: () => Promise<T>): Promise<T> {
+  const run = storeQueue.then(job);
+  storeQueue = run.catch(() => {});
+  return run;
+}
+
+const readValid = async (userId: string): Promise<ChatOutboxItem[]> => (await loadStoredOutbox(userId)).filter(valid);
+
+/** This account's outbox, oldest first as written (waiting and "Not sent" ones). */
+export function listChatOutbox(userId: string | null | undefined): Promise<ChatOutboxItem[]> {
+  if (!userId) return Promise.resolve([]);
+  return inOrder(() => readValid(userId));
+}
+
 /** Adds (or updates, same client id) a message; it waits to be sent unless `refused`. */
-export function putChatOutbox(userId: string | null | undefined, item: ChatOutboxItem): void {
-  if (!userId) return;
-  const list = readChatOutbox(userId).filter((x) => x.clientId !== item.clientId);
-  const clean: ChatOutboxItem = { chatId: item.chatId, clientId: item.clientId, body: item.body, createdAt: item.createdAt };
-  if (item.replyToId) clean.replyToId = item.replyToId;
-  if (typeof item.refused === 'string') clean.refused = item.refused;
-  writeChatOutbox(userId, [...list, clean]);
+export function putChatOutbox(userId: string | null | undefined, item: ChatOutboxItem): Promise<void> {
+  if (!userId) return Promise.resolve();
+  return inOrder(async () => {
+    const list = (await readValid(userId)).filter((x) => x.clientId !== item.clientId);
+    const clean: ChatOutboxItem = { chatId: item.chatId, clientId: item.clientId, body: item.body, createdAt: item.createdAt };
+    if (item.replyToId) clean.replyToId = item.replyToId;
+    if (typeof item.refused === 'string') clean.refused = item.refused;
+    await saveStoredOutbox(userId, [...list, clean]);
+  });
 }
 
 /** Saved, or deleted by the person. */
-export function dropChatOutbox(userId: string | null | undefined, clientId: string | null | undefined): void {
-  if (!userId || !clientId) return;
-  const list = readChatOutbox(userId);
-  const rest = list.filter((x) => x.clientId !== clientId);
-  if (rest.length !== list.length) writeChatOutbox(userId, rest);
+export function dropChatOutbox(userId: string | null | undefined, clientId: string | null | undefined): Promise<void> {
+  if (!userId || !clientId) return Promise.resolve();
+  return inOrder(async () => {
+    const list = await readValid(userId);
+    const rest = list.filter((x) => x.clientId !== clientId);
+    if (rest.length !== list.length) await saveStoredOutbox(userId, rest);
+  });
 }
 
 /** The server said no: an answer, not a lost connection or a hiccup. */
@@ -169,7 +199,7 @@ export function flushChatOutbox(
   const run = lock.then(async () => {
     const result: ChatOutboxResult = { userId: uid, sent: [], refused: [] };
     const current = opts.currentUserId ?? signedInId;
-    const waiting = readChatOutbox(uid)
+    const waiting = (await listChatOutbox(uid))
       .filter((x) => x.refused === undefined && (!opts.chatId || x.chatId === opts.chatId))
       .sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
     for (const item of waiting) {
@@ -178,15 +208,15 @@ export function flushChatOutbox(
       // Never as someone else (another account signed in on this device).
       if (!sameUser(await current(), uid)) break;
       // Still waiting? (Try again or Delete may have handled it meanwhile.)
-      const now = readChatOutbox(uid).find((x) => x.clientId === item.clientId);
+      const now = (await listChatOutbox(uid)).find((x) => x.clientId === item.clientId);
       if (!now || now.refused !== undefined) continue;
       const { data, error } = await sendMessage(item.chatId, item.body, 'text', item.replyToId ?? undefined, item.clientId);
       if (!error && data) {
-        dropChatOutbox(uid, item.clientId);
+        await dropChatOutbox(uid, item.clientId);
         result.sent.push({ chatId: item.chatId, clientId: item.clientId, message: data });
       } else if (isRefusal(error)) {
         const reason = chatErrorMessage(error, '');
-        putChatOutbox(uid, { ...item, refused: reason });
+        await putChatOutbox(uid, { ...item, refused: reason });
         result.refused.push({ chatId: item.chatId, clientId: item.clientId, reason, denied: isDenied(error) });
       } else {
         break;
