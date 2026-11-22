@@ -25,7 +25,7 @@ import {
   type RehearsalNote,
 } from '@/lib/rehearsalNotes';
 import type { RehearsalNotesControls } from '@/app/components/event/useRehearsalNotes';
-import { dismissRejected, OUTBOX_EVENT, readRejected } from '@/lib/rehearsalNotesOutbox';
+import { dismissRejected, OUTBOX_EVENT, readRejected, type RejectedNote } from '@/lib/rehearsalNotesOutbox';
 import type { EarlierNotes } from './FromLastTime';
 
 type T = ReturnType<typeof useT>;
@@ -450,7 +450,7 @@ export const RejectedNotes: React.FC<{ controls: RehearsalNotesControls; dark?: 
  * deleted meanwhile included): Settings › Offline & live (#296).
  */
 export const RejectedNotesForUser: React.FC<{ userId?: string | null }> = ({ userId }) => {
-  const [notes, setNotes] = useState<RehearsalNote[]>(() => readRejected(userId));
+  const [notes, setNotes] = useState<RejectedNote[]>(() => readRejected(userId));
   useEffect(() => {
     const sync = () => setNotes(readRejected(userId));
     sync();
@@ -460,7 +460,7 @@ export const RejectedNotesForUser: React.FC<{ userId?: string | null }> = ({ use
   return <RejectedNotesList notes={notes} onRemove={(id) => userId && dismissRejected(userId, id)} />;
 };
 
-const RejectedNotesList: React.FC<{ notes: RehearsalNote[]; onRemove: (id: string) => void; dark?: boolean }> = ({ notes: list, onRemove, dark }) => {
+const RejectedNotesList: React.FC<{ notes: RejectedNote[]; onRemove: (id: string) => void; dark?: boolean }> = ({ notes: list, onRemove, dark }) => {
   const t = useT();
   const [copied, setCopied] = useState<string | null>(null);
   /** A note the clipboard refused (none in this browser, or blocked): say so, the text stays selectable. */
@@ -499,15 +499,25 @@ const RejectedNotesList: React.FC<{ notes: RehearsalNote[]; onRemove: (id: strin
             <li key={n.id} className={cn('flex flex-col gap-2 py-2 border-b last:border-b-0 min-w-0', dark ? 'border-white/15' : 'border-border')}>
               <span className="bw-body-sm whitespace-pre-wrap break-words select-text">{text}</span>
               <span className="flex flex-wrap gap-2">
-                <button type="button" className={pill} aria-label={t('Copy note: {note}', { note: short })} onClick={() => void copy(n.id, text)}>
+                <button
+                  type="button"
+                  className={pill}
+                  aria-label={copied === n.id ? t('Copied') : t('Copy note: {note}', { note: short })}
+                  onClick={() => void copy(n.id, text)}
+                >
                   {copied === n.id ? t('Copied') : t('Copy')}
                 </button>
                 <button type="button" className={pill} aria-label={t('Remove note: {note}', { note: short })} onClick={() => onRemove(n.id)}>
                   {t('Remove')}
                 </button>
               </span>
+              {n.spaceFull && (
+                // The device had no room to keep it apart: it is only here now (#296 round 4).
+                <span className={cn('bw-label-sm', dark ? 'text-white' : 'text-destructive')}>{t('Space full: copy your note now')}</span>
+              )}
               <span className={cn('bw-body-sm', dark ? 'text-white' : 'text-destructive')} aria-live="polite">
                 {copyFailed === n.id ? t('Couldn’t copy. Select the text and copy it yourself.') : null}
+                {copied === n.id ? <span className="sr-only">{t('Copied')}</span> : null}
               </span>
             </li>
           );

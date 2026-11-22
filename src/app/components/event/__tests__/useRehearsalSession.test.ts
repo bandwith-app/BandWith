@@ -335,3 +335,78 @@ describe('#296 round 3: a change kept on this device is never overwritten', () =
     }
   });
 });
+
+describe('#296 round 4: a late message never undoes a saved End', () => {
+  const T0 = Date.now() - 30 * 60_000;
+  const live = startSession(T0);
+  const ended = endSession(live, T0 + 25 * 60_000);
+  const R1 = '2026-11-19T19:00:00.000000+00:00';
+  const R2 = '2026-11-19T19:25:00.000000+00:00';
+  const R3 = '2026-11-19T19:40:00.000000+00:00';
+  const msg = (row: SessionRow, rev?: string) => ({ v: 1, eventId: 'event-1', date: '2026-11-19', row, ...(rev ? { rev } : {}) });
+
+  for (const [label, rev] of [
+    ['built on an older revision', R1],
+    ['from an older build (no revision)', undefined],
+    ['even on a newer revision', R3],
+  ] as const) {
+    it(`admin: a delayed “running” message ${label} keeps the saved End; Pause then saves nothing over it`, async () => {
+      fetchMock.mockResolvedValue({ state: ended, summary: null, rev: R2 });
+      const { result, bridge } = setup({ currentSong: null });
+      await waitFor(() => expect(result.current.status).toBe('ended'));
+      act(() => bridge.current.receive?.(msg(toRow(live, CTX, 3, Date.now()), rev)));
+      expect(result.current.status).toBe('ended');
+      act(() => result.current.pause());
+      await act(async () => {});
+      for (const call of saveMock.mock.calls) expect((call[0] as SessionRow).ended_at).not.toBeNull();
+      expect(result.current.status).toBe('ended');
+    });
+  }
+
+  it('member: a delayed “running” message from an older build does not reopen the ended rehearsal', async () => {
+    fetchMock.mockResolvedValue({ state: ended, summary: null, rev: R2 });
+    const { result, bridge } = setup({ isLeader: false, currentSong: null });
+    await waitFor(() => expect(result.current.status).toBe('ended'));
+    act(() => bridge.current.receive?.(msg(toRow(live, CTX, 3, Date.now()))));
+    expect(result.current.status).toBe('ended');
+  });
+
+  it('the band is sent the revision each message is built on', async () => {
+    fetchMock.mockResolvedValue({ state: live, summary: null, rev: R1 });
+    const { result, send } = setup({ currentSong: null });
+    await waitFor(() => expect(result.current.status).toBe('live'));
+    act(() => result.current.pause());
+    expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ rev: R1 }));
+  });
+
+  it('a newer save’s message is taken as it is (a Pause made on the other admin’s phone)', async () => {
+    fetchMock.mockResolvedValue({ state: live, summary: null, rev: R1 });
+    const { result, bridge } = setup({ currentSong: null });
+    await waitFor(() => expect(result.current.status).toBe('live'));
+    act(() => bridge.current.receive?.(msg(toRow({ ...live, pausedAt: T0 + 20 * 60_000 }, CTX, 3, Date.now()), R2)));
+    expect(result.current.status).toBe('paused');
+  });
+});
+
+describe('#296 round 4: a conflict merge knows when the saved copy was written', () => {
+  it('started here unread and ended offline; the saved one (another start) was written after that End: it stays running', async () => {
+    const T0 = Date.now() - 90 * 60_000;
+    const savedLive = startSession(T0);
+    fetchMock.mockResolvedValue(undefined);
+    saveMock.mockResolvedValueOnce({ error: null, conflict: true }).mockResolvedValue({ error: null, rev: new Date().toISOString() });
+    const { result } = setup({ currentSong: null });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    // Written 10 minutes ago, after this device's End below.
+    fetchMock.mockResolvedValue({ state: savedLive, summary: null, rev: new Date(Date.now() - 10 * 60_000).toISOString() });
+    const realNow = Date.now.bind(Date);
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(T0 + 5 * 60_000);
+    act(() => result.current.start());
+    clock.mockReturnValue(T0 + 60 * 60_000);
+    act(() => result.current.end());
+    clock.mockImplementation(realNow);
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(2));
+    clock.mockRestore();
+    expect(result.current.state?.startedAt).toBe(T0);
+    expect(result.current.status).toBe('live');
+  });
+});

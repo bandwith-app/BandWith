@@ -237,52 +237,86 @@ const lastRun = (s: SessionState): number =>
  *   gap counts as a pause, so the duration loses no minutes. A pause still
  *   open from before the End lasted until it.
  * - A different start (started unread on two devices): the earlier start;
- *   ended only if both copies are (a session running here is never closed by
- *   the saved one's End); the time between the earlier copy's End and the
- *   later copy's Start is a pause.
- * - Songs: every song played on either, by when it was played (songs saved
- *   by older versions, with no time, first, in their order).
+ *   a copy still running is closed by the other's End only if it was last
+ *   written before that End (`savedAt`: the saved copy's updated_at; this
+ *   device's copy: its newest action), so it couldn't know; written after
+ *   it, it is a real Resume and stays running. The time between the earlier
+ *   copy's End and the later copy's Start is a pause.
+ * - Songs: every song played on either, by when it was played (a song an
+ *   older version saved, with no time, right after the timed one before it).
  */
-export const mergeSessions = (mine: SessionState, saved: SessionState): SessionState => {
+export const mergeSessions = (mine: SessionState, saved: SessionState, savedAt?: number): SessionState => {
   const same = mine.startedAt === saved.startedAt;
   const both = [mine, saved];
+  const other = (s: SessionState) => (s === mine ? saved : mine);
   const spans: PauseSpan[] = [...(mine.pauses ?? []), ...(saved.pauses ?? [])];
   if (!same) {
     const [early, late] = mine.startedAt < saved.startedAt ? [mine, saved] : [saved, mine];
     if (early.endedAt !== null && early.endedAt < late.startedAt) spans.push([early.endedAt, late.startedAt]);
   }
+  const touched = (s: SessionState) => Math.max(lastRun(s), s.pausedAt ?? -Infinity);
   const ends = both.map((s) => s.endedAt).filter((e): e is number => e !== null);
   const lastEnd = ends.length ? Math.max(...ends) : null;
+  // Same start: no Resume or song after the End. A different start: the running copy was
+  // last written before the End (it can't know about it, #296 round 4); written after it, it
+  // is a real Resume and stays running.
+  const writtenUntil = (s: SessionState) => (s === saved && savedAt !== undefined ? savedAt : touched(s));
   const ended =
-    lastEnd !== null && (same ? both.every((s) => s.endedAt !== null || lastRun(s) <= lastEnd) : ends.length === 2);
+    lastEnd !== null &&
+    both.every((s) => s.endedAt !== null || (same ? lastRun(s) : writtenUntil(s)) <= lastEnd);
+  // A pause still open on one copy is closed by the other copy's Resume or End after it
+  // (#296 round 4); with none, it stays open only on the copy that did the newest thing.
+  const newest = ended ? null : both.filter((s) => s.endedAt === null).sort((x, y) => touched(y) - touched(x))[0];
   let pausedAt: number | null = null;
-  if (ended) {
-    // A pause still open on a copy that didn't see the End: it lasted until the End.
-    for (const s of both) if (s.endedAt === null && s.pausedAt !== null && s.pausedAt < lastEnd!) spans.push([s.pausedAt, lastEnd!]);
-  } else {
-    // The copy that is still running and did the newest thing says whether it is paused now.
-    const touched = (s: SessionState) => Math.max(lastRun(s), s.pausedAt ?? -Infinity);
-    const newest = both.filter((s) => s.endedAt === null).sort((x, y) => touched(y) - touched(x))[0];
-    pausedAt = newest?.pausedAt ?? null;
+  for (const s of both) {
+    if (s.endedAt !== null || s.pausedAt === null) continue;
+    const o = other(s);
+    const P = s.pausedAt;
+    const closers = [...(o.pauses ?? []).map((p) => p[1]), ...(o.endedAt !== null ? [o.endedAt] : [])].filter((t) => t > P);
+    if (closers.length) spans.push([P, Math.min(...closers)]);
+    else if (s === newest) pausedAt = P;
   }
   const pauses = unionSpans(spans);
   if (pausedAt !== null && pauses.length) pausedAt = Math.max(pausedAt, pauses[pauses.length - 1][1]);
-  const byId = new Map<string, PlayedSong>();
-  for (const p of [...saved.played, ...mine.played]) {
-    const had = byId.get(p.id);
-    if (!had) byId.set(p.id, { ...p });
-    else if (p.at !== undefined && (had.at === undefined || p.at < had.at)) had.at = p.at;
-  }
-  // Stable: songs with no time keep their order, first.
-  const played = [...byId.values()].sort((x, y) => (x.at ?? -Infinity) - (y.at ?? -Infinity) || 0);
+  // Paused time (#296 round 4, Claude): a copy with no pause times (an older build rebuilds the
+  // summary without them) already holds every pause it knew of in pausedMs; never added up across copies.
+  const timed = both.filter((s) => (s.pauses ?? []).length > 0);
+  const pausedMs = Math.max(
+    spanMs(pauses) + Math.max(0, ...timed.map(untimedPauseMs)),
+    ...both.filter((s) => !(s.pauses ?? []).length).map((s) => s.pausedMs),
+  );
   return {
     startedAt: Math.min(mine.startedAt, saved.startedAt),
-    pausedMs: spanMs(pauses) + Math.max(untimedPauseMs(mine), untimedPauseMs(saved)),
+    pausedMs,
     pausedAt,
     endedAt: ended ? lastEnd : null,
-    played,
+    played: mergePlayed(saved.played, mine.played),
     pauses,
   };
+};
+
+/**
+ * Every song played on either copy, by when it was played. A song saved by
+ * an older build (no time) keeps its place in its list: right after the
+ * timed song before it (#296 round 4, Claude).
+ */
+const mergePlayed = (first: PlayedSong[], second: PlayedSong[]): PlayedSong[] => {
+  const byId = new Map<string, { song: PlayedSong; key: number; order: number }>();
+  let order = 0;
+  for (const list of [first, second]) {
+    let prev = -Infinity;
+    for (const p of list) {
+      const key = p.at ?? prev;
+      prev = key;
+      const had = byId.get(p.id);
+      if (!had) byId.set(p.id, { song: { ...p }, key, order: order++ });
+      else if (p.at !== undefined && (had.song.at === undefined || p.at < had.song.at)) {
+        had.song.at = p.at;
+        had.key = p.at;
+      }
+    }
+  }
+  return [...byId.values()].sort((x, y) => x.key - y.key || x.order - y.order).map((e) => e.song);
 };
 
 /** The same session, field by field. */

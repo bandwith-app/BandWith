@@ -173,6 +173,48 @@ describe('audit 06 #5: a server error never throws a note away', () => {
     expect(readRejected(ME).map((n) => n.id)).toEqual(ids);
   });
 
+  it('#296 round 4: storage full: the refused note stays in the outbox (never sent again) and shows as “space full”', async () => {
+    writeOutbox(ME, [{ kind: 'save', note: note('full', { body: 'Bridge: half time' }), before: [] }]);
+    const real = localStorage.setItem.bind(localStorage);
+    const quota = vi.spyOn(localStorage, 'setItem').mockImplementation((k: string, v: string) => {
+      if (k.startsWith('bw:rehearsal_notes_rejected:')) throw new DOMException('quota', 'QuotaExceededError');
+      return real(k, v);
+    });
+    try {
+      const api = apiWith(async () => ({ error: { code: '42501', message: 'denied' }, status: 403 }));
+      await flushOutbox(ME, api);
+      expect(readRejected(ME).map((n) => [n.id, n.body, n.spaceFull])).toEqual([['full', 'Bridge: half time', true]]);
+      // Kept on the device, not waiting to be sent, and not sent again.
+      expect(JSON.parse(localStorage.getItem(`bw:rehearsal_notes_outbox:${ME}`)!)).toHaveLength(1);
+      expect(readOutbox(ME)).toEqual([]);
+      await flushOutbox(ME, api);
+      expect(api.save).toHaveBeenCalledTimes(1);
+      dismissRejected(ME, 'full');
+      expect(readRejected(ME)).toEqual([]);
+      expect(localStorage.getItem(`bw:rehearsal_notes_outbox:${ME}`)).toBeNull();
+    } finally {
+      quota.mockRestore();
+    }
+  });
+
+  it('#296 round 4: storage completely full (the outbox can’t be rewritten either): the original entry is never removed', async () => {
+    writeOutbox(ME, [{ kind: 'save', note: note('full', { body: 'Bridge: half time' }), before: [] }]);
+    const quota = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new DOMException('quota', 'QuotaExceededError');
+    });
+    try {
+      const api = apiWith(async () => ({ error: { code: '42501', message: 'denied' }, status: 403 }));
+      await flushOutbox(ME, api);
+      expect(JSON.parse(localStorage.getItem(`bw:rehearsal_notes_outbox:${ME}`)!)[0].note.body).toBe('Bridge: half time');
+      expect(readRejected(ME).map((n) => [n.id, n.spaceFull])).toEqual([['full', true]]);
+      await flushOutbox(ME, api);
+      expect(api.save).toHaveBeenCalledTimes(1);
+    } finally {
+      quota.mockRestore();
+      dismissRejected(ME, 'full');
+    }
+  });
+
   it('Claude minor: one note that keeps failing (5xx) waits on its own; the others still go, and it is tried again later', async () => {
     const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
     writeOutbox(ME, [

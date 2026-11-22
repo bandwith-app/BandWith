@@ -95,3 +95,26 @@ describe('useAudioDownloads: a sign-out stops the whole batch', () => {
     expect(downloadMock).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('#296 round 4: a pass asked for during a download belongs to that account', () => {
+  it('asked again while song 1 comes down, then signed out and another account in: that pass downloads nothing', async () => {
+    const refs = ['https://a/1.mp3', 'https://a/2.mp3'];
+    const { result } = renderHook(() => useAudioDownloads(refs));
+    let run!: Promise<void>;
+    act(() => {
+      run = result.current.prepare();
+    });
+    await flush();
+    // Back online, the card's retry: queued behind the pass on its way.
+    act(() => {
+      void result.current.prepare();
+    });
+    await flush();
+    // Sign-out, then another person signs in on this device.
+    state.signedOut = true;
+    state.user = 'someone-else';
+    await drain(run);
+    await flush();
+    expect(downloadMock).toHaveBeenCalledTimes(1);
+  });
+});

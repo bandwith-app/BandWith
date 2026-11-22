@@ -8,7 +8,8 @@ import { isOfflineError } from './offline/networkErrors';
 import type { RehearsalNote } from './rehearsalNotes';
 
 export type NoteOp =
-  | { kind: 'save'; note: RehearsalNote; before: string[] }
+  /** `refused`: refused for good, but the device had no room to keep its text apart: kept here, never sent again (#296 round 4). */
+  | { kind: 'save'; note: RehearsalNote; before: string[]; refused?: true }
   | { kind: 'delete'; id: string }
   | { kind: 'practised'; id: string; userId: string; value: boolean }
   | { kind: 'ok'; id: string; value: boolean };
@@ -55,7 +56,12 @@ const KEY_PREFIX = 'bw:rehearsal_notes_outbox:';
 export const OUTBOX_EVENT = 'bw:rehearsal-notes-outbox';
 const keyOf = (userId: string) => `${KEY_PREFIX}${userId}`;
 
+/** The changes waiting to be sent (a refused note kept here for lack of room is not one, #296 round 4). */
 export function readOutbox(userId: string | null | undefined): NoteOp[] {
+  return userId ? readAllOps(userId).filter((o) => !isRefused(userId, o)) : [];
+}
+
+function readAllOps(userId: string | null | undefined): NoteOp[] {
   if (!userId) return [];
   try {
     const v = JSON.parse(localStorage.getItem(keyOf(userId)) || '[]');
@@ -65,49 +71,84 @@ export function readOutbox(userId: string | null | undefined): NoteOp[] {
   }
 }
 
-export function writeOutbox(userId: string, ops: NoteOp[]) {
+export function writeOutbox(userId: string, ops: NoteOp[]): boolean {
+  let ok = true;
   try {
     if (ops.length) localStorage.setItem(keyOf(userId), JSON.stringify(ops));
     else localStorage.removeItem(keyOf(userId));
   } catch {
     /* storage full or blocked: the change stays in memory for this visit */
+    ok = false;
   }
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(OUTBOX_EVENT, { detail: { userId } }));
+  return ok;
 }
 
 export function queueNoteOp(userId: string, op: NoteOp) {
-  writeOutbox(userId, addOp(readOutbox(userId), op));
+  writeOutbox(userId, addOp(readAllOps(userId), op));
 }
 
 /**
  * Notes the server refused for good (audit 06 #5): kept with their text so
  * the screen can say so and the words aren't lost. All of them, until the
- * person removes each one (their outbox entry is already gone, #296 round 3).
+ * person removes each one (#296 round 3).
+ *
+ * Moved out of the outbox only once the copy is really written (#296 round
+ * 4): with the device's storage full, the note stays in the outbox marked
+ * `refused` (or, if even that can't be written, in memory for this visit,
+ * the outbox entry untouched), never sent again, and shown with
+ * `spaceFull` so the person copies it now.
  */
 const REJECTED_PREFIX = 'bw:rehearsal_notes_rejected:';
 
-export function readRejected(userId: string | null | undefined): RehearsalNote[] {
-  if (!userId) return [];
+export type RejectedNote = RehearsalNote & { spaceFull?: boolean };
+
+/** Refused notes no storage could take (this visit only). */
+const refusedHere = new Map<string, Map<string, RehearsalNote>>();
+const isRefused = (userId: string, op: NoteOp) => op.kind === 'save' && (!!op.refused || !!refusedHere.get(userId)?.has(op.note.id));
+
+const readStoredRejected = (userId: string): RehearsalNote[] => {
   try {
     const v = JSON.parse(localStorage.getItem(`${REJECTED_PREFIX}${userId}`) || '[]');
     return Array.isArray(v) ? (v as RehearsalNote[]) : [];
   } catch {
     return [];
   }
+};
+
+export function readRejected(userId: string | null | undefined): RejectedNote[] {
+  if (!userId) return [];
+  const out: RejectedNote[] = readStoredRejected(userId);
+  const seen = new Set(out.map((n) => n.id));
+  const spaceFull = (n: RehearsalNote) => {
+    if (seen.has(n.id)) return;
+    seen.add(n.id);
+    out.push({ ...n, spaceFull: true });
+  };
+  for (const op of readAllOps(userId)) if (op.kind === 'save' && isRefused(userId, op)) spaceFull(op.note);
+  for (const n of refusedHere.get(userId)?.values() ?? []) spaceFull(n);
+  return out;
 }
 
-function writeRejected(userId: string, notes: RehearsalNote[]) {
+/** True only when the list is really written (storage full fails quietly in some browsers: read back). */
+function writeRejected(userId: string, notes: RehearsalNote[]): boolean {
+  let ok = true;
   try {
     if (notes.length) localStorage.setItem(`${REJECTED_PREFIX}${userId}`, JSON.stringify(notes));
     else localStorage.removeItem(`${REJECTED_PREFIX}${userId}`);
   } catch {
-    /* storage blocked */
+    ok = false;
   }
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(OUTBOX_EVENT, { detail: { userId } }));
+  return ok;
 }
 
 export function dismissRejected(userId: string, id: string) {
-  writeRejected(userId, readRejected(userId).filter((n) => n.id !== id));
+  const ops = readAllOps(userId);
+  const left = ops.filter((o) => !(o.kind === 'save' && o.note.id === id && isRefused(userId, o)));
+  refusedHere.get(userId)?.delete(id);
+  if (left.length !== ops.length) writeOutbox(userId, left);
+  writeRejected(userId, readStoredRejected(userId).filter((n) => n.id !== id));
 }
 
 /**
@@ -189,6 +230,7 @@ export function flushOutbox(userId: string, api: OutboxApi) {
     // Changes queued while sending go in the same pass (a mark, then its preset).
     // (Bounded: storage that can't be written would hand back the same change.)
     for (let n = 0; n < 500; n++) {
+      // Refused notes kept in the outbox (no room elsewhere) are never sent again.
       const op = readOutbox(userId).find((o) => !held.has(opId(o)));
       if (!op) break;
       const id = opId(op);
@@ -205,15 +247,26 @@ export function flushOutbox(userId: string, api: OutboxApi) {
         continue;
       }
       backoff.delete(backoffKey(userId, id));
+      const same = JSON.stringify(op);
       if (error) {
         dropped++;
-        if (op.kind === 'save') writeRejected(userId, [...readRejected(userId).filter((n) => n.id !== op.note.id), op.note]);
+        if (op.kind === 'save') {
+          // The copy first, checked; only then the original goes (#296 round 4).
+          const kept =
+            writeRejected(userId, [...readStoredRejected(userId).filter((n) => n.id !== op.note.id), op.note]) &&
+            readStoredRejected(userId).some((n) => n.id === op.note.id && n.body === op.note.body);
+          if (!kept) {
+            if (!refusedHere.has(userId)) refusedHere.set(userId, new Map());
+            refusedHere.get(userId)!.set(op.note.id, op.note);
+            writeOutbox(userId, readAllOps(userId).map((o) => (JSON.stringify(o) === same ? { ...op, refused: true as const } : o)));
+            continue;
+          }
+        }
       } else {
         sent++;
-        if (op.kind === 'save' && readRejected(userId).some((n) => n.id === op.note.id)) dismissRejected(userId, op.note.id);
+        if (op.kind === 'save' && readStoredRejected(userId).some((n) => n.id === op.note.id)) dismissRejected(userId, op.note.id);
       }
-      const same = JSON.stringify(op);
-      writeOutbox(userId, readOutbox(userId).filter((o) => JSON.stringify(o) !== same));
+      writeOutbox(userId, readAllOps(userId).filter((o) => JSON.stringify(o) !== same));
     }
     return { sent, dropped, left: readOutbox(userId).length };
   })().finally(() => {

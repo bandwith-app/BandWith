@@ -228,12 +228,13 @@ describe('rehearsal session: two copies of one rehearsal merge, nothing is lost 
     expect(mergeSessions(endSession(live, T0 + 30 * MIN), endSession(live, T0 + 50 * MIN)).endedAt).toBe(T0 + 50 * MIN);
   });
 
-  it('a different start (started unread on another device): the earlier start, its songs are added, ended only when both are', () => {
+  it('a different start (started unread on another device): the earlier start, its songs are added; the End wins over a copy written before it', () => {
     const mine = endSession({ ...startSession(T0 + 5 * MIN), played: [B] }, T0 + 45 * MIN);
     const m = mergeSessions(mine, live);
     expect(m.startedAt).toBe(T0);
     expect(m.played.map((p) => p.id)).toEqual(['s1', 's2']);
-    expect(m.endedAt).toBeNull();
+    // The saved copy (nothing done since its start) can't know about this End (#296 round 4).
+    expect(m.endedAt).toBe(T0 + 45 * MIN);
     const savedEnd = endSession(live, T0 + 30 * MIN);
     expect(mergeSessions(mine, savedEnd).endedAt).toBe(T0 + 45 * MIN);
   });
@@ -309,11 +310,61 @@ describe('#296 round 3: the merge rule (pauses by union, End only when it is the
     expect(mergeSessions(saved, mine).played.map((p) => p.id)).toEqual(['s1', 's2', 's3']);
   });
 
-  it('a row an older version saved (paused time, no pause times) keeps its paused time', () => {
+  it('a row an older version saved (paused time, no pause times) keeps its paused time, never added to ours', () => {
     const old = { ...startSession(T0), pausedMs: 7 * MIN, pauses: undefined };
     const mine = resumeSession(pauseSession(startSession(T0), T0 + 40 * MIN), T0 + 45 * MIN);
-    expect(mergeSessions(mine, old).pausedMs).toBe(12 * MIN);
+    expect(mergeSessions(mine, old).pausedMs).toBe(7 * MIN);
     const row = toRow(mergeSessions(mine, old), { bandId: 'b', eventId: 'e', date: '2026-11-19' }, 3, T0 + 50 * MIN);
-    expect(fromRow(row)?.pausedMs).toBe(12 * MIN);
+    expect(fromRow(row)?.pausedMs).toBe(7 * MIN);
+  });
+});
+
+describe('#296 round 4: mixed builds and open pauses', () => {
+  const A = { id: 's1', title: 'Paper Boats' };
+  const B = { id: 's2', title: 'Superstition' };
+  const X = { id: 's9', title: 'Harbor Lights' };
+
+  it('Claude blocker: a new copy (pause 10–15) and an old build’s copy (paused_ms 8, no times): 8, and still 8 merged again and again', () => {
+    const fresh = resumeSession(pauseSession(startSession(T0), T0 + 10 * MIN), T0 + 15 * MIN);
+    const old = { ...startSession(T0), pausedMs: 8 * MIN, pauses: [] };
+    let m = mergeSessions(fresh, old);
+    expect(m.pausedMs).toBe(8 * MIN);
+    for (let i = 0; i < 3; i++) {
+      m = mergeSessions(m, old);
+      m = mergeSessions(old, m);
+      // What the old build writes back: the full paused_ms, no times.
+      m = mergeSessions(m, { ...m, pauses: [] });
+    }
+    expect(m.pausedMs).toBe(8 * MIN);
+  });
+
+  it('Codex: paused 10, resumed 20, ended 30; the other copy still has the pause open: 20 minutes, not 10', () => {
+    const live = startSession(T0);
+    const done = endSession(resumeSession(pauseSession(live, T0 + 10 * MIN), T0 + 20 * MIN), T0 + 30 * MIN);
+    const stale = pauseSession(live, T0 + 10 * MIN);
+    for (const m of [mergeSessions(done, stale), mergeSessions(stale, done)]) {
+      expect(sessionStatus(m)).toBe('ended');
+      expect(elapsedSeconds(m, T0 + 60 * MIN)).toBe(20 * 60);
+    }
+    // Still running on the other copy: the pause there is closed by this copy's resume.
+    const resumed = resumeSession(pauseSession(live, T0 + 10 * MIN), T0 + 20 * MIN);
+    const m = mergeSessions(stale, resumed);
+    expect(sessionStatus(m)).toBe('live');
+    expect(elapsedSeconds(m, T0 + 40 * MIN)).toBe(30 * 60);
+  });
+
+  it('Claude: different starts, one copy ended: it wins over the running copy saved before that End, not over one saved after it', () => {
+    const ended = endSession(startSession(T0), T0 + 60 * MIN);
+    const running = startSession(T0 + 5 * MIN);
+    // Saved at 0:50, before the End: it couldn't know.
+    expect(sessionStatus(mergeSessions(ended, running, T0 + 50 * MIN))).toBe('ended');
+    // Saved at 1:10, after the End: a real Resume, still running.
+    expect(sessionStatus(mergeSessions(ended, running, T0 + 70 * MIN))).toBe('live');
+  });
+
+  it('Claude: a song an older build saved (no time) keeps its place, after the timed song before it', () => {
+    const saved = { ...startSession(T0), played: [{ ...A, at: T0 + 1 * MIN }, X, { ...B, at: T0 + 30 * MIN }] };
+    const mine = { ...startSession(T0), played: [{ ...A, at: T0 + 1 * MIN }, { id: 's3', title: 'Empire State of Mind', at: T0 + 10 * MIN }] };
+    expect(mergeSessions(mine, saved).played.map((p) => p.id)).toEqual(['s1', 's9', 's3', 's2']);
   });
 });

@@ -2,6 +2,12 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { audioSession, cachedAudio, downloadAudio, type AudioFailure } from '@/lib/regiaAudio';
 import { sessionUserId } from '@/lib/sessionUser';
 
+/** What a download pass is bound to: the sign-in (audioSession) and the account it was asked under. */
+interface Pass {
+  current: () => boolean;
+  user: Promise<string | null>;
+}
+
 /** A song file on this device: waiting, coming down (0–1, null = size unknown), there, or not possible. */
 export type SongAudio =
   | { state: 'queued' }
@@ -53,20 +59,24 @@ export function useAudioDownloads(refs: string[]) {
   }, [key]);
 
   const preparing = useRef(false);
-  const again = useRef(false);
-  const prepare = useCallback(async (): Promise<void> => {
+  /** A pass asked for during one: run after it, for the account it was asked for (#296 round 4). */
+  const again = useRef<Pass | null>(null);
+  const run = useCallback(async (bound?: Pass): Promise<void> => {
+    // Bound to the account and sign-in it is asked under, here and now.
+    const pass = bound ?? { current: audioSession(), user: sessionUserId() };
     if (preparing.current) {
-      again.current = true;
+      again.current = pass;
       return;
     }
     preparing.current = true;
     try {
       // Sign-out (here or in another tab) or another account: the batch stops
-      // before the next song, it never fills the device again (#296 round 3).
-      const current = audioSession();
-      const user = await sessionUserId();
+      // before the next song, it never fills the device again (#296 round 3);
+      // a pass asked for before that downloads nothing.
+      const { current } = pass;
+      const user = await pass.user;
       const stillHere = async () => current() && !!user && (await sessionUserId()) === user;
-      if (!user) return;
+      if (!user || !(await stillHere())) return;
       const refs = refsRef.current;
       const have = await cachedAudio(refs);
       setCached(have);
@@ -102,13 +112,14 @@ export function useAudioDownloads(refs: string[]) {
       setDownloading(null);
     } finally {
       preparing.current = false;
-      if (again.current) {
-        again.current = false;
-        void prepare();
-      }
+      const queued = again.current;
+      again.current = null;
+      if (queued) void run(queued);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
+
+  const prepare = useCallback((): Promise<void> => run(), [run]);
 
   /** Forget the per-file states (the files stay on the device). */
   const clear = useCallback(() => setAudio({}), []);

@@ -235,6 +235,31 @@ describe('Live mode on a rehearsal: notes (A2)', () => {
     else delete (navigator as { clipboard?: unknown }).clipboard;
   });
 
+  it('#296 round 4: after a copy the button is named “Copied” and the live region says so', async () => {
+    const refused = note({ id: 'n9', status: 'open', preset: 'tempo', body: 'Count the outro in four', markedAtS: null });
+    const had = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn(async () => {}) }, configurable: true });
+    try {
+      renderLive(controls([], { rejected: [refused], dismissRejected: vi.fn() }), session(startSession(T0)));
+      fireEvent.click(screen.getByRole('button', { name: 'Notes · 0' }));
+      const list = sheet(/Notes · 0/);
+      fireEvent.click(within(list).getByRole('button', { name: /^Copy note:/ }));
+      expect(await within(list).findByRole('button', { name: 'Copied' })).toBeInTheDocument();
+      const live = list.querySelector('[aria-live="polite"]');
+      expect(live).toHaveTextContent('Copied');
+    } finally {
+      if (had) Object.defineProperty(navigator, 'clipboard', had);
+      else delete (navigator as { clipboard?: unknown }).clipboard;
+    }
+  });
+
+  it('#296 round 4: a refused note the device had no room for says to copy it now', () => {
+    const refused = { ...note({ id: 'n9', status: 'open', preset: 'tempo', body: 'Count the outro in four', markedAtS: null }), spaceFull: true };
+    renderLive(controls([], { rejected: [refused], dismissRejected: vi.fn() }), session(startSession(T0)));
+    fireEvent.click(screen.getByRole('button', { name: 'Notes · 0' }));
+    expect(within(sheet(/Notes · 0/)).getByText('Space full: copy your note now')).toBeInTheDocument();
+  });
+
   it('gigs have no notes', () => {
     const c = controls([]);
     const notes: LiveNotes = { controls: c, songs, members, elapsed: () => 0 };

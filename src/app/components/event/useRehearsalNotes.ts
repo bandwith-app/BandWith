@@ -12,6 +12,7 @@ import {
   readOutbox,
   readRejected,
   type NoteOp,
+  type RejectedNote,
   type OutboxApi,
 } from '@/lib/rehearsalNotesOutbox';
 
@@ -52,7 +53,7 @@ export interface RehearsalNotesControls {
   /** Changes not sent yet (no signal). */
   waiting: number;
   /** This rehearsal's notes the server refused for good, with their text (audit 06 #5). */
-  rejected?: RehearsalNote[];
+  rejected?: RejectedNote[];
   /** The person has seen a refused note: it goes from the list. */
   dismissRejected?: (id: string) => void;
   userId?: string;
@@ -78,7 +79,7 @@ export function useRehearsalNotes({ enabled, bandId, eventId, date, userId, isAd
   const [saved, setSaved] = useState<RehearsalNote[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [ops, setOps] = useState<NoteOp[]>(() => readOutbox(userId));
-  const [refused, setRefused] = useState<RehearsalNote[]>(() => readRejected(userId));
+  const [refused, setRefused] = useState<RejectedNote[]>(() => readRejected(userId));
 
   const reload = useCallback(async () => {
     if (!on) return;

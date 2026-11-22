@@ -47,7 +47,22 @@ export interface SessionMessage {
   eventId: string;
   date: string;
   row: SessionRow | null;
+  /**
+   * The saved revision the sender's session is built on (#296 round 4).
+   * Missing from older builds: their messages are treated as older and
+   * merged, never taken as they are.
+   */
+  rev?: string | null;
 }
+
+/** Their revision is newer than ours (a save this device hasn't read). Revisions are updated_at times. */
+const newerRev = (theirs: unknown, ours: Rev): boolean => {
+  if (typeof theirs !== 'string') return false;
+  if (ours == null) return true;
+  const a = Date.parse(theirs);
+  const b = Date.parse(ours);
+  return Number.isFinite(a) && Number.isFinite(b) && a > b;
+};
 
 const storeKey = (eventId: string, date: string) => `bw-rehearsal-session:${eventId}|${date}`;
 /** `rev`: the saved revision the device copy is based on (undefined: never read). */
@@ -133,7 +148,7 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
   const message = useCallback(
     (s: SessionState | null): SessionMessage | null => {
       const c = ctxRef.current;
-      return c.eventId && c.date ? { v: 1, eventId: c.eventId, date: c.date, row: rowOf(s) } : null;
+      return c.eventId && c.date ? { v: 1, eventId: c.eventId, date: c.date, row: rowOf(s), rev: revRef.current ?? null } : null;
     },
     [rowOf],
   );
@@ -163,7 +178,9 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
         return !!mine;
       }
       revRef.current = saved.rev ?? null;
-      const merged = mine ? mergeSessions(mine, saved.state) : saved.state;
+      // When the saved copy was written (its revision is updated_at): an End made here wins over a copy written before it.
+      const savedAt = saved.rev ? Date.parse(saved.rev) : NaN;
+      const merged = mine ? mergeSessions(mine, saved.state, Number.isFinite(savedAt) ? savedAt : undefined) : saved.state;
       const adds = !sameSession(merged, saved.state);
       versionRef.current += 1;
       clearTimeout(saveTimer.current);
@@ -361,15 +378,26 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
     const c = ctxRef.current;
     const msg = payload as Partial<SessionMessage> | null;
     if (!c.key || !msg || msg.v !== 1 || msg.eventId !== c.eventId || msg.date !== c.date) return;
+    const next = msg.row ? fromRow(msg.row) : null;
+    const mine = stateRef.current;
+    /**
+     * Taken as it is only when it is built on a newer save than ours, and it
+     * doesn't turn a saved, ended session back to running (#296 round 4: a
+     * delayed "running" message must not undo the End). Otherwise merged:
+     * a stale copy adds what it has and can't reopen it (mergeSessions).
+     */
+    const takes = (): boolean =>
+      !mine || !next || (newerRev(msg.rev, revRef.current) && !(sessionStatus(mine) === 'ended' && sessionStatus(next) !== 'ended'));
     if (!c.isLeader) {
-      setState(msg.row ? fromRow(msg.row) : null);
+      if (takes()) {
+        setState(next);
+        if (typeof msg.rev === 'string') revRef.current = msg.rev;
+      } else setState(mergeSessions(mine!, next!));
       return;
     }
-    const next = msg.row ? fromRow(msg.row) : null;
     if (unsavedRef.current) {
       // A change of ours not saved yet (offline, on its way): never overwritten, the other
       // admin's change merges into it (#296 round 3) and both are saved together.
-      const mine = stateRef.current;
       if (!next || !mine) return;
       const merged = mergeSessions(mine, next);
       if (sameSession(merged, mine)) return;
@@ -379,8 +407,15 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
       void flush();
       return;
     }
-    setState(next);
-    writeLocal(c.key, msg.row ? rowOf(next) : null, false, revRef.current);
+    let shown = next;
+    if (takes()) {
+      if (typeof msg.rev === 'string') revRef.current = msg.rev;
+    } else {
+      shown = mergeSessions(mine!, next!);
+      if (sameSession(shown, mine)) return;
+    }
+    setState(shown);
+    writeLocal(c.key, shown ? rowOf(shown) : null, false, revRef.current);
     // The other admin saves it a moment later: then read its revision.
     clearTimeout(refreshTimer.current);
     refreshTimer.current = setTimeout(() => {

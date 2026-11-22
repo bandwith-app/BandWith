@@ -20,6 +20,7 @@
  */
 import { Capacitor } from '@capacitor/core';
 import { playableAudioUrl, resolveSongFileUrl } from './services/songFiles';
+import { sessionUserId } from './sessionUser';
 
 const DIR = 'regia-audio';
 const DB = 'bw-regia-audio';
@@ -36,6 +37,8 @@ export async function audioKey(ref: string): Promise<string> {
 interface StoredAudio {
   type: string;
   data: ArrayBuffer;
+  /** The account that downloaded it (#296 round 4); missing in copies of older builds. */
+  owner?: string | null;
 }
 
 const openDb = (): Promise<IDBDatabase> =>
@@ -238,12 +241,35 @@ export function audioSession(): () => boolean {
  * closed): marked, and finished at the next launch (finishPendingAudioCleanup).
  */
 const PENDING_KEY = 'bw-regia-audio:cleanup-pending';
-const setPending = (on: boolean) => {
+/** The account the downloads on this device belong to (the one a pending deletion is for). */
+const OWNER_KEY = 'bw-regia-audio:owner';
+const store = {
+  get: (k: string): string | null => {
+    try {
+      return localStorage.getItem(k);
+    } catch {
+      return null;
+    }
+  },
+  set: (k: string, v: string | null) => {
+    try {
+      if (v === null) localStorage.removeItem(k);
+      else localStorage.setItem(k, v);
+    } catch {
+      /* storage blocked */
+    }
+  },
+};
+/** Marked with the account whose recordings it deletes (#296 round 4). */
+const setPending = (on: boolean) => store.set(PENDING_KEY, on ? JSON.stringify({ user: store.get(OWNER_KEY) }) : null);
+const readPending = (): { user: string | null } | null => {
+  const v = store.get(PENDING_KEY);
+  if (!v) return null;
   try {
-    if (on) localStorage.setItem(PENDING_KEY, '1');
-    else localStorage.removeItem(PENDING_KEY);
+    const p = JSON.parse(v) as { user?: unknown } | number;
+    return { user: p && typeof p === 'object' && typeof p.user === 'string' ? p.user : null };
   } catch {
-    /* storage blocked */
+    return { user: null };
   }
 };
 
@@ -267,11 +293,26 @@ export async function clearDownloadedAudio(): Promise<void> {
     /* no other tabs to tell */
   }
   if (Capacitor.isNativePlatform()) {
-    const { Filesystem, Directory } = await fs();
-    const { directory } = await nativeLoc('');
-    const folders = Capacitor.getPlatform?.() === 'ios' ? [directory, Directory.Documents, Directory.Library] : [directory];
-    await Promise.all(folders.map((d) => Filesystem.rmdir({ path: DIR, directory: d, recursive: true }).catch(() => undefined)));
-    setPending(false);
+    // The mark goes only once every folder is really gone; any error keeps it, and the
+    // next launch tries again (#296 round 4: a shared device keeps no recording).
+    try {
+      const { Filesystem, Directory } = await fs();
+      const { directory } = await nativeLoc('');
+      const folders = Capacitor.getPlatform?.() === 'ios' ? [directory, Directory.Documents, Directory.Library] : [directory];
+      const gone = await Promise.all(
+        folders.map(async (d) => {
+          await Filesystem.rmdir({ path: DIR, directory: d, recursive: true }).catch(() => undefined);
+          // Still there (the delete failed, not just "nothing to delete")?
+          return Filesystem.stat({ path: DIR, directory: d }).then(
+            () => false,
+            () => true,
+          );
+        }),
+      );
+      if (gone.every(Boolean)) setPending(false);
+    } catch {
+      /* kept marked: tried again at the next launch */
+    }
     return;
   }
   if (typeof indexedDB === 'undefined') return setPending(false);
@@ -279,27 +320,46 @@ export async function clearDownloadedAudio(): Promise<void> {
   await new Promise<void>((resolve) => {
     try {
       const req = indexedDB.deleteDatabase(DB);
-      req.onsuccess = req.onerror = () => {
+      req.onsuccess = () => {
         setPending(false);
         resolve();
       };
-      // Another tab still has it open: deleted once that tab lets go; marked until then.
-      req.onblocked = () => resolve();
+      // Not deleted (an error), or another tab still has it open (deleted once it lets go,
+      // onsuccess then): marked until then, and tried again at the next launch.
+      req.onerror = req.onblocked = () => resolve();
     } catch {
       resolve();
     }
   });
 }
 
-/** At launch: a sign-out's deletion that didn't finish is finished now. */
+/**
+ * At launch: a sign-out's deletion that didn't finish is finished now. On
+ * the web, when someone else has signed in meanwhile (the database was held
+ * open by another tab), only the previous account's recordings go, never the
+ * new person's (#296 round 4).
+ */
 export async function finishPendingAudioCleanup(): Promise<void> {
-  let pending = false;
-  try {
-    pending = localStorage.getItem(PENDING_KEY) === '1';
-  } catch {
-    pending = false;
+  const pending = readPending();
+  if (!pending) return;
+  if (!Capacitor.isNativePlatform() && pending.user && typeof indexedDB !== 'undefined') {
+    const me = await sessionUserId();
+    if (me && me !== pending.user) {
+      try {
+        const keys = await idb('readonly', (s) => s.getAllKeys());
+        for (const k of keys) {
+          const rec = await idb<StoredAudio | undefined>('readonly', (s) => s.get(k) as IDBRequest<StoredAudio | undefined>);
+          if (rec?.owner !== me) await idb('readwrite', (s) => s.delete(k));
+        }
+        store.set(PENDING_KEY, null);
+        store.set(OWNER_KEY, me);
+      } catch {
+        /* kept marked: the next launch tries again */
+      }
+      return;
+    }
   }
-  if (pending) await clearDownloadedAudio();
+  await clearDownloadedAudio();
 }
 
 async function downloadOnce(ref: string, onProgress: (fraction: number | null) => void): Promise<DownloadResult> {
@@ -307,6 +367,9 @@ async function downloadOnce(ref: string, onProgress: (fraction: number | null) =
   const started = generation;
   const mark = clearedMark();
   const stale = () => generation !== started || clearedMark() !== mark;
+  // The account it is downloaded for: signed out (an expired session too) or someone else by the end, not kept.
+  const owner = await sessionUserId();
+  const gone = async () => stale() || (await sessionUserId()) !== owner;
   let url: string | null = null;
   try {
     url = await remoteUrl(ref);
@@ -337,9 +400,11 @@ async function downloadOnce(ref: string, onProgress: (fraction: number | null) =
       } finally {
         void listener.remove();
       }
-      if (stale()) {
-        // Signed out while it came down: not kept.
+      if (await gone()) {
+        // Signed out while it came down: not kept. The delete is checked; one that failed
+        // stays marked for the next launch (#296 round 4).
         await Filesystem.deleteFile(loc).catch(() => undefined);
+        if (await Filesystem.stat(loc).then(() => true, () => false)) setPending(true);
         return { ok: false, reason: 'failed' };
       }
       const st = await Filesystem.stat(loc);
@@ -348,6 +413,7 @@ async function downloadOnce(ref: string, onProgress: (fraction: number | null) =
         await Filesystem.deleteFile(loc).catch(() => undefined);
         return { ok: false, reason: 'link' };
       }
+      store.set(OWNER_KEY, owner);
       return { ok: true };
     }
     if (stale()) return { ok: false, reason: 'failed' };
@@ -369,12 +435,13 @@ async function downloadOnce(ref: string, onProgress: (fraction: number | null) =
       fetches.delete(abort);
     }
     // Signed out while it came down: not kept.
-    if (stale()) return { ok: false, reason: 'failed' };
+    if (await gone()) return { ok: false, reason: 'failed' };
     if (!data.byteLength || !looksLikeAudio(new Uint8Array(data, 0, Math.min(16, data.byteLength)))) return { ok: false, reason: 'link' };
     const type = res.headers.get('content-type') || 'audio/mpeg';
     // Bytes, not a Blob: Safari's private windows refuse Blobs in IndexedDB.
-    await idb('readwrite', (s) => s.put({ type, data } satisfies StoredAudio, key));
-    if (stale()) {
+    store.set(OWNER_KEY, owner);
+    await idb('readwrite', (s) => s.put({ type, data, owner } satisfies StoredAudio, key));
+    if (await gone()) {
       // Signed out while it was being written (another tab): taken back out.
       await idb('readwrite', (s) => s.delete(key)).catch(() => undefined);
       return { ok: false, reason: 'failed' };
