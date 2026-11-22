@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, lazy, Suspense, useCallback } from "react"
 import { useAuth } from "@/lib/AuthContext";
 import { useBand } from "@/lib/BandContext";
 import AuthCallback from "./auth/callback";
+import { SigningOutScreen, useSigningOut } from "./components/layout/SigningOutScreen";
 import { Capacitor } from "@capacitor/core";
 import { App as CapacitorApp } from "@capacitor/app";
 import { isOpenedFileUrl, receiveChartFile } from '@/lib/chartInbox';
@@ -261,6 +262,14 @@ export default function App() {
       console.warn("No bands returned after onboarding. This usually means a DB schema/RLS issue.");
     }
   }, [bands.length, bandsLoading, authLoading]);
+
+  // A failed sign-out is wiping this device (signOutWipe, #296 round 12): until its reload only
+  // "Signing out…" shows. No sign-in form and no auth callback, so nobody signs in while a sync
+  // pass for the account that left may still be running (it would go on as the new account).
+  const signingOut = useSigningOut();
+  if (signingOut) {
+    return <SigningOutScreen />;
+  }
 
   // If the URL indicates an OAuth callback, render the callback page
   // which extracts the session from the URL and redirects to the app root

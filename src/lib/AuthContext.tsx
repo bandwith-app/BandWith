@@ -88,6 +88,22 @@ export const useAuth = () => {
 export const useOptionalAuth = (): AuthContextType | undefined => useContext(AuthContext);
 
 /**
+ * A deleted account's own keys left on this device (its refused changes and
+ * unsent messages, which sign-out keeps): removed. The fallback when
+ * signOutWipe can't load (Claude r8 M2); other accounts' keys stay.
+ */
+const dropAccountLists = (gone: string | null) => {
+  if (!gone) return;
+  const end = `:${gone.toLowerCase()}`;
+  try {
+    const keys = Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i) ?? '');
+    for (const k of keys) if (k.startsWith('bw:') && k.toLowerCase().endsWith(end)) localStorage.removeItem(k);
+  } catch {
+    /* storage blocked */
+  }
+};
+
+/**
  * Sends the signed-in user's queued offline edits (a few seconds at most) and
  * returns whatever is still queued, to be stored again after sign-out.
  */
@@ -247,6 +263,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
 
     initializeAuth();
+    // A sign-out whose recordings deletion didn't finish (app closed, 3 s budget): finished now;
+    // then the older builds' recordings move into the signed-in account's folder (#296 round 6).
+    void import('./regiaAudio').then((m) => m.finishPendingAudioCleanup()).catch(() => {});
 
     const {
       data: { subscription },
@@ -257,7 +276,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // The initial state is initializeAuth's: offline, the library reports no
       // session here although the stored one is still valid.
       if (event === 'INITIAL_SESSION' && !session) return;
-      if (event === 'SIGNED_IN') setAuthError(null);
+      if (event === 'SIGNED_IN') {
+        setAuthError(null);
+        // Older builds' Stage recordings left unclaimed (no session at the first launch): maybe another account's, deleted (#296 round 6).
+        void import('./regiaAudio').then((m) => m.legacyAudioSignedIn()).catch(() => {});
+      }
 
       setSession(session);
       setUser(session?.user ?? null);
@@ -278,6 +301,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }, 0);
       } else if (event === 'SIGNED_OUT') {
         setProfile(null);
+        // Any sign-out (an expired or revoked session too): the Stage recordings go (#296 round 3).
+        void import('./regiaAudio').then((m) => m.clearDownloadedAudio()).catch(() => {});
       }
     });
 
@@ -404,7 +429,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return { error };
   };
 
-  const handleSignOut = async () => {
+  const handleSignOut = async (opts?: { discardPendingWrites?: boolean }) => {
     // Offline edits not sent yet: try now, while the session is still valid.
     // What still can't be sent is kept on this device for this account only
     // (its own queue key) and syncs at its next sign-in, instead of being
@@ -428,12 +453,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
     const { error } = await signOut({ keepDeviceSession });
     if (!error) {
+      // The band's private recordings downloaded for Stage go too, downloads on their way included
+      // (audit 06 #2). Awaited: the app navigates as soon as this returns (#296 B4); 3 s at most.
+      await Promise.race([
+        import('./regiaAudio').then((m) => m.clearDownloadedAudio()).catch(() => {}),
+        new Promise((r) => setTimeout(r, 3000)),
+      ]);
       setUser(null);
       setProfile(null);
       setSession(null);
       clearStageCache();
-      clearOfflineCache()
-        .then(() => (pendingQueue ? setOfflineItem(pendingQueue.key, pendingQueue.items) : undefined))
+      // Refused notes stay for this account (#296 round 8): read before the clear, put back after.
+      // Awaited, every step (main, three-way sign-out with #287/#292): nothing of it runs after this
+      // returns, so what follows (a deleted account's discardAccountWrites) always comes last.
+      // A deleted account (Claude r8 M2): nothing of it is kept or put back, deletion always wins.
+      const gone = opts?.discardPendingWrites ? user?.id ?? null : null;
+      await import('./signOutWipe')
+        .then(
+          (m) => m.keepingSignOutLists(() => clearOfflineCache(), { gone }),
+          // Its chunk not there (offline, an old cache): the clear still runs, a deleted account's lists still go.
+          () => clearOfflineCache().then(() => dropAccountLists(gone)),
+        )
+        .then(() => (pendingQueue && !gone ? setOfflineItem(pendingQueue.key, pendingQueue.items) : undefined))
         .catch(() => {});
     }
     return { error };

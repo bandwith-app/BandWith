@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
+import { rejectedKey } from '@/lib/rehearsalNotesOutbox';
+import { render, screen, cleanup, fireEvent, within, waitFor } from '@testing-library/react';
 
 vi.mock('@/lib/haptics', () => ({
   haptic: { tap: vi.fn(), medium: vi.fn(), confirm: vi.fn(), delete: vi.fn(), selection: vi.fn() },
@@ -76,6 +77,7 @@ const session = (state: SessionState | null, over: Partial<RehearsalSessionContr
   status: sessionStatus(state),
   unsaved: false,
   justEnded: false,
+  alreadyEnded: false,
   dismissSummary: vi.fn(),
   canControl: true,
   start: vi.fn(),
@@ -192,6 +194,86 @@ describe('Live mode on a rehearsal: notes (A2)', () => {
     const summary = screen.getByRole('dialog', { name: 'Rehearsal summary' });
     fireEvent.click(within(summary).getByRole('button', { name: 'Marks to write: 1' }));
     expect(sheet(/Notes · 1/)).toBeInTheDocument();
+  });
+
+  it('audit 06 #5: a note the server refused says so, its words stay to copy, then it can be removed', () => {
+    const refused = note({ id: 'n9', status: 'open', preset: 'tempo', body: 'Count the outro in four', markedAtS: null });
+    const dismissRejected = vi.fn();
+    const c = controls([], { rejected: [refused], dismissRejected });
+    renderLive(c, session(startSession(T0)));
+    expect(screen.getByText("A note wasn't saved")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Notes · 0' }));
+    const list = sheet(/Notes · 0/);
+    expect(within(list).getByText("These notes weren't saved. Copy what you need, then remove them.")).toBeInTheDocument();
+    expect(within(list).getByText('Paper Boats · Tempo · Count the outro in four')).toBeInTheDocument();
+    fireEvent.click(within(list).getByRole('button', { name: 'Remove note: Paper Boats · Tempo · Count the outro in four' }));
+    // One entry per refused version: removed by its key (#296 round 6).
+    expect(dismissRejected).toHaveBeenCalledWith(rejectedKey(refused));
+  });
+
+  it('#296 round 8 (Codex r8 M2): a refused note pinned to a lyric line shows and copies the line; two versions that differ only by line are two entries', () => {
+    const a = note({ id: 'n9', status: 'open', preset: 'tempo', section: null, line: 'Paper boats on the river', body: 'Rushes here', markedAtS: null });
+    const b = { ...a, line: 'Sinking slow' };
+    expect(rejectedKey(a)).not.toBe(rejectedKey(b));
+    renderLive(controls([], { rejected: [a, b], dismissRejected: vi.fn() }), session(startSession(T0)));
+    fireEvent.click(screen.getByRole('button', { name: 'Notes · 0' }));
+    const list = sheet(/Notes · 0/);
+    expect(within(list).getByText('Paper Boats · Tempo · “Paper boats on the river” · Rushes here')).toBeInTheDocument();
+    expect(within(list).getByText('Paper Boats · Tempo · “Sinking slow” · Rushes here')).toBeInTheDocument();
+  });
+
+  it('#296 round 3: the refused notes read as a status (not an alert), each button names its note', () => {
+    const refused = note({ id: 'n9', status: 'open', preset: 'tempo', body: 'Count the outro in four', markedAtS: null });
+    renderLive(controls([], { rejected: [refused], dismissRejected: vi.fn() }), session(startSession(T0)));
+    fireEvent.click(screen.getByRole('button', { name: 'Notes · 0' }));
+    const list = sheet(/Notes · 0/);
+    expect(within(list).queryByRole('alert')).toBeNull();
+    expect(within(list).getByRole('status')).toHaveTextContent("These notes weren't saved. Copy what you need, then remove them.");
+    expect(within(list).getByRole('button', { name: 'Copy note: Paper Boats · Tempo · Count the outro in four' })).toBeInTheDocument();
+    expect(within(list).getByRole('button', { name: 'Remove note: Paper Boats · Tempo · Count the outro in four' })).toBeInTheDocument();
+  });
+
+  it('#296 round 3: no clipboard (or it refuses): the screen says so, the text stays to select', async () => {
+    const refused = note({ id: 'n9', status: 'open', preset: 'tempo', body: 'Count the outro in four', markedAtS: null });
+    const had = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    for (const clipboard of [undefined, { writeText: vi.fn(async () => Promise.reject(new Error('NotAllowedError'))) }]) {
+      Object.defineProperty(navigator, 'clipboard', { value: clipboard, configurable: true });
+      const view = renderLive(controls([], { rejected: [refused], dismissRejected: vi.fn() }), session(startSession(T0)));
+      fireEvent.click(screen.getByRole('button', { name: 'Notes · 0' }));
+      const list = sheet(/Notes · 0/);
+      fireEvent.click(within(list).getByRole('button', { name: /^Copy note:/ }));
+      expect(await within(list).findByText('Couldn’t copy. Select the text and copy it yourself.')).toBeInTheDocument();
+      view.unmount();
+    }
+    if (had) Object.defineProperty(navigator, 'clipboard', had);
+    else delete (navigator as { clipboard?: unknown }).clipboard;
+  });
+
+  it('#296 round 4 / Claude r8 N3: after a copy the live region says “Copied”, once: the button keeps its name', async () => {
+    const refused = note({ id: 'n9', status: 'open', preset: 'tempo', body: 'Count the outro in four', markedAtS: null });
+    const had = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn(async () => {}) }, configurable: true });
+    try {
+      renderLive(controls([], { rejected: [refused], dismissRejected: vi.fn() }), session(startSession(T0)));
+      fireEvent.click(screen.getByRole('button', { name: 'Notes · 0' }));
+      const list = sheet(/Notes · 0/);
+      fireEvent.click(within(list).getByRole('button', { name: /^Copy note:/ }));
+      const live = list.querySelector('[aria-live="polite"]');
+      await waitFor(() => expect(live).toHaveTextContent('Copied'));
+      // Seen on the button, announced only by the live region (not twice).
+      expect(within(list).queryByRole('button', { name: 'Copied' })).toBeNull();
+      expect(within(list).getByRole('button', { name: /^Copy note:/ })).toHaveTextContent('Copied');
+    } finally {
+      if (had) Object.defineProperty(navigator, 'clipboard', had);
+      else delete (navigator as { clipboard?: unknown }).clipboard;
+    }
+  });
+
+  it('#296 round 4: a refused note the device had no room for says to copy it now', () => {
+    const refused = { ...note({ id: 'n9', status: 'open', preset: 'tempo', body: 'Count the outro in four', markedAtS: null }), spaceFull: true };
+    renderLive(controls([], { rejected: [refused], dismissRejected: vi.fn() }), session(startSession(T0)));
+    fireEvent.click(screen.getByRole('button', { name: 'Notes · 0' }));
+    expect(within(sheet(/Notes · 0/)).getByText('Space full: copy your note now')).toBeInTheDocument();
   });
 
   it('gigs have no notes', () => {

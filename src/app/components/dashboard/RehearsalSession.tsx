@@ -72,10 +72,14 @@ export const RehearsalSessionBar: React.FC<{
         <button
           type="button"
           onClick={tap(session.start)}
-          className={cn(pill, 'w-full min-h-12 text-black')}
+          // Not before the saved session has been read: it may already exist (audit 06 #4).
+          disabled={!session.ready}
+          aria-busy={!session.ready}
+          className={cn(pill, 'w-full min-h-12 text-black disabled:opacity-60')}
           style={{ backgroundColor: accentColor }}
         >
-          <Play className="w-5 h-5" aria-hidden /> {t('Start rehearsal')}
+          {/* Disabled until the saved rehearsal is read (Claude r8 B1): says why, seen and announced. */}
+          <Play className="w-5 h-5" aria-hidden /> {session.ready ? t('Start rehearsal') : t('Loading the rehearsal…')}
         </button>
       ) : (
         <div className="flex items-center gap-3 min-w-0 min-h-12">
@@ -91,6 +95,13 @@ export const RehearsalSessionBar: React.FC<{
             <span className="bw-label-xs text-white/70 truncate" role="status">
               {statusLabel(status, t)}
               {session.unsaved && canControl ? ` · ${t('Saved when back online')}` : ''}
+            </span>
+            {/* A Start here met a rehearsal that had already ended (Claude r8 B1b). Always there,
+                only its text changes, so screen readers announce it (#296 round 10). */}
+            <span className="bw-label-xs text-white" role="status" aria-live="polite" data-bw-ended-notice="">
+              {status === 'ended' && session.alreadyEnded
+                ? t('This rehearsal had already ended. Any songs you played were added to it.')
+                : ''}
             </span>
           </span>
           <span className="flex items-center gap-2 ml-auto shrink-0">

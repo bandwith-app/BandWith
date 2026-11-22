@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { clearStorageKeepingPrivacyChoices } from '@/lib/privacyChoices';
 import { useLaptopPose } from '@/app/components/duo/FoldSplit';
 import { readLocalPref, loadNotificationPrefs, saveNotificationPrefs } from '@/lib/services/notificationPrefs';
 import { exportMyData } from '@/lib/services/dataExport';
@@ -40,6 +39,7 @@ import { useBand } from '@/lib/BandContext';
 import { updateBand } from '@/lib/services/bands';
 import { uploadBandBrandingAsset, getBandPricing, saveBandPricing } from '@/lib/services/pricing';
 import { personName, personInitials, hasRealName } from '@/lib/personName';
+import { wipeAfterFailedSignOut } from '@/lib/signOutWipe';
 import { useT } from '@/lib/i18n';
 import { useAppVersion } from '@/lib/appVersion';
 import { uuidToNumericId } from '@/lib/numericId';
@@ -304,8 +304,9 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
       window.location.href = '/';
     } catch (e) {
       console.error('Logout failed:', e);
-      // Everything goes but the device's privacy choices (a crash-report opt-out stays off).
-      clearStorageKeepingPrivacyChoices();
+      // Wiped, but not what sign-out keeps (the refused notes, the recordings' cleanup marks, #296 round 7),
+      // nor the device's privacy choices (a crash-report opt-out stays off, #277): signOutWipe keeps both.
+      await wipeAfterFailedSignOut();
       window.location.href = '/';
     }
   };

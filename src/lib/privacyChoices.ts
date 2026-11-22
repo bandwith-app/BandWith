@@ -8,6 +8,8 @@ import { ANALYTICS_CONSENT_KEY, ANALYTICS_CONSENT_VERSION_KEY } from './appAnaly
  * without asking.
  */
 const KEPT = [CRASH_REPORTS_KEY, ANALYTICS_CONSENT_KEY, ANALYTICS_CONSENT_VERSION_KEY];
+/** The same keys, for a wipe that keeps more than these (signOutWipe.ts, a sign-out that failed). */
+export const PRIVACY_CHOICE_KEYS: readonly string[] = KEPT;
 
 export function clearStorageKeepingPrivacyChoices(): void {
   try {

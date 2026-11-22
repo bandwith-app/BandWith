@@ -26,6 +26,7 @@ import {
   type RehearsalNote,
 } from '@/lib/rehearsalNotes';
 import type { RehearsalNotesControls } from '@/app/components/event/useRehearsalNotes';
+import { dismissRejected, OUTBOX_EVENT, readRejected, rejectedKey, type RejectedNote } from '@/lib/rehearsalNotesOutbox';
 import type { EarlierNotes } from './FromLastTime';
 
 type T = ReturnType<typeof useT>;
@@ -435,6 +436,105 @@ export const NoteGroups: React.FC<{
   );
 };
 
+/** The words of a note the band couldn't take, to copy: its lyric line too (#296 round 8). */
+const rejectedText = (n: RehearsalNote, t: T) =>
+  [n.songTitle, n.preset ? presetLabel(n.preset, t) : '', n.section ? sectionLabel(n.section, t) : '', n.line ? `“${n.line}”` : '', n.body]
+    .filter(Boolean)
+    .join(' · ') || noteHeadline(n, t);
+
+/**
+ * Notes the server refused for good (no longer allowed, the rehearsal gone):
+ * they are not saved, but their words are still here to copy (audit 06 #5).
+ */
+export const RejectedNotes: React.FC<{ controls: RehearsalNotesControls; dark?: boolean }> = ({ controls, dark }) => (
+  <RejectedNotesList notes={controls.rejected ?? []} onRemove={(id) => controls.dismissRejected?.(id)} dark={dark} />
+);
+
+/**
+ * Every note of mine the server refused, whatever rehearsal it was for (one
+ * deleted meanwhile included): Settings › Offline & live (#296).
+ */
+export const RejectedNotesForUser: React.FC<{ userId?: string | null }> = ({ userId }) => {
+  const [notes, setNotes] = useState<RejectedNote[]>(() => readRejected(userId));
+  useEffect(() => {
+    const sync = () => setNotes(readRejected(userId));
+    sync();
+    window.addEventListener(OUTBOX_EVENT, sync);
+    return () => window.removeEventListener(OUTBOX_EVENT, sync);
+  }, [userId]);
+  return <RejectedNotesList notes={notes} onRemove={(id) => userId && dismissRejected(userId, id)} />;
+};
+
+const RejectedNotesList: React.FC<{ notes: RejectedNote[]; onRemove: (id: string) => void; dark?: boolean }> = ({ notes: list, onRemove, dark }) => {
+  const t = useT();
+  const [copied, setCopied] = useState<string | null>(null);
+  /** A note the clipboard refused (none in this browser, or blocked): say so, the text stays selectable. */
+  const [copyFailed, setCopyFailed] = useState<string | null>(null);
+  if (!list.length) return null;
+  const pill = cn(
+    'flex items-center gap-1.5 min-h-11 px-3 rounded-full bw-label-sm whitespace-nowrap border',
+    dark ? 'border-white/40 text-white' : 'border-border text-foreground',
+  );
+  const copy = async (id: string, text: string) => {
+    haptic.tap();
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('no clipboard');
+      await navigator.clipboard.writeText(text);
+      setCopyFailed(null);
+      setCopied(id);
+    } catch {
+      setCopied(null);
+      setCopyFailed(id);
+    }
+  };
+  return (
+    <section
+      aria-label={t('Not saved')}
+      className={cn('flex flex-col gap-2 rounded-[12px] border p-3 min-w-0', dark ? 'border-white/30 text-white' : 'border-border')}
+    >
+      {/* Static text: read once as a status, not an alert (#296 round 3). */}
+      <span className="bw-label-sm" role="status">
+        {t("These notes weren't saved. Copy what you need, then remove them.")}
+      </span>
+      <ul className="flex flex-col">
+        {list.map((note) => {
+          // One entry per refused version (#296 round 6): keyed by it, removed by it.
+          const n = { ...note, id: rejectedKey(note) };
+          const text = rejectedText(note, t);
+          const short = text.length > 60 ? `${text.slice(0, 59)}…` : text;
+          return (
+            <li key={n.id} className={cn('flex flex-col gap-2 py-2 border-b last:border-b-0 min-w-0', dark ? 'border-white/15' : 'border-border')}>
+              <span className="bw-body-sm whitespace-pre-wrap break-words select-text">{text}</span>
+              <span className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={pill}
+                  // The same name after a copy: "Copied" is announced once, by the live region below (Claude r8 N3).
+                  aria-label={t('Copy note: {note}', { note: short })}
+                  onClick={() => void copy(n.id, text)}
+                >
+                  {copied === n.id ? t('Copied') : t('Copy')}
+                </button>
+                <button type="button" className={pill} aria-label={t('Remove note: {note}', { note: short })} onClick={() => onRemove(n.id)}>
+                  {t('Remove')}
+                </button>
+              </span>
+              {n.spaceFull && (
+                // The device had no room to keep it apart: it is only here now (#296 round 4).
+                <span className={cn('bw-label-sm', dark ? 'text-white' : 'text-destructive')}>{t('Space full: copy your note now')}</span>
+              )}
+              <span className={cn('bw-body-sm', dark ? 'text-white' : 'text-destructive')} aria-live="polite">
+                {copyFailed === n.id ? t('Couldn’t copy. Select the text and copy it yourself.') : null}
+                {copied === n.id ? <span className="sr-only">{t('Copied')}</span> : null}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+};
+
 /** All the rehearsal's notes, in a sheet (Live mode). */
 export const NotesListSheet: React.FC<{
   open: boolean;
@@ -460,7 +560,8 @@ export const NotesListSheet: React.FC<{
         </PillButton>
       }
     >
-      <div className="dark">
+      <div className="dark flex flex-col gap-3">
+        <RejectedNotes controls={controls} dark />
         {notes.length === 0 ? (
           <p className="bw-body-md text-muted-foreground">{t('No notes yet. Tap Mark while you play, write it at the pause.')}</p>
         ) : (
@@ -534,6 +635,10 @@ export const NoteSheetsHost: React.FC<{
 export const marksToWrite = (c: RehearsalNotesControls) =>
   c.notes.filter((n) => n.status === 'marked' && canEditNote(n, c.userId, c.isAdmin));
 
+/** The line under Mark: a refused note first (audit 06 #5), then changes waiting for a signal. */
+const notSavedStatus = (c: RehearsalNotesControls, t: T) =>
+  c.rejected?.length ? t("A note wasn't saved") : c.waiting > 0 ? t('Saved when back online') : '';
+
 /**
  * Live mode: Mark (one tap: this song, this minute) and the notes. At the
  * pause it says how many marks are waiting to be written.
@@ -581,7 +686,7 @@ export const RehearsalNotesBar: React.FC<{
         {toWrite > 0 ? t('To write: {count}', { count: toWrite }) : t('Notes · {count}', { count: controls.notes.length })}
       </button>
       <span className="bw-label-xs text-white/70 truncate min-w-0" role="status" aria-live="polite">
-        {flash ? t('Marked') : controls.waiting > 0 ? t('Saved when back online') : ''}
+        {flash ? t('Marked') : notSavedStatus(controls, t)}
       </span>
     </section>
   );
@@ -650,7 +755,7 @@ export const WedgeNotesPad: React.FC<{
         </button>
       </div>
       <span className="bw-label-xs text-white/70 min-h-4" role="status" aria-live="polite">
-        {flash ?? (controls.waiting > 0 ? t('Saved when back online') : '')}
+        {flash ?? notSavedStatus(controls, t)}
       </span>
     </section>
   );
@@ -682,6 +787,7 @@ export const RehearsalNotesSection: React.FC<{
           <Plus className="w-4 h-4" aria-hidden /> {t('New note')}
         </button>
       </span>
+      <RejectedNotes controls={controls} />
       {controls.notes.length > 0 && (
         <NoteGroups notes={controls.notes} songs={songs} controls={controls} members={members} onEdit={(n) => sheets.setEditing(n)} />
       )}

@@ -62,6 +62,18 @@ describe('Settings › Offline & live', () => {
     expect(m.deleteAllPacks).toHaveBeenCalledWith('u-1');
     await waitFor(() => expect(screen.getByText('Nothing kept on this device')).toBeTruthy());
   });
+
+  it('#296: a rehearsal note the server refused shows here with its words, whatever rehearsal it was for', async () => {
+    localStorage.setItem(
+      'bw:rehearsal_notes_rejected:u-1',
+      JSON.stringify([{ id: 'n9', eventId: 'gone', date: '2026-11-19', songTitle: 'Empire State of Mind', preset: 'tempo', body: 'Count the outro in four', status: 'open', assignees: [] }]),
+    );
+    render(<OfflineLiveSection userId="u-1" />);
+    expect(screen.getByText('Empire State of Mind · Tempo · Count the outro in four')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Remove note: Empire State of Mind/ }));
+    await waitFor(() => expect(screen.queryByText('Empire State of Mind · Tempo · Count the outro in four')).toBeNull());
+    expect(localStorage.getItem('bw:rehearsal_notes_rejected:u-1')).toBeNull();
+  });
 });
 
 // live_pack switched off (docs/flags.md): setlists may still be on the device,

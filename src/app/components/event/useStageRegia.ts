@@ -166,6 +166,14 @@ export function useStageRegia({
   /** Row id of the song in the player. */
   const [loadedId, setLoadedId] = useState<string | null>(null);
   const loadedRef = useRef<{ id: string; title: string } | null>(null);
+  /**
+   * Row id of the song whose file the player really holds: set only once its
+   * load finished and still counted. The card (loadedRef) moves to a song at
+   * the tap, before its file is there; a load given up (a second tap) leaves
+   * this empty, so the next tap loads again instead of playing the previous
+   * song's file under the new title (#296 round 3).
+   */
+  const fileRef = useRef<string | null>(null);
   const [error, setError] = useState<RegiaError | null>(null);
 
   const stored = savedSongs ?? songs;
@@ -203,10 +211,20 @@ export function useStageRegia({
     sendNow(state);
   }, []);
 
+  /**
+   * Bumped whenever what Play started no longer counts: another Play, Stage
+   * closed, Regia off or taken over (audit 06 #7). A Play still waiting for
+   * its file checks it after every wait and gives up: no sound reaches the
+   * mixer once the controls are gone.
+   */
+  const playOp = useRef(0);
+
   const disposePlayer = useCallback(() => {
+    playOp.current += 1;
     playerRef.current?.dispose();
     playerRef.current = null;
     loadedRef.current = null;
+    fileRef.current = null;
     setLoadedId(null);
     setSnap(IDLE);
   }, []);
@@ -348,20 +366,34 @@ export function useStageRegia({
     async (song: { id: string; title: string; audio?: string | null }) => {
       const player = playerRef.current;
       if (!player) return false;
+      const op = ++playOp.current;
+      const current = () => playOp.current === op && playerRef.current === player;
       setError(null);
-      if (loadedRef.current?.id !== song.id || ['idle', 'error'].includes(player.snapshot().status)) {
+      if (fileRef.current !== song.id || ['idle', 'error'].includes(player.snapshot().status)) {
         // The card shows this song from now on (also when it can't play: the message is about it).
         loadedRef.current = { id: song.id, title: song.title };
+        fileRef.current = null;
         setLoadedId(song.id);
         if (!song.audio) {
           // No audio: the band still moves to it; nothing plays, and the card says so.
+          // The previous song's file goes too, so Play can't send it to the mixer again (audit 06 #8).
           await player.stop(0);
+          if (!current()) return false;
+          player.unload();
           setError({ kind: 'no-audio', title: song.title });
           publish({ on: true, playing: false, positionMs: 0, durationMs: null });
           return false;
         }
         const src = await playableUrl(song.audio);
-        if (!src || !(await player.load(src.url))) {
+        if (!current()) {
+          // Nobody takes the copy kept in memory: let it go (a whole recording).
+          if (src?.url.startsWith('blob:')) URL.revokeObjectURL(src.url);
+          return false;
+        }
+        const ok = !!src && (await player.load(src.url));
+        if (!current()) return false;
+        if (ok) fileRef.current = song.id;
+        if (!ok) {
           const known = audioRef.current[song.audio];
           // Not on the device yet and the link can't stream (Drive on iOS): it's coming, wait.
           const pending = !src?.local && online() && (known?.state === 'queued' || known?.state === 'downloading');
@@ -376,7 +408,7 @@ export function useStageRegia({
           return false;
         }
       }
-      return player.play();
+      return current() ? player.play() : false;
     },
     [publish],
   );
@@ -403,7 +435,7 @@ export function useStageRegia({
     }
     const { songs: list, currentId: cur } = ctx.current;
     // A song is loaded but the band moved on: play the current song instead.
-    if (loadedRef.current && loadedRef.current.id === cur && s !== 'idle' && s !== 'error') {
+    if (fileRef.current && fileRef.current === cur && s !== 'idle' && s !== 'error') {
       await player.play();
       return;
     }
@@ -412,6 +444,8 @@ export function useStageRegia({
   }, [on, play]);
 
   const stop = useCallback(async () => {
+    // A song still loading doesn't start after Stop either.
+    playOp.current += 1;
     await playerRef.current?.stop();
   }, []);
 

@@ -42,6 +42,7 @@ const songs: StageSong[] = [
 const session = (state: SessionState | null, over: Partial<RehearsalSessionControls> = {}): RehearsalSessionControls => ({
   enabled: true,
   ready: true,
+  alreadyEnded: false,
   state,
   status: sessionStatus(state),
   unsaved: false,
@@ -66,6 +67,17 @@ describe('Live mode on a rehearsal: the session timer (A1b)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Start rehearsal' }));
     expect(s.start).toHaveBeenCalledOnce();
     expect(screen.queryByRole('timer')).toBeNull();
+  });
+
+  it('audit 06 #4: Start waits until the saved session has been read, and says why (Claude r8 N3)', () => {
+    const s = session(null, { ready: false });
+    renderLive(s);
+    expect(screen.queryByRole('button', { name: 'Start rehearsal' })).toBeNull();
+    const start = screen.getByRole('button', { name: 'Loading the rehearsal…' });
+    expect(start).toBeDisabled();
+    expect(start).toHaveAttribute('aria-busy', 'true');
+    fireEvent.click(start);
+    expect(s.start).not.toHaveBeenCalled();
   });
 
   it('a member sees nothing before it starts', () => {
@@ -139,6 +151,20 @@ describe('Live mode on a rehearsal: the session timer (A1b)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     // Fades out, then is gone.
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Rehearsal summary' })).toBeNull());
+  });
+
+  it('Claude review of 5d858fe2 B1b: a Start on a rehearsal that had already ended says so', () => {
+    const st = markPlayed(endSession(startSession(T0), T0 + 30 * 60_000), { id: 's2', title: 'Superstition' });
+    renderLive(session(st, { alreadyEnded: true }));
+    const notice = screen.getByText('This rehearsal had already ended. Any songs you played were added to it.');
+    expect(notice).toHaveAttribute('role', 'status');
+    cleanup();
+    // The live region stays, empty, so the text is announced when it comes (#296 round 10).
+    const { container } = renderLive(session(st));
+    expect(screen.queryByText(/had already ended/)).toBeNull();
+    const region = container.ownerDocument.querySelector('[data-bw-ended-notice]');
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toHaveTextContent('');
   });
 
   it('switched off (flag) or on a gig: no timer', () => {

@@ -5,6 +5,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 const store = new Set<string>();
 const fail = new Map<string, 'link' | 'offline'>();
 vi.mock('@/lib/regiaAudio', () => ({
+  audioSession: () => () => true,
   cachedAudio: vi.fn(async (refs: string[]) => new Set(refs.filter((r) => store.has(r)))),
   downloadAudio: vi.fn(async (ref: string, onProgress?: (p: number | null) => void) => {
     onProgress?.(0.5);
@@ -16,6 +17,7 @@ vi.mock('@/lib/regiaAudio', () => ({
   }),
 }));
 vi.mock('@/lib/haptics', () => ({ haptic: { tap: vi.fn(), confirm: vi.fn() } }));
+vi.mock('@/lib/sessionUser', () => ({ sessionUserId: async () => 'admin-1' }));
 
 import { OfflineAudioCard } from '../OfflineAudioCard';
 import { downloadAudio } from '@/lib/regiaAudio';

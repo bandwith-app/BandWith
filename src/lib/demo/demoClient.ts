@@ -1342,6 +1342,27 @@ const rpcOnline = (fn: string, args: Row = {}) => {
       }).map((r) => ({ day: r.day, slot_start: r.slotStart, free_count: r.free, total_count: r.total }));
       break;
     }
+    // 196 (#296 round 8): a running rehearsal session saved on the revision it read.
+    case 'bw_save_rehearsal_session': {
+      const r = table('rehearsal_sessions').find(
+        (x) => x.event_id === args.p_event_id && x.occurrence_date === args.p_occurrence_date && x.updated_at === args.p_rev,
+      );
+      if (r) {
+        const before = { ...r };
+        Object.assign(r, {
+          started_at: args.p_started_at,
+          paused_ms: args.p_paused_ms,
+          paused_at: args.p_paused_at,
+          ended_at: args.p_ended_at,
+          summary: args.p_summary,
+          updated_at: new Date().toISOString(),
+        });
+        emitChange({ table: 'rehearsal_sessions', eventType: 'UPDATE', new: clone(r), old: before });
+        persist();
+        data = r.updated_at;
+      }
+      break;
+    }
     case 'bw_mark_chats_delivered':
       data = 0;
       break;

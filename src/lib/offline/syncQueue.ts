@@ -80,6 +80,29 @@ const withQueueLock = <T>(fn: () => Promise<T>): Promise<T> => {
   return run;
 };
 
+/**
+ * Runs `fn` with the offline queues held (#296 round 11, the failed-sign-out
+ * wipe reads, clears and writes them back). A sync pass already running is
+ * waited for first, at most `waitMs`, so what it applied is out of the stored
+ * queue (its reconcile) before `fn` reads it. While `fn` runs, no enqueue,
+ * adoption or reconcile interleaves. A pass still running after the wait
+ * reconciles after `fn`, on what `fn` wrote back (it drops what it applied),
+ * and is waited for again, at most `waitMs`, so that lands before the caller
+ * goes on (a reload).
+ */
+export const withOfflineQueuesHeld = async <T>(fn: () => Promise<T>, waitMs = 6000): Promise<T> => {
+  const passDone = async () => {
+    const until = Date.now() + waitMs;
+    while (isProcessing && Date.now() < until) await new Promise((r) => setTimeout(r, 25));
+  };
+  await passDone();
+  try {
+    return await withQueueLock(fn);
+  } finally {
+    await passDone();
+  }
+};
+
 const readQueue = async (key: string): Promise<OfflineMutation[] | null> => {
   const items = await getOfflineItem<OfflineMutation[]>(key);
   return Array.isArray(items) ? items : null;
