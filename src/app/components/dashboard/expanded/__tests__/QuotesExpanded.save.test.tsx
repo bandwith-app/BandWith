@@ -42,8 +42,8 @@ vi.mock('@/lib/BandContext', () => ({
 }));
 // The wizard: one button that saves what the test sets.
 vi.mock('@/app/components/quotes/QuoteCreationWizard', () => ({
-  QuoteCreationWizard: (p: { onCreate: (q: any, o?: any) => void; initialData?: any }) => (
-    <button type="button" onClick={() => p.onCreate({ ...(p.initialData || {}), ...mocks.wizardPayload }, { askAvailability: true })}>
+  QuoteCreationWizard: (p: { onCreate: (q: any, o?: any) => void; initialData?: any; holdsDate?: boolean }) => (
+    <button type="button" data-holds-date={String(p.holdsDate)} onClick={() => p.onCreate({ ...(p.initialData || {}), ...mocks.wizardPayload }, { askAvailability: true })}>
       wizard save
     </button>
   ),
@@ -261,4 +261,23 @@ describe('QuotesExpanded: saving', () => {
     await waitFor(() => expect(mocks.saveQuoteLineup).toHaveBeenCalledTimes(1));
     expect(mocks.saveQuoteLineup.mock.calls[0][2]).toEqual([expect.objectContaining({ name: 'Maya Brooks', fee: 400 })]);
   });
+
+  // #294 x #293 (option 1): a new quote from the Quotes card goes through the
+  // app's save path, which holds the date (tentative event + lineup), so the
+  // wizard shows the "Lineup availability" note there; without that path
+  // (no onCreateNew) nothing holds the date and the note stays hidden.
+  it('New quote from the Quotes card: the wizard holds the date (the lineup note shows)', async () => {
+    render(<QuotesExpanded bandId={BAND} onClose={vi.fn()} realQuotes={[]} onShowToast={vi.fn()} onCreateNew={vi.fn()} />);
+    await clickAndSettle(screen.getByRole('button', { name: 'New quote' }));
+    const wizard = await screen.findByText('wizard save', undefined, { timeout: 10_000 });
+    expect(wizard.getAttribute('data-holds-date')).toBe('true');
+  });
+
+  it('without the app save path the wizard promises no hold', async () => {
+    render(<QuotesExpanded bandId={BAND} onClose={vi.fn()} realQuotes={[]} onShowToast={vi.fn()} />);
+    await clickAndSettle(screen.getByRole('button', { name: 'New quote' }));
+    const wizard = await screen.findByText('wizard save', undefined, { timeout: 10_000 });
+    expect(wizard.getAttribute('data-holds-date')).toBe('false');
+  });
 });
+
