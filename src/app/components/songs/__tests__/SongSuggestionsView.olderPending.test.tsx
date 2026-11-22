@@ -16,6 +16,10 @@ const db = vi.hoisted(() => ({
   failOne: 0,
   // The next list requests fail this many times.
   failList: 0,
+  // The next "Load older" request reads the rows, then its answer waits (a stale response).
+  holdKeysetLate: null as Promise<void> | null,
+  // The next "Load older" requests fail this many times.
+  failKeyset: 0,
 }));
 
 vi.mock('@/lib/supabase', () => {
@@ -64,6 +68,18 @@ vi.mock('@/lib/supabase', () => {
           db.failOne--;
           return Promise.resolve({ data: null, error: { message: 'Network request failed' } }).then(res, rej);
         }
+        if (keyset && db.failKeyset > 0) {
+          db.failKeyset--;
+          return Promise.resolve({ data: null, error: { message: 'upstream timeout', code: 'XX000' } }).then(res, rej);
+        }
+        if (keyset && db.holdKeysetLate) {
+          const late = db.holdKeysetLate;
+          db.holdKeysetLate = null;
+          const read = run();
+          // A copy of the rows as read then (later edits to db.rows don't reach it).
+          const answer = { ...read, data: Array.isArray(read.data) ? read.data.map((r) => ({ ...r })) : read.data };
+          return late.then(() => answer).then(res, rej);
+        }
         const list = table === 'song_suggestions' && !keyset && !head && !one;
         if (list && db.failList > 0) {
           db.failList--;
@@ -107,6 +123,8 @@ afterEach(() => {
   db.holdList = null;
   db.failOne = 0;
   db.failList = 0;
+  db.holdKeysetLate = null;
+  db.failKeyset = 0;
 });
 
 describe('Suggestions: an older pending one stays reachable', () => {
@@ -303,5 +321,45 @@ describe('Suggestions: an older pending one stays reachable', () => {
     expect(await screen.findByText('Could not load this suggestion.')).toBeTruthy();
     await act(async () => window.dispatchEvent(new CustomEvent(SUGGESTIONS_CHANGED)));
     expect(await screen.findByRole('heading', { name: 'Very old reviewed · Brooklyn Bridge' })).toBeTruthy();
+  });
+
+  it('a "Load older" answer read before a withdraw never brings the withdrawn one back (Codex review of ed7ec29f)', { timeout: 30_000 }, async () => {
+    db.rows = [];
+    for (let i = 1; i <= 150; i++) db.rows.push(row(i, 'pending', `Pending ${i}`));
+    render(<SongSuggestionsView />);
+    act(() => openSongSuggestions());
+    await screen.findByText('Pending 150');
+    expect(screen.queryByText('Pending 10')).toBeNull();
+    // The older page is read now, its answer arrives late.
+    let release!: () => void;
+    db.holdKeysetLate = new Promise<void>((r) => (release = r));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Load older suggestions' })));
+    // Meanwhile Pending 10 is withdrawn and the list refreshes.
+    db.rows.find((r) => r.id === 'sg-10')!.status = 'withdrawn';
+    await act(async () => window.dispatchEvent(new CustomEvent(SUGGESTIONS_CHANGED)));
+    await act(async () => {
+      release();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    const dialog = () => within(screen.getByRole('dialog'));
+    expect(dialog().queryByText('Pending 10')).toBeNull();
+    // Loading older again reads the current rows.
+    await act(async () => fireEvent.click(await screen.findByRole('button', { name: 'Load older suggestions' })));
+    expect(await screen.findByText('Pending 1')).toBeTruthy();
+    expect(dialog().queryByText('Pending 10')).toBeNull();
+  });
+
+  it('a "Load older" that failed, then worked: the error goes (Codex review of ed7ec29f)', { timeout: 30_000 }, async () => {
+    seed();
+    render(<SongSuggestionsView />);
+    act(() => openSongSuggestions());
+    fireEvent.click(await screen.findByRole('button', { name: /^Reviewed/ }));
+    await screen.findByText('Reviewed 230');
+    db.failKeyset = 1;
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Load older suggestions' })));
+    expect(await screen.findByText(/^Could not load the suggestions\./)).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Load older suggestions' })));
+    await screen.findByText('Reviewed 130');
+    expect(screen.queryByText(/^Could not load the suggestions\./)).toBeNull();
   });
 });

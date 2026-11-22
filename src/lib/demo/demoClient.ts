@@ -929,6 +929,56 @@ function withdrawSuggestion(args: Row): { data: any; error: any } {
   return { data: { status: 'withdrawn', files }, error: null };
 }
 
+// ------------------------------------------------- song files (197) --
+
+const SONG_REF = 'sb://song-files/';
+const demoFileInUse = (ref: string) => table('songs').some((s) => s.audio_url === ref || s.chart_url === ref);
+
+/**
+ * 197's adoption RPCs, as the server answers them for one admin: the
+ * destination is `<band>/<kind>/<song id>-<name>`, the repoint changes the
+ * song only while it still links the original. The demo's Storage holds no
+ * objects, so the sweep has nothing to list and a delete claim is any file
+ * no song uses.
+ */
+function demoSongFiles(fn: string, args: Row): { data: any; error: any } {
+  const notAdmin = { data: null, error: { message: 'Only band admins can move song files', code: '42501' } };
+  const song = args.p_song_id ? table('songs').find((s) => s.id === args.p_song_id) : null;
+  const field = args.p_field === 'chart_url' ? 'chart_url' : 'audio_url';
+  switch (fn) {
+    case 'bw_song_file_adopt_begin': {
+      if (!song || !isDemoAdmin(song.band_id)) return notAdmin;
+      if (song.status === 'suggested') return { data: { won: false, reason: 'waiting' }, error: null };
+      const ref = song[field] as string | null;
+      const parts = typeof ref === 'string' && ref.startsWith(SONG_REF) ? ref.slice(SONG_REF.length).split('/') : [];
+      if (parts.length !== 5 || parts[0] !== song.band_id || parts[1] !== 'suggestions') return { data: { won: false, reason: 'nothing', ref }, error: null };
+      return { data: { won: true, from: parts.join('/'), to: `${parts[0]}/${parts[3]}/${song.id}-${parts[4]}` }, error: null };
+    }
+    case 'bw_song_file_copy_reserve':
+    case 'bw_song_file_copy_release':
+      return song && isDemoAdmin(song.band_id) ? { data: fn === 'bw_song_file_copy_reserve', error: null } : notAdmin;
+    case 'bw_song_file_adopt_repoint': {
+      if (!song || !isDemoAdmin(song.band_id)) return notAdmin;
+      const to = `${SONG_REF}${args.p_to}`;
+      if (song[field] !== `${SONG_REF}${args.p_from}`) return { data: { won: false, ref: song[field], to_referenced: demoFileInUse(to) }, error: null };
+      song[field] = to;
+      persist();
+      return { data: { won: true, ref: to, to_referenced: true }, error: null };
+    }
+    case 'bw_song_file_sweep_list':
+      return isDemoAdmin(args.p_band_id) ? { data: [], error: null } : notAdmin;
+    case 'bw_song_file_sweep_claim':
+      return isDemoAdmin(args.p_band_id) ? { data: { ok: false, reason: 'gone' }, error: null } : notAdmin;
+    case 'bw_song_file_sweep_done':
+      return isDemoAdmin(args.p_band_id) ? { data: 0, error: null } : notAdmin;
+    case 'bw_song_files_claim_delete':
+      return { data: ((args.p_refs as string[] | null) || []).filter((r) => typeof r === 'string' && r.startsWith(SONG_REF) && !demoFileInUse(r)), error: null };
+    case 'bw_song_files_removed':
+      return { data: ((args.p_refs as string[] | null) || []).length, error: null };
+  }
+  return { data: null, error: null };
+}
+
 // ------------------------------------------------------------ plans --
 
 /** bw_band_entitlements (160) from the demo's own rows, usage counted like bw_plan_count (161). */
@@ -1712,6 +1762,18 @@ const rpc = (fn: string, args: Row = {}) => {
       break;
     case 'bw_withdraw_song_suggestion':
       ({ data, error } = withdrawSuggestion(args));
+      break;
+    // Moving an accepted song's files (197): the demo's Storage keeps nothing.
+    case 'bw_song_file_adopt_begin':
+    case 'bw_song_file_copy_reserve':
+    case 'bw_song_file_copy_release':
+    case 'bw_song_file_adopt_repoint':
+    case 'bw_song_file_sweep_list':
+    case 'bw_song_file_sweep_claim':
+    case 'bw_song_file_sweep_done':
+    case 'bw_song_files_claim_delete':
+    case 'bw_song_files_removed':
+      ({ data, error } = demoSongFiles(fn, args));
       break;
     // No one else to notify in the demo: keep the call for checks.
     case 'bw_notify_setlist_saved':

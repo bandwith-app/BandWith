@@ -90,10 +90,14 @@ export const SongSuggestionsView: React.FC = () => {
   const scopeRef = React.useRef(scope);
   scopeRef.current = scope;
   const pagesScope = React.useRef<string | null>(null);
+  // The request generation: each refresh starts a new one. A response of an
+  // older one is dropped (a refresh, or a "Load older" page read before it:
+  // it could bring back a suggestion withdrawn or reviewed since).
   const loadSeq = React.useRef(0);
-  // Bumped by each "Load older" page: a refresh that started before it
-  // merges those rows instead of replacing them.
-  const moreGen = React.useRef(0);
+  // The rows each "Load older" page added, by the generation it ran in: a
+  // refresh merges only the ones added during its own run (read after it
+  // started), never older ones it no longer finds.
+  const moreRows = React.useRef(new Map<string, number>());
   // The notification target that failed to load (kept selected, with Try again).
   const [focusError, setFocusError] = React.useState<string | null>(null);
 
@@ -140,7 +144,6 @@ export const SongSuggestionsView: React.FC = () => {
   const load = React.useCallback(async () => {
     if (!bandId || !user?.id) return;
     const seq = ++loadSeq.current;
-    const gen = moreGen.current;
     const forScope = scope;
     const shown = pagesScope.current === forScope ? pagesRef.current : { pending: [], reviewed: [] };
     const [p, r, nPending, nReviewed] = await Promise.all([
@@ -170,12 +173,16 @@ export const SongSuggestionsView: React.FC = () => {
     setFocusError(oneFailed && focusId ? focusId : null);
     const samePages = pagesScope.current === forScope;
     pagesScope.current = forScope;
-    if (samePages && moreGen.current !== gen) {
-      // "Load older" added rows while this ran: keep the ones past its range.
+    const addedMeanwhile = new Set([...moreRows.current].filter(([, g]) => g === seq).map(([id]) => id));
+    // Read by the next refresh again (they are shown): no longer needed.
+    moreRows.current.clear();
+    if (samePages && addedMeanwhile.size) {
+      // "Load older" added rows while this ran (read after it started): keep
+      // those past its range; any other row it no longer finds goes.
       const merge = (prev: SongSuggestion[], fresh: SongSuggestion[]) => {
         const last = fresh[fresh.length - 1];
         const ids = new Set(fresh.map((s) => s.id));
-        return [...fresh, ...prev.filter((s) => !ids.has(s.id) && (!last || olderThan(s, last)))];
+        return [...fresh, ...prev.filter((s) => !ids.has(s.id) && addedMeanwhile.has(s.id) && (!last || olderThan(s, last)))];
       };
       setPages((prev) => ({ pending: merge(prev.pending, p.data), reviewed: merge(prev.reviewed, r.data) }));
     } else {
@@ -201,23 +208,30 @@ export const SongSuggestionsView: React.FC = () => {
     setLoadedFor(null);
     setFocusError(null);
     pagesScope.current = null;
+    moreRows.current.clear();
   }, [scope]);
   const showMore = async () => {
     const last = pages[tab][pages[tab].length - 1];
     if (!bandId || !last || loadingMore || pagesScope.current !== scope) return;
     const forScope = scope;
     const forTab = tab;
+    const gen = loadSeq.current;
     setLoadingMore(true);
     const { data, error } = await listSongSuggestions(bandId, { ...mine, status: STATUS[forTab], limit: PAGE + 1, before: last });
     // The user moved to another band meanwhile: drop it.
     if (scopeRef.current !== forScope || pagesScope.current !== forScope) return;
     setLoadingMore(false);
+    // A refresh started after this was asked: its rows may be out of date
+    // (one withdrawn meanwhile would come back). Dropped; "Load older"
+    // stays to ask again.
+    if (loadSeq.current !== gen) return;
     if (error || !data) {
       setLoadError(userMessage(error, t('Could not load the suggestions.')));
       return;
     }
+    setLoadError(null);
     const page = data.slice(0, PAGE);
-    moreGen.current++;
+    for (const s of page) moreRows.current.set(s.id, gen);
     setPages((prev) => ({ ...prev, [forTab]: [...prev[forTab], ...page.filter((s) => !prev[forTab].some((x) => x.id === s.id))] }));
     setMore((prev) => ({ ...prev, [forTab]: data.length > PAGE }));
     void loadSongs(page);

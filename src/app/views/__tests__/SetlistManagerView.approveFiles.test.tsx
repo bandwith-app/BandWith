@@ -83,4 +83,13 @@ describe('Approving a suggested song from its menu', () => {
     expect(svc.sweep).toHaveBeenCalledTimes(1);
     expect(svc.adopt).not.toHaveBeenCalled();
   });
+
+  it('tidies also when the band has no songs left (Codex review of ed7ec29f)', async () => {
+    // The last song deleted: its file's lapsed claim (or an unused copy) still waits on the server.
+    svc.getSongs.mockResolvedValue({ data: [], error: null });
+    render(<SetlistManagerView onClose={() => {}} />);
+    await waitFor(() => expect(svc.getSongs).toHaveBeenCalled());
+    await waitFor(() => expect(svc.sweep).toHaveBeenCalledWith('band-1'));
+    expect(svc.sweep).toHaveBeenCalledTimes(1);
+  });
 });

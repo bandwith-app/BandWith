@@ -254,8 +254,9 @@ async function adoptOne(client: AdoptClient, songId: string, field: Field, busyW
   for (let attempt = 0; attempt < 3 && !to; attempt++) {
     const candidate = attempt === 0 ? c.to : withTag(c.to, songId);
     // Registered before it exists: if this run stops (or the song goes)
-    // before the repoint, the sweep deletes the copy no song uses.
-    const { error: reserveError } = await client.rpc('bw_song_file_copy_reserve', {
+    // before the repoint, the sweep deletes the copy no song uses (never an
+    // object that was there before the registration: 197 checks).
+    const { data: reservedNow, error: reserveError } = await client.rpc('bw_song_file_copy_reserve', {
       p_song_id: songId,
       p_field: field,
       p_from: c.from,
@@ -270,6 +271,15 @@ async function adoptOne(client: AdoptClient, songId: string, field: Field, busyW
       return { error: asError(copyError, 'Could not copy the file') };
     } else if (await sameFile(bucket, c.from, candidate)) {
       to = candidate;
+    } else if (reservedNow === true) {
+      // Another file is there: not this move's copy. Only the name finally
+      // chosen stays registered (Codex review of ed7ec29f); a failure here
+      // is harmless, the sweep never deletes an object older than its
+      // registration.
+      await client.rpc('bw_song_file_copy_release', { p_song_id: songId, p_to: candidate }).then(
+        () => undefined,
+        () => undefined,
+      );
     }
   }
   if (!to) return { error: new Error('Could not find a free name for the file') };

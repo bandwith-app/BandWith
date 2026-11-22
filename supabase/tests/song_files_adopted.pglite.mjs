@@ -801,6 +801,63 @@ await sweep(ADMIN).catch(() => undefined);
 await asCommit(ADMIN, `SELECT public.bw_song_file_sweep_list($1) AS v`, [BAND]);
 ok((await qs(`SELECT 1 FROM song_file_removals WHERE path = $1`, [LU])).rows.length === 0, 'a lapsed claim of a used file is cleared');
 
+// ---- Round 9: Codex review of ed7ec29f
+// B1: bw_song_files_removed closes only the caller's own claims (an admin of
+// the band, of another band or a member closes nothing of someone else's).
+const OWN9 = `${BAND}/audio/r9-own-claim.mp3`;
+await putObj(OWN9);
+await claimDel(ADMIN, [R(OWN9)]);
+const rmOther = [await removedDone(ADMIN2, [R(OWN9)]), await removedDone(STRANGER, [R(OWN9)]), await removedDone(MEM, [R(OWN9)])];
+ok(rmOther.every((n) => n === 0) && (await qs(`SELECT claimed_by FROM song_file_removals WHERE path = $1`, [OWN9])).rows[0]?.claimed_by === ADMIN,
+  `B1: removed() by anyone but the claimer closes nothing (${JSON.stringify(rmOther)})`);
+ok((await removedDone(ADMIN, [R(OWN9)])) === 1, 'B1: the claimer closes it');
+
+// B2: a withdraw claims only files under the suggestion's own band, also
+// for a member of two bands whose song (an older build's) links the other.
+await db.exec(`INSERT INTO band_members VALUES ('${OTHER_BAND}','${MEM}','member',true)`);
+const XB9 = `${OTHER_BAND}/audio/r9-other-band.mp3`, OWN9W = sug(MEM, 'audio/r9-withdraw-own.mp3');
+await putObj(XB9, 'song-files', STRANGER);
+await putObj(OWN9W, 'song-files', MEM);
+await db.exec(`ALTER TABLE songs DISABLE TRIGGER songs_file_not_removed;
+  INSERT INTO songs VALUES ('${id(130)}','${BAND}','Cross-band ref','suggested','${R(XB9)}','${R(OWN9W)}');
+  ALTER TABLE songs ENABLE TRIGGER songs_file_not_removed;
+  INSERT INTO song_suggestions (id, band_id, song_id, kind, created_by) VALUES ('${id(131)}','${BAND}','${id(130)}','new_song','${MEM}')`);
+const wd9 = await withdraw(MEM, id(131));
+ok(JSON.stringify(wd9?.files) === JSON.stringify([R(OWN9W)]) && (await qs(`SELECT 1 FROM song_file_removals WHERE path = $1`, [XB9])).rows.length === 0,
+  `B2: withdraw claims only files of the suggestion’s band (${JSON.stringify(wd9?.files ?? wd9)})`);
+await db.exec(`DELETE FROM band_members WHERE band_id = '${OTHER_BAND}' AND user_id = '${MEM}'`);
+
+// B3: a registered destination where an object already was (a name
+// collision): the sweep never deletes that object.
+const release = (user, song, to) => asCommit(user, `SELECT public.bw_song_file_copy_release($1, $2) AS v`, [song, to]);
+const PS9 = id(132), PF9 = sug(MEM, 'audio/r9-pre.mp3'), PT9 = `${BAND}/audio/${PS9}-r9-pre.mp3`;
+await putObj(PF9, 'song-files', MEM);
+await db.exec(`INSERT INTO storage.objects (bucket_id, name, owner, created_at) VALUES ('song-files','${PT9}','${ADMIN}', now() - interval '1 hour');
+  INSERT INTO songs VALUES ('${PS9}','${BAND}','Something already there','learning','${R(PF9)}',NULL)`);
+const rv1 = await reserve(ADMIN, PS9, PF9, PT9);
+const rv2 = await reserve(ADMIN, PS9, PF9, PT9);
+ok(rv1 === true && rv2 === false, `reserve says whether this call registered the path (${rv1}, ${rv2})`);
+await db.exec(`UPDATE song_file_copies SET made_at = now() - interval '11 minutes' WHERE path = '${PT9}'`);
+const list9 = await sweep(ADMIN);
+ok(Array.isArray(list9) && !list9.includes(PT9), 'B3: a stale registration of an object older than it is not listed');
+ok((await claim(ADMIN, PT9))?.ok !== true && (await qs(`SELECT 1 FROM storage.objects WHERE name = $1`, [PT9])).rows.length === 1,
+  'B3: nor claimed; the object stays');
+ok(String(await release(MEM, PS9, PT9)).startsWith('error'), 'a member cannot drop a registration');
+ok((await release(ADMIN2, PS9, PT9)) === false && (await qs(`SELECT 1 FROM song_file_copies WHERE path = $1`, [PT9])).rows.length === 1,
+  'another admin does not drop this admin’s registration');
+ok((await release(ADMIN, PS9, PT9)) === true && (await qs(`SELECT 1 FROM song_file_copies WHERE path = $1`, [PT9])).rows.length === 0,
+  'the admin who registered it drops the abandoned one');
+// A second device registering the same copy again keeps the first time:
+// the copy made in between is still this move's, and swept once unused.
+const QS9 = id(133), QF9 = sug(MEM, 'audio/r9-again.mp3'), QT9 = `${BAND}/audio/${QS9}-r9-again.mp3`;
+await putObj(QF9, 'song-files', MEM);
+await db.exec(`INSERT INTO songs VALUES ('${QS9}','${BAND}','Registered twice','learning','${R(QF9)}',NULL)`);
+await reserve(ADMIN, QS9, QF9, QT9);
+await putObj(QT9);
+await reserve(ADMIN, QS9, QF9, QT9);
+await db.exec(`DELETE FROM songs WHERE id = '${QS9}'; UPDATE song_file_copies SET made_at = now() - interval '11 minutes' WHERE path = '${QT9}'`);
+ok((await sweep(ADMIN)).includes(QT9), 'B3: a copy made after the first registration is still swept when unused');
+
 // ---- Main (after the prod dry run of 220767ca): prod storage.objects has
 // archived_at / is_delete_marker; an archived object or a delete marker is not
 // a stored file. Without those columns (here so far) nothing changes, as

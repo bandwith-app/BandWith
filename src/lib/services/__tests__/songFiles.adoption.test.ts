@@ -8,17 +8,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 type Song = { id: string; band_id: string; status: string; audio_url: string | null; chart_url: string | null };
 type Adoption = { song_id: string; field: string; from: string; to: string; state: 'copying' | 'repointed' | 'deleting' | 'cleaned'; by: string | null; deletingAt?: number; deletingBy?: string };
-type Step = 'begin' | 'reserve' | 'copy' | 'info' | 'repoint' | 'sweep_list' | 'sweep_claim' | 'remove' | 'sweep_done' | 'reread' | 'claim_delete' | 'removed';
+type Step = 'begin' | 'reserve' | 'release' | 'copy' | 'info' | 'repoint' | 'sweep_list' | 'sweep_claim' | 'remove' | 'sweep_done' | 'reread' | 'claim_delete' | 'removed';
 
 const fake = vi.hoisted(() => {
   const REF = 'sb://song-files/';
-  const store = new Map<string, { body: string; etag: string }>();
+  // seq: when the object was made (197 compares storage.objects.created_at).
+  const store = new Map<string, { body: string; etag: string; seq?: number }>();
+  let seq = 0;
   const songs = new Map<string, Song>();
   let adoptions: Adoption[] = [];
   // Delete claims outside the sweep (197: bw_song_files_claim_delete).
   const removals = new Map<string, { by: string; at: number }>();
   // Copies registered before they are made (197: bw_song_file_copy_reserve).
-  const copies = new Map<string, { at: number }>();
+  // reservedSeq: the first registration; an object older than it was already there.
+  const copies = new Map<string, { at: number; by: string; song: string; reservedSeq: number }>();
+  const ours = (p: string, c: { reservedSeq: number }) => (store.get(p)?.seq ?? Infinity) > c.reservedSeq;
   let failRemove = 0;
   const clock = { now: 0 };
   const LAPSE = 10 * 60_000;
@@ -50,7 +54,16 @@ const fake = vi.hoisted(() => {
       const kind = a.p_from.split('/')[3];
       const prefix = `${s.band_id}/${kind}/${s.id}-`;
       if (!a.p_to.startsWith(prefix) || a.p_to.slice(prefix.length).includes('/')) return { error: { message: 'Bad destination', code: '22023' } };
-      copies.set(a.p_to, { at: clock.now });
+      const had = copies.get(a.p_to);
+      copies.set(a.p_to, { at: clock.now, by: uid, song: s.id, reservedSeq: had?.reservedSeq ?? ++seq });
+      return { data: !had };
+    },
+    bw_song_file_copy_release: (uid: string, a: { p_song_id: string; p_to: string }) => {
+      const s = songs.get(a.p_song_id);
+      if (!s || !admins.has(uid)) return { error: { message: 'Only band admins', code: '42501' } };
+      const c = copies.get(a.p_to);
+      if (!c || c.by !== uid || c.song !== s.id) return { data: false };
+      copies.delete(a.p_to);
       return { data: true };
     },
     bw_song_file_adopt_repoint: (uid: string, a: { p_song_id: string; p_field: 'audio_url' | 'chart_url'; p_from: string; p_to: string }) => {
@@ -77,14 +90,15 @@ const fake = vi.hoisted(() => {
         .map((r) => r.from);
       // Lapsed delete claims and stale copies of the band, any folder.
       for (const [p, c] of removals) if (p.startsWith(`${a.p_band_id}/`) && clock.now - c.at > LAPSE && !inUse(p)) paths.push(p);
-      for (const [p, c] of copies) if (p.startsWith(`${a.p_band_id}/`) && clock.now - c.at > LAPSE && !inUse(p)) paths.push(p);
+      for (const [p, c] of copies) if (p.startsWith(`${a.p_band_id}/`) && clock.now - c.at > LAPSE && ours(p, c) && !inUse(p)) paths.push(p);
       return { data: [...new Set(paths)] };
     },
     bw_song_file_sweep_claim: (uid: string, a: { p_band_id: string; p_path: string }) => {
       if (!admins.has(uid)) return { error: { message: 'Only band admins', code: '42501' } };
       const r = adoptions.find((x) => x.from === a.p_path && (x.state === 'repointed' || x.state === 'deleting'));
       if (!r) {
-        if (!removals.has(a.p_path) && !copies.has(a.p_path)) return { data: { ok: false, reason: 'gone' } };
+        const cp = copies.get(a.p_path);
+        if (!removals.has(a.p_path) && !(cp && clock.now - cp.at > LAPSE && ours(a.p_path, cp))) return { data: { ok: false, reason: 'gone' } };
         if (inUse(a.p_path)) return { data: { ok: false, reason: 'referenced' } };
         const c = removals.get(a.p_path);
         if (c && c.by !== uid && clock.now - c.at <= LAPSE) return { data: { ok: false, reason: 'busy' } };
@@ -145,7 +159,7 @@ const fake = vi.hoisted(() => {
     };
     const STEP: Record<string, Step> = {
       bw_song_file_adopt_begin: 'begin', bw_song_file_adopt_repoint: 'repoint', bw_song_file_sweep_list: 'sweep_list', bw_song_file_sweep_claim: 'sweep_claim', bw_song_file_sweep_done: 'sweep_done',
-      bw_song_files_claim_delete: 'claim_delete', bw_song_files_removed: 'removed', bw_song_file_copy_reserve: 'reserve',
+      bw_song_files_claim_delete: 'claim_delete', bw_song_files_removed: 'removed', bw_song_file_copy_reserve: 'reserve', bw_song_file_copy_release: 'release',
     };
     const client = {
       rpc: async (fn: string, args: unknown) => {
@@ -178,7 +192,7 @@ const fake = vi.hoisted(() => {
             const src = store.get(from);
             if (!src) return { data: null, error: Object.assign(new Error('Object not found'), { statusCode: '404' }) };
             if (store.has(to)) return { data: null, error: Object.assign(new Error('The resource already exists'), { statusCode: '409' }) };
-            store.set(to, { ...src });
+            store.set(to, { ...src, seq: ++seq });
             log.push(`copy ${from} -> ${to}`);
             return { data: { path: to }, error: null };
           },
@@ -224,6 +238,7 @@ const fake = vi.hoisted(() => {
     copies.clear();
     failRemove = 0;
     clock.now = 0;
+    seq = 0;
     admins.clear();
   };
   return {
@@ -234,7 +249,7 @@ const fake = vi.hoisted(() => {
     removals: () => removals,
     copies: () => copies,
     failNextRemove: () => void failRemove++,
-    put: (path: string, body: string) => store.set(path, { body, etag: etag(body) }),
+    put: (path: string, body: string) => store.set(path, { body, etag: etag(body), seq: ++seq }),
   };
 });
 
@@ -470,6 +485,37 @@ describe('names that collide', () => {
     expect(fake.store.get(now)?.body).toBe('take one');
     expect(fake.store.has(ORIG)).toBe(false);
     noDanglingSong();
+  });
+
+  it('the name it gave up is not left registered: only the chosen copy was (Codex review of ed7ec29f)', async () => {
+    fake.put(DEST, 'something else');
+    const out = await adopt(A);
+    expect(out.error).toBeNull();
+    expect(A.log).toContain('bw_song_file_copy_release');
+    expect(fake.copies().has(DEST)).toBe(false);
+    fake.lapse();
+    await sweepAdoptedFiles(BAND, { client: A.client as never });
+    expect(fake.store.get(DEST)?.body).toBe('something else');
+  });
+
+  it('a run that stops after giving up a name leaves the file already there alone (Codex review of ed7ec29f)', async () => {
+    fake.put(DEST, 'something else');
+    A.crashAt('release');
+    void adopt(A);
+    await settle();
+    expect(fake.copies().has(DEST)).toBe(true);
+    fake.lapse();
+    const out = await sweepAdoptedFiles(BAND, { client: B.client as never });
+    expect(out.error).toBeNull();
+    expect(fake.store.get(DEST)?.body).toBe('something else');
+  });
+
+  it('the same file already there (an earlier run’s copy) keeps its registration', async () => {
+    fake.put(DEST, 'take one');
+    const out = await adopt(A);
+    expect(out).toEqual({ refs: { audio_url: ref(DEST) }, error: null });
+    expect(A.log).not.toContain('bw_song_file_copy_release');
+    finished();
   });
 });
 

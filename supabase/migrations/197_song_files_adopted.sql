@@ -28,8 +28,15 @@
 --        `from` for the sweep, in the same transaction.
 --      bw_song_file_copy_reserve(song, field, from, to)
 --        right before each copy: the destination is registered
---        (song_file_copies); the repoint closes it. One never linked (the
---        run stopped, the song went) is swept after 10 minutes.
+--        (song_file_copies; true when this call registered it); the
+--        repoint closes it. One never linked (the run stopped, the song
+--        went) is swept after 10 minutes, never an object that was there
+--        before its first registration (storage created_at < reserved_at:
+--        a name collision, someone else's file).
+--      bw_song_file_copy_release(song, to)
+--        a destination the run gave up (another file was there, so it
+--        picked another name): its registration goes, so only the name
+--        finally chosen stays registered.
 --      bw_song_file_sweep_list(band)
 --        the recorded originals nothing references any more (checked across
 --        all songs and pending member suggestions), lapsed delete claims of
@@ -58,7 +65,8 @@
 --    bw_review_song_suggestion / bw_withdraw_song_suggestion (108, otherwise
 --    unchanged; withdraw identical to 180's on fix/account-deletion,
 --    d468b10b / 19db3f54) return only the files of the song's band nothing
---    else uses, already claimed for deletion. Reject closes the suggestion
+--    else uses, already claimed for deletion (withdraw: of the band of the
+--    suggestion it withdrew, also for a member of several bands). Reject closes the suggestion
 --    before deleting the song (as 108), so the author is notified once. The app deletes
 --    only through a claim: bw_song_files_claim_delete (under the file keys'
 --    exclusive locks; claimed files can't be linked), the Storage delete,
@@ -261,14 +269,19 @@ REVOKE ALL ON public.song_file_removals FROM PUBLIC, anon, authenticated;
 
 -- Copies a move registers right before making them
 -- (bw_song_file_copy_reserve): one the repoint never linked (the run
--- stopped, the song went) is deleted by the sweep after 10 minutes.
+-- stopped, the song went) is deleted by the sweep after 10 minutes
+-- (made_at: the latest registration). reserved_at: the first one; an
+-- object older than that was already there (a name collision), not this
+-- move's copy, and the sweep never deletes it.
 CREATE TABLE IF NOT EXISTS public.song_file_copies (
   path text PRIMARY KEY,
   band_id uuid NOT NULL,
   song_id uuid NOT NULL,
   made_by uuid,
-  made_at timestamptz NOT NULL DEFAULT now()
+  made_at timestamptz NOT NULL DEFAULT now(),
+  reserved_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE public.song_file_copies ADD COLUMN IF NOT EXISTS reserved_at timestamptz NOT NULL DEFAULT now();
 CREATE INDEX IF NOT EXISTS song_file_copies_band_idx ON public.song_file_copies (band_id);
 DO $$
 BEGIN
@@ -307,6 +320,28 @@ BEGIN
 END;
 $do$;
 REVOKE ALL ON FUNCTION public.bw_song_file_stored(text) FROM PUBLIC, anon, authenticated;
+
+-- A registered copy path the sweep may delete: no object there older than
+-- the first registration (an object that was already there is someone
+-- else's file). Built from storage.objects' created_at (without it: any).
+DO $do$
+DECLARE
+  v_pred text := 'true';
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_attribute
+              WHERE attrelid = 'storage.objects'::regclass AND attname = 'created_at' AND attnum > 0 AND NOT attisdropped) THEN
+    v_pred := $a$NOT EXISTS (SELECT 1 FROM storage.objects o
+                             WHERE o.bucket_id = 'song-files' AND o.name = p_path AND o.created_at < p_reserved_at)$a$;
+  END IF;
+  EXECUTE format($f$
+    CREATE OR REPLACE FUNCTION public.bw_song_file_copy_ours(p_path text, p_reserved_at timestamptz)
+    RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $b$
+      SELECT %s;
+    $b$;
+  $f$, v_pred);
+END;
+$do$;
+REVOKE ALL ON FUNCTION public.bw_song_file_copy_ours(text, timestamptz) FROM PUBLIC, anon, authenticated;
 
 -- The file is being deleted, or was (no new link to it). A claim allows
 -- its Storage delete for 10 minutes (the delete policy below) and blocks
@@ -438,6 +473,8 @@ GRANT EXECUTE ON FUNCTION public.bw_song_file_adopt_repoint(uuid, text, text, te
 
 -- Before each copy: the destination is registered (same rules as the
 -- repoint's), so a copy no song ends up linking is found by the sweep.
+-- Returns true when this call registered it (false: it already was, by an
+-- earlier or parallel run). Only the app of this PR calls it.
 CREATE OR REPLACE FUNCTION public.bw_song_file_copy_reserve(p_song_id uuid, p_field text, p_from text, p_to text)
 RETURNS boolean
 LANGUAGE plpgsql
@@ -449,6 +486,7 @@ DECLARE
   s record;
   v_parts text[];
   v_prefix text;
+  v_new boolean;
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'Not signed in' USING ERRCODE = '42501';
@@ -471,14 +509,42 @@ BEGIN
      OR position('/' IN substr(p_to, length(v_prefix) + 1)) > 0 OR length(p_to) > 400 THEN
     RAISE EXCEPTION 'Bad destination' USING ERRCODE = '22023';
   END IF;
-  INSERT INTO public.song_file_copies (path, band_id, song_id, made_by, made_at)
-  VALUES (p_to, s.band_id, s.id, v_uid, now())
-  ON CONFLICT (path) DO UPDATE SET made_by = EXCLUDED.made_by, made_at = now();
-  RETURN true;
+  INSERT INTO public.song_file_copies (path, band_id, song_id, made_by, made_at, reserved_at)
+  VALUES (p_to, s.band_id, s.id, v_uid, now(), now())
+  ON CONFLICT (path) DO UPDATE SET made_by = EXCLUDED.made_by, made_at = now()
+  RETURNING (xmax = 0) INTO v_new;
+  RETURN v_new;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_song_file_copy_reserve(uuid, text, text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_song_file_copy_reserve(uuid, text, text, text) TO authenticated;
+
+-- A destination the run gave up (a different file was already there, so
+-- it picked another name): its registration goes. Only the admin who last
+-- registered it, of the song's band; true when one went.
+CREATE OR REPLACE FUNCTION public.bw_song_file_copy_release(p_song_id uuid, p_to text)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  s record;
+  n integer;
+BEGIN
+  SELECT id, band_id INTO s FROM public.songs WHERE id = p_song_id;
+  IF v_uid IS NULL OR s.id IS NULL OR NOT public.bw_is_band_admin(s.band_id, v_uid) THEN
+    RAISE EXCEPTION 'Only band admins can move song files' USING ERRCODE = '42501';
+  END IF;
+  DELETE FROM public.song_file_copies
+   WHERE path = p_to AND band_id = s.band_id AND song_id = s.id AND made_by = v_uid;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  RETURN n > 0;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_song_file_copy_release(uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_song_file_copy_release(uuid, text) TO authenticated;
 
 -- Rolling backfill: band objects older than a day that nothing uses and
 -- nothing records (no claim, no registered copy, no move in progress):
@@ -550,11 +616,13 @@ BEGIN
       UNION
       -- Copies registered for a move that never repointed (the run stopped,
       -- or the song went) after 10 minutes.
+      -- Never an object that was there before the registration.
       SELECT c.path
         FROM public.song_file_copies c
        WHERE c.band_id = p_band_id
          AND c.made_at < now() - interval '10 minutes'
          AND c.path LIKE p_band_id::text || '/%'
+         AND public.bw_song_file_copy_ours(c.path, c.reserved_at)
       UNION
       SELECT o FROM public.bw_song_file_orphans(p_band_id) o) x
      WHERE NOT public.bw_song_file_in_use(x.p)), '{}'::text[]);
@@ -592,7 +660,8 @@ BEGIN
                 WHERE r.path = p_path AND r.band_id = p_band_id AND r.path LIKE p_band_id::text || '/%')
        OR EXISTS (SELECT 1 FROM public.song_file_copies c
                    WHERE c.path = p_path AND c.band_id = p_band_id AND c.made_at < now() - interval '10 minutes'
-                     AND c.path LIKE p_band_id::text || '/%')
+                     AND c.path LIKE p_band_id::text || '/%'
+                     AND public.bw_song_file_copy_ours(c.path, c.reserved_at))
        OR EXISTS (SELECT 1 FROM public.bw_song_file_orphans(p_band_id, p_path)) THEN
       IF cardinality(public.bw_song_files_claim_for(ARRAY[public.bw_song_file_ref(p_path)], auth.uid(), true)) > 0 THEN
         DELETE FROM public.song_file_copies WHERE path = p_path;
@@ -857,10 +926,9 @@ BEGIN
       FROM unnest(coalesce(p_refs, '{}'::text[])) x
      WHERE x LIKE 'sb://song-files/%'
        AND split_part(substr(x, length('sb://song-files/') + 1), '/', 1) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-       -- A removed song's files (no check): only the song's band (p_band_id),
-       -- or without it the caller's bands.
-       AND (p_check OR (p_band_id IS NOT NULL AND split_part(substr(x, length('sb://song-files/') + 1), '/', 1) = p_band_id::text)
-                    OR (p_band_id IS NULL AND split_part(substr(x, length('sb://song-files/') + 1), '/', 1) = ANY (public.bw_my_band_ids())))
+       -- A removed song's files (no check): only the song's band (p_band_id);
+       -- without it, none.
+       AND (p_check OR (p_band_id IS NOT NULL AND split_part(substr(x, length('sb://song-files/') + 1), '/', 1) = p_band_id::text))
        AND (NOT p_check
             OR public.bw_is_band_admin(split_part(substr(x, length('sb://song-files/') + 1), '/', 1)::uuid, p_uid)
             OR (split_part(substr(x, length('sb://song-files/') + 1), '/', 1) = ANY (public.bw_my_band_ids())
@@ -890,18 +958,32 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_song_files_claim_for(text[], uuid, boolean, uuid) FROM PUBLIC, anon, authenticated;
 
--- For the review / withdraw RPCs (also 180's withdraw, when it runs after
--- this): of a removed song's refs, those nothing else uses, claimed for the
--- calling user (jsonb array, the RPCs' `files`). Call it after deleting the
--- song row. Older builds delete the list right away; the claim then lapses.
+-- For the withdraw RPC (197's and 180's, identical; 180 calls it by name
+-- with the refs only): of the withdrawn song's refs, those nothing else
+-- uses, claimed for the calling user (jsonb array, the RPC's `files`). Call
+-- it after deleting the song row. Only files of the suggestion's own band
+-- (Codex review of ed7ec29f, B2): the band of the one suggestion the caller
+-- withdrew in this transaction (reviewed_at = now(), the transaction's
+-- time); none found (or several): nothing is claimed. Older builds delete
+-- the list right away; the claim then lapses.
 CREATE OR REPLACE FUNCTION public.bw_song_files_left_unused(p_refs text[])
 RETURNS jsonb
-LANGUAGE sql
+LANGUAGE plpgsql
 VOLATILE
 SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
-  SELECT to_jsonb(public.bw_song_files_claim_for(p_refs, auth.uid(), false));
+DECLARE
+  v_bands uuid[];
+BEGIN
+  v_bands := ARRAY(SELECT DISTINCT g.band_id FROM public.song_suggestions g
+                    WHERE g.created_by = auth.uid() AND g.status = 'withdrawn'
+                      AND g.reviewed_at = now() AND g.band_id IS NOT NULL);
+  IF auth.uid() IS NULL OR cardinality(v_bands) <> 1 THEN
+    RETURN '[]'::jsonb;
+  END IF;
+  RETURN to_jsonb(public.bw_song_files_claim_for(p_refs, auth.uid(), false, v_bands[1]));
+END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_song_files_left_unused(text[]) FROM PUBLIC, anon, authenticated;
 

@@ -213,6 +213,8 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
   const [songs, setSongs] = useState<Song[]>([]);
   const [setlists, setSetlists] = useState<Setlist[]>([]);
   const [loading, setLoading] = useState(true);
+  // The band whose songs were last loaded (also when it has none).
+  const [songsFor, setSongsFor] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddSong, setShowAddSong] = useState(false);
   const [showAddSetlist, setShowAddSetlist] = useState(false);
@@ -309,7 +311,10 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
       getSetlists(selectedBand.id)
     ]);
     
-    if (songsRes.data) setSongs(songsRes.data);
+    if (songsRes.data) {
+      setSongs(songsRes.data);
+      setSongsFor(selectedBand.id);
+    }
     if (setlistsRes.data) setSetlists(setlistsRes.data);
     if (songsRes.error || setlistsRes.error) {
       setNotice({ text: errorText(songsRes.error || setlistsRes.error, t('Could not load your songs and setlists')), error: true });
@@ -369,18 +374,20 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
     if (Object.keys(refs).length) setSongs((prev) => prev.map((s) => (s.id === song.id ? { ...s, ...refs } : s)));
   }, []);
   // Originals left by a move that could not delete them (recorded on the
-  // server, 197): tidied once per visit. Several admins or devices at once
-  // are safe: the server decides who repoints and what may be deleted.
+  // server, 197), lapsed delete claims and unused copies: tidied once per
+  // visit, once the songs are loaded, also when the band has none left (the
+  // last one's file may be waiting). Several admins or devices at once are
+  // safe: the server decides who repoints and what may be deleted.
   const swept = useRef<string | null>(null);
   useEffect(() => {
     if (!isAdmin) return;
     for (const song of songs) if (hasUnadoptedFiles(song) && !adoptTried.current.has(song.id)) void adoptFiles(song);
     const bandId = selectedBand?.id;
-    if (bandId && songs.length && swept.current !== bandId) {
+    if (bandId && songsFor === bandId && swept.current !== bandId) {
       swept.current = bandId;
       void sweepAdoptedFiles(bandId);
     }
-  }, [songs, isAdmin, adoptFiles, selectedBand?.id]);
+  }, [songs, songsFor, isAdmin, adoptFiles, selectedBand?.id]);
 
   /** Admins move a suggested song to Learning / Ready (and back). */
   const handleSetSongStatus = async (song: Song, status: Song['status']) => {
