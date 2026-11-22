@@ -57,12 +57,14 @@
 -- setlist_song_tombstones for 30 days, and an insert with such an id is
 -- skipped quietly: an older build's Stage order (383f15b upserts every row
 -- it shows, by id) can't bring back a song another admin removed meanwhile.
--- An upsert of a row that still exists is an update and goes through. One
--- exception keeps older builds working: the admin who deleted the rows can
--- put them back within 2 minutes (their failed save restoring the old rows
--- with their ids). Requests without a signed-in user (service role, SQL
--- editor) are never skipped. The tombstones have no grants: only these triggers
--- (definer) read or write them.
+-- An upsert of a row that still exists is an update and goes through (a
+-- delete of it in flight is waited for first). One exception keeps older
+-- builds working: the admin who deleted the rows can put them back within 2
+-- minutes with a plain insert (their failed save restoring the old rows with
+-- their ids); an upsert (Prefer: resolution=…) never counts. Requests that
+-- aren't an app user's (service_role, postgres / SQL editor) are never
+-- skipped. The tombstones have no grants: only these triggers (definer) read
+-- or write them.
 --
 -- Additive only: older TestFlight / APK builds keep doing their own
 -- delete + insert on setlist_songs under the 074 policies, unchanged.
@@ -120,21 +122,39 @@ AS $$
 DECLARE
   v_by uuid;
   v_at timestamptz;
+  v_role text;
+  v_prefer text;
 BEGIN
+  -- Still there (an upsert's update path): never skipped. FOR KEY SHARE
+  -- waits for a delete of this row still in flight in another request; once
+  -- it has committed the row is gone and its tombstone is read below (a new
+  -- statement, so it sees that commit).
+  PERFORM 1 FROM public.setlist_songs ss WHERE ss.id = NEW.id FOR KEY SHARE;
+  IF FOUND THEN
+    RETURN NEW;
+  END IF;
   SELECT t.deleted_by, t.deleted_at INTO v_by, v_at
     FROM public.setlist_song_tombstones t WHERE t.id = NEW.id;
   IF NOT FOUND THEN
     RETURN NEW;
   END IF;
-  -- Still there (an upsert's update path): never skipped.
-  IF EXISTS (SELECT 1 FROM public.setlist_songs ss WHERE ss.id = NEW.id) THEN
+  -- Not an app user's request (service_role, postgres / the SQL editor, a
+  -- restore by hand): let it in. The request's role (PostgREST's JWT claim),
+  -- else the session's role; never inferred from a missing user id.
+  v_role := coalesce(
+    nullif(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role', ''),
+    nullif(nullif(current_setting('role', true), ''), 'none'),
+    session_user::text);
+  IF v_role NOT IN ('authenticated', 'anon') THEN
+    DELETE FROM public.setlist_song_tombstones WHERE id = NEW.id;
     RETURN NEW;
   END IF;
-  -- Not a signed-in user's request (service role, SQL editor, a restore by
-  -- hand), or the deleting admin putting the rows back at once (older
-  -- builds' failed save restoring them): let it in.
-  IF auth.uid() IS NULL
-     OR (v_by IS NOT NULL AND v_by = auth.uid() AND v_at > now() - interval '2 minutes') THEN
+  -- The deleting admin putting the rows back at once: an older build's
+  -- failed save restoring them, a plain insert. An upsert (Prefer:
+  -- resolution=…, the older Stage order) never counts as that.
+  v_prefer := lower(coalesce(nullif(current_setting('request.headers', true), '')::jsonb ->> 'prefer', ''));
+  IF position('resolution=' in v_prefer) = 0
+     AND v_by IS NOT NULL AND v_by = auth.uid() AND v_at > now() - interval '2 minutes' THEN
     DELETE FROM public.setlist_song_tombstones WHERE id = NEW.id;
     RETURN NEW;
   END IF;

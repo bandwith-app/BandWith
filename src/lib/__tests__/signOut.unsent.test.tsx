@@ -7,7 +7,7 @@ import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-libra
 // asks first: "Send now" or "Sign out anyway"; closed, still signed in.
 // Made-up note (New York).
 
-const auth = vi.hoisted(() => ({ signOut: vi.fn(async () => ({ error: null })), left: 0, refused: 0, notes: 0, busy: false, session: 'u-a' as string | null, sessionThrows: false, locked: false }));
+const auth = vi.hoisted(() => ({ signOut: vi.fn(async () => ({ error: null })), left: 0, refused: 0, notes: 0, busy: false, session: 'u-a' as string | null, sessionThrows: false, locked: false, beforeSession: null as null | (() => void) }));
 vi.mock('../appLock', () => ({ isAppLockedNow: () => auth.locked }));
 vi.mock('../supabase', () => ({
   supabase: {
@@ -19,6 +19,7 @@ vi.mock('../supabase', () => ({
   },
   getSafeUser: async () => null,
   getSessionOfflineSafe: async () => {
+    auth.beforeSession?.();
     if (auth.sessionThrows) throw new Error('Failed to fetch');
     return { session: auth.session ? { user: { id: auth.session } } : null };
   },
@@ -84,6 +85,7 @@ beforeEach(() => {
   auth.session = 'u-a';
   auth.sessionThrows = false;
   auth.locked = false;
+  auth.beforeSession = null;
   sendWaitingNowMock.mockClear();
   result = undefined;
 });
@@ -283,6 +285,49 @@ describe('signing out with changes not sent yet', () => {
     await new Promise((r) => setTimeout(r, 30));
     expect(readRefusedLiveOps('u-a').map((o) => (o as { id?: string }).id)).toEqual(['n1']);
     expect(JSON.parse(localStorage.getItem('bw:rehearsal_notes_rejected:u-a') || '[]')).toMatchObject([{ id: 'rn9', body: 'Start the bridge on the snare fill' }]);
+  });
+
+  // Round 8 (Claude r7): what can't be kept as refused (a rehearsal note
+  // deleted or ticked, a Stage change once the refused list is full) stayed
+  // queued and the wipe still deleted it. Now "Sign out" stays put and says
+  // unlock to send; nothing is wiped.
+  it('locked "Sign out" with a rehearsal note delete waiting: not signed out, unlock to send, still queued', async () => {
+    localStorage.setItem('bw:rehearsal_notes_outbox:u-a', JSON.stringify([{ kind: 'delete', id: 'rn4' }]));
+    auth.locked = true;
+    await renderApp();
+    fireEvent.click(screen.getByText('sign me out'));
+    fireEvent.click(await screen.findByRole('button', { name: /^sign out$/i }));
+    expect(await screen.findByText(/Unlock to send them before you sign out/)).toBeTruthy();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(auth.signOut).not.toHaveBeenCalled();
+    expect(JSON.parse(localStorage.getItem('bw:rehearsal_notes_outbox:u-a') || '[]')).toEqual([{ kind: 'delete', id: 'rn4' }]);
+  });
+
+  it('locked "Sign out" with the refused list full and a Stage change waiting: not signed out, the change still queued', async () => {
+    localStorage.setItem('bw:live_refused:u-a', JSON.stringify(Array.from({ length: 100 }, (_, i) => ({ ...note(`r${i}`), rid: `rid-${i}` }))));
+    queueLiveOp('u-a', note('n1'));
+    auth.locked = true;
+    await renderApp();
+    fireEvent.click(screen.getByText('sign me out'));
+    fireEvent.click(await screen.findByRole('button', { name: /^sign out$/i }));
+    expect(await screen.findByText(/Unlock to send them before you sign out/)).toBeTruthy();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(auth.signOut).not.toHaveBeenCalled();
+    expect(JSON.parse(localStorage.getItem('bw:live_outbox:u-a') || '[]')).toMatchObject([{ id: 'n1' }]);
+  });
+
+  it('kept-as-refused finds no room after all (another tab filled the list): the sign-out is called off, nothing wiped', async () => {
+    queueLiveOp('u-a', note('n1'));
+    auth.locked = true;
+    await renderApp();
+    fireEvent.click(screen.getByText('sign me out'));
+    // Filled between the sheet's check and the move (AuthContext's session re-check).
+    auth.beforeSession = () =>
+      localStorage.setItem('bw:live_refused:u-a', JSON.stringify(Array.from({ length: 100 }, (_, i) => ({ ...note(`r${i}`), rid: `rid-${i}` }))));
+    fireEvent.click(await screen.findByRole('button', { name: /^sign out$/i }));
+    await waitFor(() => expect(result).toMatchObject({ cancelled: true }));
+    expect(auth.signOut).not.toHaveBeenCalled();
+    expect(JSON.parse(localStorage.getItem('bw:live_outbox:u-a') || '[]')).toMatchObject([{ id: 'n1' }]);
   });
 
   it('refused only, from the lock screen: "Sign out" keeps them, no Erase', async () => {

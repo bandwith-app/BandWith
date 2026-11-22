@@ -369,9 +369,11 @@ await db.exec(`ALTER TABLE public.setlist_songs DROP CONSTRAINT t_pos_unique`);
   await seed();
   // Admin B removes S2 (row R2) with a save; the old phone still shows it.
   await save(ADMIN2, [{ id: R1, song_id: S1 }, { id: R3, song_id: S3, set_number: 2 }]);
+  // supabase-js upsert({ onConflict }) sends Prefer: resolution=merge-duplicates.
   const upsert383 = (user, list) =>
-    asCommit(user, () =>
-      db.query(
+    asCommit(user, async () => {
+      await db.query(`SELECT set_config('request.headers', $1, true)`, [JSON.stringify({ prefer: 'resolution=merge-duplicates,return=representation' })]);
+      return db.query(
         `INSERT INTO setlist_songs (id, setlist_id, song_id, position, set_number)
          SELECT x.id, x.setlist_id, x.song_id, x.position, x.set_number
            FROM jsonb_to_recordset($1::jsonb) AS x(id uuid, setlist_id uuid, song_id uuid, position int, set_number int)
@@ -379,8 +381,8 @@ await db.exec(`ALTER TABLE public.setlist_songs DROP CONSTRAINT t_pos_unique`);
                                        position = EXCLUDED.position, set_number = EXCLUDED.set_number
          RETURNING id`,
         [JSON.stringify(list)],
-      ),
-    ).then((r) => r.rows, (e) => ({ error: e.message }));
+      );
+    }).then((r) => r.rows, (e) => ({ error: e.message }));
   const back = await upsert383(ADMIN, [
     { id: R3, setlist_id: SL, song_id: S3, position: 1, set_number: 1 },
     { id: R2, setlist_id: SL, song_id: S2, position: 2, set_number: 1 },
@@ -401,6 +403,24 @@ await db.exec(`ALTER TABLE public.setlist_songs DROP CONSTRAINT t_pos_unique`);
     await db.query(`INSERT INTO setlist_songs (id, setlist_id, song_id, position, set_number) VALUES ($2,$1,$3,1,1),($4,$1,$5,2,1),($6,$1,$7,3,2)`, [SL, R1, S1, R2, S2, R3, S3]);
   });
   ok((await rows()).map((r) => r.id).join() === [R1, R2, R3].join(), 'the deleting admin restoring the rows at once (old build) still works');
+  // Round 7 r7 (nit 4): the window is for a plain insert only: the same
+  // admin's older Stage order (an upsert) within the 2 minutes is skipped.
+  await seed();
+  await asCommit(ADMIN, () => db.query(`DELETE FROM setlist_songs WHERE id = $1`, [R2]));
+  const mine = await upsert383(ADMIN, [{ id: R2, setlist_id: SL, song_id: S2, position: 2, set_number: 1 }]);
+  ok(!mine?.error && !(await rows()).some((r) => r.id === R2), `the deleting admin's own old Stage upsert right after doesn't bring it back (${mine?.error ?? ''})`);
+  // Round 7 r7 (nit 5): "never skipped" goes by the role, not a missing user
+  // id: an app request without a user id is skipped; service_role is let in.
+  await seed();
+  await asCommit(ADMIN2, () => db.query(`DELETE FROM setlist_songs WHERE id = $1`, [R3]));
+  await db.exec(`BEGIN; SELECT set_config('request.jwt.claims', '{"role":"authenticated"}', true);`);
+  await db.query(`INSERT INTO setlist_songs (id, setlist_id, song_id, position, set_number) VALUES ($1,$2,$3,3,2)`, [R3, SL, S3]);
+  await db.exec('COMMIT');
+  ok(!(await rows()).some((r) => r.id === R3), 'an app request with no user id is not let in');
+  await db.exec(`BEGIN; SELECT set_config('request.jwt.claims', '{"role":"service_role"}', true);`);
+  await db.query(`INSERT INTO setlist_songs (id, setlist_id, song_id, position, set_number) VALUES ($1,$2,$3,3,2)`, [R3, SL, S3]);
+  await db.exec('COMMIT');
+  ok((await rows()).some((r) => r.id === R3), 'a service_role request (a restore by hand) is let in');
   // The tombstones: nobody reads or writes them directly; older than 30 days are pruned.
   const priv = (await db.query(`SELECT has_table_privilege('authenticated', 'public.setlist_song_tombstones', 'SELECT') OR has_table_privilege('authenticated', 'public.setlist_song_tombstones', 'INSERT') OR has_table_privilege('anon', 'public.setlist_song_tombstones', 'SELECT') AS x`)).rows[0].x;
   ok(priv === false, 'no grants on the tombstones (definer and triggers only)');

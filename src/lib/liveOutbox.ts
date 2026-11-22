@@ -236,6 +236,17 @@ export function keepQueuedAsRefused(userId: string): void {
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(LIVE_REFUSED_EVENT, { detail: { userId } }));
 }
 
+/**
+ * How many waiting changes keepQueuedAsRefused would leave queued (a
+ * rehearsal note deleted or ticked, Stage changes past the refused list's
+ * room): signing out from the lock screen would wipe them, so it waits.
+ */
+export function queuedNotKeptOnSignOut(userId: string): number {
+  const room = Math.max(0, REFUSED_LIMIT - readRefusedLiveOps(userId).length);
+  const live = Math.max(0, readLiveOutbox(userId).length - room);
+  return live + readOutbox(userId).filter((o) => o.kind !== 'save').length;
+}
+
 export function queueLiveOp(userId: string, op: LiveOp) {
   writeLiveOutbox(userId, addLiveOp(readLiveOutbox(userId), op));
 }

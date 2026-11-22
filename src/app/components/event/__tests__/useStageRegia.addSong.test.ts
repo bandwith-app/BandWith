@@ -90,7 +90,8 @@ const SONGS: RegiaSong[] = [
 ];
 
 const jumpTo = vi.fn();
-const setup = () =>
+const clearPendingOrder = vi.fn();
+const setup = (live: RegiaSong[] = SONGS, stored?: RegiaSong[]) =>
   renderHook(() =>
     useStageRegia({
       eventId: 'gig-1',
@@ -101,7 +102,8 @@ const setup = () =>
       clientId: 'me',
       send: vi.fn(),
       bridge: { current: {} } as { current: StageRegiaBridge },
-      songs: SONGS,
+      songs: live,
+      ...(stored ? { savedSongs: stored, clearPendingOrder } : {}),
       currentId: 'r1',
       select: vi.fn(),
       jumpTo,
@@ -116,6 +118,7 @@ beforeEach(() => {
   db.inserts = 0;
   db.n = 0;
   jumpTo.mockClear();
+  clearPendingOrder.mockClear();
 });
 
 describe('Regia: a song off the setlist added on stage', () => {
@@ -162,5 +165,37 @@ describe('Regia: a song off the setlist added on stage', () => {
     });
     expect(out).toBe('changed');
     expect(db.rows.map((r) => r.id)).toEqual(['r3', 'r2', 'r1']);
+  });
+
+  // Round 8 (Claude r7): `expected` is the stored order, not the one on
+  // screen. A move here not saved yet (or an order that came over Bluetooth
+  // offline) made every add a "changed", reload, picker again, forever.
+  it('a move on this device not saved yet: the add saves in the live order and the pending order save is dropped', async () => {
+    const live = [SONGS[1], SONGS[0], SONGS[2]];
+    const { result } = setup(live, SONGS);
+    act(() => result.current.turnOn());
+    let out: unknown;
+    await act(async () => {
+      out = await result.current.playExtra({ id: 'd', title: 'Juicy', audio: 'sb://song-files/b/audio/d.mp3' });
+    });
+    expect(out).not.toBe('changed');
+    expect(result.current.error).toBeNull();
+    expect(db.rows.map((r) => r.id)).toEqual(['r2', 'r1', 'new-1', 'r3']);
+    expect(jumpTo).toHaveBeenCalledWith('new-1', ['r2', 'r1', 'new-1', 'r3']);
+    expect(clearPendingOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('changed meanwhile on another device, with a local move too: still a change, the pending order is kept', async () => {
+    const live = [SONGS[1], SONGS[0], SONGS[2]];
+    const { result } = setup(live, SONGS);
+    act(() => result.current.turnOn());
+    db.rows = db.rows.filter((r) => r.id !== 'r3');
+    let out: unknown;
+    await act(async () => {
+      out = await result.current.playExtra({ id: 'd', title: 'Juicy', audio: null });
+    });
+    expect(out).toBe('changed');
+    expect(db.rows.map((r) => r.id)).toEqual(['r1', 'r2']);
+    expect(clearPendingOrder).not.toHaveBeenCalled();
   });
 });

@@ -517,8 +517,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           discardRefusedChanges(asked);
         }
         if (choice === 'keep-queued') {
-          const { keepQueuedAsRefused } = await import('./liveOutbox');
+          const { keepQueuedAsRefused, waitingChanges } = await import('./liveOutbox');
           keepQueuedAsRefused(asked);
+          // Something found no room (the sheet checked; another tab filled the list since): the wipe would delete it.
+          if (waitingChanges(asked) > 0) return { error: null, cancelled: true as const };
         }
       }
     }

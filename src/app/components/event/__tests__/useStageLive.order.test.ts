@@ -91,4 +91,17 @@ describe('Stage mode: the leader reorders online', () => {
     expect(db.rows.map((r) => r.id)).toEqual(['r2', 'r1', 'r3']);
     expect(db.rpcs[0]).toMatchObject({ p_expected: { songs: [{ id: 'r1' }, { id: 'r2' }, { id: 'r3' }] } });
   });
+
+  // Round 8 (Claude r7): the Regia's added song saves the live order with it;
+  // the stored order is exposed for its check, and the pending save dropped.
+  it('a move then the Regia saving the live order: the stored order is exposed and the pending save never runs', async () => {
+    const { result } = renderHook(() => useStageLive({ setlistId: 'sl', songs, open: false, isLeader: true }));
+    act(() => result.current.move(2, 0));
+    expect(result.current.songs.map((s) => s.id)).toEqual(['r3', 'r1', 'r2']);
+    expect(result.current.savedSongs.map((s) => s.id)).toEqual(['r1', 'r2', 'r3']);
+    act(() => result.current.dropPendingOrder());
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(db.rpcs).toHaveLength(0);
+    expect(result.current.saveState).not.toBe('saving');
+  });
 });

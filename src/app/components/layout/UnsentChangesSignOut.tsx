@@ -3,6 +3,7 @@ import { BwSheet } from '@/app/components/bw/Screen';
 import { FormError, PillButton } from '@/app/components/bw/Form';
 import {
   LIVE_REFUSED_EVENT,
+  queuedNotKeptOnSignOut,
   refusedChanges,
   readRefusedLiveOps,
   refusedListFull,
@@ -255,8 +256,19 @@ export const UnsentChangesSignOut: React.FC = () => {
         ) : locked ? (
           <div className="flex flex-col gap-2">
             <PillButton onClick={() => done('cancel')}>{t('Unlock to send')}</PillButton>
-            {/* The wipe would delete what waits: kept as refused instead (AuthContext). */}
-            <PillButton variant="outline" onClick={() => done(copy?.queued === QUEUED_KEPT ? 'signout' : 'keep-queued')}>
+            {/* The wipe would delete what waits: kept as refused instead (AuthContext).
+                What can't be kept that way (a note deleted or ticked, a full list) waits for the unlock. */}
+            <PillButton
+              variant="outline"
+              onClick={() => {
+                if (copy?.queued === QUEUED_KEPT) return done('signout');
+                if (ask && queuedNotKeptOnSignOut(ask.userId) > 0) {
+                  setError(t('Some of these changes can’t be kept on this phone. Unlock to send them before you sign out.'));
+                  return;
+                }
+                done('keep-queued');
+              }}
+            >
               {t('Sign out')}
             </PillButton>
           </div>

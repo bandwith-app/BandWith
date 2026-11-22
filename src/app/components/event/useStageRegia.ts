@@ -78,6 +78,14 @@ interface Options {
   bridge: { current: StageRegiaBridge };
   /** The setlist in its live order. */
   songs: RegiaSong[];
+  /**
+   * useStageLive: the setlist as stored (its saved order). A song added on
+   * stage is checked against it, not against the live order on screen (a
+   * move not saved yet, an order from Bluetooth). Defaults to `songs`.
+   */
+  savedSongs?: RegiaSong[];
+  /** useStageLive: the live order was just saved with the added song, drop the pending order save. */
+  clearPendingOrder?: () => void;
   currentId: string | null;
   skipped?: ReadonlySet<string>;
   /** useStageLive: make song `i` current (everyone follows). */
@@ -125,6 +133,8 @@ export function useStageRegia({
   send,
   bridge,
   songs,
+  savedSongs,
+  clearPendingOrder,
   currentId,
   skipped,
   select,
@@ -149,8 +159,9 @@ export function useStageRegia({
   const loadedRef = useRef<{ id: string; title: string } | null>(null);
   const [error, setError] = useState<RegiaError | null>(null);
 
-  const ctx = useRef({ songs, currentId, setlistId, myName, select, jumpTo, send, clientId, skipped });
-  ctx.current = { songs, currentId, setlistId, myName, select, jumpTo, send, clientId, skipped };
+  const stored = savedSongs ?? songs;
+  const ctx = useRef({ songs, stored, clearPendingOrder, currentId, setlistId, myName, select, jumpTo, send, clientId, skipped });
+  ctx.current = { songs, stored, clearPendingOrder, currentId, setlistId, myName, select, jumpTo, send, clientId, skipped };
 
   // ── Sending ──────────────────────────────────────────────────────────
   const publish = useCallback((next: Partial<RegiaState> & { on: boolean }) => {
@@ -401,13 +412,18 @@ export function useStageRegia({
    * One guarded save (188): written only over the setlist as shown here (row
    * ids), so a song another admin removed meanwhile never comes back. Changed
    * meanwhile: nothing is written, the setlist reloads and the answer is
-   * 'changed' (the picker opens again on the latest list).
+   * 'changed' (the picker opens again on the latest list). Checked against
+   * the stored rows; written in the live order (a move here not saved yet is
+   * saved with it, so its own pending save is dropped).
    */
   const playExtra = useCallback(
     async (song: RegiaExtraSong): Promise<boolean | 'changed'> => {
-      const { setlistId: list, songs: ordered, currentId: cur, jumpTo: jump } = ctx.current;
+      const { setlistId: list, songs: ordered, stored, clearPendingOrder: dropPending, currentId: cur, jumpTo: jump } = ctx.current;
       if (!on || !list) return false;
       setError(null);
+      const asStored = stored
+        .filter((s) => s.id && s.songId)
+        .map((s) => ({ id: s.id!, song_id: s.songId!, set_number: s.setNumber ?? 1 }));
       const saved = ordered.filter((s) => s.id && s.songId).map((s) => ({ id: s.id!, songId: s.songId!, setNumber: s.setNumber ?? 1 }));
       const at = saved.findIndex((s) => s.id === cur);
       const insertAt = at >= 0 ? at + 1 : saved.length;
@@ -424,9 +440,7 @@ export function useStageRegia({
           /* no window */
         }
       };
-      const res = await replaceSetlistSongs(list, entries, {
-        expected: { songs: saved.map((s) => ({ id: s.id, song_id: s.songId, set_number: s.setNumber })) },
-      });
+      const res = await replaceSetlistSongs(list, entries, { expected: { songs: asStored } });
       if (res.error) {
         setError({ kind: 'insert' });
         return false;
@@ -436,6 +450,8 @@ export function useStageRegia({
         reload();
         return 'changed';
       }
+      // The live order is saved now (with the new song): a pending order save would only conflict.
+      dropPending?.();
       const known = new Set(saved.map((s) => s.id));
       const added = res.rows?.find((r) => !known.has(r.id) && r.song_id === song.id);
       reload();

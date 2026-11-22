@@ -555,6 +555,13 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     [isLeader, send],
   );
 
+  /** The order was saved another way (the Regia's added song): no pending order save. */
+  const dropPendingOrder = useCallback(() => {
+    clearTimeout(saveTimer.current);
+    pendingOrder.current = null;
+    setSaveState((s) => (s === 'saving' ? 'saved' : s));
+  }, []);
+
   /** Send the Regia's state to everyone in Stage mode. */
   const sendRegia = useCallback((payload: unknown) => {
     void channelRef.current?.send({ type: 'broadcast', event: REGIA_EVENT, payload });
@@ -573,6 +580,9 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   return {
     /** The setlist in its live order. */
     songs: ordered,
+    /** The setlist as stored (its saved order). */
+    savedSongs: songs,
+    dropPendingOrder,
     sendSession,
     /** This app's id on the channel (one per Stage mode session). */
     clientId,

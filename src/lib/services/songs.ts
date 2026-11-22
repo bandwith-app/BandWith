@@ -1,6 +1,7 @@
 import { supabase, getSafeUser } from '../supabase';
 import { removeSongFiles } from './songFiles';
 import type { SongChart } from '../ireal';
+import { voicesKey } from '@/lib/voicesKey';
 
 /**
  * RLS refused the write (0 rows): an error the UI maps to a translated
@@ -681,17 +682,6 @@ export const setlistOrder = (
     }));
 
 type SetlistExpected = SetlistState | Pick<SetlistState, 'songs'>;
-
-// Who sings what, compared like 188: {} and null are the same, key order doesn't count.
-const voicesKey = (v: unknown): string => {
-  if (v == null || (typeof v === 'object' && !Array.isArray(v) && Object.keys(v as object).length === 0)) return 'null';
-  if (Array.isArray(v)) return `[${v.map(voicesKey).join(',')}]`;
-  if (typeof v === 'object') {
-    const o = v as Record<string, unknown>;
-    return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${voicesKey(o[k])}`).join(',')}}`;
-  }
-  return JSON.stringify(v);
-};
 
 /** `stored` is still what `expected` was, checked like 188 (ids and singers when expected has them). */
 export const setlistMatches = (stored: SetlistState, expected: SetlistState) =>

@@ -7,6 +7,7 @@
  * survive a reload; signing out wipes it.
  */
 import { buildSeed, DEMO_USER, type DemoDB, type Row } from './seed';
+import { voicesKey } from '@/lib/voicesKey';
 import { memberStatsFromRows } from '@/lib/memberStats';
 import { freeSlotsFromRows, type MemberCommitment } from '@/lib/freeSlots';
 import { computeEntitlements, limitFor, type BandPlanRow, type Entitlements, type LimitKey } from '@/lib/plans';
@@ -1727,15 +1728,14 @@ const rpcOnline = (fn: string, args: Row = {}) => {
         const sl = table('setlists').find((r) => r.id === id);
         const now = before.map((r) => ({ id: r.id, song_id: r.song_id, set_number: r.set_number ?? 1, vocal_parts: r.vocal_parts ?? null }));
         const want = Array.isArray(exp.songs) ? exp.songs : [];
-        // Per place: song and set; the row when named; who sings it when sent (188).
-        const voices = (v: unknown) => (v == null || (typeof v === 'object' && Object.keys(v as object).length === 0) ? 'null' : JSON.stringify(v));
+        // Per place: song and set; the row when named; who sings it when sent (188, voicesKey).
         const differs =
           now.length !== want.length ||
           want.some((w, i) =>
             w.song_id !== now[i].song_id ||
             (w.set_number ?? 1) !== now[i].set_number ||
             (w.id && w.id !== now[i].id) ||
-            ('vocal_parts' in w && voices(w.vocal_parts) !== voices(now[i].vocal_parts)));
+            ('vocal_parts' in w && voicesKey(w.vocal_parts) !== voicesKey(now[i].vocal_parts)));
         if (('name' in exp && exp.name !== sl?.name) || ('songs' in exp && differs)) {
           data = { saved: false, conflict: true, current: { name: sl?.name ?? '', songs: now } };
           break;

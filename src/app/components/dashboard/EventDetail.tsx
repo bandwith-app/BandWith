@@ -770,6 +770,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     send: stageLive.sendRegia,
     bridge: regiaBridge,
     songs: stageLive.songs,
+    savedSongs: stageLive.savedSongs,
+    clearPendingOrder: stageLive.dropPendingOrder,
     currentId: stageLive.currentId,
     skipped: stageLive.skipped,
     select: stageLive.select,

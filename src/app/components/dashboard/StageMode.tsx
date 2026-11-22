@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ChevronLeft, ChevronRight, Maximize, Minimize, Minus, Plus, StickyNote, X } from '@/app/components/icons';
 import { useLyricsSize } from '@/app/components/ui/LyricsViewer';
@@ -210,6 +210,19 @@ export const StageMode: React.FC<StageModeProps> = ({
   // Stage manager mode: the Regia's ▶ on each song with audio, and a song off the setlist.
   const regiaOn = !!regia?.on && !!live;
   const [extraOpen, setExtraOpen] = useState(false);
+  // The pick wasn't added (the setlist changed meanwhile): the sheet says so,
+  // and opens again once the setlist reloaded (or after a moment, if the
+  // reload brings nothing new).
+  const [extraChanged, setExtraChanged] = useState(false);
+  const reopenExtra = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openExtraAgain = useCallback(() => {
+    if (reopenExtra.current === null) return;
+    clearTimeout(reopenExtra.current);
+    reopenExtra.current = null;
+    setExtraOpen(true);
+  }, []);
+  useEffect(() => openExtraAgain(), [songs, openExtraAgain]);
+  useEffect(() => () => clearTimeout(reopenExtra.current ?? undefined), []);
   const inSetlist = useMemo(() => new Set(songs.map((s) => s.songId).filter((id): id is string => !!id)), [songs]);
   // The screen stays on while Stage mode is open (lyrics and chords are read
   // hands-free; a locked leader's phone stops the band's sync too).
@@ -1123,12 +1136,22 @@ export const StageMode: React.FC<StageModeProps> = ({
           open={extraOpen}
           bandId={bandId}
           inSetlist={inSetlist}
+          notice={extraChanged ? t('The setlist changed meanwhile. Pick the song again.') : null}
           onPick={(song) => {
             setExtraOpen(false);
+            setExtraChanged(false);
             // Changed meanwhile: the picker opens again on the latest setlist.
-            void regia!.playExtra(song).then((r) => { if (r === 'changed') setExtraOpen(true); });
+            void regia!.playExtra(song).then((r) => {
+              if (r !== 'changed') return;
+              setExtraChanged(true);
+              clearTimeout(reopenExtra.current ?? undefined);
+              reopenExtra.current = setTimeout(openExtraAgain, 1500);
+            });
           }}
-          onClose={() => setExtraOpen(false)}
+          onClose={() => {
+            setExtraOpen(false);
+            setExtraChanged(false);
+          }}
           accent={accentColor}
         />
       )}

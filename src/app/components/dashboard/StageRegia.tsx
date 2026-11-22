@@ -525,6 +525,8 @@ interface ExtraProps {
   bandId?: string;
   /** songs.id already in tonight's setlist (not offered again). */
   inSetlist: ReadonlySet<string>;
+  /** Said at the top (the last pick wasn't added: the setlist changed meanwhile). */
+  notice?: string | null;
   onPick: (song: { id: string; title: string; audio?: string | null }) => void;
   onClose: () => void;
   accent: string;
@@ -570,7 +572,7 @@ const FailedSheet: React.FC<{ failed: { title: string; reason: PlayFailure }[]; 
   );
 };
 
-export const RegiaExtraSheet: React.FC<ExtraProps> = ({ open, bandId, inSetlist, onPick, onClose, accent }) => {
+export const RegiaExtraSheet: React.FC<ExtraProps> = ({ open, bandId, inSetlist, notice, onPick, onClose, accent }) => {
   const t = useT();
   const [query, setQuery] = useState('');
   const [songs, setSongs] = useState<{ id: string; title: string; artist?: string; audio_url?: string }[] | null>(null);
@@ -608,6 +610,11 @@ export const RegiaExtraSheet: React.FC<ExtraProps> = ({ open, bandId, inSetlist,
             <X className="w-5 h-5" />
           </button>
         </div>
+        {notice && (
+          <p role="status" className="bw-body-md text-white rounded-[16px] border border-white/40 px-3 py-2">
+            {notice}
+          </p>
+        )}
         <p className="bw-body-sm text-white/70">{t('It goes in the setlist right after the current song, and everyone sees it.')}</p>
         <label className="flex items-center gap-2 min-h-11 px-3 rounded-full border border-white/30">
           <Search className="w-4 h-4 text-white/60 shrink-0" aria-hidden />

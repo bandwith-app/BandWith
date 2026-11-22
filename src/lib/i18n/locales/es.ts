@@ -3915,6 +3915,7 @@ const dict: Dictionary = {
   "Send now": "Enviar ahora",
   "Sign out anyway": "Cerrar sesión igualmente",
   "Unlock to send": "Desbloquear para enviar",
+  "Some of these changes can’t be kept on this phone. Unlock to send them before you sign out.": "Algunos de estos cambios no pueden quedarse en este teléfono. Desbloquea para enviarlos antes de cerrar sesión.",
   "Erase them and sign out": "Borrarlos y cerrar sesión",
   "1 change was refused. You’ll find it in {place}.": "1 cambio fue rechazado. Lo encontrarás en {place}.",
   "1 change was refused. It stays on this phone for your account.": "1 cambio fue rechazado. Se queda en este teléfono para tu cuenta.",
