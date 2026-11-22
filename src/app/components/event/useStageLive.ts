@@ -565,6 +565,10 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     connected,
     /** Bluetooth link (native apps): leading, searching, connected… */
     bluetooth: ble.status,
+    /** Leader: phones linked over Bluetooth. */
+    bluetoothFollowers: ble.followers,
+    /** Allow Bluetooth / turn it on (the status line's button). */
+    fixBluetooth: ble.fix,
     isLeader,
     /** Reordering needs saved rows (a band setlist with row ids). */
     canReorder: isLeader && !!setlistId && hasIds && ordered.every((s) => !!s.songId),

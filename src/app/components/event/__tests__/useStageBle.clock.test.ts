@@ -91,7 +91,8 @@ describe('useStageBle clock over Bluetooth', () => {
     await waitFor(() => expect(result.current.clock?.sample).toBeTruthy(), { timeout: 3000 });
     expect(onState).toHaveBeenCalled();
     expect(result.current.clock!.from).toBe('lead');
-    expect(Math.abs(result.current.clock!.sample!.offset - AHEAD_MS)).toBeLessThan(15);
+    // The fastest of the burst's round trips wins (timers in a busy test run are uneven).
+    await waitFor(() => expect(Math.abs(result.current.clock!.sample!.offset - AHEAD_MS)).toBeLessThan(15), { timeout: 3000 });
     unmount();
   });
 
