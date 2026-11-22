@@ -9,6 +9,11 @@
  *  - round 3: with 193, createChat opens band and gig chats through
  *    bw_open_group_chat (one chat per band / gig, also for someone whose
  *    participant row was removed); without it, the older path above.
+ *  - round 4: that older path never creates a second band / gig chat (it
+ *    asks bw_group_chat_exists, 175, and stops with a translated "try
+ *    again"); only a missing bw_open_group_chat counts as "no 193" (a
+ *    42P01 inside it is an error); band members with is_active NULL are
+ *    active, as in the database.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -18,7 +23,7 @@ type Resolver = (table: string, calls: Call[]) => { data: unknown; error: unknow
 const h = vi.hoisted(() => ({
   resolve: (() => ({ data: null, error: null })) as Resolver,
   chains: [] as { table: string; calls: Call[] }[],
-  rpc: (async () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } })) as (
+  rpc: (async (fn: string) => ({ data: null, error: { code: 'PGRST202', message: `Could not find the function public.${fn} in the schema cache` } })) as (
     fn: string,
     args: Record<string, unknown>,
   ) => Promise<{ data: unknown; error: unknown }>,
@@ -76,12 +81,14 @@ const LINEUP = [
   { user_id: 'new-1', status: null },
 ];
 const ACTIVE = ['me', 'line-1', 'drop-1', 'gone-1', 'new-1'];
+// is_active NULL (older rows): active for the database (coalesce(is_active, true)).
+const NULL_ACTIVE = ['null-1'];
 
 let warn: { mock: { calls: unknown[][] } };
 beforeEach(() => {
   h.chains.length = 0;
   h.rpcCalls.length = 0;
-  h.rpc = async () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } });
+  h.rpc = async (fn) => ({ data: null, error: { code: 'PGRST202', message: `Could not find the function public.${fn} in the schema cache` } });
   warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'log').mockImplementation(() => {});
 });
@@ -95,7 +102,9 @@ const resolver = (opts: { upsertError?: unknown } = {}): Resolver => (table, cal
   if (table === 'band_members') {
     if (has(calls, 'maybeSingle')) return { data: { role: 'admin', id: 'bm' }, error: null };
     const ids = (calls.find(([m, col]) => m === 'in' && col === 'user_id')?.[2] as string[] | undefined) ?? ACTIVE;
-    return { data: ids.filter((u) => ACTIVE.includes(u)).map((user_id) => ({ user_id })), error: null };
+    // .eq('is_active', true) leaves out NULL rows, as PostgREST would.
+    const nullOk = calls.some(([m, f]) => m === 'or' && /is_active\.is\.null/.test(String(f)));
+    return { data: ids.filter((u) => ACTIVE.includes(u) || (nullOk && NULL_ACTIVE.includes(u))).map((user_id) => ({ user_id })), error: null };
   }
   if (table === 'chat_participants' && has(calls, 'upsert') && opts.upsertError && writes('chat_participants', 'upsert').some((r) => r.length > 1))
     return { data: null, error: opts.upsertError };
@@ -172,3 +181,76 @@ describe('createChat with 193 (bw_open_group_chat)', () => {
     expect(h.chains.some((c) => c.table === 'chats' && has(c.calls, 'insert'))).toBe(false);
   });
 });
+
+describe('createChat, round 4', () => {
+  const newChat: Resolver = (table, calls) => {
+    if (table === 'chats' && has(calls, 'maybeSingle')) return { data: null, error: null };
+    if (table === 'chats' && has(calls, 'single')) return { data: { id: 'new-chat', type: 'band' }, error: null };
+    return resolver()(table, calls);
+  };
+
+  it('without 193: a band chat the lookup cannot see is never created twice ("try again" instead)', async () => {
+    h.resolve = newChat;
+    h.rpc = async (fn) =>
+      fn === 'bw_group_chat_exists'
+        ? { data: true, error: null }
+        : { data: null, error: { code: 'PGRST202', message: `Could not find the function public.${fn} in the schema cache` } };
+    const { data, error } = await createChat({ type: 'band', name: 'Hudson Horns', band_id: 'band-1', participant_ids: [] });
+    expect(data).toBeNull();
+    expect(error?.constructor.name).toBe('ChatRuleError');
+    expect(error?.message).toBe("Couldn't open the chat right now. Please try again in a moment.");
+    expect(h.chains.some((c) => c.table === 'chats' && has(c.calls, 'insert'))).toBe(false);
+  });
+
+  it('and when it cannot ask (an error other than a missing function), it stops too', async () => {
+    h.resolve = newChat;
+    h.rpc = async (fn) =>
+      fn === 'bw_group_chat_exists'
+        ? { data: null, error: { code: '57014', message: 'canceling statement due to statement timeout' } }
+        : { data: null, error: { code: 'PGRST202', message: `Could not find the function public.${fn} in the schema cache` } };
+    const { data, error } = await createChat({ type: 'event', band_id: 'band-1', event_id: 'gig-1', participant_ids: [] });
+    expect(data).toBeNull();
+    expect(error?.constructor.name).toBe('ChatRuleError');
+    expect(h.chains.some((c) => c.table === 'chats' && has(c.calls, 'insert'))).toBe(false);
+  });
+
+  it('no chat yet: it is created, after asking', async () => {
+    h.resolve = newChat;
+    h.rpc = async (fn) =>
+      fn === 'bw_group_chat_exists'
+        ? { data: false, error: null }
+        : { data: null, error: { code: 'PGRST202', message: `Could not find the function public.${fn} in the schema cache` } };
+    const { data, error } = await createChat({ type: 'band', name: 'Hudson Horns', band_id: 'band-1', participant_ids: [] });
+    expect(error).toBeNull();
+    expect(data?.id).toBe('new-chat');
+    expect(h.rpcCalls.some(([fn, a]) => fn === 'bw_group_chat_exists' && a.p_type === 'band' && a.p_band_id === 'band-1')).toBe(true);
+  });
+
+  it('a 42P01 / 42883 inside bw_open_group_chat is an error, not "no 193"', async () => {
+    h.resolve = newChat;
+    for (const err of [
+      { code: '42P01', message: 'relation "public.event_date_holds" does not exist' },
+      { code: '42883', message: 'function public.bw_event_quote_hidden(uuid, uuid) does not exist' },
+    ]) {
+      h.chains.length = 0;
+      h.rpc = async (fn) => (fn === 'bw_open_group_chat' ? { data: null, error: err } : { data: false, error: null });
+      const { data, error } = await createChat({ type: 'band', name: 'Hudson Horns', band_id: 'band-1', participant_ids: [] });
+      expect(data).toBeNull();
+      expect(error).toBeTruthy();
+      expect(h.chains.some((c) => c.table === 'chats' && has(c.calls, 'insert'))).toBe(false);
+    }
+  });
+
+  it('a band member with is_active NULL is added like any active member', async () => {
+    h.resolve = (table, calls) => {
+      if (table === 'chats' && has(calls, 'maybeSingle')) return { data: null, error: null };
+      if (table === 'chats' && has(calls, 'single')) return { data: { id: 'new-chat', type: 'event' }, error: null };
+      return resolver()(table, calls);
+    };
+    const { error } = await createChat({ type: 'event', band_id: 'band-1', event_id: 'gig-1', participant_ids: ['line-1', 'null-1', 'ex-1'] });
+    expect(error).toBeNull();
+    const others = writes('chat_participants', 'insert').slice(1).flat().map((r) => r.user_id);
+    expect(others.sort()).toEqual(['line-1', 'null-1']);
+  });
+});
+

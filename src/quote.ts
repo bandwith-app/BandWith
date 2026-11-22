@@ -653,49 +653,76 @@ let pdfGateMissing = false;
 let keyRetry = 0;
 let keyRetryPending = false;
 let keyWatch = false;
-async function refreshPdfKeys(): Promise<boolean> {
-  if (!/^[0-9a-f]{64}$/.test(token)) return false;
+const keysMoved = (next: QuotePdfKeys) =>
+  JSON.stringify([next.doc ?? null, next.balance ?? null]) !== JSON.stringify([pdfKeys.doc ?? null, pdfKeys.balance ?? null]);
+/** The keys of the document the link shows now; null when there are none to use. */
+async function fetchPdfKeys(): Promise<QuotePdfKeys | null> {
+  if (!/^[0-9a-f]{64}$/.test(token)) return null;
   startKeyWatch();
   try {
     const next = (await rpc<QuotePdfKeys | null>('bw_quote_link_pdf_keys', { p_token: token })) ?? {};
     keyRetry = 0;
-    const moved = JSON.stringify([next.doc ?? null, next.balance ?? null]) !== JSON.stringify([pdfKeys.doc ?? null, pdfKeys.balance ?? null]);
-    pdfKeys = next;
-    return moved;
+    return next;
   } catch (e) {
     // Before 176 is applied there is no gate: the stored (public) PDF link,
     // as before. Any other failure: keep the last keys and try again soon.
     if (e instanceof RpcError && e.code === 'PGRST202') {
       pdfGateMissing = true;
-      return false;
+      return null;
     }
     if (keyRetry < 4 && !keyRetryPending) {
       keyRetryPending = true;
       const wait = 2_000 * 3 ** keyRetry++;
       window.setTimeout(() => {
         keyRetryPending = false;
-        void refreshPdfKeys().then((moved) => moved && rerenderForKeys());
+        void followPdfKeys();
       }, wait);
     }
-    return false;
+    return null;
   }
 }
-function rerenderForKeys() {
+/** With a view just fetched (loading, an answer sent): the keys that go with it. */
+async function refreshPdfKeys(): Promise<void> {
+  const next = await fetchPdfKeys();
+  if (next) pdfKeys = next;
+}
+/**
+ * Keys change when the band republishes: a new document, so maybe a new
+ * version and price. Round 4: the page then reloads the whole view and shows
+ * it with the new keys in one render, never a new PDF next to an old price;
+ * when the view can't be had, the old keys stay too.
+ */
+async function followPdfKeys(): Promise<void> {
   if (busy || !view) return;
+  const next = await fetchPdfKeys();
+  if (!next || !keysMoved(next)) return;
+  let fresh: QuoteLinkView | null;
+  try {
+    fresh = await api.view();
+  } catch {
+    return;
+  }
+  if (busy) return;
   readFields();
+  if (fresh) {
+    pdfKeys = next;
+    applyView({ ...fresh, stale });
+  } else {
+    // Turned off or replaced meanwhile.
+    view = null;
+  }
   render();
 }
 /**
- * Keys change when the band republishes (a new PDF), so an open page asks
- * again on every poll and whenever it comes back to the screen: its PDF
- * button never keeps a key the gate no longer opens (round 3).
+ * An open page asks again on every poll and whenever it comes back to the
+ * screen: its PDF button never keeps a key the gate no longer opens (round 3).
  */
 function startKeyWatch() {
   if (keyWatch || (import.meta.env.DEV && token === 'demo')) return;
   keyWatch = true;
   const check = async () => {
     if (document.hidden || busy || !view) return;
-    if (await refreshPdfKeys()) rerenderForKeys();
+    await followPdfKeys();
   };
   window.setInterval(() => void check(), 30_000);
   document.addEventListener('visibilitychange', () => void check());

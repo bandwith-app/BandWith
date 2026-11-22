@@ -1731,6 +1731,7 @@ const dict: Dictionary = {
   "Direct messaging is only available with band admins.": "Los mensajes directos solo están disponibles con los admins de la banda.",
   "You can only message in bands you are an active member of.": "Solo puedes escribir en bandas de las que eres miembro activo.",
   "You can only message in events you are participating in.": "Solo puedes escribir en eventos en los que participas.",
+  "Couldn't open the chat right now. Please try again in a moment.": "No se pudo abrir el chat. Vuelve a intentarlo en un momento.",
   "DM": "MD",
   "BAND": "BANDA",
   "EVENT": "EVENTO",

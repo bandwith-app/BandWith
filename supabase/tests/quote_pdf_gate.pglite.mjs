@@ -134,6 +134,12 @@ ${before185 ? '' : `UPDATE public.quote_links SET balance_sent = balance WHERE b
   const cAcc = (await keys(tok('c'))).doc;
   await db.exec(`UPDATE quote_links SET version = version + 1, pdf_url = '${file(BAND, 35)}', pdf_version = version + 1 WHERE token = '${tok('c')}'`);
   ok(!!cAcc && (await keys(tok('c'))).doc === cAcc && await open(cAcc) === P(30), 'accepted, then edited: the accepted PDF keeps its key');
+  // Round 4 (Claude): quote_links.status compared with lower(), so a mixed-case
+  // 'Accepted' can't fall back to the editable version's PDF.
+  await db.exec(`UPDATE quote_links SET status = 'Accepted' WHERE token = '${tok('c')}'`);
+  ok((await keys(tok('c'))).doc === cAcc && await open(cAcc) === P(30) && await open(c3.balance, 'balance') === P(33),
+    "status 'Accepted' (mixed case): still the accepted PDF and its balance");
+  await db.exec(`UPDATE quote_links SET status = 'accepted' WHERE token = '${tok('c')}'`);
   await db.exec(`UPDATE events SET status = '${statusType === 'text' ? 'Cancelled' : 'cancelled'}' WHERE id = '${GIG}'`);
   ok(await open(c3.balance, 'balance') === null, `balance PDF hidden once the gig is cancelled (${statusType})`);
   ok((await keys(tok('c'))).balance == null, 'and its key is not handed out');

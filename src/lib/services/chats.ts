@@ -498,6 +498,14 @@ const findExistingDirectChat = async (userId1: string, userId2: string): Promise
   }
 };
 
+/**
+ * The RPC `fn` itself is not on this database (PostgREST PGRST202, Postgres
+ * 42883 naming it). Any other error, also a missing function or table that
+ * `fn` uses, is a real error.
+ */
+const rpcIsMissing = (error: { code?: string; message?: string; details?: string } | null | undefined, fn: string): boolean =>
+  !!error && (error.code === 'PGRST202' || error.code === '42883') && `${error.message ?? ''} ${error.details ?? ''}`.includes(fn);
+
 // Lineup answers that take a musician off a gig (as the server's notices, 046).
 const OFF_THE_GIG = new Set(['declined', 'dropped_out', 'removed']);
 
@@ -513,7 +521,8 @@ const stillInBand = async (bandId: string | null | undefined, userIds: string[])
     .from('band_members')
     .select('user_id')
     .eq('band_id', bandId)
-    .eq('is_active', true)
+    // NULL counts as active, as in the database (coalesce(is_active, true)).
+    .or('is_active.is.null,is_active.eq.true')
     .in('user_id', ids);
   if (error) {
     // The server applies the same rule: better a list it trims than none.
@@ -660,9 +669,11 @@ export const createChat = async (
         }
         return { data: chat as Chat, error: null };
       }
-      // (Without 193: PGRST202 / 42883, the older path below. #291 has the
-      // same block with its isMissingFunction helper.)
-      const noRpc = !!openError && (openError.code === 'PGRST202' || openError.code === '42883' || /schema cache|does not exist|Could not find the function/i.test(openError.message || ''));
+      // (Without 193: PGRST202 / 42883 naming bw_open_group_chat itself, the
+      // older path below; round 4: anything else, e.g. a 42P01 or a missing
+      // function inside it, is an error. #291 has the same block with its
+      // isMissingFunction helper.)
+      const noRpc = rpcIsMissing(openError, 'bw_open_group_chat');
       if (openError && !noRpc) {
         if ((openError as { code?: string }).code === '42501') {
           return {
@@ -719,6 +730,22 @@ export const createChat = async (
             { onConflict: 'chat_id,user_id' }
           );
         return { data: existingEventChat, error: null };
+      }
+    }
+
+    // Round 4: never a second band / gig chat. Without 193 the lookups above
+    // see only chats the caller is already in, so ask the server (175)
+    // whether one exists anyway, and stop when it does or can't say. (No
+    // such function: a database before 175, the older behaviour.)
+    if ((data.type === 'band' && data.band_id) || (data.type === 'event' && data.event_id)) {
+      const { data: exists, error: existsError } = await supabase.rpc('bw_group_chat_exists', {
+        p_type: data.type,
+        p_band_id: data.band_id ?? null,
+        p_event_id: data.event_id ?? null,
+      });
+      if (exists === true || (existsError && !rpcIsMissing(existsError, 'bw_group_chat_exists'))) {
+        if (existsError) console.warn('[createChat] Could not check for an existing chat:', existsError.message);
+        return { data: null, error: new ChatRuleError(t("Couldn't open the chat right now. Please try again in a moment.")) };
       }
     }
 

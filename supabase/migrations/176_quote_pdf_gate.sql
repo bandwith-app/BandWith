@@ -62,7 +62,7 @@ LANGUAGE sql
 STABLE
 SET search_path TO 'public'
 AS $$
-  SELECT CASE WHEN p_link.status = 'accepted' THEN p_link.accepted_pdf_url
+  SELECT CASE WHEN lower(p_link.status::text) = 'accepted' THEN p_link.accepted_pdf_url
               WHEN p_link.pdf_version = p_link.version THEN p_link.pdf_url END;
 $$;
 
@@ -90,7 +90,7 @@ AS $$
   -- acceptance bumps its version, not the document the client sees, so the
   -- key stays). Otherwise the current version and its PDF.
   SELECT CASE WHEN p_link.revoked_at IS NULL AND public.bw_quote_link_doc_pdf(p_link) IS NOT NULL THEN
-    CASE WHEN p_link.status = 'accepted'
+    CASE WHEN lower(p_link.status::text) = 'accepted'
          THEN md5(concat_ws('|', 'accepted', p_link.token, p_link.accepted_pdf_url))
          ELSE md5(concat_ws('|', 'doc', p_link.token, p_link.version, p_link.pdf_url)) END END;
 $$;
@@ -205,7 +205,7 @@ LANGUAGE sql
 STABLE SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
-  SELECT p_link.status = 'accepted'
+  SELECT lower(p_link.status::text) = 'accepted'
      AND public.bw_quote_link_balance_doc(p_link) IS NOT NULL
      AND coalesce((SELECT lower(e.status::text) FROM public.events e
                     WHERE e.id = public.bw_quote_gig_id(p_link.quote_id)), '') <> 'cancelled';

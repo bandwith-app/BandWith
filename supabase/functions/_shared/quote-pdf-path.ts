@@ -101,3 +101,73 @@ export function pickPdfGateLang(param: string | null | undefined, acceptLanguage
 export function pdfGateText(lang: PdfGateLang, key: PdfGateMessage): string {
   return (GATE_TEXT[lang] ?? GATE_TEXT.en)[key];
 }
+
+// ── The gate itself (quote-pdf), testable without Deno ─────────────────────
+export type QuotePdfKind = 'doc' | 'balance';
+export interface QuotePdfDeps {
+  /** bw_quote_link_pdf_path: the decoded file a key opens now, or null. */
+  lookup: (key: string, kind: QuotePdfKind) => Promise<{ path: string | null; error?: string | null }>;
+  /** The file's bytes from the quotes bucket (server credentials). */
+  download: (path: string) => Promise<{ data: { arrayBuffer(): Promise<ArrayBuffer> } | null; error?: string | null }>;
+}
+
+/**
+ * GET ?p=<PDF key>[&k=balance][&l=<lang>]. Round 4: the PDF is streamed, not
+ * redirected to: a signed URL shows the storage path, and while the bucket
+ * is public that path keeps opening the file after the link is turned off.
+ * The answer never names the file or where it is stored (generic file name,
+ * no Location), and it is always served as a PDF (nosniff), whatever type
+ * the stored object claims.
+ */
+export async function serveQuotePdf(req: Request, deps: QuotePdfDeps): Promise<Response> {
+  const url = new URL(req.url);
+  const lang = pickPdfGateLang(url.searchParams.get('l'), req.headers.get('accept-language'));
+  const plain = (key: PdfGateMessage, status: number) =>
+    new Response(pdfGateText(lang, key), {
+      status,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Language': lang },
+    });
+
+  if (req.method !== 'GET' && req.method !== 'HEAD') return plain('method', 405);
+  const key = (url.searchParams.get('p') ?? '').toLowerCase();
+  const kind: QuotePdfKind = url.searchParams.get('k') === 'balance' ? 'balance' : 'doc';
+  if (!/^[0-9a-f]{64}$/.test(key)) return plain('inactive', 404);
+
+  let found: { path: string | null; error?: string | null };
+  try {
+    found = await deps.lookup(key, kind);
+  } catch {
+    found = { path: null, error: 'lookup threw' };
+  }
+  if (found.error) {
+    console.error('quote-pdf: lookup failed');
+    return plain('retry', 503);
+  }
+  // Already decoded by the database: checked again, never decoded twice.
+  const file = checkedQuotePath(found.path);
+  if (!file) return plain('inactive', 404);
+
+  let got: Awaited<ReturnType<QuotePdfDeps['download']>>;
+  try {
+    got = await deps.download(file);
+  } catch {
+    got = { data: null, error: 'download threw' };
+  }
+  if (got.error || !got.data) {
+    console.error('quote-pdf: could not read the file');
+    return plain('retry', 503);
+  }
+  const bytes = await got.data.arrayBuffer();
+  return new Response(req.method === 'HEAD' ? null : bytes, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Length': String(bytes.byteLength),
+      'Content-Disposition': `inline; filename="${kind === 'balance' ? 'balance' : 'quote'}.pdf"`,
+      'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'no-referrer',
+      'X-Robots-Tag': 'noindex',
+    },
+  });
+}

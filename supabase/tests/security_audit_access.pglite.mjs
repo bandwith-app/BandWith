@@ -244,8 +244,9 @@ left = (await db.query(`SELECT sender_id FROM messages WHERE chat_id = '${FAKEDM
 ok(left.length === 2, `"direct" chat with three people: others' messages kept (left ${left.length})`);
 
 // ── 3. Removed members and band / event chats
+// Round 4: rows are never deleted, the rule refuses them.
 r = await db.query(`SELECT count(*)::int AS n FROM chat_participants WHERE user_id = '${OUT}'`);
-ok(r.rows[0].n === 0, 'stale band chat row of a former member removed');
+ok(r.rows[0].n === 1, `stale band chat row of a former member kept, not deleted (${r.rows[0].n})`);
 r = await db.query(`SELECT count(*)::int AS n FROM chat_participants_removed_175 WHERE user_id = '${OUT}'`).catch(() => ({ rows: [{ n: 0 }] }));
 ok(r.rows[0].n === 1, 'and archived');
 await db.exec(`INSERT INTO messages (chat_id, sender_id, content) VALUES ('${BANDCHAT}','${ADMIN}','before removal')`);
@@ -263,8 +264,11 @@ for (const [who, label] of [[MEM, 'removed'], [MEM2, 'deactivated']]) {
 }
 r = await as(MEM, `SELECT content FROM messages WHERE chat_id = '${EVCHAT}'`);
 ok(r.rows.length === 0, `removed member reads no chat of the band's events (${r.rows.length})`);
-r = await as(MEM, `SELECT user_id FROM chat_participants WHERE chat_id = '${BANDCHAT}'`);
-ok(r.rows.length === 0, 'removed member no longer listed in the band chat');
+r = await as(MEM, `SELECT user_id FROM chat_participants WHERE chat_id = '${BANDCHAT}' AND user_id <> '${MEM}'`);
+ok(r.rows.length === 0, 'removed member no longer sees the band chat roster');
+r = await as(LINE, `SELECT user_id FROM chat_participants WHERE chat_id = '${BANDCHAT}'`);
+ok(r.rows.length > 0 && ![MEM, MEM2, OUT].some((u) => r.rows.some((x) => x.user_id === u)),
+  `round 4: the band no longer lists them in the band chat (kept rows hidden: ${r.rows.length} listed)`);
 r = await as(MEM, `SELECT content FROM messages WHERE chat_id = '${GROUP}'`);
 ok(r.rows.length > 0, 'a group chat outside the band is not touched');
 r = await as(LINE, `SELECT content FROM messages WHERE chat_id = '${BANDCHAT}'`);
@@ -274,10 +278,15 @@ const ids = r.rows[0].ids ?? [];
 ok(ids.includes(LINE) && !ids.includes(MEM) && !ids.includes(MEM2) && !ids.includes(ADMIN), `push recipients: active members only (${JSON.stringify(ids)})`);
 r = await db.query(`SELECT public.bw_chat_recipient_ids('${BANDCHAT}', '${MEM}') AS ids`).catch(() => ({ rows: [{ ids: ['x'] }] }));
 ok((r.rows[0].ids ?? []).length === 0, 'a removed member cannot push to the band chat');
-// Re-joining works through the normal insert path.
+// Back in the band: the kept row works again, the same chat (round 4).
 await db.exec(`INSERT INTO band_members (band_id, user_id, role) VALUES ('${BAND}','${MEM}','member')`);
-r = await as(MEM, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${BANDCHAT}','${MEM}')`);
-ok(!r.error, `re-joined member can join the band chat again (${r.error ?? 'ok'})`);
+r = await as(MEM, `SELECT id FROM chats WHERE type = 'band' AND band_id = '${BAND}'`);
+ok(r.rows.length === 1 && r.rows[0].id === BANDCHAT, `back in the band: an app's lookup finds the same band chat (${r.rows.length})`);
+r = await as(MEM, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${BANDCHAT}','${MEM}') ON CONFLICT (chat_id, user_id) DO NOTHING`);
+ok(!r.error, `re-joined member's join (upsert) still works (${r.error ?? 'ok'})`);
+r = await as(MEM, `SELECT content FROM messages WHERE chat_id = '${BANDCHAT}'`);
+ok(r.rows.length >= 2, `and reads the band chat again (${r.rows.length})`);
+ok((await db.query(`SELECT count(*)::int AS n FROM chats WHERE type::text = 'band' AND band_id = '${BAND}'`)).rows[0].n === 1, 'still one band chat');
 await db.exec(`BEGIN; SELECT set_config('request.jwt.claims', '{"sub":"${ADMIN}"}', true);
   DELETE FROM band_members WHERE band_id = '${BAND}' AND user_id = '${MEM}'; COMMIT;`);
 
@@ -383,6 +392,8 @@ if (process.env.M193) {
   if (process.env.M178) {
     await db.exec(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS converted_to_event_id uuid, ADD COLUMN IF NOT EXISTS status text;`);
     await db.exec(fnDef(process.env.M178, 'event_date_holds', 'TABLE IF NOT EXISTS public.', ');'));
+    await db.exec(`ALTER TABLE public.event_date_holds ADD COLUMN IF NOT EXISTS answers_carried_at timestamptz,
+      ADD COLUMN IF NOT EXISTS confirmed_once_at timestamptz;`);
     for (const f of ['bw_event_quote_private', 'bw_event_quote_hidden', 'bw_is_event_participant']) await db.exec(fnDef(process.env.M178, f));
   }
   await db.exec(readFileSync(process.env.M193, 'utf8'));
@@ -415,12 +426,13 @@ if (process.env.M193) {
 // delivered RPCs (they answer "is there something new").
 // The roster helpers below are reused by #289 (181) for lineup statuses.
 const staleUsers = { LEFT: id(40), DEACT: id(41) };
-async function staleChecks(uid, label, chatIds) {
+async function staleChecks(uid, label, chatIds, opts = {}) {
   for (const chat of chatIds) {
     let x = await as(uid, `SELECT id FROM messages WHERE chat_id = '${chat}'`);
     ok(!x.error && x.rows.length === 0, `${label}, stale row: SELECT messages of ${chat.slice(-2)} sees nothing (${x.error ?? x.rows.length})`);
     x = await as(uid, `SELECT id FROM chats WHERE id = '${chat}'`);
-    ok(x.rows.length === 0, `${label}, stale row: chat row ${chat.slice(-2)} hidden (${x.rows.length})`);
+    if (opts.knownChatRow && x.rows.length) console.log('KNOWN', `${label}: chat row ${chat.slice(-2)} visible: ${opts.knownChatRow}`);
+    else ok(x.rows.length === 0, `${label}, stale row: chat row ${chat.slice(-2)} hidden (${x.rows.length})`);
     x = await as(uid, `SELECT user_id FROM chat_participants WHERE chat_id = '${chat}' AND user_id <> '${uid}'`);
     ok(x.rows.length === 0, `${label}, stale row: roster of ${chat.slice(-2)} hidden (${x.rows.length})`);
     x = await as(uid, `SELECT public.bw_mark_chat_read('${chat}') AS b`);
@@ -467,8 +479,7 @@ ok(!r.error && (await db.query(`SELECT 1 FROM chat_participants WHERE chat_id = 
 await db.exec(`UPDATE band_members SET role = 'member' WHERE band_id = '${BAND}' AND user_id = '${DEMOTED}'`);
 let still = (await db.query(`SELECT 1 FROM chat_participants WHERE chat_id = '${EVCHAT3}' AND user_id = '${DEMOTED}'`)).rows.length;
 const archived = (await db.query(`SELECT count(*)::int AS n FROM chat_participants_removed_175 WHERE chat_id = '${EVCHAT3}' AND user_id = '${DEMOTED}'`)).rows[0].n;
-ok(still === 0 && archived === 1, `demoted admin off the lineup: out of the gig chat, row archived (row ${still}, archived ${archived})`);
-await staleRow(EVCHAT3, DEMOTED);
+ok(still === 1 && archived === 1, `demoted admin off the lineup: row kept and archived, the rule refuses it (row ${still}, archived ${archived})`);
 await staleChecks(DEMOTED, 'demoted admin, not on the lineup', [EVCHAT3]);
 // Declined / dropped out / removed, still in the band (181's trigger is not
 // in #281: the rule alone must close it).
@@ -529,12 +540,93 @@ ok(!r.error && toldSet.includes(NEWM) && ![DECL, DROP, REMOVED].some((u) => told
 await db.exec(`INSERT INTO chat_participants (chat_id, user_id, cleared_at, last_read_at, muted)
   VALUES ('${BANDCHAT}','${RET}','2026-11-01T10:00:00Z','2026-11-02T10:00:00Z', true)`);
 await db.exec(`DELETE FROM band_members WHERE band_id = '${BAND}' AND user_id = '${RET}'`);
-ok((await db.query(`SELECT 1 FROM chat_participants WHERE chat_id = '${BANDCHAT}' AND user_id = '${RET}'`)).rows.length === 0, 'left: out of the band chat');
+ok((await db.query(`SELECT 1 FROM chat_participants WHERE chat_id = '${BANDCHAT}' AND user_id = '${RET}'`)).rows.length === 1, 'left: row kept (round 4)');
+r = await as(RET, `SELECT id FROM messages WHERE chat_id = '${BANDCHAT}'`);
+ok(r.rows.length === 0, `left: reads nothing (${r.rows.length})`);
 await db.exec(`INSERT INTO band_members (band_id, user_id, role) VALUES ('${BAND}','${RET}','member')`);
-r = await as(RET, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${BANDCHAT}','${RET}')`);
+r = await as(RET, `SELECT id FROM chats WHERE type = 'band' AND band_id = '${BAND}'`);
+ok(r.rows.length === 1 && r.rows[0].id === BANDCHAT, `round 4: back in the band, an old build's lookup finds the same band chat, no second one (${r.rows.length})`);
+r = await as(RET, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${BANDCHAT}','${RET}') ON CONFLICT (chat_id, user_id) DO NOTHING`);
 const backRow = (await db.query(`SELECT cleared_at, last_read_at, muted FROM chat_participants WHERE chat_id = '${BANDCHAT}' AND user_id = '${RET}'`)).rows[0];
 ok(!r.error && backRow && backRow.cleared_at?.toISOString() === '2026-11-01T10:00:00.000Z' && backRow.last_read_at?.toISOString() === '2026-11-02T10:00:00.000Z' && backRow.muted === true,
   `back in the band: cleared_at, last read and mute come back (${r.error ?? JSON.stringify(backRow)})`);
+
+// ── R4. Round 4 (Codex + Claude on 7eea78bb / 44cf49fc)
+const [QADMIN, MIXD] = [47, 48].map(id);
+const [GIGQ, GIGD, GIGN] = [37, 38, 39].map(id);
+const [SETQ, EVCHATN] = [id(50), id(27)];
+await db.exec(`INSERT INTO auth.users VALUES ('${QADMIN}','qadmin@example.invalid'), ('${MIXD}','mixd@example.invalid');
+  INSERT INTO profiles (id, email) VALUES ('${QADMIN}','qadmin@example.invalid'), ('${MIXD}','mixd@example.invalid');
+  INSERT INTO band_members (band_id, user_id, role) VALUES ('${BAND}','${QADMIN}','admin'), ('${BAND}','${MIXD}','member');
+  INSERT INTO setlists VALUES ('${SETQ}','${BAND}','Wedding set');
+  INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, venue_name, setlist_id) VALUES
+    ('${GIGQ}','${BAND}','Private wedding (quote)','tentative','gig','${ADMIN}', current_date + 50, 'Montclair', '${SETQ}'),
+    ('${GIGD}','${BAND}','Street fair','confirmed','gig','${RET}', current_date + 60, 'Astoria', NULL),
+    ('${GIGN}','${BAND}','Jazz brunch','confirmed','gig','${ADMIN}', current_date + 70, 'Hoboken', NULL);
+  INSERT INTO event_members VALUES ('${GIG3}','${MIXD}','Declined'), ('${GIGD}','${DECL}','declined'), ('${GIGD}','${DROP}','dropped_out'),
+    ('${GIGN}','${NEWM}','confirmed'), ('${GIGN}','${RET}','confirmed');
+  DELETE FROM notifications;`);
+// BLOCKER 175:657: a setlist on a private quote with no lineup tells its admins only.
+r = await as(ADMIN, `SELECT public.bw_notify_setlist_saved('${SETQ}', '${GIGQ}', 0, 2, 0, false) AS n`);
+const toldQ = (await db.query(`SELECT user_id FROM notifications WHERE type = 'setlist_updated'`)).rows.map((x) => x.user_id);
+ok(!r.error && toldQ.includes(QADMIN) && ![NEWM, RET, MIXD, DECL].some((u) => toldQ.includes(u)),
+  `setlist on a quote with no lineup: admins only, members get nothing (${r.error ?? JSON.stringify(toldQ.length)})`);
+// MINOR 175:550: a lineup that all said no is still a lineup: admins and creator.
+await db.exec(`DELETE FROM notifications; BEGIN; SELECT set_config('request.jwt.claims', '{"sub":"${ADMIN}"}', true);
+  UPDATE events SET event_date = event_date + 1 WHERE id = '${GIGD}'; COMMIT;`);
+const toldD = (await db.query(`SELECT user_id FROM notifications WHERE type = 'event_update'`)).rows.map((x) => x.user_id);
+ok(toldD.includes(QADMIN) && toldD.includes(RET) && ![NEWM, DECL, DROP, MIXD].some((u) => toldD.includes(u)),
+  `all-declined lineup: its admins and creator, not the band nor the decliners (${JSON.stringify(toldD.length)})`);
+// MINOR lower(): 'Declined' is declined, in the chat rule and the notices.
+await staleRow(EVCHAT3, MIXD);
+// (With 193, chats_select_joinable goes through 178's bw_is_event_participant,
+// which still compares the status raw: reported to #294.)
+const raw178 = process.env.M193 && process.env.M178 && !/lower\(coalesce\(em\.status/.test(fnDef(process.env.M178, 'bw_is_event_participant'));
+await staleChecks(MIXD, "'Declined' (mixed case)", [EVCHAT3], raw178 ? { knownChatRow: "178's bw_is_event_participant compares em.status raw (#294)" } : {});
+await db.exec(`DELETE FROM notifications; BEGIN; SELECT set_config('request.jwt.claims', '{"sub":"${ADMIN}"}', true);
+  UPDATE events SET event_date = event_date + 1 WHERE id = '${GIG3}'; COMMIT;`);
+const told3 = (await db.query(`SELECT user_id FROM notifications WHERE type = 'event_update'`)).rows.map((x) => x.user_id);
+ok(told3.includes(NEWM) && !told3.includes(MIXD), `'Declined' on the lineup is not told about the gig (${told3.length})`);
+// MINOR 175:199/253: about someone else only for a caller the rule lets in.
+r = await as(NEWM, `SELECT public.bw_chat_scope_ok('band', '${OTHERBAND}', NULL, '${ADMIN}') AS a,
+  public.bw_chat_scope_ok_for('${BANDCHAT}', '${ADMIN}') AS b, public.bw_chat_scope_ok_for('${BANDCHAT}', '${NEWM}') AS c`);
+ok(r.rows[0]?.a === false && r.rows[0]?.b === true && r.rows[0]?.c === true,
+  `scope check: a member can't ask about another band's chat, can about their own (${r.error ?? JSON.stringify(r.rows[0])})`);
+r = await as(EXM, `SELECT public.bw_chat_scope_ok_for('${BANDCHAT}', '${NEWM}') AS a, public.bw_chat_scope_ok_for('${EVCHAT3}', '${NEWM}') AS b`);
+ok(r.rows[0]?.a === false && r.rows[0]?.b === false, `scope check: an outsider gets false about a member (${r.error ?? JSON.stringify(r.rows[0])})`);
+// Internal callers still answer about others: the roster, a non-admin
+// musician opening a gig chat with the lineup, push (no auth.uid()).
+r = await as(NEWM, `SELECT public.get_user_chats('${NEWM}') AS j`);
+const rosterB = ((r.rows[0]?.j ?? []).find((c) => c.id === EVCHAT3)?.participants ?? []).map((p) => p.user_id);
+ok(rosterB.includes(ADMIN) && rosterB.includes(NEWM), `get_user_chats roster still lists the other members (${rosterB.length})`);
+await as(NEWM, `INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES ('${EVCHATN}','event','Jazz brunch','${BAND}','${GIGN}','${NEWM}')`);
+r = await as(NEWM, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHATN}','${NEWM}'),('${EVCHATN}','${RET}')`);
+inChat = (await db.query(`SELECT user_id FROM chat_participants WHERE chat_id = '${EVCHATN}'`)).rows.map((x) => x.user_id);
+ok(!r.error && inChat.includes(NEWM) && inChat.includes(RET), `a booked musician (not an admin) adds the lineup to the gig chat (${r.error ?? inChat.length})`);
+r = await db.query(`SELECT public.bw_chat_recipient_ids('${EVCHATN}', '${NEWM}') AS ids`);
+ok((r.rows[0].ids ?? []).includes(RET), 'push (server, no user) still gets the recipients');
+// BLOCKER 175:474 (a): kept rows don't share a chat, can't wipe history.
+await db.exec(`INSERT INTO messages (chat_id, sender_id, content) VALUES ('${BANDCHAT}','${staleUsers.LEFT}','old message from left')`);
+r = await as(staleUsers.LEFT, `SELECT public.bw_delete_chat_history('${BANDCHAT}') AS n`);
+const leftMsgs = (await db.query(`SELECT count(*)::int AS n FROM messages WHERE chat_id = '${BANDCHAT}' AND sender_id = '${staleUsers.LEFT}'`)).rows[0].n;
+ok(!!r.error && leftMsgs === 1, `a kept row that the rule refuses can't "delete chat" (${r.error ? 'refused' : 'ran'}, ${leftMsgs} left)`);
+r = await as(staleUsers.LEFT, `SELECT public.bw_shares_chat('${NEWM}') AS a`);
+ok(r.rows[0]?.a === false, `a kept row no longer "shares a chat" with the band (${r.error ?? r.rows[0]?.a})`);
+r = await as(NEWM, `SELECT public.bw_shares_chat('${ADMIN}') AS a`);
+ok(r.rows[0]?.a === true, `members still share the band chat (${r.error ?? r.rows[0]?.a})`);
+r = await as(NEWM, `SELECT user_id FROM chat_participants WHERE chat_id = '${EVCHAT3}'`);
+ok(r.rows.length > 0 && ![staleUsers.LEFT, staleUsers.DEACT, DEMOTED, DECL, DROP, REMOVED, MIXD].some((u) => r.rows.some((x) => x.user_id === u)),
+  `roster (chat_participants policy) leaves out kept rows the rule refuses (${r.rows.length})`);
+// BLOCKER (b): the app's fallback asks before creating a band / gig chat.
+r = await as(NEWM, `SELECT public.bw_group_chat_exists('band', '${BAND}', NULL) AS a, public.bw_group_chat_exists('event', NULL, '${GIG3}') AS b,
+  public.bw_group_chat_exists('event', NULL, '${GIGQ}') AS c`);
+ok(!r.error && r.rows[0]?.a === true && r.rows[0]?.b === true && r.rows[0]?.c === false,
+  `bw_group_chat_exists: the band chat and a gig chat exist, a gig without chat not (${r.error ?? JSON.stringify(r.rows[0])})`);
+r = await as(EXM, `SELECT public.bw_group_chat_exists('band', '${BAND}', NULL) AS a`);
+ok(!r.error && r.rows[0]?.a === false, `bw_group_chat_exists: nothing for someone outside the band (${r.error ?? r.rows[0]?.a})`);
+// Marker for later migrations that keep a live definition (178, 181).
+const defR4 = (await db.query(`SELECT pg_get_functiondef('public.bw_chat_scope_ok(text,uuid,uuid,uuid)'::regprocedure) AS d`)).rows[0].d;
+ok(defR4.includes('-- bw:175-r4'), 'bw_chat_scope_ok carries the marker bw:175-r4');
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

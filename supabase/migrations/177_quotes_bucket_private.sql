@@ -5,20 +5,30 @@
 -- Released iOS / Android builds put the public storage URL of the PDF in
 -- WhatsApp, email and "Copy text & link", and quote links already sent to
 -- clients carry it: a private bucket would break all of them. Apply only
--- when BOTH hold:
---   * min_app_version is raised past every build that shares public URLs;
---   * this read-only check returns no rows: no quote link that is still live was
---     last shared (sent or republished) before that moment, i.e. while a
---     build that pastes the public storage URL could have shared it.
+-- when BOTH hold (round 4: the strict rule):
+--   * min_app_version is raised past every build that shares public URLs
+--     (:t = the moment it went past them);
+--   * this read-only check, run right before applying, returns no rows: no
+--     quote link that is still live (not revoked, not expired) was created
+--     or shared before :t, in ANY status, drafts included (an old build
+--     could have pasted a draft's public URL too). Expired is the client
+--     page's rule (bw_quote_link_view): not accepted and its validUntil
+--     more than a day ago. One live link left means: wait, or revoke it.
 --     (Stored pdf_url values keep the public URL format: they are only
 --     locators for the gate, so they can't be the test.)
 --       -- :t = when min_app_version went past those builds
---       SELECT ql.status, count(*) AS live_links_shared_before_t
+--       SELECT ql.status, count(*) AS live_links_from_before_t
 --         FROM public.quote_links ql
 --        WHERE ql.revoked_at IS NULL
---          AND ql.status IN ('sent', 'viewed', 'discussing', 'accepted')
---          AND greatest(ql.sent_at, ql.version_at, ql.last_emailed_at, ql.created_at) < :t
+--          AND NOT (lower(ql.status) <> 'accepted'
+--                   AND CASE WHEN ql.snapshot ->> 'validUntil' ~ '^\d{4}-\d{2}-\d{2}$'
+--                            THEN (ql.snapshot ->> 'validUntil')::date < current_date - 1
+--                            ELSE false END)
+--          AND coalesce(least(ql.created_at, ql.sent_at, ql.version_at, ql.last_emailed_at),
+--                       '-infinity'::timestamptz) < :t
 --        GROUP BY ql.status;
+--     (A link expired today but republished later, with a new validUntil,
+--     is live again: that is why the check runs right before applying.)
 --
 -- Apply only after 176 and after quote-pdf, send-email and the web app are
 -- deployed (see 176). Band admins keep reading and writing their band's

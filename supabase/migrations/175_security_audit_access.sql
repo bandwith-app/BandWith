@@ -31,12 +31,20 @@
 --        An access check never falls back to "yes" (no user, no gig, a gig
 --        with no creator: false);
 --      * leaving the band (row deleted or is_active false) or no longer
---        being an admin removes the person from the chats the rule now
---        refuses (archived in chat_participants_removed_175); coming back,
---        their cleared_at, read times and mute come back with them;
---      * stale rows already there are archived and removed;
+--        being an admin takes the person out of the chats the rule now
+--        refuses. Round 4: their participant row is KEPT (a record goes to
+--        chat_participants_removed_175) and the rule refuses it everywhere:
+--        reads, roster (chat_participants read policy), receipts, push,
+--        "shares a chat" (bw_shares_chat), "delete chat". Coming back, the
+--        same row works again: same chat, cleared_at and read times as they
+--        were, so no app can miss the chat and start a second one;
+--      * stale rows already there are kept the same way (archived once);
 --      * bw_chat_recipient_ids(chat, sender) gives send-push the people who
---        may still read the chat.
+--        may still read the chat;
+--      * bw_chat_scope_ok answers about someone else only for a caller the
+--        same rule lets in (round 4);
+--      * a gig whose whole lineup said no (or left) is still a gig with a
+--        lineup: its notices go to its admins and creator (round 4).
 --    Direct chats are not touched (people who left keep their DMs).
 --
 -- 4. Lineup notifications (04-auth #7): a lineup row outlives removal from
@@ -57,11 +65,13 @@
 -- others): every call passes type::text. Legacy 'group' chats tied to a
 -- band follow the band rule (prod has none).
 --
--- Duplicate band / gig chats: a former member who comes back has no
--- participant row, so on a database with only 175 an old build's
--- "does the chat exist?" lookup can miss it and start a second chat.
+-- Duplicate band / gig chats: round 4, nothing here deletes a participant
+-- row, so a former member who comes back still has theirs. Someone who never
+-- had one (new member) can still miss the chat in an old build's lookup:
 -- 193 (#291: bw_open_group_chat, chats_select_joinable, one chat per band /
--- gig) closes that. 175 must NOT ship without 193. Apply order:
+-- gig) closes that, and the new app's fallback asks bw_group_chat_exists
+-- (below) and stops instead of creating a second chat. 175 must NOT ship
+-- without 193. Apply order:
 -- 175 -> 178 -> 193 -> 181 (tested in that order; 178 first because 193's
 -- bw_chat_joinable builds on 178's bw_is_event_participant).
 --
@@ -122,9 +132,10 @@ BEGIN
     RAISE EXCEPTION 'Not authenticated' USING ERRCODE = '28000';
   END IF;
 
+  -- Round 4: a kept row the rule refuses (left the band) is no participant.
   IF NOT EXISTS (
     SELECT 1 FROM chat_participants WHERE chat_id = p_chat_id AND user_id = v_uid
-  ) THEN
+  ) OR NOT coalesce(public.bw_chat_scope_ok_for(p_chat_id, v_uid), false) THEN
     RAISE EXCEPTION 'Not a participant of this chat' USING ERRCODE = '42501';
   END IF;
 
@@ -169,12 +180,24 @@ GRANT EXECUTE ON FUNCTION public.bw_delete_chat_history(uuid) TO authenticated;
 -- The quote rule (178: a member is not on a quote's chat) is carried by
 -- bw_is_event_participant once 178 is live; when 175 runs after 178 the rule
 -- is also written in here, so it never depends on which one ran last.
+-- Round 4:
+--   * asked about someone else, it answers only for a caller the same rule
+--     lets into that chat (its band's admins, people already in it, who see
+--     its roster anyway); anyone else gets false. Not "self only": the
+--     chat_participants insert policy and the roster ask about others on
+--     behalf of the person adding them or reading the chat. No auth.uid()
+--     (service role, migrations): the plain answer (anon has no EXECUTE).
+--     current_user can't tell those apart here: inside a SECURITY DEFINER
+--     function it is always the owner;
+--   * lineup answers compared with lower() ('Declined' is declined);
+--   * the body carries the marker bw:175-r4: later migrations that keep a
+--     live definition (178, 181) look for it.
 DO $do$
 DECLARE
   v_quote text := '';
 BEGIN
   IF to_regprocedure('public.bw_event_quote_hidden(uuid, uuid)') IS NOT NULL THEN
-    v_quote := 'AND NOT public.bw_event_quote_hidden(e.id, p_user_id)';
+    v_quote := 'AND NOT public.bw_event_quote_hidden(e.id, w.u)';
   END IF;
   EXECUTE format($sql$
 CREATE OR REPLACE FUNCTION public.bw_chat_scope_ok(p_type text, p_band_id uuid, p_event_id uuid, p_user_id uuid)
@@ -183,28 +206,36 @@ LANGUAGE sql
 STABLE SECURITY DEFINER
 SET search_path TO 'public'
 AS $f$
-  SELECT p_user_id IS NOT NULL AND coalesce(CASE
+  -- bw:175-r4
+  -- Everyone asked about must pass: p_user_id, and the caller as well when
+  -- the caller asks about someone else.
+  SELECT p_user_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1
+      FROM (VALUES (p_user_id),
+                   (CASE WHEN auth.uid() IS DISTINCT FROM p_user_id THEN auth.uid() END)) AS w(u)
+     WHERE w.u IS NOT NULL
+       AND NOT coalesce(CASE
     WHEN p_type = 'band' THEN
-      p_band_id IS NOT NULL AND public.bw_is_band_member(p_band_id, p_user_id)
+      p_band_id IS NOT NULL AND public.bw_is_band_member(p_band_id, w.u)
     -- 'group' with a band: legacy, same rule as the band chat.
     WHEN p_type = 'group' THEN
-      p_band_id IS NULL OR public.bw_is_band_member(p_band_id, p_user_id)
+      p_band_id IS NULL OR public.bw_is_band_member(p_band_id, w.u)
     WHEN p_type = 'event' THEN
-      (p_band_id IS NULL OR public.bw_is_band_member(p_band_id, p_user_id))
+      (p_band_id IS NULL OR public.bw_is_band_member(p_band_id, w.u))
       AND EXISTS (
         SELECT 1 FROM events e
          WHERE e.id = p_event_id
-           AND (e.band_id IS NULL OR public.bw_is_band_member(e.band_id, p_user_id))
-           AND public.bw_is_event_participant(e.id, p_user_id)
-           AND (coalesce(e.created_by = p_user_id, false)
-                OR (e.band_id IS NOT NULL AND public.bw_is_band_admin(e.band_id, p_user_id))
+           AND (e.band_id IS NULL OR public.bw_is_band_member(e.band_id, w.u))
+           AND public.bw_is_event_participant(e.id, w.u)
+           AND (coalesce(e.created_by = w.u, false)
+                OR (e.band_id IS NOT NULL AND public.bw_is_band_admin(e.band_id, w.u))
                 OR NOT EXISTS (
                   SELECT 1 FROM event_members em
-                   WHERE em.event_id = e.id AND em.user_id = p_user_id
-                     AND coalesce(em.status, '') IN ('declined', 'dropped_out', 'removed')))
+                   WHERE em.event_id = e.id AND em.user_id = w.u
+                     AND lower(coalesce(em.status::text, '')) IN ('declined', 'dropped_out', 'removed')))
            %s)
     ELSE true
-  END, false);
+  END, false));
 $f$;
 $sql$, v_quote);
 END
@@ -454,7 +485,10 @@ CREATE POLICY chats_select_creator ON public.chats
   FOR SELECT TO authenticated
   USING (created_by = auth.uid() AND public.bw_chat_scope_ok(type::text, band_id, event_id, auth.uid()));
 
--- Leaving the band: out of its band chat and its events' chats.
+-- Leaving the band: out of its band chat and its events' chats (the rule
+-- above refuses them). Round 4: the row is archived and KEPT, never deleted:
+-- coming back, the same row (and so the same chat) is theirs again, and no
+-- app build can miss it and start a second band or gig chat.
 CREATE OR REPLACE FUNCTION public.bw_trg_band_member_left_chats()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -468,9 +502,8 @@ BEGIN
                       AND NEW.role IS NOT DISTINCT FROM OLD.role THEN
     RETURN NEW;
   END IF;
-  -- Rows are archived (round 3: they kept cleared_at and read times only
-  -- here) so coming back restores them; an account being deleted takes its
-  -- rows with it (the archive's FK to profiles would refuse them).
+  -- A record of who was taken out of what, when (an account being deleted
+  -- takes its rows with it: the archive's FK to profiles would refuse them).
   WITH gone AS (
     SELECT cp.chat_id, cp.user_id, to_jsonb(cp) AS row_data,
            EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = cp.user_id) AS keep
@@ -484,13 +517,9 @@ BEGIN
                OR c.event_id IN (SELECT e.id FROM events e WHERE e.band_id = OLD.band_id)))
        )
        AND NOT coalesce(public.bw_chat_scope_ok(c.type::text, c.band_id, c.event_id, cp.user_id), false)
-  ), saved AS (
-    INSERT INTO public.chat_participants_removed_175 (chat_id, user_id, row_data)
-    SELECT chat_id, user_id, row_data FROM gone WHERE keep
   )
-  DELETE FROM chat_participants cp
-   USING gone g
-   WHERE cp.chat_id = g.chat_id AND cp.user_id = g.user_id;
+  INSERT INTO public.chat_participants_removed_175 (chat_id, user_id, row_data)
+  SELECT chat_id, user_id, row_data FROM gone WHERE keep;
   IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
   RETURN NEW;
 END;
@@ -501,7 +530,8 @@ CREATE TRIGGER bw_band_member_left_chats
   AFTER UPDATE OF is_active, role OR DELETE ON public.band_members
   FOR EACH ROW EXECUTE FUNCTION public.bw_trg_band_member_left_chats();
 
--- Stale rows left by earlier removals: archived, then removed.
+-- Stale rows left by earlier removals: the rule refuses them everywhere;
+-- round 4: archived once, kept (never deleted, as above).
 CREATE TABLE IF NOT EXISTS public.chat_participants_removed_175 (
   chat_id uuid NOT NULL,
   user_id uuid NOT NULL,
@@ -528,22 +558,70 @@ END $$;
 ALTER TABLE public.chat_participants_removed_175 ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.chat_participants_removed_175 FROM PUBLIC, anon, authenticated;
 
-WITH stale AS (
-  SELECT cp.chat_id, cp.user_id, to_jsonb(cp) AS row_data
-    FROM chat_participants cp
-    JOIN chats c ON c.id = cp.chat_id
-   WHERE c.type::text IN ('band', 'group', 'event')
-     AND NOT public.bw_chat_scope_ok(c.type::text, c.band_id, c.event_id, cp.user_id)
-     -- (a row whose profile is gone can't be archived: its FK would refuse it)
-     AND EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = cp.user_id)
-), saved AS (
-  INSERT INTO public.chat_participants_removed_175 (chat_id, user_id, row_data)
-  SELECT chat_id, user_id, row_data FROM stale
-  RETURNING chat_id, user_id
-)
-DELETE FROM chat_participants cp
- USING saved s
- WHERE cp.chat_id = s.chat_id AND cp.user_id = s.user_id;
+INSERT INTO public.chat_participants_removed_175 (chat_id, user_id, row_data)
+SELECT cp.chat_id, cp.user_id, to_jsonb(cp)
+  FROM chat_participants cp
+  JOIN chats c ON c.id = cp.chat_id
+ WHERE c.type::text IN ('band', 'group', 'event')
+   AND NOT public.bw_chat_scope_ok(c.type::text, c.band_id, c.event_id, cp.user_id)
+   -- (a row whose profile is gone can't be archived: its FK would refuse it)
+   AND EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = cp.user_id)
+   AND NOT EXISTS (SELECT 1 FROM public.chat_participants_removed_175 r
+                    WHERE r.chat_id = cp.chat_id AND r.user_id = cp.user_id);
+
+-- Round 4: rows are kept, so everything that reads other people's rows
+-- applies the rule too. The roster (chat_participants read policy): only
+-- people who can still use the chat.
+DROP POLICY IF EXISTS chat_participants_select_same_chat ON public.chat_participants;
+CREATE POLICY chat_participants_select_same_chat ON public.chat_participants
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING (chat_id = ANY (public.bw_my_chat_ids())
+         AND public.bw_chat_scope_ok_for(chat_id, user_id));
+
+-- "Shares a chat" (042: profiles read policy, chat notices): a band or gig
+-- chat counts only while both may still use it (a former member's kept row
+-- no longer shares the band chat with the band).
+CREATE OR REPLACE FUNCTION public.bw_shares_chat(p_other uuid, p_user_id uuid DEFAULT auth.uid())
+RETURNS boolean
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1
+    FROM chat_participants a
+    JOIN chat_participants b ON b.chat_id = a.chat_id
+    WHERE a.user_id = p_user_id AND b.user_id = p_other
+      AND public.bw_chat_scope_ok_for(a.chat_id, a.user_id)
+      AND public.bw_chat_scope_ok_for(b.chat_id, b.user_id)
+  );
+$function$;
+REVOKE ALL ON FUNCTION public.bw_shares_chat(uuid, uuid) FROM anon;
+
+-- Is there a band chat for this band / a gig chat for this gig? For the app's
+-- fallback when 193 (bw_open_group_chat) is not there: a chat it cannot see
+-- (no row of its own yet) must never be created twice. Active members of
+-- the band only; anyone else gets false.
+CREATE OR REPLACE FUNCTION public.bw_group_chat_exists(p_type text, p_band_id uuid DEFAULT NULL, p_event_id uuid DEFAULT NULL)
+RETURNS boolean
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT CASE
+    WHEN p_type = 'band' THEN
+      p_band_id IS NOT NULL AND public.bw_is_band_member(p_band_id, auth.uid())
+      AND EXISTS (SELECT 1 FROM chats c WHERE c.type::text = 'band' AND c.band_id = p_band_id)
+    WHEN p_type = 'event' THEN
+      EXISTS (SELECT 1 FROM events e
+               WHERE e.id = p_event_id AND e.band_id IS NOT NULL
+                 AND public.bw_is_band_member(e.band_id, auth.uid()))
+      AND EXISTS (SELECT 1 FROM chats c WHERE c.type::text = 'event' AND c.event_id = p_event_id)
+    ELSE false
+  END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_group_chat_exists(text, uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_group_chat_exists(text, uuid, uuid) TO authenticated;
 
 -- ── 4. Lineup notifications: only people still in the band ─────────────────
 CREATE OR REPLACE FUNCTION public.bw_event_recipient_ids(p_event_id uuid, p_band_id uuid, p_private boolean)
@@ -558,18 +636,25 @@ BEGIN
   SELECT coalesce(array_agg(DISTINCT user_id), '{}'::uuid[]) INTO v_ids
   FROM public.event_members
   WHERE event_id = p_event_id
-    AND coalesce(status, 'invited') NOT IN ('declined', 'dropped_out', 'removed')
+    AND lower(coalesce(status::text, 'invited')) NOT IN ('declined', 'dropped_out', 'removed')
     AND (p_band_id IS NULL OR public.bw_is_band_member(p_band_id, user_id));
 
-  -- The whole band only when the gig has no lineup at all (round 2): a
-  -- lineup whose musicians all left the band tells nobody, not members who
-  -- were never booked.
-  IF p_band_id IS NOT NULL AND NOT EXISTS (
-    SELECT 1 FROM public.event_members
-     WHERE event_id = p_event_id
-       AND coalesce(status, 'invited') NOT IN ('declined', 'dropped_out', 'removed')
-  ) THEN
-    v_ids := public.bw_active_band_member_ids(p_band_id, coalesce(p_private, false));
+  IF p_band_id IS NOT NULL AND coalesce(array_length(v_ids, 1), 0) = 0 THEN
+    IF NOT EXISTS (SELECT 1 FROM public.event_members WHERE event_id = p_event_id) THEN
+      -- No lineup at all: the whole band (its admins for a quote).
+      v_ids := public.bw_active_band_member_ids(p_band_id, coalesce(p_private, false));
+    ELSE
+      -- A lineup with nobody left on it (round 4: all declined, dropped out
+      -- or removed; round 2: all gone from the band) is still a lineup: the
+      -- people who run the gig, its band's admins and its creator, never
+      -- the members who were never booked (nor those who said no).
+      SELECT coalesce(array_agg(DISTINCT u), '{}'::uuid[]) INTO v_ids
+        FROM unnest(public.bw_active_band_member_ids(p_band_id, true)
+                    || ARRAY(SELECT e.created_by FROM public.events e
+                              WHERE e.id = p_event_id AND e.created_by IS NOT NULL
+                                AND public.bw_is_band_member(p_band_id, e.created_by))) AS u
+       WHERE u IS NOT NULL;
+    END IF;
   END IF;
   RETURN v_ids;
 END;
@@ -610,7 +695,7 @@ BEGIN
   IF NEW.event_id IS NOT NULL THEN
     SELECT coalesce(array_agg(DISTINCT user_id), '{}'::uuid[]) INTO v_lineup
     FROM public.event_members
-    WHERE event_id = NEW.event_id AND coalesce(status, 'invited') NOT IN ('declined', 'dropped_out', 'removed')
+    WHERE event_id = NEW.event_id AND lower(coalesce(status::text, 'invited')) NOT IN ('declined', 'dropped_out', 'removed')
       AND user_id <> ALL (v_admins)
       -- 175: only people still in the band.
       AND public.bw_is_band_member(NEW.band_id, user_id);
@@ -671,9 +756,18 @@ BEGIN
     -- (bw_event_recipient_ids, above): the lineup still in the band, not
     -- declined, dropped out or removed (round 3: this one still told
     -- dropped-out and removed musicians); the band when there is no lineup.
+    -- Round 4: the two-argument form, which works the quote rule out itself
+    -- (111): a quote with no lineup tells the band's admins only, never the
+    -- whole band (round 3 passed false, so a private title reached members).
     SELECT coalesce(array_agg(DISTINCT u), '{}') INTO v_recipients
-      FROM unnest(public.bw_event_recipient_ids(p_event_id, v_band, false)) AS u
+      FROM unnest(public.bw_event_recipient_ids(p_event_id, v_band)) AS u
      WHERE u IS NOT NULL AND u <> v_uid;
+    -- With 178 live, nobody the quote rule hides it from (178's sharper
+    -- rule: a quote is for its band's admins, a cancelled hold stays one).
+    IF to_regprocedure('public.bw_event_quote_hidden(uuid, uuid)') IS NOT NULL THEN
+      EXECUTE 'SELECT coalesce(array_agg(u), ''{}'') FROM unnest($1) AS u WHERE NOT public.bw_event_quote_hidden($2, u)'
+         INTO v_recipients USING v_recipients, p_event_id;
+    END IF;
   ELSE
     SELECT coalesce(array_agg(DISTINCT u), '{}') INTO v_recipients
       FROM unnest(public.bw_active_band_member_ids(v_band)) AS u
