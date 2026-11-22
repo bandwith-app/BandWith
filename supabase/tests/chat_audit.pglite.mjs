@@ -267,6 +267,16 @@ for (const m of MIGS) {
   await db.exec(readFileSync(m, 'utf8')); // idempotent
 }
 ok(true, 'migrations run twice');
+// Round 9 (Claude delta review, MINOR-1): 194 run again after 192 keeps
+// 192's two functions with their read check.
+if (!process.argv[3]) {
+  const marked = (sig) => count(`SELECT count(*)::int AS n FROM pg_proc WHERE oid = to_regprocedure('public.${sig}') AND position('-- 192: may still read' IN prosrc) > 0`);
+  const rerun = await db.exec(migFile('194_chat_notifications_server_only.sql')).then(() => 'ok', (e) => e.message);
+  ok(rerun === 'ok', `194 runs again after 192 (${rerun})`);
+  for (const sig of ['bw_write_chat_notices(uuid, jsonb)', 'bw_claim_chat_push_only(uuid, uuid[])']) {
+    ok(await marked(sig) === 1, `194 run again after 192: ${sig} keeps 192's read check`);
+  }
+}
 let r0;
 let r;
 
@@ -588,20 +598,27 @@ await db.exec(`DELETE FROM chats WHERE event_id = '${GIG4}'; DELETE FROM event_m
 }
 // Round 8 (finding 3) and round 9: 192 redefines 194's bw_write_chat_notices
 // and bw_claim_chat_push_only. Without their "-- 192: may still read" lines
-// they are 194's functions byte for byte.
+// they are 194's functions byte for byte (CREATE ... $function$; 194 runs
+// its copy through EXECUTE inside a guard, round 9), with the same grants.
 for (const [fname, sig] of [['bw_write_chat_notices', 'uuid, jsonb'], ['bw_claim_chat_push_only', 'uuid, uuid[]']]) {
   const cut = (sql) => {
     const a = sql.indexOf(`CREATE OR REPLACE FUNCTION public.${fname}(`);
-    const end = `GRANT EXECUTE ON FUNCTION public.${fname}(${sig}) TO service_role;`;
-    const b = sql.indexOf(end, a);
-    return a < 0 || b < 0 ? null : sql.slice(a, b + end.length);
+    const b = sql.indexOf('$function$;', a);
+    return a < 0 || b < 0 ? null : sql.slice(a, b + '$function$;'.length);
   };
-  const in192 = cut(migFile('192_chat_notification_purge.sql'));
-  const in194 = cut(migFile('194_chat_notifications_server_only.sql'));
+  const grants = [
+    `REVOKE ALL ON FUNCTION public.${fname}(${sig}) FROM PUBLIC, anon, authenticated;`,
+    `GRANT EXECUTE ON FUNCTION public.${fname}(${sig}) TO service_role;`,
+  ];
+  const f192 = migFile('192_chat_notification_purge.sql');
+  const f194 = migFile('194_chat_notifications_server_only.sql');
+  const in192 = cut(f192);
+  const in194 = cut(f194);
   const added = in192 ? in192.split('\n').filter((l) => l.endsWith('-- 192: may still read')) : [];
   const base = in192 ? in192.split('\n').filter((l) => !l.endsWith('-- 192: may still read')).join('\n') : null;
-  ok(!!base && base === in194 && added.length === 4 && added.every((l) => /bw_chat_scope_ok_for|chat_participants/.test(l)),
-    `192's ${fname} is 194's plus the read check only (${added.length} lines added, ${base === in194 ? 'rest identical' : 'rest differs'})`);
+  const sameGrants = grants.every((g) => f192.includes(g) && f194.includes(g));
+  ok(!!base && base === in194 && added.length === 4 && added.every((l) => /bw_chat_scope_ok_for|chat_participants/.test(l)) && sameGrants,
+    `192's ${fname} is 194's plus the read check only (${added.length} lines added, ${base === in194 ? 'rest identical' : 'rest differs'}, grants ${sameGrants ? 'same' : 'differ'})`);
 }
 // Codex #291 r7 B3: 192 needs 175's bw_chat_scope_ok_for (hard order 175 → 192).
 if (!process.argv[3]) {
