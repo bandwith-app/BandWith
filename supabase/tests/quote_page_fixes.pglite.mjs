@@ -931,6 +931,49 @@ const editClient = (Q, set) => asAdmin(() => q(`UPDATE quotes SET ${set} WHERE i
   const own = await asAdmin(() => q(`SELECT public.bw_quote_reply(p_quote_id => $1, p_body => 'See you Saturday!')`, [Q])).then(() => 'written', (e) => e.message);
   ok(own === 'written', `R6 2: on a link never given to another client, an older build's reply is written (${own})`);
 
+  // Item 2, round 6b (main): a renewal for the same client still takes older builds' replies.
+  const renew = (Q) => asAdmin(() => q(`SELECT public.bw_quote_link_rotate($1) t`, [Q]).then((r) => r.rows[0].t));
+  const oldReply = (Q, body) => asAdmin(() => q(`SELECT public.bw_quote_reply(p_quote_id => $1, p_body => $2)`, [Q, body])).then(() => 'written', (e) => e);
+  const T2r = await renew(Q2);
+  const renewed = await oldReply(Q2, 'Jordan, the new link works the same.');
+  const onNew = ((await view(T2r))?.messages || []).map((m) => m.body);
+  ok(renewed === 'written' && onNew.includes('Jordan, the new link works the same.'),
+    `R6b 2: a link renewed for the same client (Jordan, published): the older build's reply is written on it (${renewed?.message || renewed})`);
+  const Tr = await renew(Q);
+  const plain = await oldReply(Q, 'Emma, here is the new link.');
+  ok(plain === 'written', `R6b 2: a renewal of a link never given to another client: written (${plain?.message || plain})`);
+  // A new client again: refused (40001 "Update BandWith"); the renewal is not carried to the new link.
+  await editClient(Q2, `client_name = 'Riley Chen', client_email = 'riley.chen@example.com'`);
+  const L2c = await link(Q2);
+  const moved2 = await oldReply(Q2, 'Hi!');
+  ok(moved2?.code === '40001' && /Update BandWith/.test(moved2.message) && !L2c.reassign_guard?.renewed,
+    `R6b 2: a new client after the renewal: refused, update the app (${moved2?.message || moved2})`);
+  // Renewed before it was published for the new client: still refused once published.
+  await renew(Q2);
+  const L2d = await link(Q2);
+  await asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish($1, $2::jsonb, 'en', NULL, $3, $4)`, [Q2, JSON.stringify({ ...JSON.parse(snap(4900)), client: { name: 'Riley Chen', email: 'riley.chen@example.com' } }), L2d.token, L2d.version]));
+  ok((await link(Q2)).version_at !== null, 'R6b 2: published for Riley after the renewal');
+  const early2 = await oldReply(Q2, 'Hi Riley!');
+  ok(early2?.code === '40001' && /Update BandWith/.test(early2.message),
+    `R6b 2: renewed before the new client's first publish: an older build's reply stays refused (${early2?.message || early2})`);
+  const rot = (await qq(`SELECT has_function_privilege('anon', 'public.bw_quote_link_rotate(uuid)', 'EXECUTE') a,
+                                has_function_privilege('authenticated', 'public.bw_quote_link_rotate(uuid)', 'EXECUTE') u`)).rows[0];
+  ok(!rot.a && rot.u, `R6b 2: "New link" is admins' (authenticated) only, as 099 (${JSON.stringify(rot)})`);
+  void Tr;
+
+  // r9 NIT: "Client" (a quote saved without a name) is no name, as the app's sameQuoteContact.
+  const Qc = await sentQuote();
+  await editClient(Qc, `client_name = 'Client'`);
+  const Lc = await link(Qc);
+  const pubAs = (name, L) => asAdmin(() => q(`SELECT * FROM public.bw_quote_link_publish($1, $2::jsonb, 'en', NULL, $3, $4)`,
+    [Qc, JSON.stringify({ ...JSON.parse(snap(4100)), client: { name, email: L.recipient_email || 'emma.carter@example.com' } }), L.token, L.version])).then(() => 'published', (e) => e);
+  const blank = await pubAs('', Lc);
+  ok(blank === 'published', `r9: a summary with no name for a quote saved as "Client": published (${blank?.message || blank})`);
+  const named = await pubAs('client', await link(Qc));
+  ok(named === 'published', `r9: "client" in the summary, any case: the same (${named?.message || named})`);
+  const other = await pubAs('Emma Carter', await link(Qc));
+  ok(other?.code === '40001' && /another client/.test(other.message), `r9: a real name is still another client (${other?.message || other})`);
+
   // Item 6: accepted by phone, no link, the deposit recorded on the gig: the currency stays.
   const Q3 = id(n++);
   const G3 = id(n++);

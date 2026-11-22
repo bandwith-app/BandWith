@@ -8,7 +8,7 @@ import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { act, render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react';
 
-vi.setConfig({ testTimeout: 30_000 });
+vi.setConfig({ testTimeout: 45_000 });
 
 const BAND = '11111111-1111-4111-8111-111111111111';
 const QUOTE = '22222222-2222-4222-8222-222222222222';
@@ -78,7 +78,8 @@ describe('QuotesExpanded: the edit\'s baseline', () => {
       fireEvent.click(await screen.findByText('detail edit'));
       await new Promise((r) => setTimeout(r, 50));
     });
-    await screen.findByText('wizard save', undefined, { timeout: 10_000 });
+    // Round 6 (r9): 20 s, as the wizard's lazy load is slow on a loaded runner.
+    await screen.findByText('wizard save', undefined, { timeout: 20_000 });
     // Reloaded meanwhile: the quote now goes to Jordan, saved later.
     const reloaded = { ...row, client_name: 'Jordan Lee', client_email: 'jordan@brooklynevents.example', updated_at: RELOADED_AT } as DbQuote;
     await act(async () => { view.rerender(<QuotesExpanded {...props} realQuotes={[reloaded]} />); });

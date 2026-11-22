@@ -142,7 +142,10 @@
 --    reassign_guard.published at the change), 40001 "update the app"; with
 --    nothing recorded, the notes + PDF name check alone;
 --  - an older build's reply (no token) never lands on a link made for a new
---    recipient: its screen may hold a draft for the previous client;
+--    recipient: its screen may hold a draft for the previous client; round
+--    6b: unless that link was renewed ("New link", bw_quote_link_rotate,
+--    same shape as 099) for the same client after it was published for
+--    them;
 --  - a quote whose gig has a deposit recorded (accepted by phone, no link)
 --    keeps its currency too.
 -- New functions take no grants beyond the definer's (REVOKE ALL); no RPC
@@ -780,8 +783,8 @@ BEGIN
     IF right(p_pdf_url, length(v_safe) + 5) IS DISTINCT FROM '_' || v_safe || '.pdf' THEN RETURN false; END IF;
   END IF;
   IF jsonb_typeof(p_snapshot -> 'client') = 'object' THEN
-    IF lower(regexp_replace(btrim(coalesce(p_snapshot -> 'client' ->> 'name', '')), '\s+', ' ', 'g'))
-         IS DISTINCT FROM lower(regexp_replace(btrim(coalesce(v_q.client_name, '')), '\s+', ' ', 'g'))
+    IF regexp_replace(lower(regexp_replace(btrim(coalesce(p_snapshot -> 'client' ->> 'name', '')), '\s+', ' ', 'g')), '^client$', '')
+         IS DISTINCT FROM regexp_replace(lower(regexp_replace(btrim(coalesce(v_q.client_name, '')), '\s+', ' ', 'g')), '^client$', '')
        OR lower(btrim(coalesce(p_snapshot -> 'client' ->> 'email', ''))) IS DISTINCT FROM lower(btrim(coalesce(v_q.client_email, '')))
        OR NOT (coalesce(p_snapshot -> 'client' ->> 'phone', '') = coalesce(v_q.client_phone, '')
                OR public.bw_same_phone(p_snapshot -> 'client' ->> 'phone', v_q.client_phone)) THEN
@@ -852,8 +855,10 @@ BEGIN
   -- (383f15b; with a PDF its file name says whose it is, below): refused
   -- when the quote's client is not the one the link was last published for.
   IF jsonb_typeof(p_snapshot -> 'client') = 'object' THEN
-    IF lower(regexp_replace(btrim(coalesce(p_snapshot -> 'client' ->> 'name', '')), '\s+', ' ', 'g'))
-         IS DISTINCT FROM lower(regexp_replace(coalesce(v_name, ''), '\s+', ' ', 'g'))
+    -- Round 6 (Claude r9): "Client", the name a quote saved without one
+    -- gets, is no name (as the app's sameQuoteContact).
+    IF regexp_replace(lower(regexp_replace(btrim(coalesce(p_snapshot -> 'client' ->> 'name', '')), '\s+', ' ', 'g')), '^client$', '')
+         IS DISTINCT FROM regexp_replace(lower(regexp_replace(coalesce(v_name, ''), '\s+', ' ', 'g')), '^client$', '')
        OR lower(btrim(coalesce(p_snapshot -> 'client' ->> 'email', ''))) IS DISTINCT FROM coalesce(v_email, '') THEN
       RAISE EXCEPTION 'BW_LINK_CHANGED: the quote now goes to another client, open the quote again' USING ERRCODE = '40001';
     END IF;
@@ -1588,6 +1593,41 @@ $function$;
 REVOKE ALL ON FUNCTION public.bw_quote_link_mark_sent(uuid, text, text, text, int) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_quote_link_mark_sent(uuid, text, text, text, int) TO authenticated;
 
+-- Round 6b (main's decision on item 2): "New link" (099) as before, the
+-- quote locked first (one lock order: the quote, then the link). A link
+-- given to a new client and published for them records who it was renewed
+-- for (reassign_guard.renewed): the client and the conversation are the
+-- same, so older builds' replies go there again (bw_quote_reply).
+CREATE OR REPLACE FUNCTION public.bw_quote_link_rotate(p_quote_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_band uuid := public.bw_quote_admin_band(p_quote_id);
+  v_link public.quote_links;
+  v_token text;
+BEGIN
+  PERFORM 1 FROM public.quotes q WHERE q.id = p_quote_id FOR UPDATE;
+  SELECT * INTO v_link FROM public.quote_links l WHERE l.quote_id = p_quote_id FOR UPDATE;
+  IF v_link.id IS NULL THEN RAISE EXCEPTION 'No link yet' USING ERRCODE = 'P0002'; END IF;
+  UPDATE public.quote_links l
+     SET token = replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''),
+         revoked_at = NULL, updated_at = now(),
+         reassign_guard = CASE WHEN l.recipient_changed_at IS NOT NULL AND public.bw_quote_link_current(v_link)
+                               THEN coalesce(l.reassign_guard, '{}'::jsonb)
+                                    || jsonb_build_object('renewed', jsonb_build_object('name', l.recipient_name, 'email', l.recipient_email))
+                               ELSE l.reassign_guard END
+   WHERE l.id = v_link.id
+  RETURNING l.token INTO v_token;
+  INSERT INTO public.quote_activity (quote_id, band_id, kind, actor_id) VALUES (p_quote_id, v_band, 'link_rotated', auth.uid());
+  RETURN v_token;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_quote_link_rotate(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_quote_link_rotate(uuid) TO authenticated;
+
 -- The band's reply (099's body): on the link of the conversation it was
 -- written in. New optional p_token (dropped and created again, same
 -- grants): written in a conversation whose link was replaced since (the
@@ -1617,7 +1657,16 @@ BEGIN
   -- Round 5: older builds (no token): as mark sent. Round 6: and never on a
   -- link made for a new recipient: an older screen can hold a draft written
   -- to the previous client, and nothing says which link it was written on.
-  IF p_token IS NULL AND (v_link.recipient_changed_at IS NOT NULL OR NOT public.bw_quote_link_current(v_link)) THEN
+  -- Round 6b (main): refused only when the link's client changed since an
+  -- older screen could have loaded it. A link given to a new client is
+  -- written to again once it was renewed ("New link") for that same client
+  -- after being published for them (bw_quote_link_rotate records who it was
+  -- renewed for); a link never given to another client, as before.
+  IF p_token IS NULL AND v_link.recipient_changed_at IS NOT NULL
+     AND NOT (public.bw_quote_link_current(v_link)
+              AND jsonb_typeof(v_link.reassign_guard -> 'renewed') = 'object'
+              AND (v_link.reassign_guard -> 'renewed' ->> 'email') IS NOT DISTINCT FROM v_link.recipient_email
+              AND lower(v_link.reassign_guard -> 'renewed' ->> 'name') IS NOT DISTINCT FROM lower(v_link.recipient_name)) THEN
     RAISE EXCEPTION '%', public.bw_quote_update_app_message() USING ERRCODE = '40001', HINT = 'BW_UPDATE_APP';
   END IF;
   INSERT INTO public.quote_activity (quote_id, band_id, kind, body, version, actor_id, link_id)

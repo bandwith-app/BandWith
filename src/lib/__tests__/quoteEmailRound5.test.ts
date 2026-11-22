@@ -24,7 +24,7 @@ describe('the slot is given back only when nothing went out', () => {
   });
   it('send-email releases only on sentNothing, and passes one idempotency key per slot', () => {
     expect(sendEmail).not.toMatch(/catch \(e\) \{\s*await slot\.release\(\);/);
-    expect(sendEmail.match(/if \(sentNothing\(e\)\) await slot\.release\(\);/g)?.length).toBe(2);
+    expect(sendEmail.match(/if \(sentNothing\(e\)\) \{\s*await slot\.release\(\);/g)?.length).toBe(2);
     expect(sendEmail.match(/quoteEmailIdempotencyKey\(link\.id, slot\.at\)/g)?.length).toBe(2);
     expect(sendEmail).toMatch(/"Idempotency-Key": idempotencyKey/);
     expect(mod.quoteEmailIdempotencyKey?.('l1', '2026-11-22T10:00:00.000Z')).toBe('quote-email/l1/2026-11-22T10:00:00.000Z');
@@ -39,6 +39,19 @@ describe('send-email: admin of the quote band before the link is looked up', () 
       const gone = body.indexOf('code: "link_changed"');
       expect(admin).toBeGreaterThan(-1);
       expect(admin).toBeLessThan(gone);
+    }
+  });
+});
+
+// Claude r9 (send-email:578/669): a refusal from Resend gave the app a 500
+// with no code, so the balance sheet could not take back the send it had
+// recorded before the email. Now both handlers say email_refused.
+describe('a refused email says so', () => {
+  it('both quote handlers answer email_refused when nothing went out, and still throw otherwise', () => {
+    for (const fn of ['async function sendQuoteClientEmail', 'async function sendQuoteBalanceEmail']) {
+      const body = sendEmail.slice(sendEmail.indexOf(fn), sendEmail.indexOf('\n}\n', sendEmail.indexOf(fn)));
+      const refused = body.slice(body.indexOf('if (sentNothing(e)) {'));
+      expect(refused).toMatch(/^if \(sentNothing\(e\)\) \{\s*await slot\.release\(\);[\s\S]*?return jsonResponse\(\{ success: false, code: "email_refused"[^}]*\}, 502\);\s*\}\s*throw e;/);
     }
   });
 });
