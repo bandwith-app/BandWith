@@ -16,6 +16,7 @@ import {
 } from "../_shared/auth.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { EmailTemplateName, renderEmail } from "../_shared/email-templates.ts";
+import { signQuotePdf } from "../_shared/quote-pdf-path.ts";
 import {
   pickQuoteEmailLang,
   quoteEmailDate,
@@ -27,7 +28,6 @@ import {
   type QuoteBalanceKind,
 } from "../_shared/quote-email-strings.ts";
 import { replyTo } from "../_shared/email-reply-to.ts";
-import { signQuotePdf } from "../_shared/quote-pdf-path.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 // Set EMAIL_FROM (e.g. "BandWith <noreply@your-domain>") once a sender domain

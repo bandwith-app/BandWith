@@ -13,9 +13,9 @@
 // what was already received. When the band records it as received, the
 // page says thank you instead.
 
+import { clientQuotePdfUrl, isQuoteStoragePdf, type QuotePdfKeys } from './lib/quotePdfLink';
 import type { ClientBalance, ClientQuoteSnapshot, QuoteLinkView } from './quote/types';
 import { QUOTE_STRINGS, fill, pickQuoteLang, type QuoteLang, type QuoteStrings } from './quote/strings';
-import { clientQuotePdfUrl, isQuoteStoragePdf, type QuotePdfKeys } from './lib/quotePdfLink';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
