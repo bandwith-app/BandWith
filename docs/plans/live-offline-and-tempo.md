@@ -1,9 +1,11 @@
-# Live mode: setlists offline on every device, follow the tempo, voice parts
+# Live mode: setlists offline on every device, follow the tempo, voice parts, count-in
 
-Status: **plan, waiting for the owner's approval (2026-11-21, revision 2).** Nothing is built.
-Planned on top of `main` b30d77c. Ships as its own release, before the refactor, the community and sheet music (§9).
+Status: **plan, waiting for the owner's approval (2026-11-21, revision 3).** Nothing is built.
+Planned on top of `main` b30d77c. Ships as its own release, before the refactor, the community and sheet music (§10).
 
-Revision 2 (owner, 2026-11-21): adds **voice parts** (lead, second voice, backing vocals marked and highlighted differently, gigs and rehearsals) and re-estimates the time from the real pace of the last days (§8).
+Revision 3 (owner, 2026-11-21): adds the **count-in** (§6): an evident countdown on every device, in the song's tempo and time signature, so the band starts together when playing without backing tracks.
+
+Revision 2 (owner, 2026-11-21): adds **voice parts** (lead, second voice, backing vocals marked and highlighted differently, gigs and rehearsals) and re-estimates the time from the real pace of the last days (§9).
 
 Contents
 
@@ -12,12 +14,13 @@ Contents
 3. Part A — the setlist offline on every member's device
 4. Part B — "Follow the tempo" (on/off)
 5. Part C — voice parts in the lyrics
-6. Extras folded into the plan
-7. Data, migrations, privacy
-8. Phases, sessions, time, testing
-9. Release timing
-10. Decisions taken (change any of them)
-11. Later, not planned now
+6. Part D — the count-in (countdown to the start)
+7. Extras folded into the plan
+8. Data, migrations, privacy
+9. Phases, sessions, time, testing
+10. Release timing
+11. Decisions taken (change any of them)
+12. Later, not planned now
 
 ---
 
@@ -29,11 +32,12 @@ The owner's words, paraphrased (2026-11-21):
 2. A **sync with the BPM** for chords, lyrics and structure, **that can be switched on and off**.
 3. **Members too** get the setlist(s) downloaded automatically on their devices. A **push notification asks them to accept the download and explains it well.**
 4. When a song has **several voices — lead and backing vocals —** the lyrics can be **annotated and highlighted differently** so each part is easy to recognise, in rehearsals and gigs.
+5. A **count-in** for live songs (rehearsals and gigs): an evident countdown in the song's tempo and time signature, so everyone comes in together and on time. It applies only when the band plays without backing tracks/sequences.
 
 Decisions already taken by the owner:
 - Automatic download for every gig and rehearsal in the **next 7 days**.
 - **The band leader starts** the tempo follow; every phone follows the same clock, and each person can switch the view off on their own device.
-- The native apps (iOS, Android) come first. The web app stays online-only for now (§11).
+- The native apps (iOS, Android) come first. The web app stays online-only for now (§12).
 
 ## 2. What exists today
 
@@ -68,7 +72,7 @@ Checked on `main` b30d77c. Paths are from the repo root.
 
 One pack per event, stored in the IndexedDB offline store (`src/lib/offline/storage.ts`, key `live_pack:<eventId>`):
 - event basics (title, date, venue, call time), setlist order and sets;
-- per song: title, artist, key, BPM, time signature, count-in, lyrics (with voice parts), chord chart, line timing (Part B), who sings which part (Part C);
+- per song: title, artist, key, BPM, time signature, count-in, lyrics (with voice parts), chord chart, line timing (Part B), who sings which part (Part C), count-in settings (Part D);
 - the user's own personal notes and personal files (files saved with Capacitor Filesystem, not signed URLs);
 - rehearsals: band notes and earlier notes for those songs;
 - the stage key (already cached today);
@@ -107,7 +111,7 @@ The localStorage `bw-setlist-songs:` copy is migrated into the pack on first run
 ### 3.4 Where it shows in the flow
 
 - **Event detail / readiness card:** a row "Offline ready ✓ · updated 2:32 PM" or "Download for offline".
-- **Admins' readiness:** "Offline: 4 of 5 members ready" (each device reports its pack version; §7). Tapping it lists who is not ready, with "Remind" (one push).
+- **Admins' readiness:** "Offline: 4 of 5 members ready" (each device reports its pack version; §8). Tapping it lists who is not ready, with "Remind" (one push).
 - **Stage header:** a discreet tag "Offline · content from yesterday 6:02 PM" when the network is down; a warning if the pack is older than the last known change.
 - **Home "Go live" and the rehearsal card** open from the pack when offline (no `refetchEvents`).
 
@@ -181,17 +185,49 @@ Each part has its own look, made of **shape + colour** (never colour alone, so i
 - Exports (ChordPro, print/PDF of a song) show the parts as labels or strip them; imports ignore unknown markers.
 - Part assignment: `songs.vocal_parts jsonb` (`{ "bv": [member ids], "v2": [...] }`) and an optional per-setlist override.
 
-## 6. Extras folded into the plan
+## 6. Part D — the count-in (countdown to the start)
+
+### 6.1 What everyone sees and hears
+
+- The leader taps **Count in** on the song in Stage (or on the "Next" song). Every device in the band shows, at the same moment, a **full-screen countdown in the song's tempo**: huge beat numbers that pulse on each beat, with a ring that fills bar by bar, then **"GO"** on the downbeat where the band comes in.
+- **Follows the time signature** (from the song, else from the chart, else 4/4):
+  - 4/4 → 4 3 2 1 GO; 3/4 → 3 2 1 GO; 2/4 → 2 1 GO; 5/4 → 5…1;
+  - 6/8 and 12/8 → counted in dotted beats (2 or 4 big numbers, the eighths shown as small dots), as musicians count them;
+  - 7/8, 5/8 and other odd meters → the grouping from the chart (e.g. 2+2+3) shown as small, medium, long beats.
+- **Length:** 1 bar by default; **2 bars** for slow songs (the first bar counts half time: "1 — 2 —", the second in time), set per song.
+- **Pickup (upbeat start):** a song that starts before the downbeat ("on 4") sets "starts N beats early"; the countdown ends with **GO** on the right beat, not on 1.
+- **Direction:** countdown (4 3 2 1, the default asked by the owner) or the classic count (1 2 3 4); a band setting.
+- **Optional on each device:**
+  - **vibration on every beat** (Capacitor Haptics; the downbeat stronger) — useful for whoever can't look at the screen;
+  - **audible count in headphones** ("one, two, three, four" voice or a click; Web Audio scheduled on the shared clock), per device, never through the main speaker unless chosen.
+- Everywhere: Stage gig and rehearsal Live mode, Song only, full screen, iPad, every Duo posture (Laptop/floor wedge shows it biggest).
+- At **GO** the countdown disappears; if "Follow the tempo" is on, the playhead starts on bar 1 at that exact moment; if the click is on, it carries on in time.
+
+### 6.2 Only when playing without backing tracks
+
+- Per song: **"Played with a backing track"** (off by default). When on, the Count in button is hidden for that song — the track starts the band.
+- When the Stage manager (Regia) is playing audio for the song, the count-in is not offered.
+- The leader can still force one from the song's menu (e.g. a track that starts with silence).
+
+### 6.3 Being on time on every phone
+
+- Uses the clock the click already shares (`startAt` + measured offset, ±20–40 ms). On **Count in**, every phone re-measures its offset with a quick burst of pings, and the countdown starts **1.5 s** after the tap (instead of the click's 700 ms), so slow phones get the message in time.
+- Offline: the same over Bluetooth (B3), which gains a ping/pong to measure the offset between phones.
+- A phone that gets the message late joins mid-countdown on the right beat instead of starting from the top.
+- If the leader taps **Stop** during the countdown, it stops on every device.
+
+## 7. Extras folded into the plan
 
 - **Click and playhead over Bluetooth:** today only song/order/struck-off travel. The Bluetooth frame gains the click state and the playhead events (start, re-align, hold, stop). Then the whole live mode works with no internet at all.
 - **Rehearsal speed (rehearsals only):** "Play at 80%". Click and follow slow down together; the song's BPM is not changed.
 - **"8 of 12 songs can follow the tempo"** in the event's readiness card, with a link to the songs missing BPM or timing.
-- **Optional, last:** an audible click in headphones (Web Audio, scheduled ahead on the shared clock) for whoever wants it. Can be dropped if time is short.
+- **Audible click in headphones** after the count-in, for whoever wants it (same audio engine as the count-in, §6.1). Optional, last; can be dropped if time is short.
 
-## 7. Data, migrations, privacy
+## 8. Data, migrations, privacy
 
 New migration(s) (numbers at build time; every new readable column gets its explicit GRANT; prod dry run with BEGIN/COMMIT stripped first):
 - `songs.time_signature text` (e.g. '4/4'), `songs.count_in_bars smallint default 1`, `songs.line_timing jsonb` (beat positions per lyric line, with a hash of the marker-free lyrics so edits invalidate it safely).
+- `songs.pickup_beats smallint default 0`, `songs.backing_track boolean default false`; band setting `bands.count_in_style` ('down' | 'up', default 'down').
 - `songs.vocal_parts jsonb` and a per-setlist override (`setlist_songs.vocal_parts jsonb`); writes follow today's song/setlist rules (admins), reads follow `songs`.
 - `live_pack_status (event_id, user_id, device_id, version, downloaded_at)` — RLS: a member writes and reads their own rows; band admins read rows of their band's events. Nothing else.
 - Per-user consent (`profiles.live_pack_auto boolean`, `live_pack_asked_at`); the per-device choice also stays on the device.
@@ -199,39 +235,40 @@ New migration(s) (numbers at build time; every new readable column gets its expl
 - `send-push`: a silent/background variant (iOS `apns-push-type: background`, priority 5; Android data-only).
 
 Privacy:
-- Only active band members who did not decline the event (same rule as reading `setlist_songs` today). Deputies cannot read setlists today, so they are excluded (§11).
+- Only active band members who did not decline the event (same rule as reading `setlist_songs` today). Deputies cannot read setlists today, so they are excluded (§12).
 - No fees or contracts in the pack; personal notes only for their author.
 - App Store privacy label: no new data types (content stays on device; the status row is app functionality).
 
-## 8. Phases, sessions, time, testing
+## 9. Phases, sessions, time, testing
 
 **How the time is estimated.** From the real pace of 17–21 Nov: features of this size went from plan to merged PR in hours, not days (Stage manager #223, 3,300 lines, one day including its plan; paid plans P1–P5, seven PRs, one day; rehearsal A1b–A4, four PRs, about a day and a half). Revision 1 counted classic "developer days"; that was wrong for this setup.
 
-Three sessions in parallel, each in its own worktree, one PR per phase; the main session merges after CI:
+Four sessions in parallel, each in its own worktree, one PR per phase; the main session merges after CI:
 
 | Session | Phases (in order) | Time |
 |---|---|---|
 | **1 · Offline** | A1 live pack, prefetch, offline Go live, tags, readiness row → A2 consent push + sheet + Settings + cron + silent refresh + "4 of 5" → A3 outbox | about 1.5 days |
-| **2 · Tempo** | B1 `unrollChart`, time signature + count-in migration, playhead engine → B2 follow views + re-align + hold → B3 click + playhead over Bluetooth → B4 Sync lines, rehearsal speed, readiness count → (B5 audible click, optional) | about 2 days |
+| **2 · Tempo** | B1 `unrollChart`, time signature + count-in + pickup + backing-track migration, playhead engine → **D1 count-in: full-screen countdown, meters, pickup, 1–2 bars, backing-track rule, vibration, audible count** → B2 follow views + re-align + hold → B4 Sync lines, rehearsal speed, readiness count | about 2.5 days |
+| **4 · Bluetooth** | (after B1) B3 click, count-in and playhead over Bluetooth, with offset measurement between phones (iOS + Android plugin) → B5 audible click after the count-in (optional) | about 1 day |
 | **3 · Voices** | C1 markers, renderer styles, legend, "Highlight my part" → C2 editor picker, who sings what, import suggestion, notes regression | about 1 day |
 | **Main** | merges, integrated pass, Academy in 6 languages, handbook PDF, candidate | about 1 day |
 
-Order and file overlap: A1 changes how Stage gets its songs, so B2 and C1 start from it; C1 lands before B2 (both touch the lyrics renderer) and B2 rebases.
+Order and file overlap: A1 changes how Stage gets its songs, so B2 and C1 start from it; C1 lands before B2 (both touch the lyrics renderer) and B2 rebases. Session 4 touches only the Bluetooth layer and the native plugins.
 
 Testing:
-- every phase ships with failing-first tests; new e2e specs for Stage offline (`context.setOffline(true)`), follow-the-tempo and voice parts;
+- every phase ships with failing-first tests; new e2e specs for Stage offline (`context.setOffline(true)`), the count-in (two browser contexts on one shared clock, every meter), follow-the-tempo and voice parts;
 - the integrated pass (iOS sims, Duo in every posture, iPad, Android emulator) before the candidate;
-- **needs the owner:** two real phones for Bluetooth (never tested on real devices since PR #93) and one real rehearsal or gig run.
+- **needs the owner:** two real phones for Bluetooth (never tested on real devices since PR #93) and for the count-in side by side (are the numbers on the beat on both?), and one real rehearsal or gig run.
 
-## 9. Release timing
+## 10. Release timing
 
 - Start: right after approval (the weekend works too).
-- **Build done: Wednesday 25 November. Release candidate (web + APK + TestFlight): Thursday 26 November**, Friday 27 at the latest with a buffer for the real-phone test.
+- **Build done: Wednesday 25 November. Release candidate (web + APK + TestFlight): Thursday 26 November**, Friday 27 at the latest with a buffer for the real-phone test. The count-in adds about half a day to session 2; moving Bluetooth to its own session 4 keeps the date.
 - 26 November is Thanksgiving in the US: the 2-phone test can be done on the 25th evening or the 27th.
 - Publication on the owner's go (releases stay manual). External TestFlight builds usually pass beta review in under a day.
 - The refactor, the community and sheet music stay in a **later, separate release**.
 
-## 10. Decisions taken (change any of them)
+## 11. Decisions taken (change any of them)
 
 1. Automatic pack for the next 7 days; members asked once by push, with "keep it automatic".
 2. The leader starts and re-aligns; members only switch the view on/off.
@@ -239,8 +276,9 @@ Testing:
 4. Native apps only for offline; web later.
 5. Line timing stored in beats, not seconds; voice parts stored as markers inside the lyrics.
 6. This work ships as its own release before the refactor.
+7. Count-in: countdown direction by default, 1 bar (2 for slow songs), starts 1.5 s after the leader's tap, hidden for songs played with a backing track.
 
-## 11. Later, not planned now
+## 12. Later, not planned now
 
 - Web app offline (service worker / PWA).
 - Deputies getting the setlist (needs read access to songs for deputies, a privacy decision).
@@ -248,3 +286,4 @@ Testing:
 - Following the Regia audio position instead of the click (needs clock sync on the Regia messages).
 - Tempo changes inside a song beyond what the chart encodes; per-gig tempo overrides.
 - Harmony notes per part (pitch/interval hints) and per-part audio guide tracks.
+- Starting the backing track itself from the count-in (Regia + count-in together), tempo maps and MIDI clock to drum machines/Ableton.
