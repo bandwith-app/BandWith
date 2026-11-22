@@ -14,6 +14,7 @@ import {
   flushPushRevocations,
   forgetAccountPushState,
   forgetRevocation,
+  holdPushStateOnFailure,
   newRevokeSecret,
   nextRevocationRetry,
   queueRevocation,
@@ -22,6 +23,7 @@ import {
   rememberPushToken,
   rememberedPushToken,
   rememberedPushTokenAny,
+  restorePushStateAfterWipe,
   revokeOnSignOut,
   revokeRetryDelay,
 } from '../pushRevocation';
@@ -348,6 +350,47 @@ describe('push revocation on sign-out', () => {
     const s = server(true);
     expect(await flushPushRevocations(store, { ...s, now: () => 31 * 24 * 3600_000 })).toBe(1);
     expect(s.revoke).toHaveBeenCalled();
+  });
+
+  // Main's condition on #287 round 10: the push state held at a failed
+  // sign-out is that account's; it never goes into another account's session.
+  it('the held push state comes back only while no other account is signed in', async () => {
+    const fail = async () => {
+      localStorage.setItem('bandwith.push-revoke', '[{"token":"t","userId":"alice"}]');
+      throw new Error('boom');
+    };
+    // Nobody else: it comes back after the wipe.
+    localStorage.clear();
+    await expect(holdPushStateOnFailure(fail, { owner: () => 'alice' })()).rejects.toThrow('boom');
+    localStorage.clear();
+    restorePushStateAfterWipe();
+    expect(localStorage.getItem('bandwith.push-revoke')).toContain('alice');
+    // Bob signs in (any tab) before the restore: dropped.
+    let report: (uid: string | null) => void = () => {};
+    let unsubscribed = false;
+    const watch = (cb: (uid: string | null) => void) => {
+      report = cb;
+      cb(null);
+      return () => void (unsubscribed = true);
+    };
+    localStorage.clear();
+    await expect(holdPushStateOnFailure(fail, { owner: () => 'alice', watchSignedIn: watch })()).rejects.toThrow('boom');
+    localStorage.clear();
+    report('bob');
+    expect(unsubscribed).toBe(true);
+    restorePushStateAfterWipe();
+    expect(localStorage.getItem('bandwith.push-revoke')).toBeNull();
+    // Bob's own registration already on the device at restore time: dropped too.
+    localStorage.clear();
+    await expect(holdPushStateOnFailure(fail, { owner: () => 'alice' })()).rejects.toThrow('boom');
+    localStorage.clear();
+    confirmPushSave(localStorage, TOKEN, 'bob', S2, REG);
+    restorePushStateAfterWipe();
+    expect(localStorage.getItem('bandwith.push-revoke')).toBeNull();
+    // Held once, restored once: a later restore puts nothing back.
+    localStorage.clear();
+    restorePushStateAfterWipe();
+    expect(localStorage.length).toBe(0);
   });
 
   it('secrets are random, 256 bits', () => {

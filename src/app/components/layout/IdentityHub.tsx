@@ -3,6 +3,7 @@ import { useLaptopPose } from '@/app/components/duo/FoldSplit';
 import { readLocalPref, loadNotificationPrefs, saveNotificationPrefs } from '@/lib/services/notificationPrefs';
 import { exportMyData } from '@/lib/services/dataExport';
 import { holdPushStateOnFailure, restorePushStateAfterWipe } from '@/lib/pushRevocation';
+import { supabase as authClient } from '@/lib/supabase';
 import { cn } from '@/app/components/ui/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { HEADER_SPRING } from '@/styles/motion';
@@ -110,7 +111,15 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
   const { signOut: signOutOrThrow, user, profile, userMode } = useAuth();
   // A sign-out that throws is answered by a wipe below: the push revocation
   // it queued and a pending token deletion survive it (#287 round 10).
-  const signOut = holdPushStateOnFailure(signOutOrThrow);
+  // Held for this account only: anyone else signing in (here or in another
+  // tab) before the restore drops it.
+  const signOut = holdPushStateOnFailure(signOutOrThrow, {
+    owner: () => user?.id,
+    watchSignedIn: (onUser) => {
+      const { data } = authClient.auth.onAuthStateChange((_event, session) => onUser(session?.user?.id ?? null));
+      return () => data.subscription.unsubscribe();
+    },
+  });
   const t = useT();
   // Duo Laptop: the profile card sits on the Display, the rest on the Deck.
   const laptop = useLaptopPose();

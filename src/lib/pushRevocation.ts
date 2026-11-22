@@ -438,7 +438,14 @@ export async function flushPushRevocations(store: Store | null, deps: FlushDeps)
  */
 export const PUSH_STATE_PREFIX = 'bandwith.push-';
 
-let heldPushState: [string, string][] | null = null;
+/** The push state read when a sign-out failed, and whose it is. */
+let heldPushState: { entries: [string, string][]; owner: string | null; stopWatch: () => void } | null = null;
+
+const dropHeldPushState = () => {
+  const held = heldPushState;
+  heldPushState = null;
+  held?.stopWatch();
+};
 
 const pushStateNow = (): [string, string][] => {
   const out: [string, string][] = [];
@@ -457,25 +464,62 @@ const pushStateNow = (): [string, string][] => {
  * A sign-out whose failure the caller answers by wiping the device
  * (IdentityHub): the push state is read the moment it fails, after the
  * sign-out queued its revocation, so restorePushStateAfterWipe can put it
- * back once the wipe ran.
+ * back once the wipe ran. It is the failing account's (`owner`): if anyone
+ * else is signed in before the restore (this tab or another one, reported by
+ * `watchSignedIn`), it is dropped, never given to that session (main's
+ * condition on #287 round 10). Memory only: it never outlives the page.
  */
-export function holdPushStateOnFailure<A extends unknown[], R>(fn: (...args: A) => Promise<R>): (...args: A) => Promise<R> {
+export function holdPushStateOnFailure<A extends unknown[], R>(
+  fn: (...args: A) => Promise<R>,
+  opts: {
+    owner: () => string | null | undefined;
+    /** Calls back with the signed-in account (null: none) now and on every change; returns the unsubscribe. */
+    watchSignedIn?: (onUser: (uid: string | null) => void) => () => void;
+  },
+): (...args: A) => Promise<R> {
   return async (...args: A) => {
     try {
       return await fn(...args);
     } catch (e) {
-      heldPushState = pushStateNow();
+      dropHeldPushState();
+      const held = { entries: pushStateNow(), owner: opts.owner() ?? null, stopWatch: () => {} };
+      heldPushState = held;
+      let watching = true;
+      let stop: () => void = () => {};
+      try {
+        stop = opts.watchSignedIn?.((uid) => {
+          if (watching && heldPushState === held && uid && uid !== held.owner) dropHeldPushState();
+        }) ?? (() => {});
+      } catch {
+        stop = () => {};
+      }
+      held.stopWatch = () => {
+        watching = false;
+        try {
+          stop();
+        } catch {
+          /* already gone */
+        }
+      };
+      // Someone else signed in while subscribing: already dropped.
+      if (heldPushState !== held) held.stopWatch();
       throw e;
     }
   };
 }
 
-/** After that wipe: the push state read at the failure comes back (a newer value stays). */
+/**
+ * After that wipe: the push state read at the failure comes back (a newer
+ * value stays), unless another account is signed in now (its own registration
+ * on the device, or a sign-in seen meanwhile): then nothing comes back.
+ */
 export function restorePushStateAfterWipe() {
   const held = heldPushState;
-  heldPushState = null;
+  dropHeldPushState();
   if (!held) return;
-  for (const [k, v] of held) {
+  const current = rememberedPushTokenAny(localStorageOrNull());
+  if (current && current.userId !== held.owner) return;
+  for (const [k, v] of held.entries) {
     try {
       if (localStorage.getItem(k) === null) localStorage.setItem(k, v);
     } catch {
@@ -483,3 +527,11 @@ export function restorePushStateAfterWipe() {
     }
   }
 }
+
+const localStorageOrNull = (): Store | null => {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage : null;
+  } catch {
+    return null;
+  }
+};

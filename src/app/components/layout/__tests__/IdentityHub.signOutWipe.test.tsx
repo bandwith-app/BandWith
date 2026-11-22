@@ -7,7 +7,18 @@ import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/re
 
 const bandState = vi.hoisted(() => ({ isAdmin: false }));
 
-vi.mock('@/lib/supabase', () => ({ supabase: {} }));
+// Who is signed in when the hold starts watching (main's condition, round 10).
+const signedInNow = vi.hoisted(() => ({ uid: null as string | null }));
+vi.mock('@/lib/supabase', () => ({
+  supabase: {
+    auth: {
+      onAuthStateChange: (cb: (event: string, session: { user: { id: string } } | null) => void) => {
+        cb('INITIAL_SESSION', signedInNow.uid ? { user: { id: signedInNow.uid } } : null);
+        return { data: { subscription: { unsubscribe() {} } } };
+      },
+    },
+  },
+}));
 vi.mock('@/lib/haptics', () => ({
   haptic: { tap: vi.fn(), medium: vi.fn(), confirm: vi.fn(), delete: vi.fn(), selection: vi.fn(), success: vi.fn(), error: vi.fn() },
 }));
@@ -73,6 +84,7 @@ const renderHub = (role: 'ADMIN' | 'MEMBER') => {
 
 describe('IdentityHub failed sign-out', () => {
   it('the wipe keeps the push revocation and the pending token deletion', async () => {
+    signedInNow.uid = null;
     localStorage.clear();
     localStorage.setItem('bandwith.push-delete-pending', '1');
     localStorage.setItem('bw:user-1:band:quotes', '{"cached":true}');
@@ -83,6 +95,24 @@ describe('IdentityHub failed sign-out', () => {
     await waitFor(() => expect(localStorage.getItem('bw:user-1:band:quotes')).toBeNull());
     expect(localStorage.getItem('bandwith.push-revoke')).toContain('"userId":"user-1"');
     expect(localStorage.getItem('bandwith.push-delete-pending')).toBe('1');
+    err.mockRestore();
+  });
+
+  // Main's condition (round 10): the held keys are user-1's. Someone else is
+  // signed in by the time the restore runs: nothing of user-1's comes back.
+  it("another account signed in before the restore: the previous account's push state is not put back", async () => {
+    signedInNow.uid = 'user-2';
+    localStorage.clear();
+    localStorage.setItem('bandwith.push-delete-pending', '1');
+    localStorage.setItem('bw:user-1:band:quotes', '{"cached":true}');
+    failingSignOut.mockClear();
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    renderHub('MEMBER');
+    fireEvent.click(screen.getByRole('button', { name: /^sign out/i }));
+    await waitFor(() => expect(failingSignOut).toHaveBeenCalled());
+    await waitFor(() => expect(localStorage.getItem('bw:user-1:band:quotes')).toBeNull());
+    expect(localStorage.getItem('bandwith.push-revoke')).toBeNull();
+    expect(localStorage.getItem('bandwith.push-delete-pending')).toBeNull();
     err.mockRestore();
   });
 });
