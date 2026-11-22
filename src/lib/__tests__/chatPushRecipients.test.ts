@@ -21,6 +21,8 @@ function fakeAdmin(opts: { rpc?: (fn: string, a: Record<string, unknown>) => { d
   const rpc = vi.fn(async (fn: string, a: Record<string, unknown>) =>
     opts.rpc ? opts.rpc(fn, a)
       : fn === 'bw_chat_recipient_ids' ? { data: a.p_sender === 'stale' ? [] : ['me', 'mate'].filter((u) => u !== a.p_sender), error: null }
+      // 178 (#294): chatRecipients then asks the quote rule; an ordinary chat lets everyone asked about read.
+      : fn === 'bw_chat_push_readers' ? { data: a.p_user_ids, error: null }
       : fn === 'bw_chat_recipients_shared' ? { data: a.p_sender === 'stale' ? [] : (a.p_targets as string[]).filter((u) => u === 'mate'), error: null }
       : { data: null, error: null },
   );
@@ -44,6 +46,8 @@ describe('send-push recipients follow the rule, not raw participant rows', () =>
     const out = await chatRecipients(admin, 'me', CHAT, ['mate', 'stale']);
     expect(out).toEqual(['mate']);
     expect(rpc).toHaveBeenCalledWith('bw_chat_recipient_ids', { p_chat_id: CHAT, p_sender: 'me' });
+    // Only the people 175's rule let through are put to the quote rule (178).
+    expect(rpc).toHaveBeenCalledWith('bw_chat_push_readers', { p_chat_id: CHAT, p_user_ids: ['mate'] });
     expect(tables).not.toContain('chat_participants');
   });
 

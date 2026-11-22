@@ -18,9 +18,19 @@ describe('chat push recipients fail closed', () => {
   });
 
   it('chatRecipients never falls back: any error, a missing function included, sends to nobody (round 4)', () => {
-    const fn = authSrc.slice(authSrc.indexOf('export async function chatRecipients'));
-    const body = fn.slice(0, fn.indexOf('\n}\n'));
-    expect(body).toMatch(/if \(rpcError\) \{[\s\S]{0,200}return \[\];/);
+    // #294 (178) wraps the rule: chatRecipients = chatParticipantRecipients
+    // (175's rule, below) and then the quote rule. Both are read here.
+    const bodyOf = (head: string) => {
+      const at = authSrc.indexOf(head);
+      expect(at).toBeGreaterThanOrEqual(0);
+      const fn = authSrc.slice(at);
+      return fn.slice(0, fn.indexOf('\n}\n'));
+    };
+    const rule = bodyOf('async function chatParticipantRecipients');
+    expect(rule).toMatch(/if \(rpcError\) \{[\s\S]{0,200}return \[\];/);
+    expect(rule).not.toMatch(/chat_participants/);
+    const body = bodyOf('export async function chatRecipients');
+    expect(body).toMatch(/await chatParticipantRecipients\(admin, callerId, chatId, targetIds\)/);
     expect(body).not.toMatch(/chat_participants/);
   });
 });
