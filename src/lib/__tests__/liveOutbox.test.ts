@@ -332,7 +332,7 @@ describe('flushes across an account switch', () => {
 // (a list of final refusals; everything else waits, with a backoff; the
 // refused list of readRefusedLiveOps). Tests whose point still holds run
 // against it. Two #271 behaviours were dropped in the merge and come back
-// with the branch release-fix/live-outbox-stuck: their tests are it.skip.
+// with the branch release-fix/live-outbox-stuck, which re-enables their tests.
 // ---------------------------------------------------------------------------
 describe('#271: a passing server problem keeps the change', () => {
   const api = (note: LiveOutboxApi['note']): LiveOutboxApi => ({
@@ -365,14 +365,25 @@ describe('#271: a passing server problem keeps the change', () => {
     });
   }
 
-  // Not carried over: in #292's classes a refusal is known by its error code
-  // (42501, PGRST116, 22xxx, 23xxx, BW_SETLIST_CONFLICT); a bare HTTP 403 with
-  // no code waits and is tried again. For the live-offline session to decide
-  // (release-fix/live-outbox-stuck).
-  it.skip('a 403 is a refusal, not a passing problem: dropped', async () => {
-    queueLiveOp(me, note('n1', 'a', true));
-    const r = await flushLiveOutbox(me, api(async () => ({ error: { message: 'Forbidden' }, status: 403 })), { force: true });
-    expect(r).toEqual({ sent: 0, dropped: 1, left: 0 });
+  // #292's classes (ruling for release/2026-11-23): a refusal is known by its
+  // error code (42501, PGRST116, 22xxx, 23xxx, BW_SETLIST_CONFLICT). A bare
+  // HTTP 403 with no code waits like a server problem; the stuck cap bounds it.
+  it('a bare 403 with no code waits; after 10 tries and 15 minutes it is set aside as not saved', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-11-20T20:00:00Z'));
+      queueLiveOp(me, note('n1', 'a', true));
+      const forbidden = api(async () => ({ error: { message: 'Forbidden' }, status: 403 }));
+      for (let i = 0; i < 10; i++) {
+        expect(await flushLiveOutbox(me, forbidden, { force: true })).toEqual({ sent: 0, dropped: 0, left: 1 });
+        vi.setSystemTime(Date.now() + 60_000);
+      }
+      vi.setSystemTime(new Date('2026-11-20T20:15:00Z'));
+      expect(await flushLiveOutbox(me, forbidden, { force: true })).toEqual({ sent: 0, dropped: 1, left: 0 });
+      expect(readRefusedLiveOps(me)).toMatchObject([{ kind: 'note', id: 'n1', why: 'stuck' }]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -385,9 +396,8 @@ describe('#271: a change the server never takes', () => {
     order: async () => ({ error: null }),
   });
 
-  // Dropped in merge 16 (the "stuck" cap: 10 tries over 15 min, or 24 h). To be
-  // restored by release-fix/live-outbox-stuck: re-enable it there.
-  it.skip('a server problem is tried again, then after 10 tries and 15 minutes set aside, kept to copy; the changes behind it go', async () => {
+  // The "stuck" cap: 10 tries over 15 min, or 24 h (release-fix/live-outbox-stuck).
+  it('a server problem is tried again, then after 10 tries and 15 minutes set aside, kept to copy; the changes behind it go', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-11-20T20:00:00Z'));
     queueLiveOp(me, note('n1', 'capo 2 on the bridge'));
@@ -406,12 +416,15 @@ describe('#271: a change the server never takes', () => {
     expect(r).toEqual({ sent: 1, dropped: 1, left: 0 });
     const refused = readRefusedLiveOps(me);
     expect(refused).toHaveLength(1);
-    expect(refused[0]).toMatchObject({ kind: 'note', id: 'n1', body: 'capo 2 on the bridge' });
+    expect(refused[0]).toMatchObject({ kind: 'note', id: 'n1', body: 'capo 2 on the bridge', why: 'stuck' });
+    // Its try count stays behind: the copy is the change as written.
+    expect(refused[0]).not.toHaveProperty('failedTries');
+    expect(refused[0]).not.toHaveProperty('firstFailedAt');
     expect(waitingChanges(me)).toBe(0);
   });
 
-  // Dropped in merge 16 (the "stuck" cap). To be restored by release-fix/live-outbox-stuck.
-  it.skip('after a day of server problems it is set aside, however few the tries', async () => {
+  // The "stuck" cap (release-fix/live-outbox-stuck).
+  it('after a day of server problems it is set aside, however few the tries', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-11-20T20:00:00Z'));
     queueLiveOp(me, note('n1', 'capo 2'));
@@ -441,14 +454,13 @@ describe('#271: a change the server never takes', () => {
     const refuse: LiveOutboxApi = { ...api503('x'), note: async () => ({ error: { message: 'Forbidden', code: '42501' } }) };
     expect(await flushLiveOutbox(me, refuse, { force: true })).toEqual({ sent: 0, dropped: 1, left: 0 });
     const [item] = readRefusedLiveOps(me);
-    expect(item).toMatchObject({ id: 'n1', body: 'capo 2' });
+    expect(item).toMatchObject({ id: 'n1', body: 'capo 2', why: 'refused' });
     removeRefusedLiveOp(me, refusedId(item));
     expect(readRefusedLiveOps(me)).toEqual([]);
   });
 
-  // Dropped in merge 16 (the try counter on a change is part of the "stuck" cap).
-  // To be restored by release-fix/live-outbox-stuck.
-  it.skip('a newer edit of a change that kept failing starts again from zero', () => {
+  // The try counter belongs to the "stuck" cap (release-fix/live-outbox-stuck).
+  it('a newer edit of a change that kept failing starts again from zero', () => {
     let ops = addLiveOp([], { ...note('n1', 'capo 2'), failedTries: 9, firstFailedAt: '2026-11-20T20:00:00Z' } as unknown as LiveOp);
     ops = addLiveOp(ops, note('n1', 'capo 3'));
     expect(ops[0]).not.toHaveProperty('failedTries');

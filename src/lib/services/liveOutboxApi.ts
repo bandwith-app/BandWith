@@ -7,7 +7,7 @@
  */
 import { supabase } from '../supabase';
 import { diffSetlist } from '../setlistChanges';
-import { queueLiveOp, type LiveOp, type LiveOutboxApi, type OrderRow } from '../liveOutbox';
+import { isDefiniteRefusal, queueLiveOp, type LiveOp, type LiveOutboxApi, type OrderRow } from '../liveOutbox';
 import { isOfflineError } from '../offline/networkErrors';
 import { sessionUserId } from '../sessionUser';
 import { replaceSetlistSongs } from './songs';
@@ -104,17 +104,20 @@ export const liveOutboxApi: LiveOutboxApi = {
 };
 
 /**
- * Stage: the leader's new order could not be saved. With no signal it stays
- * (on screen, over Bluetooth) and is saved when back online: true. Any other
- * failure: false (the caller goes back to the saved order). `owner`: who made
- * it; queued only while that account is still the one signed in (re-read now).
+ * Stage: the leader's new order could not be saved. With no signal, or the
+ * server busy for a moment (503, a timeout: anything but a refusal for good,
+ * the outbox's own rule), it stays (on screen, over Bluetooth) and is saved
+ * as soon as the server answers: true. Refused for good (not allowed, the
+ * setlist changed meanwhile): false, the caller goes back to the saved order.
+ * `owner`: who made it; queued only while that account is still the one
+ * signed in (re-read now).
  */
 export async function keepOrderOffline(
   error: unknown,
   order: { setlistId: string; eventId?: string; rows: OrderRow[]; before: { songId: string; setNumber?: number; id?: string }[] },
   owner?: string | null,
 ): Promise<boolean> {
-  if (!isOfflineError(error)) return false;
+  if (!error || (!isOfflineError(error) && isDefiniteRefusal(error))) return false;
   const me = await sessionUserId();
   if (!me || (owner !== undefined && owner !== me)) return false;
   queueLiveOp(me, { kind: 'order', ...order });

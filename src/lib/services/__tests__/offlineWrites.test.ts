@@ -79,27 +79,32 @@ describe('writes with no signal stay on the phone (plan §3.5)', () => {
     expect(readLiveOutbox('u-1')).toEqual([]);
   });
 
-  it("the leader's new order waits on the phone when the save has no signal; any other failure does not", async () => {
+  it("the leader's new order waits on the phone when the save has no signal; a refusal does not", async () => {
     const rows = [{ id: 'r2', setlist_id: 'sl', song_id: 'b', position: 0, set_number: 1 }, { id: 'r1', setlist_id: 'sl', song_id: 'a', position: 1, set_number: 1 }];
     const before = [{ songId: 'a', setNumber: 1 }, { songId: 'b', setNumber: 1 }];
-    expect(await keepOrderOffline({ message: 'permission denied' }, { setlistId: 'sl', eventId: 'e1', rows, before })).toBe(false);
+    expect(await keepOrderOffline({ message: 'permission denied', code: '42501' }, { setlistId: 'sl', eventId: 'e1', rows, before })).toBe(false);
     expect(readLiveOutbox('u-1')).toEqual([]);
     expect(await keepOrderOffline({ message: 'Failed to fetch' }, { setlistId: 'sl', eventId: 'e1', rows, before })).toBe(true);
     expect(readLiveOutbox('u-1')).toEqual([{ kind: 'order', setlistId: 'sl', eventId: 'e1', rows, before }]);
   });
 
-  // Dropped in merge 16 of release/2026-11-23 (#292's keepOrderOffline keeps the
-  // order only with no signal; its third argument is the owner, not an HTTP
-  // status). To be restored by release-fix/live-outbox-stuck: re-enable it there.
-  it.skip("full signal but the server busy (503, 429, a timeout): the leader's new order stands and waits on the phone too", async () => {
+  // Online, the server busy for a moment: the same rule as the outbox
+  // (isDefiniteRefusal), so the order stands and is sent when the server answers.
+  it("full signal but the server busy (503, 429, a timeout): the leader's new order stands and waits on the phone too", async () => {
+    net.offline = false;
     const rows = [{ id: 'r2', setlist_id: 'sl', song_id: 'b', position: 0, set_number: 1 }];
     const before = [{ songId: 'b', setNumber: 1 }];
-    expect(await keepOrderOffline({ message: 'Service Unavailable' }, { setlistId: 'sl', rows, before }, 503 as never)).toBe(true);
+    expect(await keepOrderOffline({ message: 'Service Unavailable' }, { setlistId: 'sl', rows, before })).toBe(true);
     expect(readLiveOutbox('u-1')).toHaveLength(1);
     localStorage.clear();
     expect(await keepOrderOffline({ message: 'canceling statement due to statement timeout', code: '57014' }, { setlistId: 'sl', rows, before })).toBe(true);
     localStorage.clear();
-    expect(await keepOrderOffline({ message: 'Forbidden' }, { setlistId: 'sl', rows, before }, 403 as never)).toBe(false);
+    // Refused for good: back to the saved order, nothing queued.
+    expect(await keepOrderOffline({ message: 'Forbidden', code: '42501' }, { setlistId: 'sl', rows, before })).toBe(false);
+    expect(await keepOrderOffline({ message: 'The setlist changed meanwhile.', code: 'BW_SETLIST_CONFLICT' }, { setlistId: 'sl', rows, before })).toBe(false);
+    expect(readLiveOutbox('u-1')).toEqual([]);
+    // Made by another account than the one signed in now: never queued.
+    expect(await keepOrderOffline({ message: 'Service Unavailable' }, { setlistId: 'sl', rows, before }, 'u-2')).toBe(false);
     expect(readLiveOutbox('u-1')).toEqual([]);
   });
 });
