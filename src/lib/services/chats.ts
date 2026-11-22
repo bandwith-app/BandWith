@@ -513,9 +513,19 @@ const OFF_THE_GIG = new Set(['declined', 'dropped_out', 'removed']);
  * Of `userIds`, the active members of the band. Band and gig chats are for
  * the band's current members (175): anyone else is skipped by the server,
  * and older servers refused the whole insert because of them.
+ *
+ * `failClosed` (the restore path in sendMessage, round 9): when the
+ * membership can't be read, or the band itself couldn't be read
+ * (`bandId` undefined, see gigBandId), nobody is returned. Other callers
+ * keep the list and let the server trim it.
  */
-const stillInBand = async (bandId: string | null | undefined, userIds: string[]): Promise<string[]> => {
+const stillInBand = async (
+  bandId: string | null | undefined,
+  userIds: string[],
+  { failClosed = false }: { failClosed?: boolean } = {},
+): Promise<string[]> => {
   const ids = [...new Set(userIds.filter(Boolean))];
+  if (failClosed && bandId === undefined) return [];
   if (!bandId || ids.length === 0) return ids;
   const { data, error } = await supabase
     .from('band_members')
@@ -525,19 +535,27 @@ const stillInBand = async (bandId: string | null | undefined, userIds: string[])
     .or('is_active.is.null,is_active.eq.true')
     .in('user_id', ids);
   if (error) {
-    // The server applies the same rule: better a list it trims than none.
+    // The server applies the same rule: better a list it trims than none
+    // (except on the restore path, which then restores nobody).
     console.warn('[chats] Could not check band membership:', error.message);
-    return ids;
+    return failClosed ? [] : ids;
   }
   const active = new Set((data || []).map((m: { user_id: string }) => m.user_id));
   return ids.filter((id) => active.has(id));
 };
 
-/** The band of a gig chat: the chat's own, else its event's. */
-const gigBandId = async (eventId: string | null | undefined, bandId: string | null | undefined): Promise<string | null> => {
+/**
+ * The band of a gig chat: the chat's own, else its event's. null: no band
+ * (a personal gig); undefined: the event couldn't be read.
+ */
+const gigBandId = async (eventId: string | null | undefined, bandId: string | null | undefined): Promise<string | null | undefined> => {
   if (bandId) return bandId;
   if (!eventId) return null;
-  const { data } = await supabase.from('events').select('band_id').eq('id', eventId).maybeSingle();
+  const { data, error } = await supabase.from('events').select('band_id').eq('id', eventId).maybeSingle();
+  if (error) {
+    console.warn("[chats] Could not read the gig's band:", error.message);
+    return undefined;
+  }
   return (data as { band_id?: string | null } | null)?.band_id ?? null;
 };
 
@@ -937,7 +955,8 @@ export const sendMessage = async (
       const onGig = ((eMembers || []) as { user_id: string | null; status: string | null }[])
         .filter((em) => !!em.user_id && !OFF_THE_GIG.has((em.status ?? '').trim().toLowerCase()))
         .map((em) => em.user_id as string);
-      const lineup = await stillInBand(await gigBandId(chat.event_id, chat.band_id), onGig);
+      // Membership or the gig's band unknown: nobody is restored (round 9).
+      const lineup = await stillInBand(await gigBandId(chat.event_id, chat.band_id), onGig, { failClosed: true });
       if (lineup.length > 0) {
         const { error: addError } = await supabase
           .from('chat_participants')

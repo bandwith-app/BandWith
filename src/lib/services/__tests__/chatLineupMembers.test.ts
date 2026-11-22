@@ -123,6 +123,33 @@ describe('sendMessage keeps the gig chat to the current lineup', () => {
     expect(added.sort()).toEqual(['line-1', 'me', 'new-1']);
   });
 
+  // Round 9 (main, option b): the restore path fails closed. Membership
+  // that can't be read, or a gig whose band can't be read, restores nobody.
+  const restored = () =>
+    writes('chat_participants', 'upsert').flat().map((r) => r.user_id).filter((id) => id !== 'me');
+
+  it('membership unknown: nobody is restored', async () => {
+    h.resolve = (table, calls) =>
+      table === 'band_members' && has(calls, 'in')
+        ? { data: null, error: { message: 'Failed to fetch' } }
+        : resolver()(table, calls);
+    await sendMessage('ev-chat', 'Load-in at 6');
+    expect(restored()).toEqual([]);
+  });
+
+  it("the gig's band unknown: nobody is restored", async () => {
+    h.resolve = (table, calls) =>
+      table === 'events' ? { data: null, error: { message: 'Failed to fetch' } } : resolver()(table, calls);
+    await sendMessage('ev-chat', 'Load-in at 6');
+    expect(restored()).toEqual([]);
+  });
+
+  it('a gig with no band (personal gig) keeps today\'s rule: the lineup is restored', async () => {
+    h.resolve = (table, calls) => (table === 'events' ? { data: { band_id: null }, error: null } : resolver()(table, calls));
+    await sendMessage('ev-chat', 'Load-in at 6');
+    expect(restored().sort()).toEqual(['ex-1', 'line-1', 'new-1']);
+  });
+
   it('reports a failed lineup insert instead of ignoring it', async () => {
     h.resolve = resolver({ upsertError: { message: 'new row violates row-level security policy' } });
     await sendMessage('ev-chat', 'Load-in at 6');
@@ -149,6 +176,18 @@ describe('createChat without 193', () => {
     const batches = writes('chat_participants', 'insert');
     expect(batches[0].map((r) => r.user_id)).toEqual(['me']);
     expect(batches.slice(1).flat().map((r) => r.user_id)).toEqual(['line-1']);
+  });
+
+  it("membership unknown: createChat keeps today's rule (the others are added, the server trims)", async () => {
+    h.resolve = (table, calls) => {
+      if (table === 'chats' && has(calls, 'maybeSingle')) return { data: null, error: null };
+      if (table === 'chats' && has(calls, 'single')) return { data: { id: 'new-chat', type: 'event' }, error: null };
+      if (table === 'band_members' && has(calls, 'in')) return { data: null, error: { message: 'Failed to fetch' } };
+      return resolver()(table, calls);
+    };
+    const { error } = await createChat({ type: 'event', band_id: 'band-1', event_id: 'gig-1', participant_ids: ['line-1', 'ex-1'] });
+    expect(error).toBeNull();
+    expect(writes('chat_participants', 'insert').slice(1).flat().map((r) => r.user_id)).toEqual(['line-1', 'ex-1']);
   });
 
   it('a creator who cannot join gets an error, not an empty chat', async () => {
