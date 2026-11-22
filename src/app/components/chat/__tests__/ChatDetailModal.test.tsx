@@ -232,6 +232,27 @@ describe('ChatDetailModal', () => {
     expect(replies()).toBe(saved);
   });
 
+  // Claude review #291 (a11y): "Not sent" is announced, and its buttons say
+  // which message they act on.
+  it('a message that was not sent is announced, and its buttons name it', async () => {
+    openComposer();
+    let fail: (v: unknown) => void = () => {};
+    svc.sendMessage.mockImplementation(() => new Promise((res) => { fail = res; }));
+    render(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+    await settle();
+    const input = screen.getByRole('textbox', { name: 'Message' }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Load-in moved to 5:30 at the side door, bring the long cables' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await settle();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'new draft' } });
+    await act(async () => { fail({ data: null, error: new Error('Failed to fetch') }); });
+    await settle();
+    const status = screen.getAllByRole('status').find((el) => el.textContent?.includes('Not sent'));
+    expect(status?.getAttribute('aria-live')).toBe('polite');
+    expect(screen.getByRole('button', { name: 'Try again: Load-in moved to 5:30 at the side door…' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Delete unsent message: Load-in moved to 5:30 at the side door…' })).toBeTruthy();
+  });
+
   // Egress: with Realtime connected the open chat must not re-download the
   // last 50 messages on a timer (it did every 3 s: ~1,200 requests an hour).
   describe('Realtime first, slow poll only when the channel is down', () => {
@@ -322,7 +343,7 @@ describe('ChatDetailModal', () => {
 
       const saved = { ...msg(200, 'me'), content: 'message A' };
       svc.sendMessage.mockResolvedValueOnce({ data: saved, error: null });
-      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      fireEvent.click(screen.getByRole('button', { name: /^Try again: / }));
       await settle();
       expect(svc.sendMessage).toHaveBeenLastCalledWith('c1', 'message A', 'text', undefined);
       expect(screen.queryByText('Not sent')).toBeNull();
@@ -342,7 +363,7 @@ describe('ChatDetailModal', () => {
       fireEvent.change(input(), { target: { value: 'B' } });
       await act(async () => { first.resolve({ data: null, error: new Error('permission denied') }); });
       await settle();
-      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+      fireEvent.click(screen.getByRole('button', { name: /^Delete unsent message: / }));
       expect(screen.queryByText('message A')).toBeNull();
       expect(input().value).toBe('B');
     });

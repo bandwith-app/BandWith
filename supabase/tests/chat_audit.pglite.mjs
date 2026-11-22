@@ -30,7 +30,7 @@ const [BAND, OTHERBAND, ADMIN, LINE, MEM, OUT, FAN, EX] = [1, 2, 3, 4, 5, 6, 7, 
 const [DM, BANDCHAT, EVCHAT, DUP_OLD, DUP_NEW, OTHERCHAT, TWINCHAT] = [20, 21, 22, 23, 24, 25, 26].map(id);
 const [GIG, GIG2] = [30, 31].map(id);
 const [M_SHORT, M_LONG, M_BAND_LINE, M_BAND_MEM, M_OTHER, M_GONE, M_DUP_OLD, M_DUP_NEW] = [40, 41, 42, 43, 44, 45, 46, 47].map(id);
-const [M_OK1, M_OK2, M_EMOJI, M_SOFT, M_LIVE, M_YES1, M_YES2] = [48, 49, 50, 51, 52, 53, 54].map(id);
+const [M_OK1, M_OK2, M_EMOJI, M_SOFT, M_LIVE, M_YES1, M_YES2, M_EDIT] = [48, 49, 50, 51, 52, 53, 54, 55].map(id);
 
 async function as(uid, sql) {
   try {
@@ -67,7 +67,7 @@ CREATE TABLE public.chat_participants (id uuid PRIMARY KEY DEFAULT gen_random_uu
   UNIQUE (chat_id, user_id));
 CREATE TABLE public.messages (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), chat_id uuid NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
   sender_id uuid, content text, band_id uuid, reply_to_id uuid REFERENCES messages(id) ON DELETE SET NULL,
-  deleted boolean DEFAULT false, deleted_at timestamptz, created_at timestamptz DEFAULT now());
+  deleted boolean DEFAULT false, deleted_at timestamptz, edited boolean DEFAULT false, created_at timestamptz DEFAULT now());
 CREATE TABLE public.notifications (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, band_id uuid, type text,
   title text, body text, data jsonb, read boolean DEFAULT false, action_url text, created_at timestamptz DEFAULT now());
 
@@ -158,6 +158,9 @@ INSERT INTO messages (id, chat_id, sender_id, content, created_at) VALUES
   -- Two "Yes"s three seconds apart.
   ('${M_YES1}','${TWINCHAT}','${MEM}','Yes', now() - interval '8 minutes'),
   ('${M_YES2}','${TWINCHAT}','${MEM}','Yes', now() - interval '8 minutes' + interval '3 seconds');
+-- Edited after its notice went out ("9" → "nine").
+INSERT INTO messages (id, chat_id, sender_id, content, edited, created_at) VALUES
+  ('${M_EDIT}','${TWINCHAT}','${MEM}','see you at nine', true, now() - interval '5 minutes');
 -- Notifications: with message_id (send-push from #284), and older ones without.
 INSERT INTO notifications (user_id, type, title, body, data, action_url, created_at) VALUES
   ('${LINE}','chat_message','Ava Admin','see you at 8',
@@ -184,7 +187,8 @@ INSERT INTO notifications (user_id, type, title, body, data, action_url, created
   ('${ADMIN}','chat_message','Mia Member',$t$${preview(EMOJI)}$t$, jsonb_build_object('chat_id','${TWINCHAT}','content',$t$${preview(EMOJI)}$t$), '/chat/${TWINCHAT}', now() - interval '30 minutes' + interval '5 seconds'),
   ('${ADMIN}','chat_message','Mia Member','delete me softly', jsonb_build_object('chat_id','${TWINCHAT}','message_id','${M_SOFT}','content','delete me softly'), '/chat/${TWINCHAT}', now() - interval '20 minutes'),
   ('${ADMIN}','chat_message','Mia Member','Yes', jsonb_build_object('chat_id','${TWINCHAT}','content','Yes','tag','yes-1'), '/chat/${TWINCHAT}', now() - interval '8 minutes' + interval '1 second'),
-  ('${ADMIN}','chat_message','Mia Member','Yes', jsonb_build_object('chat_id','${TWINCHAT}','content','Yes','tag','yes-2'), '/chat/${TWINCHAT}', now() - interval '8 minutes' + interval '4 seconds');
+  ('${ADMIN}','chat_message','Mia Member','Yes', jsonb_build_object('chat_id','${TWINCHAT}','content','Yes','tag','yes-2'), '/chat/${TWINCHAT}', now() - interval '8 minutes' + interval '4 seconds'),
+  ('${ADMIN}','chat_message','Mia Member','see you at 9', jsonb_build_object('chat_id','${TWINCHAT}','content','see you at 9'), '/chat/${TWINCHAT}', now() - interval '5 minutes' + interval '1 second');
 `);
 
 // ── 193 · main's decision (round 3): no merge. With duplicates it stops and
@@ -213,6 +217,9 @@ ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE body IN ('old
   'previews of messages deleted earlier are gone');
 ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE data->>'chat_id' = '${OTHERCHAT}'`) === 1,
   'an older preview of a message that still exists stays');
+// Claude review #291: an edited message no longer matches its old notice; it isn't gone.
+ok(await count(`SELECT count(*)::int AS n FROM notifications WHERE body = 'see you at 9'`) === 1,
+  'the backfill keeps an older notice whose message was edited, not deleted');
 
 // ── 192 · Delete chat (direct): both people's history and the previews go
 let r = await as(LINE, `SELECT public.bw_delete_chat_history('${DM}') AS n`);

@@ -37,7 +37,7 @@ import { createPortal } from 'react-dom';
 import { useRailLayout } from '@/lib/deviceRegions';
 import { useLineupSoFar } from '@/app/hooks/useLineupSoFar';
 import { ChatEventContextPane } from '@/app/components/chat/ChatEventContextPane';
-import { CHAT_PAGE_SIZE, mergeLatestPage, prependOlder, appendIncoming, normalizeChatType, isReplySwipe, catchUpPage, markSendFailed, canReplyTo, type ChatKind } from '@/lib/chatMessages';
+import { CHAT_PAGE_SIZE, mergeLatestPage, prependOlder, appendIncoming, normalizeChatType, isReplySwipe, catchUpPage, markSendFailed, canReplyTo, firstWords, type ChatKind } from '@/lib/chatMessages';
 import { isOfflineError } from '@/lib/offline/networkErrors';
 import { haptic } from '@/lib/haptics';
 
@@ -999,9 +999,10 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
 
                         {message.failed ? (
                           <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
-                            <span className="bw-label-xs text-destructive">{t('Not sent')}</span>
+                            <span role="status" aria-live="polite" className="bw-label-xs text-destructive">{t('Not sent')}</span>
                             <button
                               type="button"
+                              aria-label={t('Try again: {text}', { text: firstWords(message.content) })}
                               onClick={() => retrySend(message)}
                               disabled={sending}
                               className="relative after:absolute after:-inset-2 after:content-[''] bw-label-xs text-foreground underline underline-offset-2 disabled:opacity-50 cursor-pointer"
@@ -1010,6 +1011,7 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
                             </button>
                             <button
                               type="button"
+                              aria-label={t('Delete unsent message: {text}', { text: firstWords(message.content) })}
                               onClick={() => discardFailed(message)}
                               className="relative after:absolute after:-inset-2 after:content-[''] bw-label-xs text-muted-foreground underline underline-offset-2 cursor-pointer"
                             >

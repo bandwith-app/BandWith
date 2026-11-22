@@ -180,6 +180,19 @@ export const catchUpPage = async (
 /** Saved on the server (not a bubble still sending or "Not sent"): only these can be replied to. */
 export const canReplyTo = (m: Message): boolean => !isTemp(m) && !m.failed;
 
+/** The first words of a message (about 40 characters), for a button's accessible name. */
+export const firstWords = (content: string, max = 40): string => {
+  const text = content.replace(/\s+/g, ' ').trim();
+  if (text.length <= max) return text;
+  let out = '';
+  for (const word of text.split(' ')) {
+    const next = out ? `${out} ${word}` : word;
+    if (next.length > max) break;
+    out = next;
+  }
+  return `${(out || text.slice(0, max)).replace(/[\s.,;:!?]+$/, '')}…`;
+};
+
 /** A bubble whose send failed: kept, marked, ready for Try again (07 #5). */
 export const markSendFailed = (prev: Message[], tempId: string): Message[] =>
   prev.map((m) => (m.id === tempId ? { ...m, failed: true } : m));

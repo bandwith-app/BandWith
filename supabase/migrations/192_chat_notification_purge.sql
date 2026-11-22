@@ -16,7 +16,9 @@
 --     also fills it for older app builds, by matching their preview). Rows
 --     written before that have no message_id: they are matched on chat,
 --     preview text and time (written within an hour after the message);
---   * notification previews of messages already deleted today are removed.
+--   * notification previews of messages already deleted today are removed
+--     (only where the message is gone or marked deleted: an older notice
+--     next to an edited message in that chat is kept).
 --
 -- Round 2 (Codex + Claude review #291):
 --   * a message marked deleted (messages.deleted = true, deleteMessage in
@@ -236,7 +238,11 @@ DELETE FROM public.notifications n
         AND m.created_at <= n.created_at + interval '1 minute'
         AND m.created_at > n.created_at - interval '1 hour'
         AND NOT coalesce((to_jsonb(m) ->> 'deleted')::boolean, false)
-        AND public.bw_chat_notice_shows(n.body, n.data, m.content)
+        -- Same text, or edited since (no longer matches, but it isn't gone:
+        -- only notices of gone or deleted messages are purged).
+        AND (public.bw_chat_notice_shows(n.body, n.data, m.content)
+             OR coalesce((to_jsonb(m) ->> 'edited')::boolean, false)
+             OR to_jsonb(m) ->> 'edited_at' IS NOT NULL)
    );
 
 COMMIT;

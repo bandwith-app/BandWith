@@ -1723,6 +1723,8 @@ const dict: Dictionary = {
   "No messages yet": "Noch keine Nachrichten",
   "Load earlier messages": "Frühere Nachrichten laden",
   "Not sent": "Nicht gesendet",
+  "Try again: {text}": "Erneut versuchen: {text}",
+  "Delete unsent message: {text}": "Nicht gesendete Nachricht löschen: {text}",
   "Someone": "Jemand",
   "{count}m": "{count} Min.",
   "Band Chat": "Band-Chat",
