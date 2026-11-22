@@ -162,6 +162,20 @@ describe('every layer says what it is to the focus trap', () => {
     expect(inbox).toContain('useFocusTrap(pageRef, isOpen && !split)');
   });
 
+  it('the app keeps the urgent pop-up waiting while the user types or picks, and Back then leaves it alone', () => {
+    const app = SOURCES['/src/app/AuthenticatedApp.tsx'];
+    expect(app).toContain('const typing = useTypingFocus();');
+    expect(app).toMatch(/\{urgentNotification && [^\n]*&& !typing && \(/);
+    expect(app).toMatch(/if \(s\.urgentNotification && [^\n]*&& !s\.typing\) \{\n\s*setUrgentNotification\(null\);/);
+    // One gate, in the app: the pop-up itself has none.
+    expect(SOURCES['/src/app/components/notifications/UrgentNotificationPopup.tsx']).not.toContain('useTypingFocus');
+  });
+
+  it('the RSVP and poll vote sheets (opened from the inbox and the urgent pop-up) have their own focus trap', () => {
+    for (const f of ['/src/app/components/notifications/EventRSVPSheet.tsx', '/src/app/components/rehearsal/RehearsalPollVoteSheet.tsx'])
+      expect(SOURCES[f], f).toContain('useFocusTrap(sheetRef, true)');
+  });
+
   it('the kit page traps focus on one page only (on two it sits beside the list)', () => {
     expect(SOURCES['/src/app/components/gear/KitDetail.tsx']).toContain('useFocusTrap(pageRef, !twoPane)');
   });
@@ -174,7 +188,7 @@ describe('every layer says what it is to the focus trap', () => {
 
   it("the Duo rail's actions toolbar (where Close and Back move) is in every trap's Tab cycle but the urgent pop-up's", () => {
     expect(SOURCES['/src/app/components/layout/DuoRail.tsx']).toMatch(/role="toolbar"[\s\S]{0,300}data-bw-trap-include=""/);
-    expect(SOURCES['/src/app/components/notifications/UrgentNotificationPopup.tsx']).toContain('useFocusTrap(cardRef, !typing, { rail: false })');
+    expect(SOURCES['/src/app/components/notifications/UrgentNotificationPopup.tsx']).toContain('useFocusTrap(cardRef, true, { rail: false })');
   });
 
   it('Create band is a modal dialog (it opens beside the docked band switcher on the Duo)', () => {

@@ -36,6 +36,7 @@ import { FindADateMode } from '@/app/components/duo';
 import { personName } from '@/lib/personName';
 import { useSheetDrag } from '@/app/components/bw/useSheetDrag';
 import { useSystemBack } from '@/lib/backStack';
+import { useFocusTrap } from '@/lib/focusTrap';
 import { useT, dateName, intlLocale, formatList, shortWeekday } from '@/lib/i18n';
 
 interface RehearsalPollVoteSheetProps {
@@ -63,6 +64,11 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
   const drag = useSheetDrag(onClose);
   // Android Back and Escape close this sheet, not the screen beneath.
   useSystemBack(true, onClose);
+  // Its own focus trap: opened from the inbox or the urgent pop-up (which
+  // close as it opens), it takes the focus over, and gives it back to what
+  // opened them (the bell) when it closes.
+  const sheetRef = React.useRef<HTMLDivElement | null>(null);
+  useFocusTrap(sheetRef, true);
   const [fetchedPoll, setPoll] = useState<RehearsalPoll | null>(null);
   const [loading, setLoading] = useState(true);
   const [isFinalizing, setIsFinalizing] = useState(false);
@@ -329,6 +335,8 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
 
       {/* Figma "Rehearsal / Poll vote sheet": dark sheet + Sheet Header */}
       <motion.div
+        ref={sheetRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="poll-vote-title"
@@ -340,7 +348,7 @@ export const RehearsalPollVoteSheet: React.FC<RehearsalPollVoteSheetProps> = ({
         // iPhone Duo open: a rehearsal detail on the trailing page moves to the
         // leading page while you vote (Figma "Open · Event detail / Rehearsal |
         // Rehearsal / Poll vote sheet").
-        className="bw-rail-sheet bw-sheet-card bw-picker dark fixed bottom-0 left-0 right-0 z-[185] bg-sheet text-sheet-foreground rounded-t-[32px] max-h-[88vh] flex flex-col sm:max-w-lg sm:mx-auto sm:bottom-6 sm:rounded-[32px] sm:max-h-[82vh]"
+        className="bw-rail-sheet bw-sheet-card bw-picker dark outline-none fixed bottom-0 left-0 right-0 z-[185] bg-sheet text-sheet-foreground rounded-t-[32px] max-h-[88vh] flex flex-col sm:max-w-lg sm:mx-auto sm:bottom-6 sm:rounded-[32px] sm:max-h-[82vh]"
         {...drag.sheet}
       >
         {/* Sheet Header */}

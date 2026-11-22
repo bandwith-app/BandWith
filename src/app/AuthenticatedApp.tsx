@@ -161,6 +161,7 @@ import type { RehearsalPoll } from "@/lib/services/rehearsalPolls";
 
 import { useBodyScrollLock } from "@/app/hooks";
 import { usePushNotifications } from "@/app/hooks/usePushNotifications";
+import { useTypingFocus } from "@/lib/focusTrap";
 import { addressWithoutCity } from '@/lib/eventAddress';
 import { repeatDates } from '@/lib/recurrence';
 import { MapsChooserHost } from '@/app/components/ui/MapsLink';
@@ -527,6 +528,9 @@ export default function AuthenticatedApp() {
   const [urgentNotification, setUrgentNotification] = useState<import('@/lib/services/notifications').Notification | null>(null);
   const [rsvpNotification, setRsvpNotification] = useState<import('@/lib/services/notifications').Notification | null>(null);
   const [pollNotification, setPollNotification] = useState<import('@/lib/services/notifications').Notification | null>(null);
+  // Typing in a field, or choosing in an open picker: the urgent pop-up waits
+  // (never takes the focus mid-word), and Back meanwhile leaves it alone.
+  const typing = useTypingFocus();
   const { notifications: realNotifications, loading: notificationsLoading, refetch: refetchNotifications, setNotifications: setRealNotifications } = useNotifications({
     // The inbox: chat messages are not in it (the Chat tab has them), so 20
     // means 20 inbox items however busy the band chat is.
@@ -2294,6 +2298,7 @@ export default function AuthenticatedApp() {
     rsvpNotification,
     pollNotification,
     votePollId,
+    typing,
     eventLoadError,
     selectedNotifications,
     selectedNotification,
@@ -2336,6 +2341,7 @@ export default function AuthenticatedApp() {
     rsvpNotification,
     pollNotification,
     votePollId,
+    typing,
     eventLoadError,
     selectedNotifications,
     selectedNotification,
@@ -2387,7 +2393,7 @@ export default function AuthenticatedApp() {
 
       // 1. Transient Notifications & Popups
       // The urgent popup only shows when no RSVP or poll sheet covers it.
-      if (s.urgentNotification && !s.rsvpNotification && !s.pollNotification && !s.showAdminTour) {
+      if (s.urgentNotification && !s.rsvpNotification && !s.pollNotification && !s.showAdminTour && !s.typing) {
         setUrgentNotification(null);
         return true;
       }
@@ -5023,7 +5029,7 @@ export default function AuthenticatedApp() {
 
       <AnimatePresence>
         {/* Waits for the welcome tour: one layer at a time on first launch. */}
-        {urgentNotification && !rsvpNotification && !pollNotification && !showAdminTour && (
+        {urgentNotification && !rsvpNotification && !pollNotification && !showAdminTour && !typing && (
           <UrgentNotificationPopup
             key={urgentNotification.id}
             notification={urgentNotification}
