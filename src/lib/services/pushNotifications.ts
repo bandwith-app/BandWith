@@ -127,16 +127,32 @@ const untilDeadline = (work: Promise<unknown>, deadline: number): Promise<void> 
     );
   });
 
-/** Stops delivery on the device: on the new Android builds, waits for FCM to delete the token. */
+/**
+ * How long the device's own token deletion is waited for: past that it goes
+ * on in the background (Claude review #287 round 5, M1).
+ */
+export const DEVICE_PUSH_STOP_WAIT_MS = 2500;
+
+/**
+ * Stops delivery on the device: on the new Android builds, waits (at most
+ * DEVICE_PUSH_STOP_WAIT_MS) for FCM to delete the token.
+ */
 const stopDevicePush = async (): Promise<void> => {
   cachedToken = null;
   if (checksAccountNatively()) {
-    try {
-      await pushIdentity.deleteToken();
-      return;
-    } catch {
-      /* the plugin's unregister below */
-    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const outcome = await Promise.race([
+      pushIdentity.deleteToken().then(
+        () => 'done' as const,
+        () => 'failed' as const,
+      ),
+      new Promise<'late'>((resolve) => {
+        timer = setTimeout(() => resolve('late'), DEVICE_PUSH_STOP_WAIT_MS);
+      }),
+    ]);
+    clearTimeout(timer);
+    if (outcome !== 'failed') return;
+    // Not deleted: the plugin's unregister below.
   }
   await PushNotifications.unregister();
 };

@@ -63,8 +63,13 @@ BEGIN;
 ALTER TABLE public.push_tokens ADD COLUMN IF NOT EXISTS revoke_secret_hash text;
 ALTER TABLE public.push_tokens ADD COLUMN IF NOT EXISTS uid_gated boolean NOT NULL DEFAULT false;
 
--- Any change of the registration that doesn't set a new secret clears it,
--- and the account check of the build that made it (uid_gated).
+-- revoke_secret_hash and uid_gated are written only by the stamped save,
+-- which sets the transaction-local GUC bw.push_secret_set around its upsert
+-- (a client can't set it: PostgREST runs no SET, and set_config isn't
+-- exposed). Any other write keeps them as they were (Claude review #287
+-- round 5: the owner can update its own rows through RLS), and any other
+-- change of the registration (a re-save by 046, a move, a switch-off) clears
+-- them. An insert by anything else starts with neither.
 CREATE OR REPLACE FUNCTION public.bw_push_tokens_secret_guard()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -74,17 +79,18 @@ BEGIN
   IF coalesce(current_setting('bw.push_secret_set', true), '') = 'on' THEN
     RETURN NEW;
   END IF;
-  IF NEW.revoke_secret_hash IS NOT DISTINCT FROM OLD.revoke_secret_hash
-     AND (NEW.user_id IS DISTINCT FROM OLD.user_id
-          OR NEW.token IS DISTINCT FROM OLD.token
-          OR NEW.is_active IS DISTINCT FROM OLD.is_active
-          OR NEW.updated_at IS DISTINCT FROM OLD.updated_at) THEN
+  IF TG_OP = 'INSERT' THEN
     NEW.revoke_secret_hash := NULL;
+    NEW.uid_gated := false;
+    RETURN NEW;
   END IF;
+  NEW.revoke_secret_hash := OLD.revoke_secret_hash;
+  NEW.uid_gated := OLD.uid_gated;
   IF NEW.user_id IS DISTINCT FROM OLD.user_id
      OR NEW.token IS DISTINCT FROM OLD.token
      OR NEW.is_active IS DISTINCT FROM OLD.is_active
      OR NEW.updated_at IS DISTINCT FROM OLD.updated_at THEN
+    NEW.revoke_secret_hash := NULL;
     NEW.uid_gated := false;
   END IF;
   RETURN NEW;
@@ -94,7 +100,7 @@ REVOKE ALL ON FUNCTION public.bw_push_tokens_secret_guard() FROM PUBLIC, anon, a
 
 DROP TRIGGER IF EXISTS bw_push_tokens_secret_guard ON public.push_tokens;
 CREATE TRIGGER bw_push_tokens_secret_guard
-  BEFORE UPDATE ON public.push_tokens
+  BEFORE INSERT OR UPDATE ON public.push_tokens
   FOR EACH ROW EXECUTE FUNCTION public.bw_push_tokens_secret_guard();
 
 -- Not live anywhere yet: earlier drafts had other parameters.

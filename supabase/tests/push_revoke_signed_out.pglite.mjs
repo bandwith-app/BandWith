@@ -32,6 +32,7 @@ INSERT INTO push_tokens (user_id, token, platform, updated_at) VALUES
   ('${ALICE}', '${TOK}', 'ios', '2026-11-20T10:00:00Z'),
   ('${BOB}', '${TOK2}', 'android', '2026-11-20T10:00:00Z');
 GRANT SELECT ON public.push_tokens TO service_role;
+GRANT ALL ON public.push_tokens TO authenticated; -- 009 (RLS: own rows)
 -- 046 as live: returns void, so a sign-out can't tell whether it switched anything off.
 CREATE OR REPLACE FUNCTION public.bw_unregister_push_token(p_token text) RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
   UPDATE public.push_tokens SET is_active = false, updated_at = now() WHERE token = p_token AND user_id = auth.uid(); $$;
@@ -142,6 +143,22 @@ for (const fn of ['public.bw_revoke_push_token(text,uuid,timestamptz,text)']) {
   ok(await priv('anon', fn) === true && await priv('authenticated', fn) === true, `${fn} callable without a session`);
   ok(await priv('public', fn) === false, `${fn} not granted to PUBLIC`);
 }
+// Claude review #287 round 5: the owner can write its own rows through RLS;
+// only the stamped save may set the secret's hash and the account mark.
+const TOKD = 'direct-token-' + 'c'.repeat(40);
+await registerGated(ALICE, TOKD, S1, 'android', true);
+const hashOf = async (tok) => (await db.query(`SELECT revoke_secret_hash AS h FROM push_tokens WHERE token = $1`, [tok])).rows[0]?.h;
+const before = await hashOf(TOKD);
+await as(ALICE, () => db.query(`UPDATE push_tokens SET revoke_secret_hash = 'forged', uid_gated = false WHERE token = $1`, [TOKD]));
+ok(await hashOf(TOKD) === before && await gated(TOKD) === true, 'a direct update by the owner leaves the hash and the mark as they were');
+await as(ALICE, () => db.query(`UPDATE push_tokens SET platform = 'android' WHERE token = $1`, [TOKD]));
+ok(await hashOf(TOKD) === before && await gated(TOKD) === true, 'an unrelated direct update keeps them too');
+const TOKI = 'inserted-token-' + 'd'.repeat(40);
+await as(ALICE, () => db.query(`INSERT INTO push_tokens (user_id, token, platform, revoke_secret_hash, uid_gated) VALUES ($1, $2, 'android', 'forged', true)`, [ALICE, TOKI]));
+ok(await hashOf(TOKI) === null && await gated(TOKI) === false, 'a direct insert starts with neither');
+await registerGated(ALICE, TOKI, S2, 'android', true);
+ok(await hashOf(TOKI) !== null && await gated(TOKI) === true && await revoke(null, TOKI, ALICE, null, S2) === true, 'the stamped save still sets both');
+
 // Codex review #287 round 6 (B2): the signed-in unregister says whether it
 // switched a token off. Same name and argument, so older builds (which read
 // only the error) keep working.

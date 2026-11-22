@@ -232,6 +232,8 @@ describe('push revocation on sign-out', () => {
     expect(ctx).not.toMatch(/forgetQueuedPushRevocationsFor/);
     // Round 6 (B1): every end of a session clears the native push account.
     expect(ctx).toMatch(/if \(event === 'SIGNED_OUT'\) void forgetPushAccount\(\)/);
+    // Claude r5 (M3): a failed signOut() subscribes again (identity restored).
+    expect(ctx).toMatch(/\} else if \(user\?\.id\) \{[\s\S]{0,200}void subscribeToPush\(user\.id\)/);
     expect(ctx).toMatch(/\} else \{\s*\/\/ No session at start[\s\S]{0,120}forgetPushAccount\(\)/);
   });
 });

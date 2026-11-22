@@ -12,7 +12,7 @@ import { Capacitor } from '@capacitor/core';
 import { cleanupPresence } from './services/presence';
 import { clearOfflineCache, getOfflineItem, setOfflineItem, getCacheKey } from './offline/storage';
 import { clearStageCache } from './stageBleNative';
-import { flushQueuedPushRevocations, forgetPushAccount, unregisterPushToken } from './services/pushNotifications';
+import { flushQueuedPushRevocations, forgetPushAccount, subscribeToPush, unregisterPushToken } from './services/pushNotifications';
 import { clearRecoveryProof, hasAnyRecoveryProof, hasRecoveryProof, updatePasswordForProvenAccount } from './recoveryProof';
 import { syncAppBadge } from './services/appBadge';
 import { realName } from '@/lib/personName';
@@ -465,6 +465,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       })
         .then(() => (pendingQueue ? setOfflineItem(pendingQueue.key, pendingQueue.items) : undefined))
         .catch(() => {});
+    } else if (user?.id) {
+      // Still signed in: the device gets this account's pushes again, with
+      // its native account (Claude review #287 round 5, M3).
+      void subscribeToPush(user.id).catch(() => {});
     }
     return { error };
   };

@@ -402,9 +402,7 @@ describe('sign-out stops pushes (Codex review #287 rounds 2-4)', () => {
       await push.subscribeToPush('alice');
       let done = false;
       const out = push.unregisterPushToken('alice').then(() => (done = true));
-      await vi.advanceTimersByTimeAsync(4900);
-      expect(done).toBe(false);
-      await vi.advanceTimersByTimeAsync(200);
+      await vi.advanceTimersByTimeAsync(5100); // the 5 s ceiling (the deletion itself is waited 2.5 s)
       await out;
       expect(done).toBe(true);
       expect(h.identity.deleteToken).toHaveBeenCalled();
@@ -435,5 +433,52 @@ describe('sign-out stops pushes (Codex review #287 rounds 2-4)', () => {
     h.rpc.mockClear();
     await Promise.all([...(h.listeners.registration ?? [])].map((f) => f({ value: 'device-token-rotated-0123456789' })));
     expect(h.rpc.mock.calls.filter((c) => c[0] === 'bw_register_push_token_stamped')).toHaveLength(0);
+  });
+
+  // Claude review #287 round 5 (M1): the device's own deletion is waited for
+  // 2.5 s at most; the server already took the revocation.
+  it('the native token deletion is waited for 2.5 s at most', async () => {
+    vi.useFakeTimers();
+    try {
+      h.platform = 'android';
+      vi.stubEnv('VITE_ANDROID_PUSH', 'true');
+      h.identityAvailable = true;
+      h.identity.deleteToken.mockImplementation(() => new Promise(() => {}));
+      const push = await load();
+      h.rpc.mockImplementation(async (fn: string) => (fn === 'bw_register_push_token_stamped' ? SAVED : { data: true, error: null }));
+      h.from.mockImplementation(() => builder(offline));
+      await push.subscribeToPush('alice');
+      let done = false;
+      const out = push.unregisterPushToken('alice').then(() => (done = true));
+      await vi.advanceTimersByTimeAsync(2400);
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(200);
+      await out;
+      expect(done).toBe(true);
+      expect(h.unregister).not.toHaveBeenCalled(); // late is not failed: no second unregister
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Claude review #287 round 5 (M3): signOut() failed, so the person is
+  // still signed in. Subscribing again (AuthContext) gives the device its
+  // native account and registration back.
+  it('a failed sign-out: subscribing again restores the native account and the registration', async () => {
+    h.platform = 'android';
+    vi.stubEnv('VITE_ANDROID_PUSH', 'true');
+    h.identityAvailable = true;
+    const push = await load();
+    h.rpc.mockImplementation(async (fn: string) => (fn === 'bw_register_push_token_stamped' ? SAVED : { data: true, error: null }));
+    h.from.mockImplementation(() => builder(offline));
+    await push.subscribeToPush('alice');
+    await push.unregisterPushToken('alice');
+    expect(h.identity.clear).toHaveBeenCalled();
+    h.identity.setUser.mockClear();
+    h.rpc.mockClear();
+    expect((await push.subscribeToPush('alice')).success).toBe(true);
+    expect(h.identity.setUser).toHaveBeenCalledWith({ uid: 'alice' });
+    expect(h.rpc.mock.calls.filter((c) => c[0] === 'bw_register_push_token_stamped').some((c) => c[1].p_uid_gated === true)).toBe(true);
+    expect(pending()).toEqual([]);
   });
 });
