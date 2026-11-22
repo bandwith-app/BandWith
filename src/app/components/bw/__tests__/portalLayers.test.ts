@@ -83,6 +83,7 @@ const IN_PLACE: Record<string, InPlace> = {
   '/src/app/components/onboarding/RoleTourModal.tsx': 'modal',
   '/src/app/components/onboarding/OnboardingChrome.tsx': 'modal',
   '/src/app/views/SettingsView.tsx': 'modal',
+  '/src/app/components/profile/CreateBandModal.tsx': 'modal',
   '/src/app/components/notifications/PendingInvitesPrompt.tsx': { nonModal: 'band invite card: can arrive while a sheet is open' },
   '/src/app/components/notifications/InviteLinkNotice.tsx': { nonModal: 'invite link card: can arrive while a sheet is open' },
   '/src/app/components/quotes/QuoteClientLink.tsx': { inline: 'confirm card inside the quote detail' },
@@ -104,6 +105,59 @@ const POPOVERS: Record<string, { inline: string; controls?: true }> = {
   '/src/app/views/SetlistManagerView.tsx': { inline: 'setlist row menu' },
   '/src/app/views/TaskTemplatesView.tsx': { inline: 'to-do list row menu' },
 };
+
+/**
+ * Every layer: a file named like one (…Modal, …Sheet, …Dialog, …Popup,
+ * …Prompt, …Notice, …Overlay, …Drawer) or with a full-screen fixed element
+ * (`fixed inset-0`). It must say what it is to the trap: a dialog (role,
+ * aria-modal="true", or a dialog component such as BwSheet) or explicitly
+ * not modal (aria-modal="false"). Otherwise it is listed here with the reason
+ * it never opens above a sheet. A new layer fails until it is one of these.
+ */
+const LAYER_NAME = /(?:Modal|Sheet|Dialog|Popup|Prompt|Notice|Overlay|Drawer)\.tsx$/;
+const SAYS_WHAT_IT_IS =
+  /role="(?:alert)?dialog"|role=\{[^}]*dialog|aria-modal=|<(?:BwSheet|ComposerShell|OnboardingSheet)\b|(?:Dialog|AlertDialog|Drawer|Sheet)Primitive\./;
+const NOT_A_LAYER_ABOVE_A_SHEET: Record<string, string> = {
+  '/src/app/AuthenticatedApp.tsx': 'the app background, and the demo-chat notice opened from the chat list page',
+  '/src/app/auth/callback.tsx': 'sign-in callback page, before the app',
+  '/src/app/components/ui/ErrorBoundary.tsx': 'error page in place of the app',
+  '/src/app/components/dashboard/StageClick.tsx': 'aria-hidden click flash of Stage mode, no controls',
+  '/src/app/components/notifications/UrgentNotificationPopup.tsx': 'role="alert" card that waits until no layer is open (#271)',
+  '/src/app/components/chat/ChatDetailModal.tsx': 'chat page, opened from the chat list page',
+  '/src/app/components/notifications/NotificationDetailModal.tsx': 'inbox page, opened from the bell',
+  '/src/app/components/quotes/QuoteDetailModal.tsx': 'quote page, opened from the Quotes hub',
+  '/src/app/components/profile/EditProfileModal.tsx': 'profile page, opened from the identity hub',
+  '/src/app/components/gear/KitDetail.tsx': 'kit page, opened from the gear hub',
+  '/src/app/components/layout/IdentityHub.tsx': 'identity hub page',
+  '/src/app/components/dashboard/expanded/ExpandedCardWrapper.tsx': 'hub page of a Home card',
+  '/src/app/views/AnalyticsView.tsx': 'Analytics hub page',
+  '/src/app/views/PastEventsView.tsx': 'past events hub page',
+};
+
+describe('every layer says what it is to the focus trap', () => {
+  const layers = Object.entries(SOURCES)
+    .filter(([f, text]) => LAYER_NAME.test(f) || /fixed inset-0/.test(text))
+    .map(([f]) => f)
+    .sort();
+
+  it('found the layers', () => {
+    expect(layers.length).toBeGreaterThan(40);
+  });
+
+  it('each is a dialog, explicitly not modal, or listed with its reason', () => {
+    const unknown = layers.filter((f) => !SAYS_WHAT_IT_IS.test(SOURCES[f]) && !(f in NOT_A_LAYER_ABOVE_A_SHEET));
+    expect(unknown).toEqual([]);
+  });
+
+  it('the list holds no file that already says what it is, or is gone', () => {
+    const stale = Object.keys(NOT_A_LAYER_ABOVE_A_SHEET).filter((f) => !SOURCES[f] || SAYS_WHAT_IT_IS.test(SOURCES[f]));
+    expect(stale).toEqual([]);
+  });
+
+  it('Create band is a modal dialog (it opens beside the docked band switcher on the Duo)', () => {
+    expect(SOURCES['/src/app/components/profile/CreateBandModal.tsx']).toMatch(/role="dialog"[\s\S]{0,40}aria-modal="true"/);
+  });
+});
 
 describe('layers rendered in place and the focus trap', () => {
   it('every dialog without a portal is listed', () => {

@@ -96,3 +96,17 @@ test('@smoke iPad composer: Rider & stage → Edit list from the keyboard opens 
   await cycle(app, editor, 'Tab', (await tabStops(editor)) + 2);
   await cycle(app, editor, 'Shift+Tab', 4);
 });
+
+test('@smoke Create band from the band switcher takes the focus (Duo: beside the docked switcher)', async ({ app }) => {
+  await app.page.getByRole('button', { name: new RegExp(app.t('Switch band')) }).first().click();
+  const switcher = app.page.getByRole('dialog', { name: app.t('Your bands') });
+  await expect(switcher).toBeVisible();
+  const add = switcher.getByRole('button', { name: app.t('Create band') });
+  await add.focus();
+  await app.page.keyboard.press('Enter');
+  const create = app.page.getByRole('dialog', { name: app.t('Create') }).last();
+  await expect(create).toBeVisible();
+  await expect.poll(() => focusInside(create), 'focus moves into Create band').toBe(true);
+  await cycle(app, create, 'Tab', Math.min(await tabStops(create), 40) + 2);
+  await cycle(app, create, 'Shift+Tab', 4);
+});
