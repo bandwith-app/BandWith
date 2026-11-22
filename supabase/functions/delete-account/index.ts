@@ -43,7 +43,7 @@ import {
   beginOutcome,
   type DeletionServer,
   finishCommitted,
-  type FolderStore,
+  type ObjectStore,
   prepareOutcome,
   retryOnDeadlock,
 } from "../_shared/account-deletion.ts";
@@ -58,8 +58,9 @@ const notReady = (what: string, detail?: unknown, committed = false) => {
   }, 503);
 };
 
-const bucketStore = (admin: ReturnType<typeof adminClient>, bucket: string): FolderStore => ({
-  list: (prefix, opts) => admin.storage.from(bucket).list(prefix, opts),
+// Names come from storage.objects (bw_account_storage_names, round 8); the
+// Storage API only removes them.
+const bucketStore = (admin: ReturnType<typeof adminClient>, bucket: string): ObjectStore => ({
   remove: (paths) => admin.storage.from(bucket).remove(paths),
 });
 
@@ -72,7 +73,7 @@ const deletionServer = (admin: ReturnType<typeof adminClient>): DeletionServer =
 });
 
 // The server job (180's bw-finish-account-deletions): committed deletions
-// nobody finished, a few per run (each one leased for 5 minutes).
+// nobody finished, a few per run (each one leased for 4 minutes).
 async function sweep(admin: ReturnType<typeof adminClient>) {
   const { data: due, error } = await admin.rpc("bw_account_deletions_due", { p_limit: 3 });
   if (error) throw error;

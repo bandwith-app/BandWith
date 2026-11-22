@@ -72,13 +72,13 @@ describe('account deletion refusals', () => {
   it('a band that goes with a deletion, and a member who is deleting', () => {
     const closing = { code: 'P0001', message: 'This band is being deleted. You can’t join it.', hint: 'account_deletion_in_progress',
       details: JSON.stringify({ conflict: 'band_closing', by: 'admin' }) };
-    const assignee = { code: 'P0001', message: 'This member is deleting their account. Choose someone else.', hint: 'account_deletion_in_progress',
+    const assignee = { code: 'P0001', message: 'This person is deleting their account. Choose someone else.', hint: 'account_deletion_in_progress',
       details: JSON.stringify({ conflict: 'account_being_deleted', by: 'member' }) };
     expect(deletionRefusal(closing)).toBe('band_closing');
     expect(deletionRefusal(assignee)).toBe('assignee');
     expect(deletionRefusalMessage(closing)).toBe('This band is being deleted. You can’t join it.');
-    expect(deletionRefusalMessage(assignee)).toBe('This member is deleting their account. Choose someone else.');
-    expect(serverErrorText(assignee, 'x')).toBe('This member is deleting their account. Choose someone else.');
+    expect(deletionRefusalMessage(assignee)).toBe('This person is deleting their account. Choose someone else.');
+    expect(serverErrorText(assignee, 'x')).toBe('This person is deleting their account. Choose someone else.');
     expect(serverErrorText({ message: 'duplicate key' }, 'x')).toBe('duplicate key');
     expect(serverErrorText(null, 'Could not save.')).toBe('Could not save.');
   });
@@ -92,7 +92,7 @@ describe('account deletion refusals', () => {
   it('is translated in all five languages', () => {
     const keys = [
       'This band is being deleted. You can’t join it.',
-      'This member is deleting their account. Choose someone else.',
+      'This person is deleting their account. Choose someone else.',
       'An admin of this band is deleting their account. Try again in a few minutes.',
       'A member of this band is deleting their account. Try again in a few minutes.',
       'Your account is being deleted.',

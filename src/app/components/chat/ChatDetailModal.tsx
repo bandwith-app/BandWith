@@ -54,7 +54,7 @@ const hideChatKeyboard = () => {
   }
 };
 import { personName } from '@/lib/personName';
-import { authorName } from '@/lib/formerMember';
+import { authorName, directChatName } from '@/lib/formerMember';
 
 interface ChatDetailModalProps {
   chat: {
@@ -343,9 +343,19 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
         }
         typeResolvedRef.current = true;
         if (fullChat.type === 'direct') {
-          const other = fullChat.participants.find(p => p.user_id !== user?.id);
-          // Nobody else left: the other person deleted their account (#282).
-          const name = other ? personName(other.profile, '') : t('Former member');
+          const others = fullChat.participants.filter(p => p.user_id !== user?.id);
+          const other = others[0];
+          // The same rule as the chat list (#282 round 8): "Former member"
+          // only when no other account is there at all, not a participant,
+          // not the creator, not the last sender.
+          const name = directChatName({
+            others,
+            storedName: fullChat.name,
+            fallback: '',
+            former: t('Former member'),
+            me: user?.id,
+            otherIds: [(fullChat as any).created_by, fullChat.last_message?.sender_id],
+          });
           if (!other) setChatAvatarUrl(undefined);
           if (name) {
             setChatName(name);

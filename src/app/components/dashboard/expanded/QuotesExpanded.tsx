@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { createPortal } from 'react-dom';
+import { deletionRefusalMessage } from '@/lib/deletionRefusal';
 import {
   Plus,
   Send,
@@ -337,7 +338,8 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
     const { data, error } = await gigFromAcceptedQuote(quote.id);
     setCreatingGig(false);
     if (error || !data) {
-      notify(errorText(error, t('Could not create the gig')), 'error');
+      // An account deletion in the way (180) says so, in the app's words.
+      notify(deletionRefusalMessage(error) ?? errorText(error, t('Could not create the gig')), 'error');
       return;
     }
     setQuotes(prev => prev.map(q => (q.id === quote.id ? { ...q, convertedToEventId: data.eventId, eventId: data.eventId } : q)));

@@ -11,6 +11,7 @@
  * when the band's entitlements confirm it is full.
  */
 import { LIMIT_KEYS, canUse, planLimitKey, type Entitlements, type LimitKey } from './plans';
+import { deletionAwareFetch, signOutDeletingAccount } from './deletionSignOut';
 
 export const PLAN_LIMIT_EVENT = 'bw:plan-limit';
 
@@ -80,7 +81,10 @@ export function onPlanLimit(cb: (hit: PlanLimitHit) => void): () => void {
  * read once (a clone, after it is returned) for a plan refusal.
  */
 export function planAwareFetch(base: typeof fetch = fetch): typeof fetch {
-  return async (input, init) => {
+  // 180 round 8 (Claude M6): every response also goes past the account
+  // deletion check (a refusal saying this account is being deleted signs
+  // out everywhere, deletionSignOut.ts).
+  return deletionAwareFetch(async (input, init) => {
     const res = await base(input, init);
     if (!res.ok) {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
@@ -96,7 +100,7 @@ export function planAwareFetch(base: typeof fetch = fetch): typeof fetch {
       }
     }
     return res;
-  };
+  }, signOutDeletingAccount);
 }
 
 /** A storage refusal is a plan limit only when the band is full on its plan. */

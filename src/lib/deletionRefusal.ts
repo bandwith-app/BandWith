@@ -51,7 +51,7 @@ export function deletionRefusalMessage(error: unknown): string | null {
     case 'band_closing':
       return t('This band is being deleted. You can’t join it.');
     case 'assignee':
-      return t('This member is deleting their account. Choose someone else.');
+      return t('This person is deleting their account. Choose someone else.');
     default:
       return null;
   }

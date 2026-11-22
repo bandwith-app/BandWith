@@ -39,50 +39,15 @@ describe('delete-account: storage first', () => {
   });
 });
 
-import { beginOutcome, removeFolder, type FolderStore } from '../../../supabase/functions/_shared/account-deletion';
+import { beginOutcome } from '../../../supabase/functions/_shared/account-deletion';
 import fn from '../../../supabase/functions/delete-account/index.ts?raw';
 // Round 5: everything after the commit lives in finishCommitted.
 import shared from '../../../supabase/functions/_shared/account-deletion.ts?raw';
 const finishSrc = shared.slice(shared.indexOf('export async function finishCommitted'));
 
-// A Storage bucket in memory: list() shows one level, 100 entries, sorted.
-const bucket = (paths: string[]) => {
-  const files = new Set(paths);
-  const store: FolderStore = {
-    async list(prefix) {
-      const seen = new Map<string, boolean>();
-      for (const f of [...files].sort()) {
-        if (!f.startsWith(prefix + '/')) continue;
-        const rest = f.slice(prefix.length + 1);
-        const [head, ...more] = rest.split('/');
-        if (!seen.has(head)) seen.set(head, more.length === 0);
-      }
-      return { data: [...seen].slice(0, 100).map(([name, isFile]) => ({ name, id: isFile ? `id-${name}` : null })), error: null };
-    },
-    async remove(ps) {
-      ps.forEach((p) => files.delete(p));
-      return { error: null };
-    },
-  };
-  return { store, files };
-};
-
+// Round 8: removing more than 100 songs, and a folder that won't empty, are
+// covered by accountDeletionRound5.test.ts (the names come from storage.objects).
 describe('delete-account: Codex review #282', () => {
-  it('removes attachments of more than 100 songs', async () => {
-    const paths = Array.from({ length: 101 }, (_, i) => `u1/song-${String(i).padStart(3, '0')}/take.m4a`);
-    const { store, files } = bucket([...paths, 'u2/song-1/keep.m4a']);
-    expect(await removeFolder(store, 'u1')).toBe(true);
-    expect([...files]).toEqual(['u2/song-1/keep.m4a']);
-  });
-
-  it('reports a folder it could not empty', async () => {
-    const { store } = bucket(['u1/a.m4a']);
-    const stuck: FolderStore = { list: store.list, remove: async () => ({ error: { message: 'denied' } }) };
-    expect(await removeFolder(stuck, 'u1')).toBe(false);
-    const failing: FolderStore = { list: async () => ({ data: null, error: { message: 'timeout' } }), remove: store.remove };
-    expect(await removeFolder(failing, 'u1')).toBe(false);
-  });
-
   it('reads the begin answer', () => {
     expect(beginOutcome({ ok: true, band_ids: ['b1'] }, null)).toEqual({ kind: 'ok', bandIds: ['b1'], committed: false });
     expect(beginOutcome({ ok: false, bands: ['Hudson Horns'] }, null)).toEqual({ kind: 'blocked', bands: ['Hudson Horns'] });
@@ -94,12 +59,12 @@ describe('delete-account: Codex review #282', () => {
     const firstRemove = fn.indexOf('finishCommitted(deletionServer(admin), caller.id');
     expect(begin).toBeGreaterThan(0);
     expect(begin).toBeLessThan(firstRemove);
-    // Avatars go through removeFolder and the SQL readiness count (180).
-    expect(finishSrc).toMatch(/removeFolder\(server\.store\('avatars'\), uid\)/);
+    // Avatars go through removeObjects and the SQL readiness count (180).
+    expect(finishSrc).toMatch(/removeObjects\(server, 'avatars', uid\)/);
     // A failed band lookup or band cleanup stops before Auth deletes the user.
     expect(finishSrc).toMatch(/if \(toClean === null\) return notReady\(/);
     expect(finishSrc).toMatch(/if \(!cleaned\) return notReady\(/);
-    expect(fn).not.toMatch(/async function removeFolder/);
+    expect(fn).not.toMatch(/async function remove(Folder|Objects)/);
   });
 });
 
@@ -230,8 +195,8 @@ describe('delete-account: round 4, files and texts', () => {
     const bandFiles = finishSrc.indexOf('bandFolders(bandId)');
     const finish = finishSrc.indexOf("'bw_account_deletion_finish'");
     const between = finishSrc.slice(bandFiles, finish);
-    expect(between).toMatch(/removeFolder\(server\.store\('personal-files'\), uid\)/);
-    expect(between).toMatch(/removeFolder\(server\.store\('avatars'\), uid\)/);
+    expect(between).toMatch(/removeObjects\(server, 'personal-files', uid\)/);
+    expect(between).toMatch(/removeObjects\(server, 'avatars', uid\)/);
   });
 
   it('the busy answer is readable for older builds', () => {

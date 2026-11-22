@@ -572,6 +572,9 @@ export const convertQuoteToEvent = async (quoteId: string): Promise<{ data: Quot
     let eventId = found;
     let lineupError = false;
     if (!eventId) {
+      // The gig is the current user's (round 8, Claude): the quote's author
+      // may have left, or be deleting their account.
+      const { data: { user } } = await getSafeUser();
       const { data: event, error: createError } = await supabase
         .from('events')
         .insert({
@@ -596,7 +599,7 @@ export const convertQuoteToEvent = async (quoteId: string): Promise<{ data: Quot
           notes: quote.client_notes,
           internal_notes: quote.internal_notes,
           quote_id: quoteId,
-          created_by: quote.created_by,
+          ...(user?.id ? { created_by: user.id } : {}),
         })
         // Only the id: after 078 step 2 the price and client columns of
         // events cannot be read back directly.
@@ -607,7 +610,6 @@ export const convertQuoteToEvent = async (quoteId: string): Promise<{ data: Quot
       eventId = event.id as string;
 
       // The quote's musicians and their fees become the gig's lineup.
-      const { data: { user } } = await getSafeUser();
       const lineup = lineupFromQuoteMusicians(quote.musicians, user?.id);
       if (lineup.length > 0) {
         const { error: saveError } = await saveEventLineup(eventId, lineup);

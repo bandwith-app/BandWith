@@ -15,6 +15,7 @@ import {
   requireBandAdmin,
   requireCaller,
 } from "../_shared/auth.ts";
+import { callerDeletionRefusal } from "../_shared/deletion-gate.ts";
 
 interface InviteRequest {
   email?: string;
@@ -36,6 +37,9 @@ serve(async (req) => {
   try {
     const supabaseAdmin = adminClient();
     const caller = await requireCaller(req, supabaseAdmin);
+    // 180 round 8: nobody is invited in the name of an account being deleted.
+    const deleting = await callerDeletionRefusal(supabaseAdmin, caller);
+    if (deleting) return json(deleting.body, deleting.status);
 
     const { email, userId, bandId, role } = (await req.json()) as InviteRequest;
     let normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";

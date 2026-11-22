@@ -1,5 +1,6 @@
 // Supabase Edge Function: Send Push Notification (Zero External Dependencies)
 import { adminClient, chatRecipients, HttpError, requireCaller } from '../_shared/auth.ts';
+import { callerDeletionRefusal } from '../_shared/deletion-gate.ts';
 import { localizePushLabel, pushCollapseId, pushLanguage, pushThreadId } from '../_shared/push-labels.ts';
 import { isSilentRequest, silentApns, silentFcmMessage } from '../_shared/push-silent.ts';
 
@@ -416,6 +417,14 @@ Deno.serve(async (req: Request) => {
       caller = { kind: 'service' };
     } else {
       caller = await requireCaller(req, supabase);
+      // 180 round 8: no notice in the name of an account being deleted.
+      const deleting = await callerDeletionRefusal(supabase, caller);
+      if (deleting) {
+        return new Response(JSON.stringify(deleting.body), {
+          status: deleting.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     const body = await req.json();

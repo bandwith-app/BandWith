@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // whose account deletion is committed (round 6).
 const refusal = {
   code: 'P0001',
-  message: 'This member is deleting their account. Choose someone else.',
+  message: 'This person is deleting their account. Choose someone else.',
   details: JSON.stringify({ conflict: 'account_being_deleted', by: 'member' }),
   hint: 'account_deletion_in_progress',
 };
@@ -21,11 +21,11 @@ describe('a task assigned to a member who is deleting their account', () => {
   it('says so in the app language (Italian)', async () => {
     await setLocalePref('it');
     const { error } = await syncEventTasks('ev1', [{ title: 'Porta il PA', assignedTo: 'u-leaving' }], '2026-11-28');
-    expect(error?.message).toBe('Questo membro sta eliminando il suo account. Scegli qualcun altro.');
+    expect(error?.message).toBe('Questa persona sta eliminando il suo account. Scegli qualcun altro.');
   });
 
   it('and in English', async () => {
     const { error } = await syncEventTasks('ev1', [{ title: 'Bring the PA', assignedTo: 'u-leaving' }], '2026-11-28');
-    expect(error?.message).toBe('This member is deleting their account. Choose someone else.');
+    expect(error?.message).toBe('This person is deleting their account. Choose someone else.');
   });
 });

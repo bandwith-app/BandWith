@@ -89,6 +89,9 @@ CREATE TABLE public.member_invites (id uuid PRIMARY KEY DEFAULT gen_random_uuid(
   invited_by uuid NOT NULL REFERENCES public.profiles(id) ON DELETE SET NULL, email text NOT NULL, token text UNIQUE NOT NULL,
   status text DEFAULT 'pending');
 CREATE TABLE public.rehearsal_poll_options (id uuid PRIMARY KEY, poll_id uuid NOT NULL REFERENCES public.rehearsal_polls(id) ON DELETE CASCADE);
+-- A quote's musicians (Claude round 6, M1: upserts of rows that point at them).
+CREATE TABLE public.quote_musicians (id uuid PRIMARY KEY, quote_id uuid, user_id uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
+  fee numeric, UNIQUE (quote_id, user_id));
 CREATE TABLE public.rehearsal_poll_votes (poll_id uuid NOT NULL REFERENCES public.rehearsal_polls(id) ON DELETE CASCADE,
   option_id uuid NOT NULL REFERENCES public.rehearsal_poll_options(id) ON DELETE CASCADE,
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE);
@@ -718,7 +721,7 @@ await x(`DELETE FROM events WHERE created_by = '${BB}' AND band_id IS NULL`);
 // Claude round 5 blocker: nobody points a new row at them either.
 e6 = await errAs(BB, `INSERT INTO rehearsal_tasks (title, assigned_to) VALUES ('Bring the PA', '${AA}')`);
 ok(e6?.hint === 'account_deletion_in_progress', `round 6 (Claude blocker): a task assigned to them is refused (${JSON.stringify(e6)})`);
-ok(e6?.message === 'This member is deleting their account. Choose someone else.', `round 7: in words that fit (older builds show it as it is) (${JSON.stringify(e6)})`);
+ok(e6?.message === 'This person is deleting their account. Choose someone else.', `round 7: in words that fit (older builds show it as it is) (${JSON.stringify(e6)})`);
 await x(`INSERT INTO rehearsal_tasks (id, title) VALUES ('${id(148)}', 'Print set lists')`);
 e6 = await errAs(BB, `UPDATE rehearsal_tasks SET assigned_to = '${AA}' WHERE id = '${id(148)}'`);
 ok(e6?.hint === 'account_deletion_in_progress', `round 6 (Claude blocker): and reassigning one to them (${JSON.stringify(e6)})`);
@@ -744,6 +747,20 @@ const guarded = (await qq(`SELECT c.relname AS t FROM pg_trigger tg JOIN pg_clas
   WHERE tg.tgname = 'bw_deleting_account_writes'`)).rows.map((r) => r.t);
 const unguarded = [...new Set(authorCols.map((c) => c.table_name))].filter((t) => t !== 'messages' && !guarded.includes(t));
 ok(authorCols.length > 0 && unguarded.length === 0, `round 6 (B1): every one of those tables refuses the writes (${JSON.stringify({ guarded, unguarded })})`);
+// Claude round 6 (M5): each with its own columns as the arguments, after
+// the write (AFTER ... WHEN auth.uid() IS NOT NULL, M1).
+const trigDefs = Object.fromEntries((await qq(`SELECT c.relname AS t, pg_get_triggerdef(tg.oid) AS def FROM pg_trigger tg
+  JOIN pg_class c ON c.oid = tg.tgrelid WHERE tg.tgname = 'bw_deleting_account_writes'`)).rows.map((r) => [r.t, r.def]));
+const wantArgs = {};
+for (const c of authorCols) if (c.table_name !== 'messages') (wantArgs[c.table_name] ??= []).push(c.column_name);
+wantArgs.rehearsal_polls = [...(wantArgs.rehearsal_polls ?? []), 'invited_user_ids'];
+const badTrig = Object.entries(wantArgs).filter(([t, cols]) => {
+  const def = trigDefs[t] ?? '';
+  const args = (def.match(/bw_trg_deleting_account_writes\((.*)\)\s*$/)?.[1] ?? '').split(',').map((a) => a.trim().replace(/^'|'$/g, '')).filter(Boolean).sort();
+  return !/AFTER INSERT OR UPDATE/.test(def) || !/WHEN \(+auth\.uid\(\) IS NOT NULL\)+/.test(def) || JSON.stringify(args) !== JSON.stringify([...cols].sort());
+});
+ok(Object.keys(wantArgs).length > 0 && badTrig.length === 0,
+  `round 8 (Claude M5): every listed table but messages has the trigger, after the write, with its columns (${JSON.stringify(badTrig.map(([t]) => [t, trigDefs[t] ?? null]))})`);
 // A gig created just before the commit (between prepare's steps), and a
 // table with a check like it the migration doesn't know: the last step
 // clears both, so Auth isn't stopped.
@@ -965,6 +982,149 @@ if (f175 && f175.every(Boolean)) {
   ok(rr.rows?.[0]?.r >= 1, `guard: and as undelivered (${rr.error ?? JSON.stringify(rr.rows)})`);
 }
 
+
+// ── Codex and Claude reviews #282, round 8 (of 19db3f54) ───────────────────
+const [X1, XB, ZB, ZC, BB2, WB, OC, QMX, QX] = [201, 202, 203, 204, 206, 207, 208, 209, 210].map(id);
+const [P1, P2, P3, NZ1, NZ2, NZ3, NO1, NO2] = [211, 212, 213, 214, 215, 216, 217, 218].map(id);
+d = await x(`INSERT INTO auth.users VALUES ('${X1}'), ('${BB2}');
+  INSERT INTO profiles (id, full_name, email, preferred_language) VALUES ('${X1}', 'Riley Chen', 'riley@example.com', 'en'),
+    ('${BB2}', 'Sam Ortiz', 'sam@example.com', 'en');
+  INSERT INTO bands VALUES ('${XB}', 'Riley Solo'), ('${ZB}', 'Bronx Brass'), ('${WB}', 'Harlem Horns');
+  INSERT INTO band_members VALUES ('${XB}','${X1}','admin',true), ('${ZB}','${BB2}','admin',true), ('${WB}','${BB2}','admin',true);
+  INSERT INTO storage.objects (bucket_id, name, owner, owner_id) VALUES
+    ('song-files', '${XB}/song/chart.pdf', '${X1}', '${X1}'), ('song-files', '${XB}/song/v2/take.m4a', '${X1}', '${X1}');
+  INSERT INTO quote_musicians VALUES ('${QMX}', '${QX}', '${X1}', 250)`);
+ok(!d.error, `round 8: setup (${d.error ?? 'ok'})`);
+// Codex r6 (180:696): a band begin noted, deleted another way before
+// prepare, stays noted: its files are cleaned by its path.
+let r8b = await begin(X1);
+ok(r8b?.ok === true && JSON.stringify(r8b.band_ids) === JSON.stringify([XB]), `round 8: begin notes the solo band (${JSON.stringify(r8b)})`);
+await x(`DELETE FROM bands WHERE id = '${XB}'`);
+d = await prepare(X1);
+let r8n = (await qq(`SELECT band_ids, committed_at IS NOT NULL AS c FROM account_deletions_pending WHERE user_id = '${X1}'`)).rows[0];
+ok(!d.error && r8n?.c === true && JSON.stringify(r8n.band_ids) === JSON.stringify([XB]),
+  `round 8 (Codex 180:696): a band begin noted and deleted before prepare is kept for its files (${d.error ?? JSON.stringify(r8n)})`);
+console.log('     (a band begin noted that someone joined stays and is not noted: "round 6 (Codex B2)" tests above)');
+d = await prepare(X1);
+r8n = (await qq(`SELECT band_ids FROM account_deletions_pending WHERE user_id = '${X1}'`)).rows[0];
+ok(!d.error && JSON.stringify(r8n?.band_ids) === JSON.stringify([XB]), `round 8: a retry keeps it (${d.error ?? JSON.stringify(r8n)})`);
+// Codex r6 (account-deletion.ts:109): names at any depth, from storage.objects.
+const deep = `${X1}/${Array.from({ length: 70 }, (_, i) => `d${i}`).join('/')}/take.m4a`;
+await x(`INSERT INTO storage.objects (bucket_id, name, owner, owner_id) VALUES ('personal-files', '${deep}', '${X1}', '${X1}'),
+  ('personal-files', '${X1}/a.m4a', '${X1}', '${X1}'), ('personal-files', 'ab_c/x.m4a', NULL, NULL), ('personal-files', 'abXc/y.m4a', NULL, NULL)`);
+const names8 = async (b, p, after = null, lim = 1000) =>
+  q(`SELECT n FROM public.bw_account_storage_names('${b}', '${p}', ${after ? `'${after}'` : 'NULL'}, ${lim}) AS n`);
+let nm = await names8('personal-files', X1);
+ok(!nm.error && nm.rows.map((r) => r.n).includes(deep) && nm.rows.length === 2, `round 8 (Codex): a file 70 folders deep is listed (${nm.error ?? nm.rows.length})`);
+nm = await names8('personal-files', X1, null, 1);
+const firstName = nm.rows?.[0]?.n;
+const nm2 = await names8('personal-files', X1, firstName, 1);
+ok(nm.rows?.length === 1 && nm2.rows?.length === 1 && nm2.rows[0].n > firstName, `round 8: in pages, after the last name (${JSON.stringify([nm.rows, nm2.rows])})`);
+nm = await names8('song-files', XB);
+ok(nm.rows?.length === 2, `round 8: the deleted band's files, by its path (${nm.error ?? JSON.stringify(nm.rows)})`);
+nm = await names8('personal-files', 'ab_c');
+ok(JSON.stringify(nm.rows?.map((r) => r.n)) === JSON.stringify(['ab_c/x.m4a']), `round 8: the prefix is literal (_ is not a wildcard) (${JSON.stringify(nm)})`);
+nm = await names8('personal-files', '');
+ok(!!nm.error, `round 8: an empty prefix (the whole bucket) is refused (${nm.error ?? 'listed'})`);
+const g8 = (await qq(`SELECT has_function_privilege('authenticated', 'public.bw_account_storage_names(text, text, text, integer)', 'EXECUTE') AS a,
+  has_function_privilege('anon', 'public.bw_account_storage_names(text, text, text, integer)', 'EXECUTE') AS n,
+  has_function_privilege('service_role', 'public.bw_account_storage_names(text, text, text, integer)', 'EXECUTE') AS s`)).rows[0] ?? {};
+ok(g8.a === false && g8.n === false && g8.s === true, `round 8: the listing is server only (${JSON.stringify(g8)})`);
+await x(`DELETE FROM storage.objects WHERE bucket_id = 'personal-files' AND name LIKE '${X1}/%'`); // the function, through the Storage API
+// Claude r6 (M1): an upsert of a row that already points at them passes.
+e6 = await errAs(BB2, `INSERT INTO quote_musicians VALUES ('${QMX}', '${QX}', '${X1}', 300) ON CONFLICT (id) DO UPDATE SET fee = EXCLUDED.fee`);
+ok(e6 === null && (await qq(`SELECT fee::int AS f FROM quote_musicians WHERE id = '${QMX}'`)).rows[0]?.f === 300,
+  `round 8 (Claude M1): an upsert (DO UPDATE) of a row that already points at them goes through (${JSON.stringify(e6)})`);
+e6 = await errAs(BB2, `INSERT INTO quote_musicians VALUES ('${QMX}', '${QX}', '${X1}', 400) ON CONFLICT DO NOTHING`);
+ok(e6 === null, `round 8 (Claude M1): and DO NOTHING (${JSON.stringify(e6)})`);
+e6 = await errAs(BB2, `INSERT INTO quote_musicians VALUES (gen_random_uuid(), '${id(219)}', '${X1}', 100)`);
+ok(e6?.hint === 'account_deletion_in_progress', `round 8 (Claude M1): a new row pointing at them is still refused (${JSON.stringify(e6)})`);
+e6 = await errAs(X1, `INSERT INTO quote_musicians VALUES ('${QMX}', '${QX}', '${X1}', 500) ON CONFLICT (id) DO UPDATE SET fee = EXCLUDED.fee`);
+ok(refused(e6), `round 8 (Claude M1): their own upsert is still refused (${JSON.stringify(e6)})`);
+// Codex r6 (180:725): poll invitee lists. After the commit nobody adds them...
+e6 = await errAs(BB2, `INSERT INTO rehearsal_polls (id, band_id, created_by, title, invited_user_ids) VALUES ('${P2}', '${WB}', '${BB2}', 'Sunday?', ARRAY['${BB2}', '${X1}']::uuid[])`);
+ok(e6?.hint === 'account_deletion_in_progress', `round 8 (Codex 180:725): a new poll inviting them is refused (${JSON.stringify(e6)})`);
+e6 = await errAs(BB2, `INSERT INTO rehearsal_polls (id, band_id, created_by, title, invited_user_ids) VALUES ('${P3}', '${WB}', '${BB2}', 'Monday?', ARRAY['${BB2}']::uuid[])`);
+ok(e6 === null, `round 8: a poll without them goes through (${JSON.stringify(e6)})`);
+e6 = await errAs(BB2, `UPDATE rehearsal_polls SET invited_user_ids = ARRAY['${BB2}', '${X1}']::uuid[] WHERE id = '${P3}'`);
+ok(e6?.hint === 'account_deletion_in_progress', `round 8 (Codex 180:725): adding them to one is refused (${JSON.stringify(e6)})`);
+e6 = await errAs(BB2, `UPDATE rehearsal_polls SET title = 'Monday at 7?' WHERE id = '${P3}'`);
+ok(e6 === null, `round 8: other edits go through (${JSON.stringify(e6)})`);
+// ...and a server write that did is undone by the last step.
+await x(`INSERT INTO rehearsal_polls (id, band_id, created_by, title, invited_user_ids) VALUES ('${P1}', '${WB}', '${BB2}', 'Saturday?', ARRAY['${BB2}', '${X1}']::uuid[])`);
+// Codex r6 (180:1142): a chat deleted by cascade takes its notices.
+d = await x(`INSERT INTO chats VALUES ('${ZC}', 'band', '${ZB}', '${BB2}', NULL);
+  INSERT INTO messages (chat_id, sender_id, content) VALUES ('${ZC}', '${BB2}', 'Gig moved to 9');
+  INSERT INTO notifications (id, user_id, type, title, body, data) VALUES
+    ('${NZ1}', '${BB2}', 'chat_message', 'Sam', 'Gig moved to 9', '{"chat_id":"${ZC}"}'),
+    ('${NZ2}', '${BB2}', 'chat_mention', 'Sam', 'Gig moved to 9', '{"chatId":"${ZC}"}'),
+    ('${NZ3}', '${BB2}', 'band_update', 'Bronx Brass', 'Band deleted', '{"chat_id":"${ZC}"}');
+  DELETE FROM bands WHERE id = '${ZB}'`);
+const nz = (await qq(`SELECT id::text AS id FROM notifications WHERE id IN ('${NZ1}', '${NZ2}', '${NZ3}') ORDER BY id`)).rows.map((r) => r.id);
+ok(!d.error && JSON.stringify(nz) === JSON.stringify([NZ3]), `round 8 (Codex 180:1142): a band's chat deleted by cascade takes its chat notices, only those (${d.error ?? JSON.stringify(nz)})`);
+// Claude r6 (M4): a NO ACTION column a check needs, and a row a guard
+// won't let change: the last step deletes the first, logs and skips the
+// second, and runs to the end.
+d = await x(`INSERT INTO notifications (id, user_id, type, title, body, data) VALUES
+    ('${NO1}', '${BB2}', 'chat_message', 'Sam', 'old', '{"chat_id":"${id(299)}"}'),
+    ('${NO2}', '${BB2}', 'chat_message', 'Sam', 'odd', '{"chat_id":"not-a-uuid"}');
+  CREATE TABLE public.test_signed (id serial PRIMARY KEY, signer uuid REFERENCES public.profiles(id), signed boolean,
+    CHECK (NOT signed OR signer IS NOT NULL));
+  INSERT INTO test_signed (signer, signed) VALUES ('${X1}', true), ('${X1}', false);
+  CREATE TABLE public.test_locked (id serial PRIMARY KEY, owner uuid REFERENCES public.profiles(id));
+  CREATE FUNCTION public.test_locked_guard() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN RAISE EXCEPTION 'locked row'; END $f$;
+  CREATE TRIGGER test_locked_guard BEFORE UPDATE ON public.test_locked FOR EACH ROW EXECUTE FUNCTION public.test_locked_guard();
+  INSERT INTO test_locked (owner) VALUES ('${X1}')`);
+ok(!d.error, `round 8: fixtures for the last step (${d.error ?? 'ok'})`);
+const ac8 = (await qq(`SELECT blocks, on_delete FROM public.bw_account_deletion_author_columns() WHERE table_name = 'test_signed'`)).rows[0];
+ok(ac8?.blocks === 'check' && ac8?.on_delete === 'restrict', `round 8 (Claude M4): a NO ACTION column with a check is a check first (${JSON.stringify(ac8)})`);
+nn = await notices(`SELECT public.bw_account_deletion_finish('${X1}')`);
+ok(!nn.some((m) => /^ERROR/.test(m)), `round 8 (Claude M4): the last step runs to the end (${JSON.stringify(nn)})`);
+ok(nn.some((m) => /test_locked\.owner row skipped: locked row/.test(m)), `round 8 (Claude M4): the row it can't change is logged and skipped (${JSON.stringify(nn)})`);
+const ts = (await qq(`SELECT signed, signer FROM test_signed ORDER BY id`)).rows;
+ok(ts.length === 1 && ts[0].signed === false && ts[0].signer === null, `round 8 (Claude M4): the row the check needs them for goes, the other is cleared (${JSON.stringify(ts)})`);
+const p1 = (await qq(`SELECT invited_user_ids::text[] AS i FROM rehearsal_polls WHERE id = '${P1}'`)).rows[0];
+ok(JSON.stringify(p1?.i) === JSON.stringify([BB2]), `round 8 (Codex 180:725): the last step takes them off a poll a server write added them to (${JSON.stringify(p1)})`);
+const no = (await qq(`SELECT id::text AS id FROM notifications WHERE id IN ('${NO1}', '${NO2}') ORDER BY id`)).rows.map((r) => r.id);
+ok(JSON.stringify(no) === JSON.stringify([NO2]), `round 8 (Codex 180:1142): the last step removes chat notices whose chat is gone (${JSON.stringify(no)})`);
+await x(`DROP TABLE test_locked; DROP TABLE test_signed`);
+// Claude r6 nits: an index for the committed lookups; lapsed begun rows go.
+const ix = (await qq(`SELECT indexdef FROM pg_indexes WHERE indexname = 'account_deletions_pending_committed'`)).rows[0];
+ok(/WHERE \(committed_at IS NOT NULL\)/.test(ix?.indexdef ?? ''), `round 8 (Claude nit): a partial index on committed rows (${JSON.stringify(ix)})`);
+await x(`INSERT INTO account_deletions_pending (user_id, started_at) VALUES ('${BB2}', now() - interval '20 minutes')`);
+await notices(`SELECT public.bw_finish_account_deletions_dispatch()`);
+ok((await qq(`SELECT 1 FROM account_deletions_pending WHERE user_id = '${BB2}'`)).rows.length === 0
+   && (await qq(`SELECT 1 FROM account_deletions_pending WHERE user_id = '${X1}'`)).rows.length === 1,
+  'round 8 (Claude nit): the job drops a begun deletion that lapsed, never a committed one');
+await x(`DELETE FROM net.calls`);
+// 192 guard (#291, applied after 180): its purge on messages and this
+// trigger on chats, together: a cascade leaves no notice and nothing errors.
+const P192 = 'supabase/migrations/192_chat_notification_purge.sql';
+let src192 = null;
+try {
+  src192 = existsSync(`${REPO}/${P192}`) ? readFileSync(`${REPO}/${P192}`, 'utf8')
+    : execFileSync('git', ['-C', REPO, 'show', `origin/fix/chat-audit:${P192}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+} catch { src192 = null; }
+if (!src192) {
+  console.log(`SKIP 192 guard: ${P192} not in the repo and origin/fix/chat-audit not found`);
+} else {
+  d = await x(src192.split('\n').filter((l) => !/^\s*(BEGIN|COMMIT);\s*$/.test(l)).join('\n'));
+  if (d.error) {
+    console.log(`SKIP 192 guard: 192 did not load on the stand-ins (${d.error})`);
+  } else {
+    const [GB, GCH, GM, GN1, GN2] = [221, 222, 223, 224, 225].map(id);
+    d = await x(`INSERT INTO bands VALUES ('${GB}', 'Brooklyn Big Band'); INSERT INTO band_members VALUES ('${GB}','${BB2}','admin',true);
+      INSERT INTO chats VALUES ('${GCH}', 'band', '${GB}', '${BB2}', NULL);
+      INSERT INTO messages (id, chat_id, sender_id, content) VALUES ('${GM}', '${GCH}', '${BB2}', 'Soundcheck at 6');
+      INSERT INTO notifications (id, user_id, type, title, body, data) VALUES
+        ('${GN1}', '${BB2}', 'chat_message', 'Sam', 'Soundcheck at 6', '{"chat_id":"${GCH}","message_id":"${GM}"}'),
+        ('${GN2}', '${BB2}', 'chat_mention', 'Sam', 'Soundcheck at 6', '{"chatId":"${GCH}"}')`);
+    const del = await x(`DELETE FROM bands WHERE id = '${GB}'`);
+    const left = (await qq(`SELECT count(*)::int AS n FROM notifications WHERE id IN ('${GN1}', '${GN2}')`)).rows[0]?.n;
+    ok(!d.error && !del.error && left === 0, `192 guard: with 192's purge, a band deleted by cascade leaves no chat notice and nothing errors (${d.error ?? del.error ?? left})`);
+  }
+}
+
 // Cross-PR (#297's 195 revokes EXECUTE on bw_poll_vote_deadline from
 // authenticated): 180 running after it must not grant it back.
 await x(`REVOKE EXECUTE ON FUNCTION public.bw_poll_vote_deadline(uuid) FROM authenticated`);
@@ -992,20 +1152,27 @@ try {
   src197 = existsSync(`${REPO}/${P197}`) ? readFileSync(`${REPO}/${P197}`, 'utf8')
     : execFileSync('git', ['-C', REPO, 'show', `origin/fix/songs-audit:${P197}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
 } catch { src197 = null; }
-const names197 = ['bw_song_file_ref', 'bw_song_file_json_needle', 'bw_song_file_in_suggestion', 'bw_song_file_in_use',
-  'bw_song_file_lock_key', 'bw_song_file_band_key', 'bw_song_files_claim_for', 'bw_song_files_left_unused'];
-const f197 = src197 && names197.map((n) => fnByName(src197, n));
+// Helpers come and go between 197's rounds (json_needle → json_paths):
+// load the ones there, require the ones withdraw's path needs.
+const names197 = ['bw_song_file_ref', 'bw_song_file_json_needle', 'bw_song_file_json_paths', 'bw_song_file_in_suggestion',
+  'bw_song_file_in_use', 'bw_song_file_lock_key', 'bw_song_file_band_key', 'bw_song_files_claim_for', 'bw_song_files_left_unused'];
+const need197 = ['bw_song_file_ref', 'bw_song_file_in_use', 'bw_song_files_claim_for', 'bw_song_files_left_unused'];
+const f197 = src197 && need197.every((n) => fnByName(src197, n)) ? names197.map((n) => fnByName(src197, n)).filter(Boolean) : null;
 if (!src197) {
   console.log(`SKIP 197 guard: ${P197} not in the repo and origin/fix/songs-audit not found`);
 } else {
-  ok(f197.every(Boolean), "197 guard: 197's file functions found by name");
+  ok(!!f197, "197 guard: 197's file functions found by name");
 }
-if (f197 && f197.every(Boolean)) {
+if (f197) {
   d = await x(`ALTER TABLE song_suggestions ADD COLUMN IF NOT EXISTS proposed jsonb NOT NULL DEFAULT '{}',
       ADD COLUMN IF NOT EXISTS original jsonb NOT NULL DEFAULT '{}', ADD COLUMN IF NOT EXISTS applied jsonb,
       ADD COLUMN IF NOT EXISTS message text, ADD COLUMN IF NOT EXISTS reason text;
     CREATE TABLE IF NOT EXISTS public.song_file_removals (path text PRIMARY KEY, band_id uuid NOT NULL, claimed_by uuid, claimed_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE IF NOT EXISTS public.song_file_adoptions (from_path text, state text, deleting_at timestamptz);
+    ALTER TABLE public.song_file_adoptions ADD COLUMN IF NOT EXISTS id uuid DEFAULT gen_random_uuid(),
+      ADD COLUMN IF NOT EXISTS band_id uuid, ADD COLUMN IF NOT EXISTS song_id uuid, ADD COLUMN IF NOT EXISTS field text,
+      ADD COLUMN IF NOT EXISTS to_path text, ADD COLUMN IF NOT EXISTS claimed_by uuid, ADD COLUMN IF NOT EXISTS claimed_at timestamptz,
+      ADD COLUMN IF NOT EXISTS deleting_by uuid, ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
     CREATE OR REPLACE FUNCTION public.bw_is_band_admin(p_band uuid, p_uid uuid DEFAULT auth.uid()) RETURNS boolean LANGUAGE sql STABLE AS
       $f$ SELECT EXISTS (SELECT 1 FROM band_members WHERE band_id = p_band AND user_id = p_uid AND role = 'admin') $f$;
     CREATE OR REPLACE FUNCTION public.bw_my_band_ids() RETURNS text[] LANGUAGE sql STABLE AS

@@ -2418,7 +2418,7 @@ const dict: Dictionary = {
   "An admin of this band is deleting their account. Try again in a few minutes.": "Un admin de la banda está eliminando su cuenta. Inténtalo de nuevo en unos minutos.",
   "A member of this band is deleting their account. Try again in a few minutes.": "Un miembro de la banda está eliminando su cuenta. Inténtalo de nuevo en unos minutos.",
   "This band is being deleted. You can’t join it.": "Esta banda se va a eliminar. No puedes unirte.",
-  "This member is deleting their account. Choose someone else.": "Este miembro está eliminando su cuenta. Elige a otra persona.",
+  "This person is deleting their account. Choose someone else.": "Esta persona está eliminando su cuenta. Elige a alguien más.",
   "Your account is being deleted.": "Tu cuenta se está eliminando.",
   "Your account is being deleted. It will be gone within a few minutes.": "Tu cuenta se está eliminando. Desaparecerá en unos minutos.",
   "Invite sent to {name}. They’ll see it next time they open BandWith.": "Invitación enviada a {name}. La verá la próxima vez que abra BandWith.",

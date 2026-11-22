@@ -84,56 +84,55 @@ export function bandFolders(bandId: string): { bucket: string; prefix: string }[
   ];
 }
 
-/** The bit of the Storage API that removeFolder needs (a bucket). */
-export interface FolderStore {
-  list(prefix: string, opts: { limit: number }): Promise<{ data: { id?: string | null; name: string }[] | null; error: unknown }>;
+/** The bit of the Storage API that removeObjects needs (a bucket). */
+export interface ObjectStore {
   remove(paths: string[]): Promise<{ error: unknown }>;
 }
 
-const PAGE = 100;
-// Folders nest as deep as people make them (song/take/v2/...): no fixed
-// depth (Codex review #282, round 5: a file 6 folders down was never reached
-// and the deletion stopped with a 503 for good). Only a guard against a
-// listing that never ends, with its own message in the log.
-const MAX_DEPTH = 64;
-const MAX_ROUNDS = 1000;
+/** The server side removeObjects reads the names from, and removes them with. */
+export interface ObjectServer {
+  rpc(fn: string, args: Record<string, unknown>): PromiseLike<{ data: unknown; error: unknown }>;
+  store(bucket: string): ObjectStore;
+}
+
+// One page of names from storage.objects, and one Storage remove call each
+// (the API takes up to 1000 paths).
+const NAMES_PAGE = 1000;
+const REMOVE_CHUNK = 100;
 
 /**
- * Delete every object under `prefix`, at any depth. Storage lists one level
- * at a time, 100 entries per call: emptied subfolders disappear, so the same
- * listing is read again until it is empty. True when the folder is empty at
- * the end. (Codex review #282: a page of only folders used to end the loop,
- * so the 101st song folder survived and the deletion stopped with a 503.)
+ * Delete every object under `prefix/`, at any depth (Codex review #282,
+ * round 6: the folder walk stopped 64 levels down and the deletion stayed not
+ * ready for good). The names come straight from storage.objects through
+ * bw_account_storage_names (service role only, keyset pages ordered by
+ * name), so there is no folder to walk and no depth. True when every name
+ * listed was removed; a failed listing or removal is false (not ready yet).
  */
-export async function removeFolder(store: FolderStore, prefix: string, depth = 0): Promise<boolean> {
-  if (depth > MAX_DEPTH) {
-    console.warn(`removeFolder: more than ${MAX_DEPTH} folders deep under ${prefix.split('/')[0]}`);
-    return false;
-  }
-  for (let round = 0; round < MAX_ROUNDS; round++) {
-    const { data: items, error } = await store.list(prefix, { limit: PAGE });
-    if (error || !items) return false;
-    if (items.length === 0) return true;
-    const files = items.filter((i) => i.id).map((i) => `${prefix}/${i.name}`);
-    const folders = items.filter((i) => !i.id).map((i) => `${prefix}/${i.name}`);
-    let progress = files.length > 0;
-    for (const f of folders) {
-      if (await removeFolder(store, f, depth + 1)) progress = true;
-    }
-    if (files.length > 0) {
-      const { error: removeError } = await store.remove(files);
+export async function removeObjects(server: ObjectServer, bucket: string, prefix: string): Promise<boolean> {
+  const store = server.store(bucket);
+  let after: string | null = null;
+  for (;;) {
+    const { data, error } = await server.rpc('bw_account_storage_names', {
+      p_bucket: bucket,
+      p_prefix: prefix,
+      p_after: after,
+      p_limit: NAMES_PAGE,
+    });
+    if (error || !Array.isArray(data)) return false;
+    const names = data as string[];
+    for (let i = 0; i < names.length; i += REMOVE_CHUNK) {
+      const { error: removeError } = await store.remove(names.slice(i, i + REMOVE_CHUNK));
       if (removeError) return false;
     }
-    if (!progress) return false;
+    if (names.length < NAMES_PAGE) return true;
+    after = names[names.length - 1];
   }
-  console.warn(`removeFolder: still not empty after ${MAX_ROUNDS} rounds`);
-  return false;
 }
 
 /** What finishCommitted needs from the server (the edge function's admin client). */
 export interface DeletionServer {
   rpc(fn: string, args: Record<string, unknown>): PromiseLike<{ data: unknown; error: unknown }>;
-  store(bucket: string): FolderStore;
+  store(bucket: string): ObjectStore;
   pendingBandIds(uid: string): PromiseLike<{ data: { band_ids?: string[] | null } | null; error: unknown }>;
   bandsStillThere(ids: string[]): PromiseLike<BandLookup>;
   deleteUser(uid: string): PromiseLike<{ error: unknown }>;
@@ -161,8 +160,8 @@ export async function finishCommitted(server: DeletionServer, uid: string, known
 
   // Personal files and the photo go; the band files they uploaded stay with
   // the bands but no longer belong to the account.
-  await removeFolder(server.store('personal-files'), uid);
-  await removeFolder(server.store('avatars'), uid);
+  await removeObjects(server, 'personal-files', uid);
+  await removeObjects(server, 'avatars', uid);
   const release = await retryOnDeadlock(() => server.rpc('bw_account_storage_release', { p_uid: uid }));
   if (!storageReady(release.data as StorageRelease | null, release.error)) return notReady('storage', release.error ?? release.data);
 
@@ -178,7 +177,7 @@ export async function finishCommitted(server: DeletionServer, uid: string, known
     let cleaned = true;
     for (const bandId of toClean) {
       for (const { bucket, prefix } of bandFolders(bandId)) {
-        cleaned = (await removeFolder(server.store(bucket), prefix)) && cleaned;
+        cleaned = (await removeObjects(server, bucket, prefix)) && cleaned;
       }
     }
     if (!cleaned) return notReady('band files', toClean);
@@ -187,8 +186,8 @@ export async function finishCommitted(server: DeletionServer, uid: string, known
   // Personal files once more (another device may have uploaded before
   // uploads were blocked), then the last step: Storage re-checked,
   // notifications and messages once more.
-  await removeFolder(server.store('personal-files'), uid);
-  await removeFolder(server.store('avatars'), uid);
+  await removeObjects(server, 'personal-files', uid);
+  await removeObjects(server, 'avatars', uid);
   const finish = await retryOnDeadlock(() => server.rpc('bw_account_deletion_finish', { p_uid: uid }));
   if (finish.error) return notReady('finish', finish.error);
 
