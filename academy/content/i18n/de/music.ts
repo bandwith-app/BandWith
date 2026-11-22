@@ -1355,7 +1355,7 @@ const music: AreaText = {
           title: "Bühnenmodus öffnen",
           items: [
             "Öffne einen kommenden Gig der Band und tippe oben rechts auf den Button **Abspielen** (**Bühnenmodus öffnen**). Am Gig-Tag ist er hervorgehoben.",
-            "Oder tippe auf Start unter deinem nächsten Gig auf **Go live**.",
+            "Oder tippe auf Start unter deinem nächsten Gig auf **Bühne**.",
             "Zum Verlassen tippe auf X (**Bühnenmodus beenden**).",
             "Bei einer kommenden Probe der Band heißt derselbe Button **Live-Modus öffnen**. Er öffnet den Live-Modus (unten); zum Verlassen **Live-Modus beenden**.",
           ],

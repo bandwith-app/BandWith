@@ -350,7 +350,7 @@ const people: AreaText = {
             "Quando un membro rifiuta un gig, l’admin tocca **Trova un sostituto** nella formazione del gig e manda una richiesta via WhatsApp, SMS o email ([[ask-a-deputy]]).",
             "Il messaggio contiene un link privato a una pagina di risposta. Il sostituto risponde lì con un tocco, senza account ([[deputy-reply-page]]).",
             "Gli admin ricevono una notifica con la risposta.",
-            "Se il sostituto apre BandWith da quel link e accede, il suo account viene collegato alla sua voce nell’elenco della band. Da quel momento la band può usare **Chiedi nell’app** e il sostituto risponde in **Date da sostituto** ([[deputy-gigs]]).",
+            "Se il sostituto apre BandWith da quel link e accede, il suo account viene collegato alla sua voce nell’elenco della band. Da quel momento la band può usare **Chiedi nell'app** e il sostituto risponde in **Date da sostituto** ([[deputy-gigs]]).",
           ],
         },
         {

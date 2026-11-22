@@ -994,7 +994,7 @@ const gigs: AreaText = {
     {
       id: "gig-on-home",
       title: "I gig nella Home",
-      summary: "Il prossimo gig, la preparazione, Go live, i pagamenti da fare e le bozze nella schermata Home.",
+      summary: "Il prossimo gig, la preparazione, In scena, i pagamenti da fare e le bozze nella schermata Home.",
       roles: ["admin", "member"],
       kind: "reference",
       keywords: ["home", "prossimo gig", "go live", "pagamenti da fare", "bozze", "dashboard"],
@@ -1004,7 +1004,7 @@ const gigs: AreaText = {
           type: "list",
           items: [
             "La scheda del prossimo gig mostra data, orari di ritrovo (carico, soundcheck), locale, il link alla scaletta e, per i membri, **Il tuo compenso**.",
-            "Sotto: **Pronti per lo show · {done}/{total}** e **Go live**, che apre il gig direttamente in Modalità palco.",
+            "Sotto: **Pronti per lo show · {done}/{total}** e **In scena**, che apre il gig direttamente in Modalità palco.",
             "**Da gestire** elenca **Pagamenti ({count})** per gli admin o **I tuoi compensi ({count})** per i membri. Vedi [[fee-and-payouts-on-a-gig]].",
             "**Bozze** (admin): i tuoi gig, prove e preventivi non finiti. **Le vedi solo tu.**",
           ],

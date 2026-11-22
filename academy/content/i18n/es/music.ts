@@ -129,7 +129,7 @@ const music: AreaText = {
           rows: [
             ["**Título de la canción \\***", "El nombre de la canción. Obligatorio."],
             ["**Artista original**", "Se muestra debajo del título en todas partes y sirve para detectar duplicados."],
-            ["**Importar acordes y letras**", "Trae un cifrado y la letra del foro de iReal Pro, de un archivo o del portapapeles. Cuando hay un cifrado asignado, una tarjeta **Cifrado** muestra su tono, estilo, tempo, compases y secciones, con **Ver acordes**, **Reemplazar** y una X para quitarlo."],
+            ["**Importar acordes y letras**", "Trae un cifrado y la letra del foro de iReal Pro, de un archivo o del portapapeles. Cuando hay un cifrado asignado, una tarjeta **Cuadro de acordes** muestra su tono, estilo, tempo, compases y secciones, con **Ver acordes**, **Reemplazar** y una X para quitarlo."],
             ["**Duración**", "Minutos y segundos en dos casillas (min : seg). Sirve para los totales de las setlists."],
             ["**BPM**", "El tempo, hasta 3 cifras. Lo usa el clic del Modo escenario."],
             ["**Tono**", "Texto libre, p. ej. Do mayor. Se muestra en la lista, en el escenario y en el control de transporte del lector."],
@@ -1226,7 +1226,7 @@ const music: AreaText = {
           title: "Abre el Modo escenario",
           items: [
             "Abre un próximo concierto de la banda y toca el botón **Reproducir** de arriba a la derecha (**Abrir modo escenario**). El día del concierto aparece resaltado.",
-            "O, en Inicio, toca **Go live** debajo de tu próximo concierto.",
+            "O, en Inicio, toca **A escena** debajo de tu próximo concierto.",
             "Para salir, toca la X (**Salir del modo escenario**).",
             "En un próximo ensayo de la banda el mismo botón es **Abrir modo en vivo**. Abre el Modo en vivo (abajo); para salir, **Salir del modo en vivo**.",
           ],
@@ -1298,7 +1298,7 @@ const music: AreaText = {
           title: "Para practicar, y el próximo ensayo",
           items: [
             "Inicio muestra **Para practicar**: las canciones con notas abiertas para ti o para la banda, del ensayo más reciente. Toca **Practicado** en una nota para ti; toca la canción para abrir su página. En el Duo plegado como un portátil, las canciones están en **Pendientes** del escritorio.",
-            "La página de la canción muestra **De los ensayos** encima de tus notas. Una nota de **Tempo** o **Tonalidad** que indica el valor (por ejemplo “Tempo: 96” o “Tonalidad: Bb”) tiene un botón: los admins **Poner en la canción**, los miembros **Sugerir a la banda**.",
+            "La página de la canción muestra **De los ensayos** encima de tus notas. Una nota de **Tempo** o **Tono** que indica el valor (por ejemplo “Tempo: 96” o “Tono: Bb”) tiene un botón: los admins **Poner en la canción**, los miembros **Sugerir a la banda**.",
             "La página del próximo ensayo muestra **DE LA ÚLTIMA VEZ**: las notas abiertas de ensayos anteriores sobre sus canciones. Los admins tocan **OK** cuando la banda ya lo tiene. En el Modo en vivo una insignia en cada canción abre sus notas de la última vez.",
             "Cuando un admin crea un ensayo, **De las notas de ensayo abiertas** ofrece las canciones con notas abiertas como canciones a trabajar, un toque cada una. Una nueva encuesta de ensayo ya las elige; quita las que no necesites.",
             "Cuando termina un ensayo, quien tenga canciones para practicar recibe una sola push con ellas (“Para practicar: …”), en su idioma; quien lo terminó ve el resumen. **Notificaciones push** en Ajustes la desactiva.",

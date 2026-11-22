@@ -1355,7 +1355,7 @@ const music: AreaText = {
           title: "Ouvrir le mode scène",
           items: [
             "Ouvre un concert du groupe à venir et touche le bouton **Lecture** en haut à droite (**Ouvrir le mode scène**). Le jour du concert, il est mis en avant.",
-            "Ou, sur l’accueil, touche **Go live** sous ton prochain concert.",
+            "Ou, sur l’accueil, touche **En scène** sous ton prochain concert.",
             "Pour quitter, touche X (**Quitter le mode scène**).",
             "Sur une répétition du groupe à venir, le même bouton s’appelle **Ouvrir le mode live**. Il ouvre le mode live (ci-dessous) ; pour quitter, **Quitter le mode live**.",
           ],
@@ -1414,7 +1414,7 @@ const music: AreaText = {
           title: "Notes de répétition",
           items: [
             "En mode live, touchez **Marquer** quand quelque chose est à retravailler : le morceau en cours et la minute sont gardés, et vous continuez à jouer.",
-            "À la pause (ou dans le résumé), touchez **À écrire** puis **Écrire** sur chaque marque : choisissez sur quoi travailler (**Tempo**, **Tonalité**, **Fin**, **Solo**, **À revoir**, **Parfait**, ou **Répéter une section** si le morceau a une structure), ajoutez quelques mots et indiquez **Pour qui**.",
+            "À la pause (ou dans le résumé), touchez **À écrire** puis **Écrire** sur chaque marque : choisissez sur quoi travailler (**Tempo**, **Tonalité**, **Fin**, **Solo**, **À revoir**, **Nickel**, ou **Répéter une section** si le morceau a une structure), ajoutez quelques mots et indiquez **Pour qui**.",
             "Toute note sur un morceau peut dire **Où dans le morceau** : une section et, si tu veux, une de ses lignes (**Ligne (facultatif)**).",
             "En mode live, tu peux aussi garder le doigt sur une ligne des paroles et toucher **Note pour le groupe** : la note s’ouvre déjà sur ce morceau, cette section et cette ligne.",
             "Les admins écrivent pour tout le groupe ou pour n’importe quel membre ; les membres, pour le groupe ou pour eux-mêmes. Tout le groupe lit toutes les notes.",

@@ -1355,7 +1355,7 @@ const music: AreaText = {
           title: "Aprire la Modalità palco",
           items: [
             "Apri un gig della band in programma e tocca il pulsante **Riproduci** in alto a destra (**Apri modalità palco**). Il giorno del gig è evidenziato.",
-            "Oppure, nella Home, tocca **Go live** sotto il tuo prossimo gig.",
+            "Oppure, nella Home, tocca **In scena** sotto il tuo prossimo gig.",
             "Per uscire, tocca la X (**Esci dalla modalità palco**).",
             "Su una prova della band in programma lo stesso pulsante è **Apri modalità live**. Apre la Modalità live (vedi sotto); per uscire, **Esci dalla modalità live**.",
           ],

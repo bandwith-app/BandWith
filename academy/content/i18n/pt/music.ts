@@ -141,7 +141,7 @@ const music: AreaText = {
           rows: [
             ["**Título da música \\***", "O nome da música. Obrigatório."],
             ["**Artista original**", "Aparece embaixo do título em todo lugar e serve para detectar duplicatas."],
-            ["**Importar acordes e letras**", "Traz uma grade de acordes e a letra do fórum do iReal Pro, de um arquivo ou da área de transferência. Depois de anexada uma grade, um cartão **Cifra** mostra o tom, o estilo, o andamento, os compassos e as seções, com **Ver acordes**, **Substituir** e um X para removê-la."],
+            ["**Importar acordes e letras**", "Traz uma grade de acordes e a letra do fórum do iReal Pro, de um arquivo ou da área de transferência. Depois de anexada uma grade, um cartão **Grade de acordes** mostra o tom, o estilo, o andamento, os compassos e as seções, com **Ver acordes**, **Substituir** e um X para removê-la."],
             ["**Duração**", "Minutos e segundos em duas caixas (min : seg). Usada nos totais das setlists."],
             ["**BPM**", "Andamento, até 3 dígitos. O clique do Modo palco usa esse valor."],
             ["**Tom**", "Texto livre, por exemplo C maj. Aparece na lista, no palco e no controle de transposição do leitor."],
@@ -1355,7 +1355,7 @@ const music: AreaText = {
           title: "Abrir o Modo palco",
           items: [
             "Abra um show futuro da banda e toque no botão **Tocar** no canto superior direito (**Abrir modo palco**). No dia do show, ele fica destacado.",
-            "Ou, na tela Início, toque em **Go live** embaixo do seu próximo show.",
+            "Ou, na tela Início, toque em **Em cena** embaixo do seu próximo show.",
             "Para sair, toque no X (**Sair do modo palco**).",
             "Num ensaio futuro da banda o mesmo botão é **Abrir modo ao vivo**. Ele abre o Modo ao vivo (abaixo); para sair, **Sair do modo ao vivo**.",
           ],
@@ -1414,7 +1414,7 @@ const music: AreaText = {
           title: "Notas do ensaio",
           items: [
             "No modo ao vivo toque em **Marcar** quando algo precisar de trabalho: guarda a música que está tocando e o minuto, e vocês continuam tocando.",
-            "Na pausa (ou no resumo) toque em **Para escrever** e em **Escrever** em cada marca: escolha no que trabalhar (**Andamento**, **Tom**, **Final**, **Solo**, **Revisar**, **Perfeito**, ou **Repetir uma seção** se a música tiver estrutura), escreva algumas palavras e diga **Para quem é**.",
+            "Na pausa (ou no resumo) toque em **Para escrever** e em **Escrever** em cada marca: escolha no que trabalhar (**Andamento**, **Tom**, **Final**, **Solo**, **Revisar**, **Arrasou**, ou **Repetir uma seção** se a música tiver estrutura), escreva algumas palavras e diga **Para quem é**.",
             "Qualquer nota sobre uma música pode dizer **Onde na música**: uma seção e, se você quiser, uma das linhas dela (**Linha (opcional)**).",
             "No modo ao vivo, você também pode segurar uma linha da letra e tocar em **Nota para a banda**: a nota já abre nessa música, seção e linha.",
             "Admins escrevem para a banda toda ou para qualquer membro; membros, para a banda ou para si mesmos. A banda toda lê todas as notas.",
@@ -1427,7 +1427,7 @@ const music: AreaText = {
           title: "Para praticar, e o próximo ensaio",
           items: [
             "O Início mostra **Para praticar**: as músicas com notas em aberto para ti ou para a banda, do ensaio mais recente. Toca em **Praticado** numa nota para ti; toca na música para abrir a sua página. No Duo dobrado como um portátil, as músicas estão nas **Pendências** da secretária.",
-            "A página da música mostra **Dos ensaios** acima das tuas notas. Uma nota de **Tempo** ou **Tom** que indica o valor (por exemplo “Tempo: 96” ou “Tom: Bb”) tem um botão: os admins **Definir na música**, os membros **Sugerir à banda**.",
+            "A página da música mostra **Dos ensaios** acima das tuas notas. Uma nota de **Andamento** ou **Tom** que indica o valor (por exemplo “Andamento: 96” ou “Tom: Bb”) tem um botão: os admins **Definir na música**, os membros **Sugerir à banda**.",
             "A página do próximo ensaio mostra **DA ÚLTIMA VEZ**: as notas em aberto de ensaios anteriores sobre as suas músicas. Os admins tocam em **OK** quando a banda já consegue. No Modo ao vivo, um selo em cada música abre as suas notas da última vez.",
             "Quando um admin cria um ensaio, **Das notas de ensaio em aberto** oferece as músicas com notas em aberto como músicas para trabalhar, um toque cada. Uma nova sondagem de ensaio já as escolhe; remove as que não precisas.",
             "Quando um ensaio termina, quem tem músicas para praticar recebe uma só notificação push com elas (“Para praticar: …”), no seu idioma; quem o terminou vê o resumo. **Notificações push** nos Ajustes desliga-a.",

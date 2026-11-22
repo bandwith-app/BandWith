@@ -987,7 +987,7 @@ const gigs: AreaText = {
     {
       id: "gig-on-home",
       title: "Los conciertos en Inicio",
-      summary: "El próximo concierto, la preparación, Go live, los pagos pendientes y los borradores en la pantalla de Inicio.",
+      summary: "El próximo concierto, la preparación, A escena, los pagos pendientes y los borradores en la pantalla de Inicio.",
       roles: ["admin", "member"],
       kind: "reference",
       keywords: ["inicio", "próximo concierto", "go live", "pagos pendientes", "borradores", "panel"],
@@ -997,7 +997,7 @@ const gigs: AreaText = {
           type: "list",
           items: [
             "La tarjeta del próximo concierto muestra su fecha, las horas de llegada (montaje, prueba de sonido), el lugar, el enlace a la setlist y, para los miembros, **Tu caché**.",
-            "Debajo: **Preparación del show · {done}/{total}** y **Go live**, que abre el concierto directamente en el Modo escenario.",
+            "Debajo: **Preparación del show · {done}/{total}** y **A escena**, que abre el concierto directamente en el Modo escenario.",
             "**Pendientes** muestra **Pagos ({count})** a los admins o **Tus pagos ({count})** a los miembros. Consulta [[fee-and-payouts-on-a-gig]].",
             "**Borradores** (admins): tus conciertos, ensayos y presupuestos sin terminar. **Solo tú los ves.**",
           ],
