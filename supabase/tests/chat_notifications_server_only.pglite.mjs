@@ -128,6 +128,9 @@ await db.exec(`UPDATE notifications SET data = data || jsonb_build_object('push_
 ok(JSON.stringify(await write(LIVE, ALICE, MEM2, CAROL)) === '[]', 'once pushed, never again');
 ok(await db.query(`SELECT count(*)::int AS n FROM notifications WHERE data->>'message_id' = '${LIVE}' AND data ? 'pushed_at' AND data->>'message_id' IS NOT NULL`).then((r) => r.rows[0].n) === 3,
   'marked pushed');
+// Claude review: one lock order for overlapping calls (no 40P01).
+const def = await db.query(`SELECT pg_get_functiondef('public.bw_write_chat_notices(uuid, jsonb)'::regprocedure) AS d`).then((r) => r.rows[0].d, () => '');
+ok(/ORDER BY r\.user_id/.test(def) && /ORDER BY n2\.user_id[\s\S]*FOR UPDATE/.test(def), 'inserts and claims lock rows in user order');
 const asUser = await db.exec(`BEGIN; SET LOCAL ROLE authenticated; SELECT public.bw_write_chat_notices('${LIVE}', '[]'::jsonb); COMMIT;`).then(() => 'ran', async (e) => { await db.exec('ROLLBACK'); return e.message; });
 ok(asUser !== 'ran', `app users cannot call it (${asUser})`);
 

@@ -629,7 +629,8 @@ Deno.serve(async (req: Request) => {
         );
       }
       announced = { id: String(pick.message.id), content: pick.message.content ?? '' };
-      targetUserIds = pick.recipients;
+      // One order for every call (the database locks rows in user order).
+      targetUserIds = [...pick.recipients].sort();
     }
 
     // Recipients' language and push switch (02 #6).
@@ -724,8 +725,13 @@ Deno.serve(async (req: Request) => {
         // Per recipient, in the database (194): only for a message still
         // there and not deleted, ON CONFLICT DO NOTHING (an overlapping call
         // no longer rolls back the others), and returns who to push now.
-        const { data: claimed, error: writeError } = await supabase
+        let { data: claimed, error: writeError } = await supabase
           .rpc('bw_write_chat_notices', { p_message_id: announced.id, p_rows: notifications });
+        // A deadlock with an overlapping call rolled this one back: retry.
+        for (let attempt = 0; attempt < 2 && writeError?.code === '40P01'; attempt++) {
+          ({ data: claimed, error: writeError } = await supabase
+            .rpc('bw_write_chat_notices', { p_message_id: announced.id, p_rows: notifications }));
+        }
         if (writeError && writeError.code === 'PGRST202') {
           // send-push deployed before 194: write as before.
           console.warn('bw_write_chat_notices missing (apply 194):', writeError.message);

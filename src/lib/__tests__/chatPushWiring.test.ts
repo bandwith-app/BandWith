@@ -99,3 +99,12 @@ describe('send-push wiring, round 3', () => {
     expect(sendPush).toMatch(/\.limit\(named \? 1 : LEGACY_CANDIDATES\)/);
   });
 });
+
+// Claude review #284: overlapping calls with recipients in another order
+// could deadlock (40P01) on the unique index.
+describe('send-push wiring, round 3 (Claude)', () => {
+  it('recipients are written in one order, and a deadlock is retried', () => {
+    expect(sendPush).toMatch(/targetUserIds = \[\.\.\.pick\.recipients\]\.sort\(\);/);
+    expect(sendPush).toMatch(/writeError\?\.code === '40P01'/);
+  });
+});

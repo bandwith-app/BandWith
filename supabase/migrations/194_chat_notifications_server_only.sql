@@ -28,7 +28,9 @@
 --     The message row is held FOR SHARE until the notices are in, so a
 --     delete either comes first or after them (its purge, 192, sees them);
 --   * inserts per recipient with ON CONFLICT DO NOTHING: two overlapping
---     calls ([Alice, Bob] and [Bob, Carol]) no longer roll each other back;
+--     calls ([Alice, Bob] and [Bob, Carol]) no longer roll each other back.
+--     Rows are inserted and claimed in user order, so overlapping calls lock
+--     them in one order (no 40P01); send-push retries a deadlock anyway;
 --   * returns the recipients to push now: their notice is new or was never
 --     pushed, and nobody else is pushing it (data.push_claimed_at, a claim
 --     that lapses after 2 minutes). send-push marks them pushed afterwards
@@ -128,6 +130,8 @@ BEGIN
     FROM jsonb_to_recordset(coalesce(p_rows, '[]'::jsonb))
          AS r(user_id uuid, type text, title text, body text, data jsonb, band_id uuid, action_url text)
    WHERE r.user_id IS NOT NULL AND r.type IN ('chat_message', 'chat_mention')
+   -- One lock order for overlapping calls (no deadlock on the index).
+   ORDER BY r.user_id
   ON CONFLICT (user_id, ((data->>'message_id')))
     WHERE type IN ('chat_message', 'chat_mention') AND data ? 'message_id'
     DO NOTHING;
@@ -135,10 +139,15 @@ BEGIN
   RETURN QUERY
   UPDATE notifications n
      SET data = n.data || jsonb_build_object('push_claimed_at', now())
-   WHERE n.type IN ('chat_message', 'chat_mention')
-     AND n.data ? 'message_id'
-     AND n.data ->> 'message_id' = p_message_id::text
-     AND n.user_id IN (SELECT (e ->> 'user_id')::uuid FROM jsonb_array_elements(coalesce(p_rows, '[]'::jsonb)) e)
+   WHERE n.id IN (
+           -- Locked in user order too.
+           SELECT n2.id FROM notifications n2
+            WHERE n2.type IN ('chat_message', 'chat_mention')
+              AND n2.data ? 'message_id'
+              AND n2.data ->> 'message_id' = p_message_id::text
+              AND n2.user_id IN (SELECT (e ->> 'user_id')::uuid FROM jsonb_array_elements(coalesce(p_rows, '[]'::jsonb)) e)
+            ORDER BY n2.user_id
+              FOR UPDATE)
      AND NOT n.data ? 'pushed_at'
      AND (NOT n.data ? 'push_claimed_at'
           OR (n.data ->> 'push_claimed_at')::timestamptz < now() - interval '2 minutes')
