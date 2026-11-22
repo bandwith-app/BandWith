@@ -66,7 +66,7 @@ CREATE TABLE public.events (id uuid PRIMARY KEY, band_id uuid, title text, event
   recurrence_rule jsonb, updated_at timestamptz DEFAULT now(),
   status text, start_time time, "time" time, end_time time, duration_hours numeric, created_by uuid,
   event_type text, fee numeric(10,2), setlist_id uuid, venue_name text, venue_address text, venue_city text, notes text, parent_event_id uuid,
-  created_at timestamptz DEFAULT now(), "date" date, currency text DEFAULT 'USD');
+  created_at timestamptz DEFAULT now(), "date" date, currency text DEFAULT 'USD', quote_id uuid);
 ALTER TABLE public.band_members ADD COLUMN left_at timestamptz;
 CREATE TABLE public.event_members (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), event_id uuid REFERENCES public.events(id) ON DELETE CASCADE,
   user_id uuid, status text, fee numeric(10,2) DEFAULT 0, role text, notes text, paid_at timestamptz, UNIQUE (event_id, user_id));
@@ -135,6 +135,8 @@ await db.exec(`
 `);
 for (const [file, name] of [['046_server_notifications_and_push.sql', 'bw_notify'], ['046_server_notifications_and_push.sql', 'bw_active_band_member_ids']]) await db.exec(fnFrom(file, name));
 await db.exec(fnFrom('111_quote_events_private.sql', 'bw_event_recipient_ids').split('\n-- The 2-argument form')[0]);
+// 111's quote rule, as it is live (the skip / move refuse quotes, Codex #297 r7 B1).
+await db.exec(fnFrom('111_quote_events_private.sql', 'bw_event_is_quote'));
 for (const f of ['088_deputy_push_i18n.sql', '089_server_notifications_i18n.sql', '090_app_notifications_i18n.sql']) await db.exec(readFileSync(`${REPO}/supabase/migrations/${f}`, 'utf8'));
 // 095 (free-slot heatmap), as it is live.
 await db.exec(readFileSync(`${REPO}/supabase/migrations/095_band_free_slots.sql`, 'utf8'));
@@ -207,7 +209,7 @@ if (process.env.BW_AFTER_178) {
       LANGUAGE sql AS $f$ SELECT $f$;
   `);
   await db.exec(fnFrom('111_quote_events_private.sql', 'bw_event_is_quote'));
-  for (const name of ['bw_event_quote_private', 'bw_setlist_quote_hidden', 'bw_notification_event_id', 'bw_event_deputy_hidden',
+  for (const name of ['bw_event_quote_private', 'bw_event_quote_hidden', 'bw_setlist_quote_hidden', 'bw_notification_event_id', 'bw_event_deputy_hidden',
     'bw_notification_setlist_id', 'bw_setlist_notice_hidden', 'bw_trg_notification_quote_guard', 'bw_trg_date_hold_event_insert']) {
     await db.exec(fn178(name));
   }
@@ -379,7 +381,7 @@ ok(onTime === 'saved', `and voting with no deadline still works (${onTime})`);
 // ---- Codex #297 B3: skip one date in one server step
 const skip = (user, ev, day) =>
   asCommit(user, () => db.query(`SELECT public.bw_skip_rehearsal_date($1, $2::date) AS r`, [ev, day]))
-    .then((r) => r.rows[0].r, (e) => ({ error: e.message, code: e.code }));
+    .then((r) => r.rows[0].r, (e) => ({ error: e.message, code: e.code, hint: e.hint }));
 const rule = async () => (await db.query(`SELECT recurrence_rule AS r FROM events WHERE id = $1`, [SERIES])).rows[0].r;
 const s1 = await skip(ADMIN, SERIES, '2099-12-08');
 const afterS1 = await rule();
@@ -458,14 +460,15 @@ ok(afterCadence?.interval === 2 && JSON.stringify(afterCadence?.skip_dates) === 
 // An older build (383f15b) writes the whole rule {frequency, interval} on a rename, with an older list.
 await asCommit(ADMIN2, () => db.query(`UPDATE events SET recurrence_rule = '{"frequency":"weekly","interval":2,"skip_dates":["2099-12-17"]}'::jsonb, title = 'Studio night' WHERE id = $1`, [PAID]));
 ok(JSON.stringify((await paidRule())?.skip_dates) === '["2099-12-03"]', `Codex M3: a plain write keeps the stored dates and adds none of its own list (${JSON.stringify((await paidRule())?.skip_dates)})`);
-// The date used by the next checks, deleted the only way a date is added now.
-await asCommit(ADMIN, () => db.query(`SELECT public.bw_skip_rehearsal_date($1, '2099-12-17'::date)`, [PAID])).catch(() => null);
+// The date used by the next checks, deleted the only way a date is added now
+// (a date of the series: every 2 weeks from Nov 26 since the cadence edit).
+await asCommit(ADMIN, () => db.query(`SELECT public.bw_skip_rehearsal_date($1, '2099-12-24'::date)`, [PAID])).catch(() => null);
 // The whole series moves two days later (an old build sends only the date, or
 // a new build sends the date and the rule it read): deleted dates move too.
 await asCommit(ADMIN, () => db.query(`UPDATE events SET event_date = '2099-11-28' WHERE id = $1`, [PAID]));
-ok(JSON.stringify((await paidRule())?.skip_dates) === '["2099-12-05","2099-12-19"]', `B4 a series moved by 2 days moves its deleted dates (${JSON.stringify((await paidRule())?.skip_dates)})`);
-await asCommit(ADMIN, () => db.query(`UPDATE events SET event_date = '2099-11-26', recurrence_rule = '{"frequency":"weekly","interval":2,"skip_dates":["2099-12-05","2099-12-19","2099-12-31"]}'::jsonb WHERE id = $1`, [PAID]));
-ok(JSON.stringify((await paidRule())?.skip_dates) === '["2099-12-03","2099-12-17"]', `B4 moved back with the rule it read: stored dates shift back; a date only in its list is not added (Codex M3) (${JSON.stringify((await paidRule())?.skip_dates)})`);
+ok(JSON.stringify((await paidRule())?.skip_dates) === '["2099-12-05","2099-12-26"]', `B4 a series moved by 2 days moves its deleted dates (${JSON.stringify((await paidRule())?.skip_dates)})`);
+await asCommit(ADMIN, () => db.query(`UPDATE events SET event_date = '2099-11-26', recurrence_rule = '{"frequency":"weekly","interval":2,"skip_dates":["2099-12-05","2099-12-26","2099-12-31"]}'::jsonb WHERE id = $1`, [PAID]));
+ok(JSON.stringify((await paidRule())?.skip_dates) === '["2099-12-03","2099-12-24"]', `B4 moved back with the rule it read: stored dates shift back; a date only in its list is not added (Codex M3) (${JSON.stringify((await paidRule())?.skip_dates)})`);
 await asCommit(ADMIN, () => db.query(`SELECT public.bw_restore_rehearsal_date($1, '2099-12-31'::date)`, [PAID])).catch(() => null);
 // ---- Claude #297 round 5 BLOCKER: a start moved along its own cadence moves no
 // deleted date. The live 383f15b overview card saves every field: renaming
@@ -506,7 +509,7 @@ ok((await db.query(`SELECT recurrence_rule AS r FROM events WHERE id = $1`, [ONC
 const restore = (user, ev, day) =>
   asCommit(user, () => db.query(`SELECT public.bw_restore_rehearsal_date($1, $2::date) AS r`, [ev, day]))
     .then((r) => r.rows[0].r, (e) => ({ error: e.message, code: e.code }));
-const rs = await restore(ADMIN, PAID, '2099-12-17');
+const rs = await restore(ADMIN, PAID, '2099-12-24');
 ok(JSON.stringify((await paidRule())?.skip_dates) === '["2099-12-03"]' && Array.isArray(rs?.skip_dates), `B4 the restore RPC puts a date back (${JSON.stringify(rs)})`);
 const rsMember = await restore(INVITED, PAID, '2099-12-03');
 ok(rsMember?.code === '42501' && JSON.stringify((await paidRule())?.skip_dates) === '["2099-12-03"]', 'B4 a member cannot restore a date');
@@ -551,8 +554,12 @@ ok(nIt?.type === 'event_cancelled' && nIt?.title === 'Prova annullata' && nIt?.b
 ok(nEn?.type === 'event_cancelled' && nEn?.title === 'Rehearsal cancelled' && nEn?.body?.includes(enWhen) && nEn?.data?.occurrence_date === '2099-12-10', `#3 the English member reads "Rehearsal cancelled" with the deleted date (${JSON.stringify(nEn && { t: nEn.title, b: nEn.body })})`);
 ok(n1.length === 2 && !n1.some((n) => n.user_id === ADMIN || n.user_id === B_ONLY || n.user_id === PROPOSER), `#3 only the series' lineup hears it: not the admin who did it, nobody from another band (${n1.map((n) => n.user_id.slice(-2)).join(',')})`);
 await db.exec(`DELETE FROM notifications;`);
-await addSkip('2020-01-02');
-ok((await notes()).length === 0, '#3 a past date taken out is not announced');
+// A past date of a series that began in 2020 (Codex #297 r7 B3: only a
+// date of the series can be deleted).
+const PAST = id(50);
+await db.exec(`INSERT INTO events (id, band_id, title, event_date, is_recurring, recurrence_rule, event_type, status) VALUES ('${PAST}','${BAND_A}','Since 2020','2020-01-02', true, '{"frequency":"weekly"}', 'rehearsal', 'confirmed')`);
+const pastSkip = await skip(ADMIN, PAST, '2020-01-09');
+ok(!pastSkip?.error && (await notes()).length === 0, `#3 a past date taken out is not announced (${JSON.stringify(pastSkip)})`);
 await asCommit(ADMIN2, () => db.query(`UPDATE events SET title = 'Studio night' WHERE id = $1`, [PAID]));
 ok((await notes()).length === 0, '#3 a write that adds no date announces nothing');
 const MOVE_3 = id(46);
@@ -571,8 +578,8 @@ ok(perMember.length === 1 && JSON.stringify(perMember[0]?.data?.changes) === '["
   `round 5: one notice per member, listing date, time and place (${JSON.stringify(perMember.map((n) => [n.body, n.data?.changes]))})`);
 // Claude #297 round 5 #3: a draft series announces nothing.
 await db.exec(`DELETE FROM notifications; UPDATE events SET status = 'draft' WHERE id = '${PAID}';`);
-await addSkip('2099-12-31');
-ok((await notes()).length === 0, 'round 5: deleting a date of a draft series tells nobody');
+const draftSkip = await skip(ADMIN, PAID, '2100-01-07');
+ok(!draftSkip?.error && (await notes()).length === 0, `round 5: deleting a date of a draft series tells nobody (${JSON.stringify(draftSkip)})`);
 await db.exec(`UPDATE events SET status = 'confirmed' WHERE id = '${PAID}';`);
 
 // ---- Codex #297 review of a765f6c0
@@ -634,6 +641,124 @@ ok(process.env.BW_AFTER_178 ? /bw_date_hold_live/.test(fsDef) : !/bw_date_hold_l
   process.env.BW_AFTER_178 ? 'Codex M1: after 178, 195 leaves 178\'s free slots as they are' : 'Codex M1: alone, 195 starts from 095 (no 178 objects)');
 const fsAnon = (await db.query(`SELECT has_function_privilege('anon', 'public.bw_band_free_slots(uuid,date,date,time,time,integer,uuid)', 'EXECUTE') AS a`)).rows[0].a;
 ok(fsAnon === false, 'Codex M1: anon still cannot call it');
+
+// ---- Codex / Claude #297 r7 (review of f44c8207 / f94ec6cf)
+await db.exec(`DELETE FROM notifications;`);
+const who = (rows) => rows.map((n) => n.user_id).sort();
+const evRule = async (ev) => (await db.query(`SELECT recurrence_rule AS r FROM events WHERE id = $1`, [ev])).rows[0]?.r;
+// B1: a recurring quote (a tentative gig, nobody on its lineup).
+const QUOTE_S = id(48), MOVE_Q = id(51);
+await db.exec(`INSERT INTO events (id, band_id, title, event_date, is_recurring, recurrence_rule, event_type, status) VALUES
+  ('${QUOTE_S}','${BAND_A}','Private wedding quote','2099-12-05', true, '{"frequency":"weekly"}', 'gig', 'tentative')`);
+const qSkip = await skip(ADMIN, QUOTE_S, '2099-12-12');
+const qMove = await move(ADMIN, QUOTE_S, '2099-12-12', '2099-12-13', {}, MOVE_Q);
+const qCopies = (await db.query(`SELECT count(*)::int AS n FROM events WHERE id = $1`, [MOVE_Q])).rows[0].n;
+ok(qSkip?.code === '22023' && qSkip?.hint === 'bw:is_quote' && !(await evRule(QUOTE_S))?.skip_dates,
+  `r7 B1: "Delete this date" refuses a quote (bw:is_quote) (${JSON.stringify(qSkip)})`);
+ok(qMove?.code === '22023' && qCopies === 0, `r7 B1: "Only this date" refuses a quote, nothing created (${JSON.stringify(qMove)})`);
+ok((await notes()).length === 0, 'r7 B1: a refused quote date tells nobody');
+// The notice itself, for a date added however it gets there: admins only.
+const flagSkip = (ev, day) => asCommit(ADMIN, async () => {
+  await db.query(`SELECT set_config('bw.skip_add', 'on', true)`);
+  await db.query(`UPDATE events SET recurrence_rule = recurrence_rule || jsonb_build_object('skip_dates', jsonb_build_array($2::text)) WHERE id = $1`, [ev, day]);
+});
+await flagSkip(QUOTE_S, '2099-12-19');
+const qNotes = await notes();
+ok(JSON.stringify(who(qNotes)) === JSON.stringify([ADMIN2]),
+  `r7 B1: with an empty lineup a quote's cancelled date reaches only the admins, never the band (${JSON.stringify(qNotes.map((n) => [n.user_id.slice(-2), n.title, n.body]))})`);
+await db.exec(`DELETE FROM notifications; INSERT INTO event_members (event_id, user_id, status) VALUES ('${QUOTE_S}','${INVITED}','invited');`);
+await flagSkip(QUOTE_S, '2099-12-26');
+ok(!(await notes()).some((n) => n.user_id === INVITED || n.user_id === OUTSIDER), 'r7 B1: a non-admin on a quote\'s lineup does not get it either');
+await db.exec(`DELETE FROM notifications;`);
+
+// B3: the series moved from Monday to Tuesday by another admin; the old
+// Monday open in a form is no longer a date of it.
+const B3S = id(49);
+await db.exec(`INSERT INTO events (id, band_id, title, event_date, is_recurring, recurrence_rule, event_type, status) VALUES
+  ('${B3S}','${BAND_A}','Monday rehearsal','2099-12-07', true, '{"frequency":"weekly"}', 'rehearsal', 'confirmed')`);
+await asCommit(ADMIN2, () => db.query(`UPDATE events SET event_date = '2099-12-08' WHERE id = $1`, [B3S]));
+const b3 = await skip(ADMIN, B3S, '2099-12-14');
+ok(b3?.code === '22023' && b3?.hint === 'bw:not_a_date' && !(await evRule(B3S))?.skip_dates && (await notes()).length === 0,
+  `r7 B3: a Monday the series no longer has is refused (bw:not_a_date), nothing deleted or sent (${JSON.stringify(b3)})`);
+const b3ok = await skip(ADMIN, B3S, '2099-12-15');
+ok(!b3ok?.error && JSON.stringify((await evRule(B3S))?.skip_dates) === '["2099-12-15"]', `r7 B3: its Tuesday still can be (${JSON.stringify(b3ok)})`);
+await db.exec(`DELETE FROM notifications;`);
+
+// M2: "past" is where the admin is. A zone whose date differs from UTC now:
+// behind (Pago Pago, UTC-11) before 11:00 UTC, else ahead (Kiritimati, UTC+14).
+const zone = new Date().getUTCHours() < 11 ? 'Pacific/Pago_Pago' : 'Pacific/Kiritimati';
+const days = (await db.query(`SELECT to_char((now() AT TIME ZONE $1)::date, 'YYYY-MM-DD') AS local, to_char((now() AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS utc`, [zone])).rows[0];
+const M2S = id(52);
+if (days.local === days.utc) {
+  console.log(`SKIP r7 M2: ${zone} has the UTC date right now`);
+} else {
+  await db.exec(`UPDATE profiles SET timezone = '${zone}' WHERE id = '${ADMIN}';`);
+  const target = days.local < days.utc ? days.local : days.utc; // the admin's today, or the admin's yesterday
+  await db.exec(`INSERT INTO events (id, band_id, title, event_date, is_recurring, recurrence_rule, event_type, status, start_time) VALUES
+    ('${M2S}','${BAND_A}','Evening rehearsal','${target}', true, '{"frequency":"weekly"}', 'rehearsal', 'confirmed', '21:00')`);
+  const m2skip = await skip(ADMIN, M2S, target);
+  const m2n = (await notes()).filter((n) => n.data?.event_id === M2S).length;
+  if (days.local < days.utc) {
+    ok(!m2skip?.error && m2n > 0, `r7 M2: tonight's date deleted after UTC midnight (${zone}, ${target}) is announced (${m2n} notices)`);
+  } else {
+    ok(!m2skip?.error && m2n === 0, `r7 M2: yesterday where the admin is (${zone}, ${target}) is past, not announced (${m2n} notices)`);
+  }
+  await db.exec(`UPDATE profiles SET timezone = 'America/New_York' WHERE id = '${ADMIN}'; DELETE FROM notifications;`);
+}
+const tz = (await db.query(`SELECT
+    public.bw_user_today('${id(99)}') = (now() AT TIME ZONE 'America/New_York')::date AS nobody,
+    public.bw_user_today('${ADMIN}') = (now() AT TIME ZONE 'America/New_York')::date AS ny`).catch((e) => ({ rows: [{ error: e.message }] }))).rows[0];
+await db.exec(`INSERT INTO profiles (id, timezone) VALUES ('${id(98)}', 'Mars/Olympus') ON CONFLICT (id) DO UPDATE SET timezone = 'Mars/Olympus'`);
+const tzBad = (await db.query(`SELECT public.bw_user_today('${id(98)}') = (now() AT TIME ZONE 'America/New_York')::date AS bad`).catch((e) => ({ rows: [{ bad: e.message }] }))).rows[0].bad;
+ok(tz?.nobody === true && tz?.ny === true && tzBad === true, `r7 M2: today is the profile's zone, America/New_York without one or with an unknown one (${JSON.stringify({ ...tz, tzBad })})`);
+// The move branch always notifies: a past date of the series moved to a future day.
+const MOVE_PAST = id(55);
+const mPast = await move(ADMIN, PAST, '2020-01-16', '2099-12-30', {}, MOVE_PAST);
+const mPastN = (await notes()).filter((n) => n.type === 'event_update' && n.data?.event_id === MOVE_PAST).length;
+ok(mPast?.event_id === MOVE_PAST && mPastN > 0, `r7 M2: a moved date is always announced, even from a past day (${mPastN} notices, ${JSON.stringify(mPast)})`);
+await db.exec(`DELETE FROM notifications;`);
+
+// Claude r6 #4: a date restored is announced as back on, to the same people.
+const rsBack = await restore(ADMIN, PAID, '2100-01-07');
+const back = await notes();
+const bIt = back.find((n) => n.user_id === INVITED);
+const bEn = back.find((n) => n.user_id === OUTSIDER);
+const itBack = (await db.query(`SELECT public.bw_i18n_short_date('2100-01-07'::date, 'it') AS w`)).rows[0].w;
+ok(!rsBack?.error && bEn?.type === 'event_update' && bEn?.title === 'Rehearsal back on' && /is back on/.test(bEn?.body ?? '') && bEn?.data?.restored === true && bEn?.data?.occurrence_date === '2100-01-07',
+  `r6 #4: the English member reads "Rehearsal back on" for the restored date (${JSON.stringify(bEn && { t: bEn.title, b: bEn.body, d: bEn.data })})`);
+ok(bIt?.title === 'Prova di nuovo in calendario' && bIt?.body?.includes(itBack) && /di nuovo in calendario/.test(bIt?.body ?? ''),
+  `r6 #4: the Italian member reads it in Italian (${JSON.stringify(bIt && { t: bIt.title, b: bIt.body })})`);
+ok(JSON.stringify(who(back)) === JSON.stringify([INVITED, OUTSIDER].sort()), `r6 #4: the lineup that heard of the cancel, not the admin who restored it (${who(back).map((u) => u.slice(-2)).join(',')})`);
+await db.exec(`DELETE FROM notifications;`);
+await restore(ADMIN, PAST, '2020-01-09');
+ok((await notes()).length === 0, 'r6 #4: a past date restored is not announced');
+await db.exec(`DELETE FROM event_members WHERE event_id = '${QUOTE_S}';`); // the empty lineup again
+await restore(ADMIN, QUOTE_S, '2099-12-19');
+ok(JSON.stringify(who(await notes())) === JSON.stringify([ADMIN2]), `r6 #4: a quote's date back on reaches only its admins (${who(await notes()).map((u) => u.slice(-2)).join(',')})`);
+await db.exec(`DELETE FROM notifications;`);
+
+// Claude r6 #5: intervals as the app reads them, 1-52 else 1.
+const hd = (r, start, day) => db.query(`SELECT public.bw_rehearsal_series_has_date($1::jsonb, $2::date, $3::date) AS h`, [JSON.stringify(r), start, day])
+  .then((x) => x.rows[0].h, (e) => `error: ${e.message}`);
+ok(await hd({ frequency: 'weekly', interval: 60 }, '2099-01-01', '2099-01-08') === true, 'r6 #5: interval 60 is read as 1, as the app shows it');
+ok(await hd({ frequency: 'weekly', interval: '99999999999' }, '2099-01-01', '2099-01-08') === true, 'r6 #5: a huge interval is 1, not an error');
+ok(await hd({ frequency: 'weekly', interval: 0 }, '2099-01-01', '2099-01-08') === true, 'r6 #5: interval 0 is 1');
+ok(await hd({ frequency: 'weekly', interval: 52 }, '2099-01-01', '2099-12-31') === true && await hd({ frequency: 'weekly', interval: 52 }, '2099-01-01', '2099-01-08') === false,
+  'r6 #5: interval 52 is kept');
+const CAP = id(53);
+await db.exec(`INSERT INTO events (id, band_id, title, event_date, is_recurring, recurrence_rule, event_type, status) VALUES
+  ('${CAP}','${BAND_A}','Odd interval','2099-11-02', true, '{"frequency":"weekly","interval":60,"skip_dates":["2099-11-30"]}', 'rehearsal', 'confirmed')`);
+const capMove = await asCommit(ADMIN, () => db.query(`UPDATE events SET event_date = '2099-11-09' WHERE id = $1`, [CAP])).then(() => 'saved', (e) => e.message);
+ok(capMove === 'saved' && JSON.stringify((await evRule(CAP))?.skip_dates) === '["2099-11-30"]',
+  `r6 #5: the keep trigger reads interval 60 as weekly: a start a week on moves no deleted date (${capMove}, ${JSON.stringify((await evRule(CAP))?.skip_dates)})`);
+
+// Claude r6 #6: the replay check looks only at the series' band.
+const XB_EVENT = id(54);
+await db.exec(`INSERT INTO events (id, band_id, title, event_date, event_type, status) VALUES ('${XB_EVENT}','${BAND_B}','Band B gig','2099-12-12','gig','confirmed')`);
+const c6 = await move(ADMIN, PAID, '2100-01-21', '2100-01-22', {}, XB_EVENT);
+const xbRow = (await db.query(`SELECT band_id, parent_event_id FROM events WHERE id = $1`, [XB_EVENT])).rows[0];
+ok(!!c6?.error && !/belongs to another event/.test(c6.error) && xbRow?.band_id === BAND_B && xbRow?.parent_event_id === null && (await notes()).length === 0,
+  `r6 #6: another band's event id is not looked up by the replay check (${JSON.stringify(c6)})`);
 
 // Codex #297 round 3: free-slot counts and a deleted date. The skip_dates
 // line lands in 178 (#294, feat/date-on-hold), not in 195. This check loads

@@ -68,6 +68,10 @@
 --     theirs (the app's read-then-write lost one). Errors: 42501 not an
 --     admin, 22023 not repeating. Returns { event_id, skip_dates }.
 --     Builds without it (or before 195) fall back to the read-then-write.
+--     Codex #297 r7: a quote or tentative date is refused (22023, HINT
+--     bw:is_quote, B1); the date must still be one of the series' dates,
+--     read under the lock (22023, HINT bw:not_a_date, B3), so a delete from
+--     a form opened before another admin moved the series is refused.
 --
 -- #4  bw_move_rehearsal_date(event, date, new date, fields, client id) —
 --     "Only this date" moves one date of a repeating rehearsal in one
@@ -90,6 +94,10 @@
 --         is not a date of the series (bw:not_a_date), is already deleted
 --         (bw:date_deleted), or p_new_date is before today in the caller's
 --         time zone (bw:date_past). Nothing is created then.
+--       - Codex/Claude #297 r7: a quote or tentative date is refused
+--         (bw:is_quote); "today" is the admin's profile time zone, else
+--         America/New_York (bw_user_today); the replay check looks only at
+--         the series' band (r6 #6).
 --     Returns { event_id, series_id, skip_dates, setlist_id }.
 --
 -- #4  bw_events_skip_notice: a deleted future date is announced to the
@@ -99,6 +107,14 @@
 --     with "Only this date" is announced as an update of the new one-off,
 --     listing what changed (data.changes: date, time, venue). Draft and
 --     cancelled series announce nothing (Claude #297 r5 minor 3).
+--     Codex/Claude #297 r7: a quote's notices go to its admins only (178's
+--     bw_event_quote_private when present, else 111's bw_event_is_quote), even
+--     with an empty lineup (B1); "future" is from today where the admin is
+--     (bw_user_today, America/New_York by default), and a moved date is always
+--     announced (M2); a date restored is announced as back on, to the same
+--     people (event_update, data.restored; translated here, r6 #4).
+--     Intervals are read as the app reads them, 1-52 else 1
+--     (bw_rehearsal_interval, r6 #5), here and in the keep trigger.
 --
 -- #8  bw_poll_options_keep_voted: no option of an open poll with votes is
 --     removed or added (an older build's stale publish), Claude #297 round 3.
@@ -404,6 +420,8 @@ DECLARE
   v_recurring boolean;
   v_rule jsonb;
   v_skips jsonb;
+  v_start date;
+  v_quote boolean;
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Only band admins can delete this event' USING ERRCODE = '42501';
@@ -412,8 +430,9 @@ BEGIN
     RAISE EXCEPTION 'A date is needed' USING ERRCODE = '22023';
   END IF;
 
-  SELECT e.band_id, e.is_recurring, e.recurrence_rule
-    INTO v_band, v_recurring, v_rule
+  SELECT e.band_id, e.is_recurring, e.recurrence_rule, e.event_date,
+         public.bw_event_is_quote(e.status::text, e.event_type::text, e.quote_id)
+    INTO v_band, v_recurring, v_rule, v_start, v_quote
     FROM public.events e
    WHERE e.id = p_event_id
    FOR UPDATE;
@@ -421,8 +440,19 @@ BEGIN
   IF NOT FOUND OR v_band IS NULL OR NOT public.bw_is_band_admin(v_band, auth.uid()) THEN
     RAISE EXCEPTION 'Only band admins can delete this event' USING ERRCODE = '42501';
   END IF;
+  -- A quote or a tentative date (111's bw_event_is_quote) has no dates to
+  -- delete one by one: its notice would reach the band (Codex #297 r7 B1).
+  IF coalesce(v_quote, false) THEN
+    RAISE EXCEPTION 'A quote has no single dates to delete' USING ERRCODE = '22023', HINT = 'bw:is_quote';
+  END IF;
   IF NOT coalesce(v_recurring, false) OR v_rule IS NULL OR jsonb_typeof(v_rule) <> 'object' THEN
     RAISE EXCEPTION 'This rehearsal does not repeat any more' USING ERRCODE = '22023';
+  END IF;
+  -- Still one of the series' dates, read under the lock: another admin may
+  -- have moved the series (Monday -> Tuesday) while this one had Monday open
+  -- (Codex #297 r7 B3).
+  IF NOT public.bw_rehearsal_series_has_date(v_rule, v_start, p_date) THEN
+    RAISE EXCEPTION 'This date is not one of the rehearsal''s dates' USING ERRCODE = '22023', HINT = 'bw:not_a_date';
   END IF;
 
   SELECT coalesce(jsonb_agg(d ORDER BY d), '[]'::jsonb)
@@ -529,6 +559,25 @@ CREATE TRIGGER bw_rehearsal_polls_keep_open_fields
 -- from the first date, on its day or the last day of a shorter month; up to
 -- `until`, and `count` repeats after the first. Deleted dates still count
 -- here (the caller checks skip_dates).
+-- A rule's interval as the app reads it (lib/recurrence, #298): a whole
+-- number from 1 to 52, anything else 1 (a huge number is 1, never an error).
+CREATE OR REPLACE FUNCTION public.bw_rehearsal_interval(p_rule jsonb)
+RETURNS integer
+LANGUAGE sql
+IMMUTABLE
+SET search_path TO 'public'
+AS $$
+  -- Nested CASE: the cast runs only on a number (AND may test either side first).
+  SELECT CASE WHEN coalesce(p_rule ->> 'interval', '') ~ '^\s*[0-9]+(\.0*)?\s*$'
+              THEN CASE WHEN (p_rule ->> 'interval')::numeric BETWEEN 1 AND 52
+                        THEN (p_rule ->> 'interval')::numeric::integer ELSE 1 END
+              ELSE 1 END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_rehearsal_interval(jsonb) FROM PUBLIC, anon;
+-- The keep trigger (SECURITY INVOKER) runs it as the signed-in writer; it
+-- reads nothing, only the rule it is given.
+GRANT EXECUTE ON FUNCTION public.bw_rehearsal_interval(jsonb) TO authenticated;
+
 CREATE OR REPLACE FUNCTION public.bw_rehearsal_series_has_date(p_rule jsonb, p_start date, p_day date)
 RETURNS boolean
 LANGUAGE plpgsql
@@ -537,8 +586,8 @@ SET search_path TO 'public'
 AS $$
 DECLARE
   v_freq text := lower(coalesce(p_rule ->> 'frequency', p_rule ->> 'freq', ''));
-  v_every integer := CASE WHEN coalesce(p_rule ->> 'interval', '') ~ '^[0-9]+$' AND (p_rule ->> 'interval')::int >= 1
-                          THEN (p_rule ->> 'interval')::int ELSE 1 END;
+  -- 1-52, else 1: recurrence.ts's cap (#298; Claude #297 r6 #5).
+  v_every integer := public.bw_rehearsal_interval(p_rule);
   v_until date;
   v_months integer;
   v_steps integer;
@@ -570,6 +619,29 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_rehearsal_series_has_date(jsonb, date, date) FROM PUBLIC, anon, authenticated;
 
+-- Today where a user is: their profile's time zone, America/New_York when
+-- it has none or one Postgres doesn't know (Codex/Claude #297 r7 M2: in UTC,
+-- an evening in New York or Los Angeles is already tomorrow).
+CREATE OR REPLACE FUNCTION public.bw_user_today(p_user_id uuid)
+RETURNS date
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_tz text;
+BEGIN
+  SELECT nullif(btrim(p.timezone), '') INTO v_tz FROM public.profiles p WHERE p.id = p_user_id;
+  BEGIN
+    RETURN (now() AT TIME ZONE coalesce(v_tz, 'America/New_York'))::date;
+  EXCEPTION WHEN others THEN
+    RETURN (now() AT TIME ZONE 'America/New_York')::date;
+  END;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_user_today(uuid) FROM PUBLIC, anon, authenticated;
+
 -- Errors the app translates (HINT): bw:not_a_date (p_date is not one of
 -- the series' dates), bw:date_deleted (already deleted), bw:date_past (the
 -- new date is before today where the admin is), as 22023.
@@ -595,7 +667,6 @@ DECLARE
   v_rule jsonb;
   v_skips jsonb;
   v_set jsonb;
-  v_tz text;
   v_today date;
   v_setlist uuid;
 BEGIN
@@ -612,9 +683,15 @@ BEGIN
     RAISE EXCEPTION 'Only band admins can move a rehearsal date' USING ERRCODE = '42501';
   END IF;
 
-  -- A retry of the same request: its one-off is there already.
-  IF p_client_id IS NOT NULL AND EXISTS (SELECT 1 FROM public.events WHERE id = p_client_id) THEN
-    IF NOT EXISTS (SELECT 1 FROM public.events WHERE id = p_client_id AND parent_event_id = p_event_id) THEN
+  -- A quote or a tentative date: no single dates (Codex #297 r7 B1).
+  IF public.bw_event_is_quote(v_ev.status::text, v_ev.event_type::text, v_ev.quote_id) THEN
+    RAISE EXCEPTION 'A quote has no single dates to move' USING ERRCODE = '22023', HINT = 'bw:is_quote';
+  END IF;
+
+  -- A retry of the same request: its one-off is there already. Only this
+  -- band's rows are looked at (Claude #297 r6 #6).
+  IF p_client_id IS NOT NULL AND EXISTS (SELECT 1 FROM public.events WHERE id = p_client_id AND band_id = v_ev.band_id) THEN
+    IF NOT EXISTS (SELECT 1 FROM public.events WHERE id = p_client_id AND band_id = v_ev.band_id AND parent_event_id = p_event_id) THEN
       RAISE EXCEPTION 'This id belongs to another event' USING ERRCODE = '22023';
     END IF;
     RETURN jsonb_build_object('event_id', p_client_id, 'series_id', p_event_id,
@@ -634,12 +711,7 @@ BEGIN
      AND (v_ev.recurrence_rule -> 'skip_dates') ? to_char(p_date, 'YYYY-MM-DD') THEN
     RAISE EXCEPTION 'This date was deleted already' USING ERRCODE = '22023', HINT = 'bw:date_deleted';
   END IF;
-  SELECT nullif(btrim(p.timezone), '') INTO v_tz FROM public.profiles p WHERE p.id = auth.uid();
-  BEGIN
-    v_today := (now() AT TIME ZONE coalesce(v_tz, 'UTC'))::date;
-  EXCEPTION WHEN others THEN
-    v_today := (now() AT TIME ZONE 'UTC')::date;
-  END;
+  v_today := public.bw_user_today(auth.uid());
   IF p_new_date < v_today THEN
     RAISE EXCEPTION 'The new date is in the past' USING ERRCODE = '22023', HINT = 'bw:date_past';
   END IF;
@@ -792,8 +864,7 @@ BEGIN
   -- Dates the skip / move step adds (not in the stored list) are kept as sent.
   IF NEW.event_date IS NOT NULL AND OLD.event_date IS NOT NULL AND NEW.event_date <> OLD.event_date THEN
     v_freq := lower(coalesce(OLD.recurrence_rule ->> 'frequency', OLD.recurrence_rule ->> 'freq', ''));
-    v_every := CASE WHEN coalesce(OLD.recurrence_rule ->> 'interval', '') ~ '^[0-9]+$' AND (OLD.recurrence_rule ->> 'interval')::int >= 1
-                    THEN (OLD.recurrence_rule ->> 'interval')::int ELSE 1 END;
+    v_every := public.bw_rehearsal_interval(OLD.recurrence_rule); -- 1-52 (Claude #297 r6 #5)
     IF v_freq IN ('weekly', 'biweekly') THEN
       v_period := CASE WHEN v_freq = 'biweekly' THEN 14 ELSE 7 * v_every END;
       v_shift := (((NEW.event_date - OLD.event_date) % v_period) + v_period) % v_period;
@@ -904,6 +975,16 @@ BEGIN
     ELSIF NEW.type = 'event_confirmed' THEN
       v_head := public.bw_server_text('confirmed.' || v_kind, v_lang);
       v_body := public.bw_server_text('confirmed.body', v_lang, v_vars);
+    ELSIF (d ->> 'restored')::boolean IS TRUE THEN
+      -- 195: a deleted date back on (Claude #297 r6 #4), next to 089's
+      -- "updated" texts; English stays as bw_trg_events_skip_notice wrote it.
+      v_head := (CASE v_kind
+        WHEN 'rehearsal' THEN '{"it":"Prova di nuovo in calendario","es":"Ensayo de nuevo en el calendario","fr":"Répétition de nouveau prévue","de":"Probe wieder im Kalender","pt":"Ensaio de volta na agenda"}'
+        ELSE '{"it":"Gig di nuovo in calendario","es":"Concierto de nuevo en el calendario","fr":"Concert de nouveau prévu","de":"Gig wieder im Kalender","pt":"Show de volta na agenda"}'
+        END)::jsonb ->> v_lang;
+      v_body := replace(replace(
+        '{"it":"{title} · {when} è di nuovo in calendario.","es":"{title} · {when} vuelve a estar en el calendario.","fr":"{title} · {when} est de nouveau au calendrier.","de":"{title} · {when} ist wieder im Kalender.","pt":"{title} · {when} está de volta na agenda."}'::jsonb ->> v_lang,
+        '{when}', v_when), '{title}', v_title);
     ELSE
       v_head := public.bw_server_text('updated.' || v_kind, v_lang);
       v_body := CASE WHEN v_changes IS NULL THEN NULL ELSE public.bw_server_text('updated.body', v_lang, v_vars) END;
@@ -979,10 +1060,14 @@ DECLARE
   v_old jsonb := CASE WHEN jsonb_typeof(OLD.recurrence_rule -> 'skip_dates') = 'array' THEN OLD.recurrence_rule -> 'skip_dates' ELSE '[]'::jsonb END;
   v_new jsonb := CASE WHEN jsonb_typeof(NEW.recurrence_rule -> 'skip_dates') = 'array' THEN NEW.recurrence_rule -> 'skip_dates' ELSE '[]'::jsonb END;
   v_moved text := coalesce(current_setting('bw.skip_moved_to', true), '');
+  v_restoring boolean := coalesce(current_setting('bw.restore_skip', true), '') = 'on';
   v_kind text := CASE WHEN lower(coalesce(NEW.event_type, 'gig')) = 'rehearsal' THEN 'rehearsal' ELSE 'gig' END;
   v_label text;
   v_title text;
   v_recipients uuid[];
+  v_private boolean;
+  v_quote_id uuid;
+  v_today date;
   v_day date;
   v_when text;
   v_new_ev record;
@@ -997,10 +1082,53 @@ BEGIN
   END IF;
   v_label := CASE WHEN v_kind = 'rehearsal' THEN 'Rehearsal' ELSE 'Gig' END;
   v_title := coalesce(nullif(NEW.title, ''), v_label);
-  v_recipients := public.bw_event_recipient_ids(NEW.id, NEW.band_id, false);
+  -- A quote (or a tentative date) is the admins' only, as 178's
+  -- bw_event_quote_hidden reads it: its title never reaches the band, even
+  -- with an empty lineup (Codex #297 r7 B1). 178's rule when it is there,
+  -- 111's otherwise.
+  BEGIN
+    v_quote_id := nullif(to_jsonb(NEW) ->> 'quote_id', '')::uuid;
+  EXCEPTION WHEN others THEN v_quote_id := NULL;
+  END;
+  IF to_regprocedure('public.bw_event_quote_private(uuid,text,text,uuid)') IS NOT NULL THEN
+    EXECUTE 'SELECT public.bw_event_quote_private($1, $2, $3, $4)' INTO v_private
+      USING NEW.id, NEW.status::text, NEW.event_type::text, v_quote_id;
+  ELSE
+    v_private := public.bw_event_is_quote(NEW.status::text, NEW.event_type::text, v_quote_id);
+  END IF;
+  v_private := coalesce(v_private, true);
+  v_recipients := public.bw_event_recipient_ids(NEW.id, NEW.band_id, v_private);
+  IF v_private THEN
+    SELECT coalesce(array_agg(u), '{}'::uuid[]) INTO v_recipients
+      FROM unnest(v_recipients) AS u WHERE public.bw_is_band_admin(NEW.band_id, u);
+  END IF;
+  -- "Past" is the day before today where the admin is (Codex/Claude #297 r7
+  -- M2), not in UTC: at 8 pm in New York tonight's date is still to come.
+  v_today := public.bw_user_today(auth.uid());
+
+  -- A deleted date back on (bw_restore_rehearsal_date): "back on" to the same
+  -- people the cancel went to (Claude #297 r6 #4).
+  IF v_restoring THEN
+    FOR v_day IN
+      SELECT x::date FROM jsonb_array_elements_text(v_old) AS x
+       WHERE x ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' AND NOT (v_new ? x) AND x::date >= v_today
+       ORDER BY 1
+    LOOP
+      v_when := to_char(v_day, 'Dy DD Mon') || CASE WHEN NEW.start_time IS NOT NULL THEN ' · ' || to_char(NEW.start_time, 'HH24:MI') ELSE '' END;
+      PERFORM public.bw_notify(v_recipients, NEW.band_id, 'event_update',
+        v_label || ' back on', v_title || ' · ' || v_when || ' is back on.',
+        jsonb_build_object('event_id', NEW.id, 'event_type', v_kind, 'event_title', v_title,
+                           'event_date', to_char(v_day, 'YYYY-MM-DD'), 'occurrence_date', to_char(v_day, 'YYYY-MM-DD'), 'restored', true),
+        NEW.id, 'event');
+    END LOOP;
+    RETURN NULL;
+  END IF;
+
   FOR v_day IN
     SELECT x::date FROM jsonb_array_elements_text(v_new) AS x
-     WHERE x ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' AND NOT (v_old ? x) AND x::date >= current_date
+     WHERE x ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' AND NOT (v_old ? x)
+       -- A moved date is always announced: its new date is checked already.
+       AND (v_moved ~ '^[0-9a-f-]{36}$' OR x::date >= v_today)
      ORDER BY 1
   LOOP
     v_when := to_char(v_day, 'Dy DD Mon') || CASE WHEN NEW.start_time IS NOT NULL THEN ' · ' || to_char(NEW.start_time, 'HH24:MI') ELSE '' END;

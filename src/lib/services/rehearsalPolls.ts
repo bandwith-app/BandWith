@@ -7,6 +7,7 @@ import { personName } from '@/lib/personName';
 import { t } from '@/lib/i18n';
 import { pollNotifyTargets } from '@/lib/pollPermissions';
 import { isProposalExpired } from '@/lib/proposalExpiry';
+import { newUuid } from '@/lib/uuid';
 
 export interface RehearsalPollOption {
   id: string;
@@ -416,18 +417,13 @@ const alreadyPublishedError = (status?: string | null) =>
     { code: POLL_ALREADY_PUBLISHED },
   );
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type Slot = { proposed_date: string; start_time: string; end_time?: string | null };
 const slotKey = (o: { proposed_date?: unknown; start_time?: unknown; end_time?: unknown }) =>
   `${String(o.proposed_date ?? '').slice(0, 10)}|${String(o.start_time ?? '').slice(0, 5)}|${o.end_time ? String(o.end_time).slice(0, 5) : ''}`;
 
 /** A new id for one publish request (kept by the form for its retries). */
-export const newPublishRequestId = (): string =>
-  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-        const r = (Math.random() * 16) | 0;
-        return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
-      });
+export const newPublishRequestId = (): string => newUuid();
 
 /**
  * This device's "publish attempted" marker for a database before 195: the
@@ -644,10 +640,15 @@ export const createOrPublishAdminPoll = async ({
       }
       activePollId = pollId;
     } else {
-      // Brand new poll from admin
+      // Brand new poll from admin. Its id is the form's request id, so a
+      // retry (its notices failed, or the answer was lost) finds it and only
+      // finishes the job: no second poll, no second set of options (Codex
+      // #297 r7 B4).
+      const newId = clientId && UUID_RE.test(clientId) ? clientId : undefined;
       const { data: created, error: createError } = await supabase
         .from('rehearsal_polls')
         .insert({
+          ...(newId ? { id: newId } : {}),
           band_id: bandId,
           created_by: adminId,
           creator_role: 'admin',
@@ -660,8 +661,25 @@ export const createOrPublishAdminPoll = async ({
         .select('id')
         .single();
 
-      if (createError) throw createError;
-      activePollId = created.id;
+      if (createError) {
+        if (!newId || String((createError as { code?: unknown }).code) !== '23505') throw createError;
+        // Already there: this admin's own poll in this band is a replay.
+        const { data: existing, error: readError } = await supabase
+          .from('rehearsal_polls')
+          .select('id, band_id, created_by, status, invited_user_ids')
+          .eq('id', newId)
+          .maybeSingle();
+        const row = existing as { band_id?: string; created_by?: string; status?: string; invited_user_ids?: unknown } | null;
+        if (readError || !row || row.created_by !== adminId || row.band_id !== bandId) throw createError;
+        if (row.status !== 'polling') throw alreadyPublishedError(row.status);
+        if (Array.isArray(row.invited_user_ids)) storedInvitees = row.invited_user_ids.filter((u): u is string => typeof u === 'string');
+        const { data: had, error: optionsReadError } = await supabase.from('rehearsal_poll_options').select('id').eq('poll_id', newId);
+        if (optionsReadError) throw optionsReadError;
+        optionsSaved = Array.isArray(had) && had.length > 0;
+        activePollId = newId;
+      } else {
+        activePollId = created.id;
+      }
     }
 
     if (!activePollId) throw new Error('Failed to resolve poll ID');

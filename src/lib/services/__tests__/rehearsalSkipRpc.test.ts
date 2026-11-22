@@ -150,3 +150,19 @@ describe('a deleted date back in the series (Claude #297 r5 minor 5)', () => {
     expect(db.rpc).toEqual([]);
   });
 });
+
+describe('Codex #297 r7: the server refuses a date (B3) or a quote (B1)', () => {
+  it('a date the series no longer has (another admin moved it): says so, writes nothing', async () => {
+    db.rpcAnswer = { data: null, error: { code: '22023', hint: 'bw:not_a_date', message: "This date is not one of the rehearsal's dates" } };
+    const { error } = await skipRehearsalDate('ev', '2099-12-14');
+    expect(error?.message).toBe('This date is no longer part of the series. Reload and try again.');
+    expect(db.updates).toHaveLength(0);
+  });
+
+  it('a quote: its own message, writes nothing', async () => {
+    db.rpcAnswer = { data: null, error: { code: '22023', hint: 'bw:is_quote', message: 'A quote has no single dates to delete' } };
+    const { error } = await skipRehearsalDate('ev', '2099-12-14');
+    expect(error?.message).toBe("A quote's dates can't be deleted or moved one by one.");
+    expect(db.updates).toHaveLength(0);
+  });
+});

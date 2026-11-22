@@ -41,6 +41,7 @@ import {
   type VenueCardValues,
 } from '@/lib/eventOverviewEdit';
 import type { OverviewEditApi } from './useOverviewEdit';
+import { newUuid } from '@/lib/uuid';
 
 /**
  * The editors behind the overview's EDIT actions (one sheet per card), so a
@@ -221,8 +222,7 @@ const EventFieldsSheet: React.FC<SheetBase & { allEvents?: EventData[] }> = ({ o
     setV(now);
     setInitial(now);
     setMoveScope(null);
-    moveRequest.current =
-      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+    moveRequest.current = newUuid(); // a real uuid on every browser (Codex #297 r7 M3)
     setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);

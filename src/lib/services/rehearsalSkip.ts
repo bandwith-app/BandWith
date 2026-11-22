@@ -13,6 +13,7 @@ import { t } from '@/lib/i18n';
 import { skippedDates, withSkippedDate } from '@/lib/recurrenceSkips';
 import { createEvent } from './events';
 import { createSetlist } from './songs';
+import { newUuid } from '@/lib/uuid';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const dayOf = (date: string | null | undefined) => {
@@ -37,6 +38,8 @@ const moveRefusal = (err: RpcError & { hint?: string | null }): Error | null => 
     case 'bw:not_a_date': return new Error(t('This date is no longer part of the series. Reload and try again.'));
     case 'bw:date_deleted': return new Error(t('This date was already deleted. Reload and try again.'));
     case 'bw:date_past': return new Error(t('The new date is in the past. Pick today or a later date.'));
+    // A quote or a tentative date (Codex #297 r7 B1).
+    case 'bw:is_quote': return new Error(t("A quote's dates can't be deleted or moved one by one."));
     default: return null;
   }
 };
@@ -80,6 +83,10 @@ export async function skipRehearsalDate(eventId: string, date: string): Promise<
   if (error && !isMissingRpc(error as RpcError)) {
     const code = (error as RpcError)?.code;
     if (code === '42501') return { error: notAdmin() };
+    // Not a date of the series any more (another admin moved it) or a quote
+    // (Codex #297 r7 B3, B1); else it no longer repeats.
+    const refused = moveRefusal(error as RpcError & { hint?: string | null });
+    if (refused) return { error: refused };
     if (code === '22023') return { error: notRepeating() };
     return { error: error as unknown as Error };
   }
@@ -149,13 +156,7 @@ export async function restoreRehearsalDate(eventId: string | null | undefined, d
   return { error: null, skipDates: rest };
 }
 
-const newRequestId = (): string =>
-  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-        const r = (Math.random() * 16) | 0;
-        return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
-      });
+const newRequestId = (): string => newUuid();
 
 /**
  * A new date for one date of a series, "Only this date" (Claude / Codex #297

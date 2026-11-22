@@ -430,6 +430,7 @@ const dict: Dictionary = {
   "This date is no longer part of the series. Reload and try again.": "Esta fecha ya no forma parte de la serie. Recarga e inténtalo de nuevo.",
   "This date was already deleted. Reload and try again.": "Esta fecha ya se eliminó. Recarga e inténtalo de nuevo.",
   "The new date is in the past. Pick today or a later date.": "La nueva fecha ya pasó. Elige hoy o una fecha posterior.",
+  "A quote's dates can't be deleted or moved one by one.": "Las fechas de un presupuesto no se pueden eliminar ni mover una a una.",
   "This date can't be restored. Reload and try again.": "Esta fecha no se puede restaurar. Recarga e inténtalo de nuevo.",
   "Only band admins can restore a date.": "Solo los administradores de la banda pueden restaurar una fecha.",
   "Rehearsal date restored": "Fecha del ensayo restaurada",

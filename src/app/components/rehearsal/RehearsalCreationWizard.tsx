@@ -51,6 +51,7 @@ import { FreeDots, freeTone, heatStyle } from '@/app/components/ui/FreeHeat';
 import { sessionAudience } from '@/lib/sessionRoster';
 import { memberInstrument } from '@/lib/bandMembership';
 import { useFocusSuggestions } from './useFocusSuggestions';
+import { newUuid } from '@/lib/uuid';
 
 interface TaskTemplateDB {
   id: string;
@@ -520,9 +521,7 @@ export const RehearsalCreationWizard: React.FC<Props> = ({ onClose, onCreate, ed
     && data.recurrence !== 'once' && !!data.date && data.date !== (editingEvent?.date || '').slice(0, 10);
   const [scopeAskOpen, setScopeAskOpen] = useState(false);
   // One request id per wizard: a retry of "Only this date" creates nothing more.
-  const moveRequestRef = useRef<string>(
-    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
-  );
+  const moveRequestRef = useRef<string>(newUuid()); // a real uuid on every browser (Codex #297 r7 M3)
 
   // Navigation (the buttons pass their click event: only a scope string counts).
   const handleSubmit = async (scopeArg?: unknown) => {

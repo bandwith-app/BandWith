@@ -399,7 +399,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
     setSubmitting(true);
     setError(null);
 
-    const { error: publishErr } = await createOrPublishAdminPoll({
+    const { data: published, error: publishErr } = await createOrPublishAdminPoll({
       pollId: initialProposal?.id,
       bandId,
       adminId,
@@ -422,6 +422,9 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
 
     setSubmitting(false);
 
+    // A new poll saved whose notices failed: Try again is that same poll
+    // (its id is the request id), never a second one (Codex #297 r7 B4).
+    if (publishErr && !initialProposal?.id && published?.id) publishRequestId.current = published.id;
     if (publishErr) {
       setError(publishErr.message || t('Failed to publish poll.'));
       return;

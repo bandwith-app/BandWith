@@ -199,7 +199,19 @@ export function occurrenceStart(
   if (!saved?.seriesDate || !saved.date || !repeating) return undefined;
   if (newDate !== saved.date && moveScope === 'series') {
     if (isMonthly(saved.recurrence_rule)) {
-      return monthlyOccurrence(newDate, -(monthIndex(saved.date) - monthIndex(saved.seriesDate))) ?? saved.seriesDate;
+      // Anchored on the moved date's day, clamped in each month (Codex #297
+      // r7 M1). The rule repeats its start's day, so a start month too short
+      // for it (Feb 28 for the 31st) would keep the series on the 28th: the
+      // series then starts at its first month that has the day, and the
+      // clamped date before it leaves the series.
+      const day = Number(newDate.slice(8, 10));
+      const step = monthlyInterval(saved.recurrence_rule);
+      for (let back = monthIndex(saved.date) - monthIndex(saved.seriesDate); back > 0; back -= step) {
+        const start = monthlyOccurrence(newDate, -back);
+        if (!start) return saved.seriesDate;
+        if (Number(start.slice(8, 10)) === day) return start;
+      }
+      return newDate;
     }
     return shiftDay(saved.seriesDate, daysApart(saved.date, newDate));
   }
@@ -209,6 +221,11 @@ export function occurrenceStart(
 const isMonthly = (rule: unknown): boolean => {
   const r = (rule && typeof rule === 'object' ? rule : {}) as { freq?: unknown; frequency?: unknown };
   return String(r.freq || r.frequency || '').toLowerCase() === 'monthly';
+};
+/** The rule's month step, as lib/recurrence reads it: 1-52, else 1. */
+const monthlyInterval = (rule: unknown): number => {
+  const n = Number((rule && typeof rule === 'object' ? (rule as { interval?: unknown }).interval : undefined));
+  return Number.isInteger(n) && n >= 1 && n <= 52 ? n : 1;
 };
 /** Months since year 0 (YYYY-MM-DD). */
 export const monthIndex = (ymd: string): number => Number(ymd.slice(0, 4)) * 12 + Number(ymd.slice(5, 7)) - 1;

@@ -102,6 +102,7 @@ import { enqueueMutation, getPendingMutations } from "@/lib/offline/syncQueue";
 import { deleteRehearsalDate, moveRehearsalDateOnly, restoreRehearsalDate } from "@/lib/services/rehearsalSkip";
 import { isSkippedOccurrence, mergeRecurrenceRule, occurrenceOn, openDateFor } from "@/lib/recurrenceSkips";
 import { occurrenceStart } from "@/lib/eventOverviewEdit";
+import { newUuid } from "@/lib/uuid";
 import type { QueuedEventExtras } from "@/lib/offline/eventExtras";
 import { getOfflineItem, setOfflineItem, getCacheKey } from "@/lib/offline/storage";
 import { todayLocal } from '../lib/dates';
@@ -3577,13 +3578,7 @@ export default function AuthenticatedApp() {
 
       // One id for every attempt: a create that times out on the client but
       // lands on the server is recognised when the offline queue replays it.
-      const newEventId: string =
-        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-          ? crypto.randomUUID()
-          : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-              const r = (Math.random() * 16) | 0;
-              return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
-            });
+      const newEventId: string = newUuid();
       const queuedMembers = (data.members || [])
         .filter((m: any) => !(isRehearsalWizard && data.audienceIds?.length > 0) || data.audienceIds.includes(m.id))
         .map((m: any) => ({
