@@ -4178,6 +4178,8 @@ const dict: Dictionary = {
   "It leaves the gear list and every kit it's in. This can't be undone.": "Es verschwindet aus der Equipment-Liste und aus jedem Kit, das es enthält. Das lässt sich nicht rückgängig machen.",
   "A kit bundles items from your inventory. Add it to a gig and the gig lists its items as the gear to bring. Items are not reserved for that date.": "Ein Kit bündelt Teile aus deinem Equipment. Füge es einem Gig hinzu, und der Gig listet seine Teile als mitzubringendes Equipment. Die Teile werden für dieses Datum nicht reserviert.",
   "Hold an item, then drag it to move it. Tap it to rename or remove it. Hold an empty spot to add one there.": "Element gedrückt halten und ziehen, um es zu verschieben. Antippen, um es umzubenennen oder zu entfernen. Eine freie Stelle gedrückt halten, um dort etwas hinzuzufügen.",
+  "With a keyboard: Tab to an item, Enter to edit it, arrow keys to move it.": "Mit der Tastatur: Tab zu einem Element, Eingabe zum Bearbeiten, Pfeiltasten zum Verschieben.",
+  "Enter to edit, arrow keys to move.": "Eingabe zum Bearbeiten, Pfeiltasten zum Verschieben.",
   "Add here": "Hier hinzufügen",
   "Other musician": "Andere Musiker:in",
   "Add a musician": "Musiker:in hinzufügen",
