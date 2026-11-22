@@ -106,16 +106,21 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState, onLive
   savedRef.current = savedIds;
   const keyRef = useRef<string | null>(null);
   const startedRef = useRef(false);
-  const pendingRef = useRef<StageLiveState | null>(null);
+  /** Leader: the newest state, served again whenever Bluetooth (re)starts while Stage is open. */
+  const lastStateRef = useRef<StageLiveState | null>(null);
+  /** Stage mode is open (read in cleanups: a restart while open is not a goodbye). */
+  const openRef = useRef(open);
+  openRef.current = open;
+  /** The hook is going away (Stage closed with it). */
+  const goneRef = useRef(false);
 
   const active = open && !!eventId && stageBleAvailable() && savedIds.length > 0;
 
   const push = useCallback(async (state: StageLiveState) => {
+    lastStateRef.current = state;
     const key = keyRef.current;
-    if (!key || !startedRef.current) {
-      pendingRef.current = state;
-      return;
-    }
+    // Not started yet: served as soon as it is.
+    if (!key || !startedRef.current) return;
     const bytes = await encodeStageState(state, savedRef.current, key);
     if (!bytes) return;
     try {
@@ -156,6 +161,14 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState, onLive
       void push(state);
     },
     [isLeader, push],
+  );
+
+  // Declared before the leader's effect, so its cleanup runs first on unmount.
+  useEffect(
+    () => () => {
+      goneRef.current = true;
+    },
+    [],
   );
 
   // Leader: advertise while Stage mode is open.
@@ -208,10 +221,9 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState, onLive
         await calibrate();
         if (cancelled) return;
         recalibrate = setInterval(() => void calibrate(), CLOCK_RESYNC_MS);
-        const pending = pendingRef.current;
-        pendingRef.current = null;
-        if (pending) void push(pending);
-        // A click or playhead already running (started before Bluetooth was up).
+        // The newest state, and a click or playhead already running: sent before
+        // Bluetooth was up, or before it restarted (a kill switch, Bluetooth back on).
+        if (lastStateRef.current) void push(lastStateRef.current);
         if (Object.keys(liveRef.current).length) void pushLive();
       } catch (e) {
         if (!cancelled) setStatus(bleProblem(e));
@@ -221,11 +233,13 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState, onLive
       cancelled = true;
       clearInterval(recalibrate);
       setFollowers(0);
-      pendingRef.current = null;
       void listener?.remove();
-      // The band's phones hear that the click and the playhead stopped, then Bluetooth stops.
-      const last = farewellRef.current?.() ?? {};
-      const goodbye = Object.keys(last).length && startedRef.current;
+      // Stage closing: the band's phones hear that the click and the playhead
+      // stopped, then Bluetooth stops. A restart while Stage stays open says
+      // nothing stopped, and serves the same again once it is back.
+      const closing = goneRef.current || !openRef.current;
+      const last = closing ? (farewellRef.current?.() ?? {}) : {};
+      const goodbye = Object.keys(last).length > 0 && startedRef.current;
       const sent = goodbye ? pushLive({ ...liveRef.current, ...last }) : Promise.resolve();
       stoppingRef.current = sent
         .catch(() => {})
@@ -235,7 +249,10 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState, onLive
         })
         .catch(() => {});
       if (!goodbye) startedRef.current = false;
-      liveRef.current = {};
+      if (closing) {
+        liveRef.current = {};
+        lastStateRef.current = null;
+      }
       setStatus('off');
     };
   }, [active, isLeader, eventId, push, pushLive, attempt]);

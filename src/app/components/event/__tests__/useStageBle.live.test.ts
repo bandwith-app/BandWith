@@ -150,6 +150,58 @@ describe('useStageBle: live frame (click, playhead)', () => {
     expect((await served()).events.click).toEqual(off);
   });
 
+  it('leader: Bluetooth restarting while Stage stays open (a kill switch, Bluetooth back) serves the last state and the running click again, and says nothing stopped', async () => {
+    const off = { ...click, on: false, seq: 7 };
+    const farewell = vi.fn(() => ({ click: off }));
+    const { result, rerender, unmount } = renderHook(
+      ({ ids }) => useStageBle({ eventId: 'gig', savedIds: ids, open: true, isLeader: true, onState: () => {}, farewell }),
+      { initialProps: { ids: IDS } },
+    );
+    await waitFor(() => expect(native.start).toHaveBeenCalledTimes(1));
+    act(() => result.current.publish({ seq: 4, from: 'lead', songId: 'b2', order: null }));
+    act(() => result.current.publishLive('click', click));
+    await waitFor(() => expect(native.updateLive).toHaveBeenCalled());
+    await waitFor(() => expect(native.update).toHaveBeenCalled());
+    // Bluetooth stops (here: no setlist for a moment), Stage stays open…
+    rerender({ ids: [] });
+    await waitFor(() => expect(native.stop).toHaveBeenCalled());
+    native.update.mockClear();
+    native.updateLive.mockClear();
+    // …and starts again.
+    rerender({ ids: IDS });
+    await waitFor(() => expect(native.start).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(native.update).toHaveBeenCalled());
+    await waitFor(() => expect(native.updateLive).toHaveBeenCalled());
+    expect(farewell).not.toHaveBeenCalled();
+    expect((await served()).events).toEqual({ click });
+    unmount();
+    // Closing Stage is a goodbye.
+    expect(farewell).toHaveBeenCalled();
+  });
+
+  it('leader: Stage closed (open false) is a goodbye too, and nothing is replayed next time', async () => {
+    const off = { ...click, on: false, seq: 7 };
+    const farewell = vi.fn(() => ({ click: off }));
+    const { result, rerender, unmount } = renderHook(
+      ({ open }) => useStageBle({ eventId: 'gig', savedIds: IDS, open, isLeader: true, onState: () => {}, farewell }),
+      { initialProps: { open: true } },
+    );
+    await waitFor(() => expect(native.start).toHaveBeenCalledTimes(1));
+    act(() => result.current.publishLive('click', click));
+    await waitFor(() => expect(native.updateLive).toHaveBeenCalled());
+    rerender({ open: false });
+    expect(farewell).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(native.stop).toHaveBeenCalled());
+    native.updateLive.mockClear();
+    native.update.mockClear();
+    rerender({ open: true });
+    await waitFor(() => expect(native.start).toHaveBeenCalledTimes(2));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(native.updateLive).not.toHaveBeenCalled();
+    expect(native.update).not.toHaveBeenCalled();
+    unmount();
+  });
+
   it('member: connecting reads where the band is (catch-up), then every change', async () => {
     ble.live = { seq: 3, events: { click, playhead: head } };
     const onLive = vi.fn();
