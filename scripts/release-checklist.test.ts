@@ -588,3 +588,12 @@ describe('Codex review of 72ce8148', () => {
     expect(squash(fnBody(sql, 'bw_x'))).not.toContain('bw:175-r4');
   });
 });
+
+describe('old builds (383f15b): what the release notes and the Academy must say', () => {
+  it('names the stale Stage Bluetooth key and the quote "Update BandWith"', () => {
+    const after = read('docs/release-checklist.md').split('## 6 · After')[1]?.split('### Sunset list')[0] ?? '';
+    expect(after).toMatch(/383f15b[\s\S]*Stage Bluetooth key[\s\S]*until[^\n]*(updates|update)[^\n]*sign(s)? out/);
+    expect(after).toMatch(/without a PDF[^\n]*"Update BandWith"/);
+    expect(after).toMatch(/release notes[\s\S]*Academy/);
+  });
+});

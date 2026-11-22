@@ -345,6 +345,9 @@ Go on when the new version shows nothing that the previous one didn't.
 - [ ] All surfaces are on the release, and the APK release is marked **Latest**.
 - [ ] "Later" migrations scheduled, if any (section 2, step 5).
 - [ ] Release notes for testers: `scripts/android-release-notes.md`, and the TestFlight "What to Test". Put in any line the admins need (stage 3, step 6).
+  - What old builds (383f15b) still do, in the release notes and in the Academy:
+    - **Stage Bluetooth after a member leaves:** on 383f15b the band's Stage Bluetooth key stays the old one until the user updates the app, or signs out and in again. Say so to the band ("update the app, or sign out and in").
+    - **Quotes:** an old build that publishes a quote without a PDF after the client changed gets "Update BandWith". The line for admins: "Update the app to publish this quote."
 
 ### Sunset list: when `min_version` is raised past this release
 
