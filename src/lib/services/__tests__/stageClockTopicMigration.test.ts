@@ -92,20 +92,31 @@ describe('191 the stage clock topic', () => {
     expect(sql).toContain('REVOKE EXECUTE ON FUNCTION public.bw_stage_member_left() FROM PUBLIC, anon, authenticated;');
   });
 
-  it("the band's row is locked before any key changes: an admin leaving can't deadlock with an admin storing a key pair (190 takes the band's row, then the gig's key row)", () => {
-    const f = fn(sql191, 'bw_stage_member_left');
-    const lock = f.search(/PERFORM 1 FROM public\.bands b WHERE b\.id = OLD\.band_id FOR NO KEY UPDATE;/);
-    expect(lock).toBeGreaterThan(-1);
-    expect(f.search(/bw_stage_new_band_key/)).toBeGreaterThan(lock);
-  });
+  /** The band's advisory lock (190 takes the same one, shared): never a band row lock. */
+  const BAND_LOCK = /PERFORM pg_advisory_xact_lock\(hashtextextended\('bw-stage-band:' \|\| (.+?)::text, 0\)\);/;
 
-  it("every key trigger takes the band's row first (Claude on 642676fc): no lock cycle with 190's pair storing or a move", () => {
-    for (const name of ['bw_stage_lineup_left', 'bw_stage_event_hidden']) {
+  it("every key trigger takes the band's advisory lock, never the band's row: a band being deleted can't deadlock with it (Claude round 8 on #283)", () => {
+    // A band delete locks the band's row, then cascades into band_members, event_members and
+    // events: a trigger that holds one of those rows and then wants the band's row is a cycle.
+    // The advisory lock (exclusive here, shared in 190's pair storing) is one no delete takes.
+    for (const name of ['bw_stage_member_left', 'bw_stage_lineup_left', 'bw_stage_event_hidden']) {
       const f = fn(sql191, name);
-      const lock = f.search(/FOR NO KEY UPDATE;/);
+      expect(f, name).not.toMatch(/FROM public\.bands b[^;]*FOR (NO KEY )?UPDATE/);
+      expect(f, name).not.toMatch(/FROM public\.bands b[^;]*FOR (KEY )?SHARE/);
+      const lock = f.search(BAND_LOCK);
       expect(lock, name).toBeGreaterThan(-1);
       expect(f.search(/bw_stage_new_band_key/), name).toBeGreaterThan(lock);
     }
+  });
+
+  it("an admin's role touched without anyone leaving or a quote gig to change: member_left takes no lock (Claude round 8 on #283)", () => {
+    const f = fn(sql191, 'bw_stage_member_left');
+    const firstIf = f.search(/\bIF COALESCE\(OLD\.is_active, true\)/);
+    const lock = f.search(BAND_LOCK);
+    // The lock comes inside the branches that change keys, not before them.
+    expect(firstIf).toBeGreaterThan(-1);
+    expect(lock).toBeGreaterThan(firstIf);
+    expect((f.match(new RegExp(BAND_LOCK.source, 'g')) ?? []).length).toBe(2);
   });
 
   it('"coming" counts tonight in New York (a day of slack on UTC) and a series by its last occurrence (Claude + Codex on 642676fc)', () => {

@@ -195,7 +195,6 @@ export async function savePackSongs(args: {
     songs: args.songs,
     personal,
     bandNotes: prev?.bandNotes,
-    stageKey: prev?.stageKey,
     version: packVersion(args.songs, personal),
     savedAt: new Date().toISOString(),
     expiresAt: packExpiresAt(event),
@@ -328,15 +327,11 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
       bandNotes = { date: event.event_date, occurrence, open: open.filter((n) => !n.songId || ids.has(n.songId)) };
   }
 
-  let key = prev?.stageKey ?? null;
   try {
-    // Asked again each time: the key changes when someone may no longer see the gig (191).
-    // Inside the try: a partial client mock (tests) has no isDemoMode.
-    // A no from the server (may no longer see the gig) drops the pack's copy too.
-    if (!isDemoMode && stageBleAvailable()) {
-      const answer = await fetchStageKey(event.id);
-      key = answer.denied ? null : (answer.key ?? key);
-    }
+    // Asked again each time: the key changes when someone may no longer see the gig (191). The
+    // phone's kept copy is stageBleNative's (a no drops it there); the pack keeps none (nobody
+    // read it; Claude round 8 on #283). Inside the try: a partial client mock (tests) has no isDemoMode.
+    if (!isDemoMode && stageBleAvailable()) await fetchStageKey(event.id);
   } catch {
     /* no key: Bluetooth just needs internet the first time */
   }
@@ -351,7 +346,6 @@ async function refreshOnce(args: Parameters<typeof refreshPack>[0]): Promise<Liv
     songs,
     personal,
     bandNotes,
-    stageKey: key,
     version: packVersion(songs, personal),
     savedAt: new Date().toISOString(),
     expiresAt: packExpiresAt(event),

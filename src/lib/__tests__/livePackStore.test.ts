@@ -38,12 +38,15 @@ vi.mock('../supabase', () => ({
 }));
 // The native apps fetch the gig's Bluetooth key (087).
 const signedForgot = vi.hoisted(() => [] as string[]);
-const keyAnswer = vi.hoisted(() => ({ value: { key: 'KEY-1' as string | null, denied: false } }));
+const keyAnswer = vi.hoisted(() => ({ value: { key: 'KEY-1' as string | null, denied: false }, asks: 0 }));
 const keysForgot = vi.hoisted(() => [] as string[]);
 vi.mock('../stageBleNative', () => ({
   stageBleAvailable: () => true,
   stageKey: async () => keyAnswer.value.key,
-  fetchStageKey: async () => keyAnswer.value,
+  fetchStageKey: async () => {
+    keyAnswer.asks++;
+    return keyAnswer.value;
+  },
   forgetStageKeys: (e: string) => void keysForgot.push(e),
 }));
 vi.mock('../stageSignedMemory', () => ({ forgetSignedMemory: (u: string, e: string) => void signedForgot.push(`${u}:${e}`) }));
@@ -189,20 +192,18 @@ describe('refreshPack', () => {
     const p = await refreshPack({ userId: me, event: gig({ event_type: 'rehearsal' }) });
     expect(p?.songs[0].title).toBe('Paper Boats');
     expect(p?.personal.song1.notes[0].body).toBe('capo 2');
-    expect(p?.stageKey).toBe('KEY-1');
     expect(p?.bandNotes?.date).toBe(inDays(3));
     expect((await personalFromPacks(me, 'song1'))?.notes).toHaveLength(1);
   });
 
-  it("a no from the server drops the pack's kept stage key; offline keeps it (Claude on #283)", async () => {
+  it("the pack keeps no copy of the band key (nobody read it): refreshing still asks the server, so the phone's kept key stays current (Claude round 8 on #283)", async () => {
     answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
     keyAnswer.value = { key: 'KEY-1', denied: false };
-    expect((await refreshPack({ userId: me, event: gig() }))?.stageKey).toBe('KEY-1');
-    keyAnswer.value = { key: null, denied: false }; // offline, nothing cached
-    expect((await refreshPack({ userId: me, event: gig() }))?.stageKey).toBe('KEY-1');
-    keyAnswer.value = { key: null, denied: true }; // may no longer see the gig
-    expect((await refreshPack({ userId: me, event: gig() }))?.stageKey).toBeNull();
-    keyAnswer.value = { key: 'KEY-1', denied: false };
+    keyAnswer.asks = 0;
+    const p = await refreshPack({ userId: me, event: gig() });
+    expect(p).toBeTruthy();
+    expect(p).not.toHaveProperty('stageKey');
+    expect(keyAnswer.asks).toBe(1);
   });
 
   it('asks for the live fields of the other parts, and without them while the database has none', async () => {

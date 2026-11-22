@@ -253,7 +253,17 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
   /** Leader: the last state served this Stage session (null: none yet), served again when Stage starts again (a new pair). */
   const lastPushedRef = useRef<StageLiveState | null>(null);
 
-  const active = open && !!eventId && stageBleAvailable() && savedIds.length > 0;
+  /**
+   * The server said no to the band key (this account may no longer see the
+   * gig, 191): Bluetooth stops at once, leader and member, and starts again
+   * only if a later check gets a key (Claude round 8 on #283).
+   */
+  const [keyDenied, setKeyDenied] = useState(false);
+  const keyDeniedRef = useRef(false);
+  keyDeniedRef.current = keyDenied;
+  useEffect(() => setKeyDenied(false), [eventId]);
+  const ready = open && !!eventId && stageBleAvailable() && savedIds.length > 0;
+  const active = ready && !keyDenied;
 
   const push = useCallback(async (state: StageLiveState) => {
     const key = keyRef.current;
@@ -321,8 +331,14 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       }
     };
     (async () => {
-      const key = await stageKey(eventId);
+      const answer = await fetchStageKey(eventId);
       if (cancelled) return;
+      if (answer.denied) {
+        inUseKeyRef.current = null;
+        setKeyDenied(true);
+        return;
+      }
+      const key = answer.key;
       inUseKeyRef.current = key;
       // No key yet: the key watch below starts again once there is one.
       if (!key) return;
@@ -1213,9 +1229,17 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     // Bluetooth off or the key not fetched yet: try again a little later.
     const boot = async () => {
       if (cancelled) return;
-      // The server's key first (it changes when someone may no longer see the gig, 191); the pack's offline.
-      const k = (await stageKey(eventId)) || key;
+      // The server's key first (it changes when someone may no longer see the gig, 191); the kept one offline.
+      const answer = await fetchStageKey(eventId);
       if (cancelled) return;
+      // The server's no: never the key this phone had before it (Claude round 8 on #283).
+      if (answer.denied) {
+        key = '';
+        inUseKeyRef.current = null;
+        setKeyDenied(true);
+        return;
+      }
+      const k = answer.key || key;
       inUseKeyRef.current = k || null;
       if (!k) {
         retry = setTimeout(() => void boot(), 15000);
@@ -1358,7 +1382,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
   // 642676fc). Asked when Realtime says so (STAGE_KEY_EVENT), back online,
   // every minute, and every few seconds while there is none yet.
   useEffect(() => {
-    if (!active || !eventId) return;
+    if (!ready || !eventId) return;
     let gone = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let asking = false;
@@ -1366,8 +1390,16 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       if (asking) return;
       asking = true;
       try {
-        const now = await stageKey(eventId);
-        if (!gone && now && now !== inUseKeyRef.current) setAttempt((n) => n + 1);
+        const { key: now, denied } = await fetchStageKey(eventId);
+        if (gone) return;
+        // The server's no stops Bluetooth now, not at a later check (Claude round 8 on #283).
+        if (denied) {
+          inUseKeyRef.current = null;
+          setKeyDenied(true);
+          return;
+        }
+        if (now && keyDeniedRef.current) setKeyDenied(false);
+        else if (now && now !== inUseKeyRef.current) setAttempt((n) => n + 1);
       } finally {
         asking = false;
       }
@@ -1379,7 +1411,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
             if (!gone) schedule();
           });
         },
-        inUseKeyRef.current ? KEY_RECHECK_MS : KEY_WAIT_MS,
+        inUseKeyRef.current || keyDeniedRef.current ? KEY_RECHECK_MS : KEY_WAIT_MS,
       );
     };
     schedule();
@@ -1395,7 +1427,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       window.removeEventListener(STAGE_KEY_EVENT, onKey);
       window.removeEventListener('online', onOnline);
     };
-  }, [active, eventId, attempt]);
+  }, [ready, eventId, attempt]);
 
   // Back from Settings (sent by the button): start again by itself. Not on any
   // resume: closing the system permission dialog resumes the app too, and
