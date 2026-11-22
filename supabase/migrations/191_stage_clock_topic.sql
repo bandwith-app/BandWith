@@ -301,6 +301,11 @@ SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
 BEGIN
+  -- The band's row first, before any key row: 190's bw_stage_set_signer
+  -- takes it (for share) before the gig's key row, so an admin leaving while
+  -- another stores a key pair waits instead of deadlocking (190's own
+  -- trigger takes the same row next; a second lock in one transaction is free).
+  PERFORM 1 FROM public.bands b WHERE b.id = OLD.band_id FOR NO KEY UPDATE;
   IF COALESCE(OLD.is_active, true)
      AND (TG_OP = 'DELETE'
           OR NOT COALESCE(NEW.is_active, true)

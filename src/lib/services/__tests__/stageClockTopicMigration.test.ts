@@ -92,6 +92,13 @@ describe('191 the stage clock topic', () => {
     expect(sql).toContain('REVOKE EXECUTE ON FUNCTION public.bw_stage_member_left() FROM PUBLIC, anon, authenticated;');
   });
 
+  it("the band's row is locked before any key changes: an admin leaving can't deadlock with an admin storing a key pair (190 takes the band's row, then the gig's key row)", () => {
+    const f = fn(sql191, 'bw_stage_member_left');
+    const lock = f.search(/PERFORM 1 FROM public\.bands b WHERE b\.id = OLD\.band_id FOR NO KEY UPDATE;/);
+    expect(lock).toBeGreaterThan(-1);
+    expect(f.search(/bw_stage_new_band_key/)).toBeGreaterThan(lock);
+  });
+
   it("an admin made a member: the band's coming quote gigs get a new key (Claude on #283; behaviour: stage_topic_quote.pglite.mjs)", () => {
     const f = fn(sql191, 'bw_stage_member_left');
     expect(f).toMatch(/OLD\.role = 'admin' AND NEW\.role IS DISTINCT FROM 'admin'/);
