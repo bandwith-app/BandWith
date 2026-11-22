@@ -534,8 +534,9 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       if (error) {
         const before = saved.map((s) => ({ id: s.id, songId: s.songId, setNumber: s.setNumber }));
         const eventIdNow = saveCtx.current.eventId;
-        // No signal at the venue: the new order stands (on screen, over
-        // Bluetooth) and is saved when back online (plan §3.5).
+        // No signal at the venue, or the server busy for a moment: the new
+        // order stands (on screen, over Bluetooth) and is saved as soon as
+        // the server answers (plan §3.5).
         if (await keepOrderOffline(error, { setlistId: list, eventId: eventIdNow, rows, before }, owner)) {
           if (!closing) setSaveState('waiting');
           return;

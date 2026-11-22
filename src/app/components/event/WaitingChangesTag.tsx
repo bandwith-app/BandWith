@@ -113,6 +113,11 @@ export const WaitingChangesTag: React.FC<{ userId?: string | null; stage?: boole
               <div key={rid} className="flex flex-col gap-2 rounded-[16px] border border-sheet-foreground/20 p-4">
                 {what && <span className="bw-label-xs text-sheet-foreground/70">{what}</span>}
                 {words && <p className="bw-body [overflow-wrap:anywhere] whitespace-pre-wrap select-text">{words}</p>}
+                {item.why && (
+                  <span className="bw-body-sm text-sheet-foreground/70">
+                    {item.why === 'stuck' ? t('The server didn’t answer for too long.') : t('The server didn’t accept it.')}
+                  </span>
+                )}
                 <div className="flex gap-2 pt-1">
                   {words && (
                     <PillButton
