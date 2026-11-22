@@ -55,4 +55,17 @@ describe('send-push recipients follow the rule, not raw participant rows', () =>
     expect(await allowedRecipients(admin, 'me', ['mate'])).toEqual(['mate']);
     expect(rpc).toHaveBeenCalledWith('bw_chat_recipient_ids', { p_chat_id: CHAT, p_sender: 'me' });
   });
+
+  // Main's central-guard decision: recipients come only from the rule.
+  const missing = () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function public.bw_chat_recipient_ids' } });
+  it('chatRecipients: function missing (175 not applied) sends to nobody, never the raw roster', async () => {
+    const { admin, tables } = fakeAdmin({ rpc: missing });
+    expect(await chatRecipients(admin, 'me', CHAT, ['mate', 'stale'])).toEqual([]);
+    expect(tables).not.toContain('chat_participants');
+  });
+
+  it('allowedRecipients: function missing adds nobody from the raw roster', async () => {
+    const { admin } = fakeAdmin({ rpc: missing });
+    expect(await allowedRecipients(admin, 'me', ['stale'])).toEqual([]);
+  });
 });

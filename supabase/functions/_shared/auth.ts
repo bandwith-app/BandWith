@@ -7,7 +7,6 @@
 // on `Authorization`, a secret key on `apikey`, or a database-generated
 // dispatch secret (pg_net triggers).
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { isMissingRpc } from "./rpc-missing.ts";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -151,32 +150,24 @@ export async function allowedRecipients(
   const remaining = unique.filter((id) => !allowed.has(id));
   if (remaining.length > 0) {
     // Round 4 (#281): rows are kept when someone leaves the band or the
-    // lineup (175), so who shares a chat comes from bw_chat_recipient_ids
-    // (the rule), one chat at a time, never from the raw roster. Before 175
-    // (function missing) the old roster; any other error adds nobody.
+    // lineup (175), so who shares a chat comes only from
+    // bw_chat_recipient_ids (the rule), one chat at a time. The caller's own
+    // rows only list the chats to ask about (the rule answers nobody for a
+    // chat the caller can't use). Any error, a missing function included,
+    // adds nobody.
     const { data: myChats } = await admin
       .from("chat_participants")
       .select("chat_id")
       .eq("user_id", callerId);
     const chatIds = [...new Set((myChats ?? []).map((r: { chat_id: string }) => r.chat_id))];
-    let legacy = false;
     for (const chatId of chatIds) {
       if (remaining.every((id) => allowed.has(id))) break;
       const { data: ok, error } = await admin.rpc("bw_chat_recipient_ids", { p_chat_id: chatId, p_sender: callerId });
       if (error) {
-        if (isMissingRpc(error)) legacy = true;
-        else console.error("allowedRecipients: bw_chat_recipient_ids failed", error.message);
+        console.error("allowedRecipients: bw_chat_recipient_ids failed", error.message);
         break;
       }
       if (Array.isArray(ok)) (ok as string[]).forEach((id) => remaining.includes(id) && allowed.add(id));
-    }
-    if (legacy && chatIds.length > 0) {
-      const { data } = await admin
-        .from("chat_participants")
-        .select("user_id")
-        .in("chat_id", chatIds)
-        .in("user_id", remaining);
-      (data ?? []).forEach((r: { user_id: string }) => allowed.add(r.user_id));
     }
   }
 
@@ -194,29 +185,21 @@ export async function chatRecipients(
   targetIds: string[],
 ): Promise<string[]> {
   if (typeof chatId !== "string" || chatId.length === 0) return [];
-  // 175: band and event chats count only people still in the band. Falls
-  // back to the participant list only while the migration is not applied:
-  // any other error sends nothing (fail closed, Codex #289 r2).
+  // 175: band and event chats count only people who may still read them.
+  // Recipients come only from bw_chat_recipient_ids: any error, a missing
+  // function included (175 not applied), sends nothing (fail closed, Codex
+  // #289 r2; round 4: never the raw roster, whose kept rows 175 refuses).
   const { data: allowed, error: rpcError } = await admin.rpc("bw_chat_recipient_ids", {
     p_chat_id: chatId,
     p_sender: callerId,
   });
-  if (rpcError && !isMissingRpc(rpcError)) {
+  if (rpcError) {
     console.error("chatRecipients: bw_chat_recipient_ids failed", rpcError.message);
     return [];
   }
-  if (!rpcError) {
-    if (!Array.isArray(allowed)) return [];
-    const ok = new Set(allowed as string[]);
-    return [...new Set(targetIds)].filter((id) => id !== callerId && ok.has(id));
-  }
-  const { data } = await admin
-    .from("chat_participants")
-    .select("user_id")
-    .eq("chat_id", chatId);
-  const inChat = new Set((data ?? []).map((r: { user_id: string }) => r.user_id));
-  if (!inChat.has(callerId)) return [];
-  return [...new Set(targetIds)].filter((id) => id !== callerId && inChat.has(id));
+  if (!Array.isArray(allowed)) return [];
+  const ok = new Set(allowed as string[]);
+  return [...new Set(targetIds)].filter((id) => id !== callerId && ok.has(id));
 }
 
 export function errorResponse(error: unknown) {

@@ -17,10 +17,10 @@ describe('chat push recipients fail closed', () => {
     expect(isMissingRpc(null)).toBe(false);
   });
 
-  it('chatRecipients falls back only for a missing function, otherwise sends to nobody', () => {
+  it('chatRecipients never falls back: any error, a missing function included, sends to nobody (round 4)', () => {
     const fn = authSrc.slice(authSrc.indexOf('export async function chatRecipients'));
     const body = fn.slice(0, fn.indexOf('\n}\n'));
-    expect(body).toMatch(/isMissingRpc\(rpcError\)/);
-    expect(body).toMatch(/if \(rpcError && !isMissingRpc\(rpcError\)\)[\s\S]{0,200}return \[\];/);
+    expect(body).toMatch(/if \(rpcError\) \{[\s\S]{0,200}return \[\];/);
+    expect(body).not.toMatch(/chat_participants/);
   });
 });
