@@ -55,6 +55,20 @@ describe('unrollChart', () => {
     expect(played(c)).toBe('C G C G C G C G F');
   });
 
+  it('"4x" on the first bar of a section repeats the whole section, not that bar', () => {
+    const c = chart([['Vamp', [{ c: 'C', text: '4x' }, 'D', 'E']], ['A', ['F']]]);
+    expect(played(c)).toBe('C D E C D E C D E C D E F');
+    expect(unrollChart(c).map((b) => b.pass)).toEqual([1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 1]);
+  });
+
+  it('after a 1st / 2nd ending block, a } with no { repeats from the double bar that closes it', () => {
+    // {A |1.B} |2.C || D E} | F
+    const c = chart([
+      ['A', [{ c: 'A', repeatStart: true }, { c: 'B', ending: 1, repeatEnd: true }, { c: 'C', ending: 2, doubleEnd: true }, 'D', { c: 'E', repeatEnd: true }, 'F']],
+    ]);
+    expect(played(c)).toBe('A B A C D E D E F');
+  });
+
   it('repeats a } with no { from the last double bar (or the start)', () => {
     expect(played(chart([['A', ['C', { c: 'G', repeatEnd: true }]]]))).toBe('C G C G');
     const c = chart([['A', ['C', { c: 'D', doubleEnd: true }]], ['B', ['E', { c: 'F', repeatEnd: true }, 'G']]]);

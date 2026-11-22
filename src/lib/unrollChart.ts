@@ -147,6 +147,32 @@ function afterEnding(cells: Cell[], from: number): number {
   return cells.length;
 }
 
+/**
+ * The last bar of the final ending's block that starts at `from` (it runs to a
+ * double / final bar, the next ending or repeat, or the section's end), or -1
+ * when a `}` closes it (the repeat goes on).
+ */
+function finalEndingEnd(cells: Cell[], from: number): number {
+  for (let j = from; j < cells.length; j++) {
+    const d = cells[j].data;
+    if (j > from && (d.ending || d.repeatStart || cells[j].section !== cells[from].section)) return j - 1;
+    if (d.repeatEnd) return -1;
+    if (d.doubleEnd || d.final) return j;
+  }
+  return cells.length - 1;
+}
+
+/** Sections with no repeat signs and a "4x" on any bar: section index → times. */
+function sectionTimes(cells: Cell[]): Map<number, number> {
+  const out = new Map<number, number>();
+  const signed = new Set(cells.filter((c) => c.data.repeatStart || c.data.repeatEnd).map((c) => c.section));
+  for (const c of cells) {
+    const n = timesOf(c);
+    if (n && n >= 2 && !signed.has(c.section)) out.set(c.section, Math.max(out.get(c.section) ?? 0, Math.min(n, 16)));
+  }
+  return out;
+}
+
 export function unrollChart(chart: SongChart | null | undefined, opts: { time?: string | null } = {}): UnrolledBar[] {
   if (!chart?.sections?.length) return [];
   const cells = cellsOf(chart, opts.time);
@@ -155,13 +181,15 @@ export function unrollChart(chart: SongChart | null | undefined, opts: { time?: 
   const segno = cells.findIndex((c) => c.data.segno);
   const codas = cells.map((c, i) => (c.data.coda || has(c, 'to-coda') ? i : -1)).filter((i) => i >= 0);
 
-  let rep = null as { start: number; pass: number; total: number } | null;
+  /** The repeat being played; `until`: the last bar of its final ending, where it ends. */
+  let rep = null as { start: number; pass: number; total: number; until?: number } | null;
   /** After D.C./D.S.: where it was, what it plays to. */
   let jump = null as (Jump & { from: number }) | null;
   /** Start of the music a `}` with no `{` may repeat (moves to the segno after D.S.). */
   let floor = 0;
   /** Sections repeated by "4x" with no repeat sign: section index → passes played. */
   const sectionPasses = new Map<number, number>();
+  const timesBySection = sectionTimes(cells);
   let i = 0;
   let steps = 0;
 
@@ -206,7 +234,15 @@ export function unrollChart(chart: SongChart | null | undefined, opts: { time?: 
       }
     }
 
+    // The final ending: the repeat is over at the end of its block, so a
+    // later `}` with no `{` repeats from there (not from the `{` before).
+    if (d.ending && rep && rep.pass >= rep.total && rep.until == null) {
+      const end = finalEndingEnd(cells, i);
+      if (end >= 0) rep.until = end;
+    }
+
     emit(c, rep?.pass ?? sectionPasses.get(c.section) ?? 1);
+    if (rep?.until === i) rep = null;
 
     // Al Fine / al ending: the song ends here.
     if (jump && (jump.until === 'fine' || jump.until === 'end') && (has(c, 'fine', 'end') || d.end) && i < jump.from) break;
@@ -224,8 +260,10 @@ export function unrollChart(chart: SongChart | null | undefined, opts: { time?: 
     }
 
     // Repeat back.
-    const times = timesOf(c);
-    const implied = !d.repeatEnd && !rep && times && times >= 2 && !cells.slice(i + 1).some((x) => x.section === c.section && x.data.repeatEnd);
+    // "4x" with no signs, written on any bar: at the section's last bar.
+    const lastOfSection = i + 1 >= cells.length || cells[i + 1].section !== c.section;
+    const times = lastOfSection ? timesBySection.get(c.section) : undefined;
+    const implied = !d.repeatEnd && !rep && !!times;
     if (d.repeatEnd || implied) {
       if (implied) {
         // "4x" with no signs: the whole section, that many times.

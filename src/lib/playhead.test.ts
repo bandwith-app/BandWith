@@ -159,6 +159,37 @@ describe('timeline', () => {
     expect(buildTimeline({})).toBeNull();
   });
 
+  it('a two-line "Chorus x2": the second pass has the lines too, and the playhead shows them', () => {
+    const tl = buildTimeline({ lyrics: '# Verse\nA\nB\n# Chorus x2\nC\nD' })!;
+    // Verse 0–4, Chorus 4–8, Chorus again 8–12: two bars a line.
+    expect(tl.lines).toEqual([0, 2, 4, 6]);
+    expect(tl.cues).toEqual([
+      { at: 0, line: 0 },
+      { at: 2, line: 1 },
+      { at: 4, line: 2 },
+      { at: 6, line: 3 },
+      { at: 8, line: 2 },
+      { at: 10, line: 3 },
+    ]);
+    const T = 1_000_000;
+    const head = startPlayhead({ from: 'l', songId: 's', bpm: 120, startAt: T });
+    // 4/4 at 120: 2 s a bar. Bar 9 = the second chorus' first line.
+    expect(playheadAt(tl, head, T + 9 * 2000).line).toBe(2);
+    expect(playheadAt(tl, head, T + 11 * 2000).line).toBe(3);
+  });
+
+  it('with a chart: a lyric "Chorus x2" goes on the next two choruses of the chart', () => {
+    const c = chart([['Verse', bars('C', 'F')], ['Chorus', bars('F', 'G')], ['Chorus', bars('F', 'G')]]);
+    const tl = buildTimeline({ chart: c, lyrics: '# Verse\nOne\n# Chorus x2\nTwo\nThree' })!;
+    expect(tl.cues.map((q) => [q.at, q.line])).toEqual([
+      [0, 0],
+      [2, 1],
+      [3, 2],
+      [4, 1],
+      [5, 2],
+    ]);
+  });
+
   it('can follow a song with a BPM and a chart or lyrics', () => {
     expect(canFollow({ bpm: 96, lyrics: 'One line' })).toBe(true);
     expect(canFollow({ bpm: null, lyrics: 'One line' })).toBe(false);
@@ -195,6 +226,16 @@ describe('playhead', () => {
     const next = continuePlayhead(start, T + 30_000, tl);
     expect(next.seq).toBeGreaterThan(start.seq);
     expect(playheadAt(tl, next, T + 30_100)).toMatchObject({ bar: 6, waiting: false, section: 2 });
+  });
+
+  it('a fermata on the last bar: Continue ends the song (it does not play the bar again)', () => {
+    const end = buildTimeline({ chart: chart([['A', [{ chords: ['C'] }, { chords: ['G'], fermata: true }]]]) })!;
+    const head = startPlayhead({ from: 'leader', songId: 's1', bpm: 120, startAt: T });
+    expect(playheadAt(end, head, T + 10_000)).toMatchObject({ bar: 1, waiting: true, done: false });
+    const next = continuePlayhead(head, T + 10_000, end);
+    expect(playheadAt(end, next, T + 10_100)).toMatchObject({ bar: 1, waiting: false, done: true });
+    expect(playheadAt(end, next, T + 14_000)).toMatchObject({ done: true });
+    expect(parsePlayheadState(next)).toEqual(next);
   });
 
   it('re-aligns to a tapped bar: that bar starts now', () => {

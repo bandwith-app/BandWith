@@ -42,6 +42,11 @@ export interface Timeline {
   sections: UnrolledSection[];
   /** Start of each lyric line (liveLines order) as a bar position (bar index + fraction); empty with no lyrics. */
   lines: number[];
+  /**
+   * Every time a line is sung, in order: a repeated section ("Chorus x2")
+   * sings its lines again. `at` is a bar position, `line` a liveLines index.
+   */
+  cues: { at: number; line: number }[];
   /** The lines come from the song's own timing (Sync lines), not a spread. */
   timedLines: boolean;
 }
@@ -121,20 +126,23 @@ export function buildTimeline(song: TimelineSong): Timeline | null {
 
   // Lyric lines on the bars.
   let starts: number[] = [];
+  let cues: Timeline['cues'] = [];
   const timing = validLineTiming(song.lineTiming, song.lyrics);
   if (timing) {
     starts = timing.at.map((tick) => tickToBar(bars, tick));
+    cues = starts.map((at, line) => ({ at, line }));
   } else if (lines.length) {
     if (source === 'chart') lyricSpans = matchLyricsToChart(lyricSections.map((s) => s.name), sections, bars.length, lyricSections.map((s) => s.lines.filter((l) => l.trim()).length));
-    starts = spreadLines(lines, lyricSpans);
+    ({ starts, cues } = spreadLines(lines, lyricSpans));
   }
-  return { source, bars, sections, lines: starts, timedLines: !!timing };
+  return { source, bars, sections, lines: starts, cues, timedLines: !!timing };
 }
 
 /**
  * Where the lyric sections fall on the chart: in order, each named section on
- * the next chart section of the same kind (Verse ↔ Verse or A…). When a name
- * doesn't match, the lyrics are spread over the whole chart by line count.
+ * the next chart section of the same kind (Verse ↔ Verse or A…), "Chorus x2"
+ * on the next two. When a name doesn't match, the lyrics are spread over the
+ * whole chart by line count.
  */
 function matchLyricsToChart(names: (string | null)[], sections: UnrolledSection[], totalBars: number, counts: number[]) {
   const spans: { lyric: number; start: number; length: number }[] = [];
@@ -143,13 +151,17 @@ function matchLyricsToChart(names: (string | null)[], sections: UnrolledSection[
   names.forEach((name, li) => {
     if (!all) return;
     const kind = name ? parseSectionName(name).kind : null;
-    const k = kind ? sections.findIndex((s, i) => i >= cursor && !!s.label && parseSectionName(s.label, { letters: true }).kind === kind) : -1;
-    if (k < 0) {
-      all = false;
-      return;
+    const times = timesOfName(name);
+    for (let n = 0; n < times; n++) {
+      const k = kind ? sections.findIndex((s, i) => i >= cursor && !!s.label && parseSectionName(s.label, { letters: true }).kind === kind) : -1;
+      if (k < 0) {
+        // The first one has to be there; fewer repeats on the chart than "x2" says is fine.
+        if (n === 0) all = false;
+        return;
+      }
+      spans.push({ lyric: li, start: sections[k].start, length: sections[k].length });
+      cursor = k + 1;
     }
-    spans.push({ lyric: li, start: sections[k].start, length: sections[k].length });
-    cursor = k + 1;
   });
   if (all) return spans;
   // By line count over the whole chart.
@@ -163,22 +175,28 @@ function matchLyricsToChart(names: (string | null)[], sections: UnrolledSection[
   });
 }
 
-/** Each line's start: the lines of a section evenly over its bars (first occurrence only). */
-function spreadLines(lines: ReturnType<typeof liveLines>, spans: { lyric: number; start: number; length: number }[]): number[] {
-  const first = new Map<number, { start: number; length: number }>();
-  for (const s of spans) if (!first.has(s.lyric)) first.set(s.lyric, s);
-  const bySection = new Map<number, number>();
-  lines.forEach((l) => bySection.set(l.section, (bySection.get(l.section) ?? 0) + 1));
-  const seen = new Map<number, number>();
+/**
+ * The lines of each lyric section evenly over its bars, at every occurrence:
+ * `cues` in playing order; `starts` (one a line, liveLines order) at the first.
+ */
+function spreadLines(lines: ReturnType<typeof liveLines>, spans: { lyric: number; start: number; length: number }[]): { starts: number[]; cues: Timeline['cues'] } {
+  const bySection = new Map<number, number[]>();
+  lines.forEach((l, i) => bySection.set(l.section, [...(bySection.get(l.section) ?? []), i]));
+  const cues: Timeline['cues'] = [];
+  const first = new Map<number, number>();
+  for (const span of spans) {
+    const own = bySection.get(span.lyric) ?? [];
+    own.forEach((line, k) => {
+      const at = span.start + (span.length * k) / own.length;
+      cues.push({ at, line });
+      if (!first.has(line)) first.set(line, at);
+    });
+  }
+  cues.sort((a, b) => a.at - b.at);
+  // A line with no span (no matching section): where the line before it starts.
   let last = 0;
-  return lines.map((l) => {
-    const span = first.get(l.section);
-    const k = seen.get(l.section) ?? 0;
-    seen.set(l.section, k + 1);
-    if (!span) return last;
-    last = span.start + (span.length * k) / (bySection.get(l.section) ?? 1);
-    return last;
-  });
+  const starts = lines.map((_, i) => (last = first.get(i) ?? last));
+  return { starts, cues };
 }
 
 // ── The shared state ───────────────────────────────────────────────────────
@@ -296,16 +314,18 @@ export function playheadAt(timeline: Timeline, state: Pick<PlayheadState, 'bpm' 
   let done = false;
   let t = starts[from] + Math.max(0, elapsed);
   if (elapsed < 0) before = true;
+  // Continued past a fermata on the last bar: the song is over.
+  const over = state.bar >= n && !before;
 
   // Hold: the held bars again and again.
   const hold = state.hold && state.hold[0] <= from && from <= state.hold[1] ? state.hold : null;
-  if (hold) {
+  if (hold && !over) {
     const a = starts[hold[0]];
     const b = starts[Math.min(n, hold[1] + 1)];
     if (t >= b && b > a) t = a + ((t - a) % (b - a));
   }
   // A fermata / ad lib bar on the way: stop at its end until the leader taps.
-  if (!hold) {
+  if (!hold && !over) {
     for (let i = from; i < n; i++) {
       if (starts[i] > t) break;
       if (timeline.bars[i].hold && t >= starts[i + 1]) {
@@ -315,7 +335,7 @@ export function playheadAt(timeline: Timeline, state: Pick<PlayheadState, 'bpm' 
       }
     }
   }
-  if (t >= starts[n]) {
+  if (over || t >= starts[n]) {
     t = starts[n] - 1e-6;
     done = true;
   }
@@ -332,9 +352,10 @@ export function playheadAt(timeline: Timeline, state: Pick<PlayheadState, 'bpm' 
   const nextSec = section + 1 < timeline.sections.length ? section + 1 : null;
   const pos = bar + phase;
   let line = -1;
-  timeline.lines.forEach((s, i) => {
-    if (s <= pos + 1e-9) line = i;
-  });
+  for (const q of timeline.cues) {
+    if (q.at > pos + 1e-9) break;
+    line = q.line;
+  }
   return {
     bar,
     phase,
@@ -397,6 +418,8 @@ export function releaseHold(state: PlayheadState, now: number, timeline: Timelin
 /** Past a fermata / ad lib: the next bar starts now. */
 export function continuePlayhead(state: PlayheadState, now: number, timeline: Timeline): PlayheadState {
   const pos = playheadAt(timeline, state, now, 0);
+  // The fermata was the last bar: past the end, the song is over.
+  if (pos.waiting && pos.bar + 1 >= timeline.bars.length) return { ...state, seq: nextSeq(state.seq), hold: null, bar: timeline.bars.length, startAt: now };
   return realign({ ...state, hold: null }, pos.waiting ? pos.bar + 1 : pos.bar, now, timeline);
 }
 
