@@ -1562,6 +1562,168 @@ ok(orderA?.c === true, `order 178 → 181: confirmed, the lineup member is back 
   ok(locks === 0, `R7 4b: editing a personal event takes no hold lock (${locks} advisory locks)`);
 }
 
+// ── Round 8 (Claude review of 029c2293, main's decisions) ──────────────────
+{
+  const readsAs = async (uid, chat) => (await as(uid, `SELECT content FROM messages WHERE chat_id = '${chat}' ORDER BY created_at`)).rows.map((r) => r.content);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const say = async (chat, text) => { await sleep(15); await db.exec(`INSERT INTO messages (chat_id, sender_id, content, created_at) VALUES ('${chat}','${ADMIN}','${text}', clock_timestamp())`); await sleep(15); };
+  const keptRow = async (chat, uid) => db.exec(`ALTER TABLE chat_participants DISABLE TRIGGER USER;
+    INSERT INTO chat_participants (chat_id, user_id) VALUES ('${chat}','${uid}') ON CONFLICT DO NOTHING;
+    ALTER TABLE chat_participants ENABLE TRIGGER USER;`);
+  const hold = async (e) => (await tryq(`SELECT private_periods::text pp, release_reason r, released_at IS NULL live
+    FROM event_date_holds WHERE event_id = '${e}'`)).rows[0] || {};
+  // A transaction that writes 300 ms after it began (in production it waited
+  // on a lock: the hold's, or the events row): its now() is 300 ms old.
+  // Returns its now(), or { error }.
+  const slowTx = async (uid, sql) => {
+    await db.exec(`BEGIN; SELECT set_config('request.jwt.claims', '${claims(uid)}', true);`);
+    try {
+      const t = (await db.query(`SELECT now()::text t`)).rows[0].t;
+      await sleep(300);
+      await db.exec(sql);
+      await db.exec('COMMIT');
+      return { t };
+    } catch (e) { await db.exec('ROLLBACK').catch(() => {}); return { error: e.message }; }
+  };
+  // What another session wrote while that transaction waited: stamped 100 ms
+  // after the transaction's start, long before its write.
+  const during = (chat, text) => `INSERT INTO messages (chat_id, sender_id, content, created_at)
+    VALUES ('${chat}','${ADMIN}','${text}', now() + interval '100 milliseconds')`;
+
+  // 1a: the first way out of privacy (a quote confirmed): the reviewer's probe.
+  const [T1E, T1C] = [2901, 2902].map(id);
+  await mkQuote(T1E, 'Smith Pier', `INSERT INTO event_members (event_id, user_id, status) VALUES ('${T1E}','${MEM}','confirmed');
+    INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES ('${T1C}','event','Smith Pier','${BAND}','${T1E}','${ADMIN}');
+    INSERT INTO chat_participants (chat_id, user_id) VALUES ('${T1C}','${ADMIN}');`);
+  await keptRow(T1C, MEM);
+  await say(T1C, 'Offer 5200');
+  const t1 = await slowTx(ADMIN, `${during(T1C, 'Late counter-offer 7300')}; UPDATE events SET status = 'confirmed' WHERE id = '${T1E}'`);
+  await say(T1C, 'After the confirm');
+  const r1 = await readsAs(MEM, T1C);
+  const c1 = (await tryq(`SELECT upper(private_periods) = history_cutoff_at AS same,
+      (SELECT cp.cleared_at FROM chat_participants cp WHERE cp.chat_id = '${T1C}' AND cp.user_id = '${MEM}') = history_cutoff_at AS cleared,
+      history_cutoff_at > '${t1.t || 'epoch'}'::timestamptz + interval '200 milliseconds' AS late
+    FROM event_date_holds WHERE event_id = '${T1E}'`)).rows[0] || {};
+  ok(!t1.error && !r1.includes('Offer 5200') && !r1.includes('Late counter-offer 7300') && r1.includes('After the confirm')
+     && c1.same === true && c1.cleared === true && c1.late === true,
+    `R8 1a: a message written while the confirm waited stays with the admins; the period, the cut-off and cleared_at end at the clock after the lock (${t1.error || JSON.stringify(r1)}, ${JSON.stringify(c1)})`);
+
+  // 1b: a gig back to a quote, then confirmed again (the open period ends).
+  const [T2E, T2C] = [2903, 2904].map(id);
+  await asServer(ADMIN, `INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, created_at)
+      VALUES ('${T2E}','${BAND}','Hudson Deck','confirmed','gig','${ADMIN}', current_date + 37, now() - interval '1 day');
+    INSERT INTO event_members (event_id, user_id, status) VALUES ('${T2E}','${MEM}','confirmed');
+    INSERT INTO chats (id, type, name, band_id, event_id, created_by) VALUES ('${T2C}','event','Hudson Deck','${BAND}','${T2E}','${ADMIN}');
+    INSERT INTO chat_participants (chat_id, user_id) VALUES ('${T2C}','${ADMIN}'), ('${T2C}','${MEM}');`);
+  await say(T2C, 'Gig talk: doors at 7');
+  const t2a = await slowTx(ADMIN, `${during(T2C, 'Mid-revert note 4100')}; UPDATE events SET status = 'tentative' WHERE id = '${T2E}'`);
+  await say(T2C, 'Second offer 6400');
+  const t2b = await slowTx(ADMIN, `${during(T2C, 'Late haggle 8100')}; UPDATE events SET status = 'confirmed' WHERE id = '${T2E}'`);
+  await say(T2C, 'Gig talk: see you there');
+  const r2 = await readsAs(MEM, T2C);
+  ok(!t2a.error && !t2b.error && !r2.includes('Late haggle 8100') && !r2.includes('Second offer 6400')
+     && r2.includes('Gig talk: doors at 7') && r2.includes('Gig talk: see you there'),
+    `R8 1b: reconfirmed: a message written while the confirm waited stays with the admins, both gig periods readable (${t2a.error || t2b.error || JSON.stringify(r2)})`);
+  // Guard (true before round 8 too): a period still starts at the
+  // transaction's now(), so what was written while a revert ran is inside.
+  ok(!t2a.error && !r2.includes('Mid-revert note 4100'),
+    `R8 1b guard: a period starts at the transaction's start: a message written while the revert ran is hidden (${JSON.stringify(r2)})`);
+
+  // 1c: an exit with no open period (the third branch) ends at the clock too.
+  const t3 = await slowTx(ADMIN, `SELECT public.bw_quote_private_period('${T2E}','${BAND}', false)`);
+  const c3 = (await tryq(`SELECT upper(private_periods) > '${t3.t || 'epoch'}'::timestamptz + interval '200 milliseconds' AS late,
+      upper_inf(private_periods) AS open FROM event_date_holds WHERE event_id = '${T2E}'`)).rows[0] || {};
+  ok(!t3.error && c3.late === true && c3.open === false,
+    `R8 1c: an exit with no open period hides up to the clock after the lock, not the transaction's start (${t3.error || JSON.stringify(c3)})`);
+
+  // 2: a link write locks its quote's row before the events rows (link,
+  // quote, event, hold's lock): the order of a save of the quote.
+  const at = (src, re) => { const m = re.exec(src || ''); return m ? m.index : -1; };
+  const Q_LOCK = /PERFORM 1 FROM (public\.)?quotes\b[^;]*FOR NO KEY UPDATE/;
+  const E_LOCK = /PERFORM 1 FROM (public\.)?events\b[^;]*FOR NO KEY UPDATE/;
+  const qc = await fnDef('bw_trg_date_hold_quote_changed');
+  const qp = await fnDef('bw_trg_quote_privacy');
+  const evt = await fnDef('bw_trg_event_changed');
+  const o1 = [qc.indexOf(`TG_TABLE_NAME = 'quote_links'`), at(qc, Q_LOCK), at(qc, E_LOCK), qc.indexOf('bw_date_hold_sync(')];
+  const iqp = at(qp, Q_LOCK);
+  const o2 = [qp.lastIndexOf(`TG_TABLE_NAME = 'quote_links'`, iqp), iqp, at(qp, E_LOCK), qp.indexOf('bw_quote_private_period(')];
+  const rising = (a) => a.every((v, i) => v > 0 && (i === 0 || a[i - 1] < v));
+  ok(rising(o1) && rising(o2) && /quote_links row, quotes\s+-- row, events row, hold's lock/.test(evt),
+    `R8 2a: on a link write, quote_changed and the privacy trigger lock the quotes row, then the events rows, then the hold; the event trigger comment states the order (${o1.join(' < ')}; ${o2.join(' < ')})`);
+  // The lock is really taken (xmax of the quotes row = the writer), on both paths.
+  const lockedIn = async (sql, quote) => {
+    const pre = (await tryq(`SELECT xmax::text x FROM quotes WHERE id = '${quote}'`)).rows[0]?.x;
+    await db.exec('BEGIN');
+    try {
+      await db.exec(sql);
+      const x = (await db.query(`SELECT xmax::text x FROM quotes WHERE id = '${quote}'`)).rows[0]?.x;
+      return { pre, x, locked: !!x && x !== '0' && x !== pre };
+    } catch (e) { return { error: e.message, locked: false }; } finally { await db.exec('ROLLBACK').catch(() => {}); }
+  };
+  const [L1E, L1Q, L2E, L2Q] = [2905, 2906, 2907, 2908].map(id);
+  await mkQuote(L1E, 'Smith Atrium', `INSERT INTO quotes (id, band_id, status, valid_until, converted_to_event_id, created_at)
+      VALUES ('${L1Q}','${BAND}','sent', current_date + 30, '${L1E}', now() - interval '1 day');
+    INSERT INTO quote_links (quote_id, band_id, status) VALUES ('${L1Q}','${BAND}','sent');`);
+  await mkQuote(L2E, 'Smith Arcade', `INSERT INTO quotes (id, band_id, status, valid_until, converted_to_event_id, created_at)
+      VALUES ('${L2Q}','${BAND}','sent', current_date + 30, '${L2E}', now() - interval '1 day');`);
+  await asServer(ADMIN, `UPDATE events SET status = 'cancelled' WHERE id = '${L2E}'`);
+  const lk1 = await lockedIn(`UPDATE quote_links SET status = 'viewed' WHERE quote_id = '${L1Q}'`, L1Q);
+  const lk2 = await lockedIn(`INSERT INTO quote_links (quote_id, band_id, status) VALUES ('${L2Q}','${BAND}','accepted')`, L2Q);
+  ok(lk1.locked && lk2.locked,
+    `R8 2b: a link status write (hold trigger) and an accepted link on a cancelled quote (privacy trigger) lock the quotes row (${JSON.stringify(lk1)}, ${JSON.stringify(lk2)})`);
+
+  // 3: bw_answer_date_hold takes the events row (KEY SHARE) before the hold's lock.
+  const ans = await fnDef('bw_answer_date_hold');
+  const o3 = [at(ans, /PERFORM 1 FROM (public\.)?events\b[^;]*FOR KEY SHARE/), ans.indexOf('pg_advisory_xact_lock(178')];
+  ok(rising(o3) && !/bw_answer_date_hold take the\s+-- lock and the hold row, never the events row/.test(evt)
+     && /bw_answer_date_hold takes the events row \(KEY SHARE/.test(evt),
+    `R8 3a: bw_answer_date_hold locks the events row (KEY SHARE), then the hold; the event trigger comment says so (${o3.join(' < ')})`);
+  // The same, observed: when the hold's lock is held (the "is it live" check
+  // right after it), the events row is already locked by this transaction.
+  const A1E = id(2909);
+  await mkQuote(A1E, 'Smith Veranda');
+  const live = (await tryq(`SELECT pg_get_functiondef('public.bw_date_hold_live(uuid)'::regprocedure) d`)).rows[0]?.d;
+  await db.exec(`CREATE TABLE IF NOT EXISTS public.r8_probe (x text); TRUNCATE public.r8_probe;
+    CREATE OR REPLACE FUNCTION public.bw_date_hold_live(p_event_id uuid) RETURNS boolean
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $f$
+    BEGIN
+      INSERT INTO r8_probe (x) SELECT e.xmax::text FROM events e WHERE e.id = p_event_id;
+      RETURN true;
+    END $f$;`);
+  const preX = (await tryq(`SELECT xmax::text x FROM events WHERE id = '${A1E}'`)).rows[0]?.x;
+  const a1 = await as(MEM, `SELECT public.bw_answer_date_hold('${A1E}', 'free') a`);
+  if (live) await db.exec(live); else await db.exec(`DROP FUNCTION IF EXISTS public.bw_date_hold_live(uuid)`);
+  const seenX = (await tryq(`SELECT x FROM r8_probe`)).rows[0]?.x;
+  await db.exec(`DROP TABLE IF EXISTS public.r8_probe`);
+  ok(a1.rows[0]?.a === 'free' && !!seenX && seenX !== '0' && seenX !== preX,
+    `R8 3b: the answer holds the events row before the hold's lock (${a1.error || `xmax before ${preX}, at the live check ${seenX}`})`);
+
+  // 4: the sweep opens a hold on any live quote with no open one, whatever
+  // reason its released row carries (here 'cancelled': a quote saved less
+  // than a minute ago, cancelled and restored at once), on the same row.
+  const holdsFor = async (e) => (await notes(`type = 'date_hold' AND reference_id = '${e}'`)).length;
+  const [S1E, S1Q] = [2910, 2911].map(id);
+  await asServer(ADMIN, `INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date, created_at)
+      VALUES ('${S1E}','${BAND}','Hudson Late Show','tentative','gig','${ADMIN}', current_date + 35, now());
+    INSERT INTO quotes (id, band_id, status, valid_until, converted_to_event_id, created_at)
+      VALUES ('${S1Q}','${BAND}','sent', current_date + 30, '${S1E}', now());`);
+  await asServer(ADMIN, `UPDATE events SET status = 'cancelled' WHERE id = '${S1E}'`);
+  await asServer(ADMIN, `UPDATE events SET status = 'tentative' WHERE id = '${S1E}'`);
+  const s0 = await hold(S1E);
+  await db.exec(`DELETE FROM notifications`);
+  await db.exec(`ALTER TABLE events DISABLE TRIGGER USER;
+    UPDATE events SET created_at = now() - interval '10 minutes' WHERE id = '${S1E}';
+    ALTER TABLE events ENABLE TRIGGER USER;`);
+  await db.exec(`SELECT public.bw_date_hold_sweep()`).catch(() => {});
+  const n1 = await holdsFor(S1E);
+  await db.exec(`SELECT public.bw_date_hold_sweep()`).catch(() => {});
+  const n2 = await holdsFor(S1E);
+  const s1 = await hold(S1E);
+  const rows = (await tryq(`SELECT count(*)::int n FROM event_date_holds WHERE event_id = '${S1E}'`)).rows[0]?.n;
+  ok(s0.r === 'cancelled' && s0.live === false && n1 === 2 && n2 === 2 && s1.live === true && rows === 1,
+    `R8 4: a restored quote whose released row says 'cancelled' is announced by the sweep, once, on its one row (before: ${s0.r}/${s0.live}; notices ${n1} then ${n2}; open ${s1.live}; rows ${rows})`);
+}
+
 // ── The 002 shape: enum events.status / event_type / quotes.status ─────────
 // 178 must apply (twice) and work on enum columns as well as text ones: it
 // passes them on as ::text. CHAT_TYPE=text keeps chats.type text here.

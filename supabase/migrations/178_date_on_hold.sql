@@ -1118,13 +1118,19 @@ SELECT public.bw_quote_chat_prune(NULL);
 
 -- In or out of privacy (bw_event_quote_private false -> true, or true ->
 -- false), from the event trigger or the quote / link privacy trigger, under
--- the hold's lock. In: a new period from now, open; from a gig,
--- confirmed_once_at too. Out: the open period ends now, never before it
--- started (a transaction that began before a concurrent revert can't remove
--- it); the first one, from -infinity, also sets history_cutoff_at. An exit
--- with no open period hides since the last one (only ever more). The row
--- it may insert is released at once ('reverted' / 'left_quote'): the sweep
--- still announces a hold on it.
+-- the hold's lock. In: a new period from now() (the transaction's start: a
+-- message written while it runs is inside), open; from a gig,
+-- confirmed_once_at too. Out: the open period ends at v_end, the clock read
+-- AFTER the hold's lock, not now(): a message written while this
+-- transaction waited (its now() is its start) is still inside the period.
+-- Never before the period started (a transaction that began before a
+-- concurrent revert can't remove it); the first one, from -infinity, also
+-- sets history_cutoff_at to the same v_end. An exit with no open period
+-- hides since the last one (only ever more). The row it may insert is
+-- released at once ('reverted' / 'left_quote'): the sweep still announces a
+-- hold on it. Nothing else in this file ends a period or writes a cut-off:
+-- bw_quote_event_confirmed and the chat_participants guard copy
+-- history_cutoff_at, bw_quote_chat_cutoffs reads private_periods.
 CREATE OR REPLACE FUNCTION public.bw_quote_private_period(p_event_id uuid, p_band_id uuid, p_enter boolean,
   p_was_gig boolean DEFAULT false)
 RETURNS void
@@ -1132,9 +1138,13 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
+DECLARE
+  v_end timestamptz;
 BEGIN
   IF p_event_id IS NULL OR p_band_id IS NULL THEN RETURN; END IF;
   PERFORM pg_advisory_xact_lock(178, hashtext(p_event_id::text));
+  -- After the lock (see above): the end of a period, and the first cut-off.
+  v_end := clock_timestamp();
   INSERT INTO event_date_holds (event_id, band_id, announced_at, released_at, release_reason)
   VALUES (p_event_id, p_band_id, now(), now(), CASE WHEN p_enter THEN 'reverted' ELSE 'left_quote' END)
   ON CONFLICT (event_id) DO NOTHING;
@@ -1147,15 +1157,15 @@ BEGIN
   ELSE
     UPDATE event_date_holds h
        SET history_cutoff_at = CASE WHEN private_periods IS NULL OR isempty(private_periods)
-                                    THEN coalesce(history_cutoff_at, now()) ELSE history_cutoff_at END,
+                                    THEN coalesce(history_cutoff_at, v_end) ELSE history_cutoff_at END,
            private_periods = CASE
              WHEN private_periods IS NULL OR isempty(private_periods)
-               THEN tstzmultirange(tstzrange(NULL, now(), '(]'))
+               THEN tstzmultirange(tstzrange(NULL, v_end, '(]'))
              WHEN upper_inf(private_periods)
                THEN private_periods - tstzmultirange(tstzrange(
-                      greatest(now(), (SELECT max(lower(pr)) FROM unnest(h.private_periods) pr)), NULL, '()'))
+                      greatest(v_end, (SELECT max(lower(pr)) FROM unnest(h.private_periods) pr)), NULL, '()'))
              ELSE private_periods + tstzmultirange(tstzrange(upper(private_periods),
-                    greatest(now(), upper(private_periods)), '[]'))
+                    greatest(v_end, upper(private_periods)), '[]'))
            END
      WHERE event_id = p_event_id;
   END IF;
@@ -1920,6 +1930,11 @@ BEGIN
   IF v_band IS NULL OR NOT public.bw_is_band_member(v_band, v_uid) THEN
     RAISE EXCEPTION 'Not your band' USING ERRCODE = '42501';
   END IF;
+  -- The events row first (the KEY SHARE the answer's FK takes anyway), then
+  -- the hold's lock: the order of an events UPDATE or DELETE (row, then
+  -- lock), so an answer and a delete of the event can't deadlock. An edit of
+  -- the event (NO KEY UPDATE) doesn't wait on it.
+  PERFORM 1 FROM public.events WHERE id = p_event_id FOR KEY SHARE;
   -- One answer at a time per hold: a date change (which clears answers)
   -- can't slip in between the check and the write.
   PERFORM pg_advisory_xact_lock(178, hashtext(p_event_id::text));
@@ -2005,10 +2020,13 @@ BEGIN
   IF TG_OP = 'DELETE' THEN ev := OLD; ELSE ev := NEW; END IF;
   -- 178: the hold's lock before any write to event_date_holds. The UPDATE
   -- already holds the events row, so the order is: events row, then the
-  -- hold's lock, then the hold row. The quote triggers lock the events row
-  -- before the hold's lock too; the sweep and bw_answer_date_hold take the
-  -- lock and the hold row, never the events row. Personal events (no band)
-  -- have no hold: no lock.
+  -- hold's lock, then the hold row. Everywhere: quote_links row, quotes
+  -- row, events row, hold's lock, hold row. The quote triggers lock the
+  -- events row before the hold's lock too (a link write: its quotes row
+  -- before that); bw_answer_date_hold takes the events row (KEY SHARE, as
+  -- its FK would) before the lock; the sweep takes the lock and the hold
+  -- row, never the events row. Personal events (no band) have no hold: no
+  -- lock.
   IF OLD.band_id IS NOT NULL OR (TG_OP = 'UPDATE' AND NEW.band_id IS NOT NULL) THEN
     PERFORM pg_advisory_xact_lock(178, hashtext(ev.id::text));
   END IF;
@@ -2032,7 +2050,8 @@ BEGIN
   -- A gig (confirmed or played, from a quote, or with a hold row) keeps a
   -- record that it was one before anything changes, so a later cancel is a
   -- gig's cancel even when it predates 178 (no history cut-off: its chat was
-  -- the lineup's). Released at once: the sweep and the hold ignore it.
+  -- the lineup's). Released at once: no hold, and the sweep ignores it while
+  -- it is a gig.
   IF TG_OP = 'UPDATE' AND NOT v_was_quote AND OLD.band_id IS NOT NULL AND OLD.quote_id IS NULL
      AND lower(coalesce(OLD.status::text, '')) IN ('confirmed', 'completed')
      AND lower(coalesce(OLD.event_type::text, '')) <> 'rehearsal'
@@ -2219,11 +2238,17 @@ DECLARE
   v_ids uuid[];
   r record;
 BEGIN
-  IF TG_TABLE_NAME = 'quote_links' THEN v_quote := NEW.quote_id; END IF;
+  IF TG_TABLE_NAME = 'quote_links' THEN
+    v_quote := NEW.quote_id;
+    -- A link write (the client accepting on the public page): its quote's
+    -- row before the events rows, the order of a save of the quote (quotes
+    -- row, events rows, hold's lock). So: link, quote, events, hold's lock.
+    PERFORM 1 FROM quotes q WHERE q.id = v_quote FOR NO KEY UPDATE;
+  END IF;
   SELECT array_agg(DISTINCT e.id) INTO v_ids FROM events e JOIN quotes q ON q.id = v_quote
    WHERE e.band_id = q.band_id AND (e.id = q.converted_to_event_id OR e.quote_id = q.id);
   IF v_ids IS NULL THEN RETURN NEW; END IF;
-  -- The events rows first, then the hold's lock (in the sync): the order of
+  -- The events rows next, then the hold's lock (in the sync): the order of
   -- an events UPDATE, and of bw_date_hold_quote_moved after this trigger.
   PERFORM 1 FROM events e WHERE e.id = ANY (v_ids) ORDER BY e.id FOR NO KEY UPDATE;
   FOR r IN SELECT unnest(v_ids) AS id ORDER BY 1 LOOP
@@ -2367,6 +2392,7 @@ DECLARE
   v_was boolean;
   v_now boolean;
   v_band uuid;
+  v_quote_locked boolean := false;
   r record;
 BEGIN
   IF TG_TABLE_NAME = 'quote_links' THEN
@@ -2399,7 +2425,13 @@ BEGIN
     PERFORM set_config(v_key, '', true);
     CONTINUE WHEN split_part(v_cur, '|', 1) <> v_stamp;
     v_was := split_part(v_cur, '|', 2) = 'true';
-    -- The events row first, then the hold's lock (bw_quote_private_period).
+    -- A link write: its quote's row first (a quotes write already holds
+    -- it), the order of a save of the quote. Then the events row, then the
+    -- hold's lock (bw_quote_private_period): link, quote, event, hold's lock.
+    IF TG_TABLE_NAME = 'quote_links' AND NOT v_quote_locked THEN
+      PERFORM 1 FROM quotes q WHERE q.id IN (OLD.quote_id, NEW.quote_id) ORDER BY q.id FOR NO KEY UPDATE;
+      v_quote_locked := true;
+    END IF;
     PERFORM 1 FROM events e WHERE e.id = r.id FOR NO KEY UPDATE;
     v_band := NULL;
     SELECT p.band_id, p.is_private INTO v_band, v_now FROM public.bw_quote_privacy_events(ARRAY[r.id]) p;
@@ -2459,10 +2491,10 @@ BEGIN
      WHERE e.band_id IS NOT NULL
        AND public.bw_event_is_quote(e.status::text, e.event_type::text, e.quote_id)
        AND coalesce(e.event_date, e.date) >= public.bw_date_hold_today()
-       -- No hold yet, or only the row a privacy change left (released at
-       -- once, 'reverted' / 'left_quote', not announced since).
-       AND NOT EXISTS (SELECT 1 FROM event_date_holds h WHERE h.event_id = e.id
-                        AND NOT (h.released_at IS NOT NULL AND h.release_reason IN ('reverted', 'left_quote')))
+       -- No open hold: no row yet, or a released one, whatever its reason
+       -- (the row a privacy change or a cancel left, a hold that ended and
+       -- whose event is live again). The sync opens it again on the same row.
+       AND NOT EXISTS (SELECT 1 FROM event_date_holds h WHERE h.event_id = e.id AND h.released_at IS NULL)
   LOOP
     IF public.bw_date_hold_live(r.id) AND public.bw_date_hold_ready(r.id) THEN
       PERFORM public.bw_date_hold_sync(r.id, false);
