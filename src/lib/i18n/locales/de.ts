@@ -2415,6 +2415,7 @@ const dict: Dictionary = {
   "A band needs at least one admin. Make someone else admin first.": "Eine Band braucht mindestens einen Admin. Mach zuerst jemand anderen zum Admin.",
   "Could not remove the member. Try again.": "Mitglied konnte nicht entfernt werden. Versuch es noch mal.",
   "Could not change the role. Try again.": "Rolle konnte nicht geändert werden. Versuch es noch mal.",
+  "Another admin of this band is deleting their account. Try again in a few minutes.": "Ein anderer Admin der Band löscht gerade sein Konto. Versuch es in ein paar Minuten noch mal.",
   "Invite sent to {name}. They’ll see it next time they open BandWith.": "Einladung an {name} gesendet. Sie erscheint beim nächsten Öffnen von BandWith.",
   "Invite emailed to {name}. You can also share it directly.": "Einladung per E-Mail an {name} gesendet. Du kannst sie auch direkt teilen.",
   "Invite created for {name}. Share it so they can join.": "Einladung für {name} erstellt. Teile sie, damit die Person beitreten kann.",

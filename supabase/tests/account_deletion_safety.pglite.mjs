@@ -19,6 +19,7 @@ const ok = (cond, msg) => { if (!cond) { fails++; console.log('FAIL', msg); } el
 const id = (n) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
 const [BAND, ADMIN1, ADMIN2, MEM] = [1, 2, 3, 4].map(id);
 const [POLL, OPT] = [10, 11].map(id);
+const SOLO = id(20), DUO = id(21);
 
 await db.exec(`
 CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
@@ -26,7 +27,12 @@ CREATE SCHEMA auth; CREATE SCHEMA storage;
 CREATE TABLE auth.users (id uuid PRIMARY KEY);
 CREATE TABLE storage.objects (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), bucket_id text, name text,
   owner uuid REFERENCES auth.users(id), owner_id text);
-CREATE TABLE public.bands (id uuid PRIMARY KEY);
+CREATE TABLE public.bands (id uuid PRIMARY KEY, name text);
+CREATE TABLE public.profiles (id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE);
+CREATE TABLE public.band_members (band_id uuid REFERENCES public.bands(id) ON DELETE CASCADE,
+  user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE, role text, is_active boolean DEFAULT true);
+CREATE TABLE public.events (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), band_id uuid, created_by uuid);
+CREATE TABLE public.messages (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), sender_id uuid);
 -- As 038 created them.
 CREATE TABLE public.rehearsal_polls (id uuid PRIMARY KEY, band_id uuid NOT NULL REFERENCES public.bands(id) ON DELETE CASCADE,
   created_by uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE, title text);
@@ -36,7 +42,10 @@ CREATE TABLE public.rehearsal_poll_votes (poll_id uuid NOT NULL REFERENCES publi
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE);
 
 INSERT INTO auth.users VALUES ('${ADMIN1}'), ('${ADMIN2}'), ('${MEM}');
-INSERT INTO bands VALUES ('${BAND}');
+INSERT INTO profiles VALUES ('${ADMIN1}'), ('${ADMIN2}'), ('${MEM}');
+INSERT INTO bands VALUES ('${BAND}', 'Hudson Horns'), ('${SOLO}', 'Solo project');
+INSERT INTO band_members VALUES ('${BAND}','${ADMIN1}','admin',true), ('${BAND}','${ADMIN2}','admin',true),
+  ('${BAND}','${MEM}','member',true), ('${SOLO}','${ADMIN1}','admin',true);
 INSERT INTO rehearsal_polls VALUES ('${POLL}', '${BAND}', '${ADMIN1}', 'Thursday or Friday?');
 INSERT INTO rehearsal_poll_options VALUES ('${OPT}', '${POLL}');
 INSERT INTO rehearsal_poll_votes VALUES ('${POLL}', '${OPT}', '${ADMIN2}'), ('${POLL}', '${OPT}', '${MEM}'), ('${POLL}', '${OPT}', '${ADMIN1}');
@@ -47,6 +56,8 @@ INSERT INTO storage.objects (bucket_id, name, owner, owner_id) VALUES
   ('song-files', '${BAND}/song/other.pdf', '${MEM}', '${MEM}');
 `);
 
+const lines = (file, from, to) => readFileSync(`${REPO}/supabase/migrations/${file}`, 'utf8').split('\n').slice(from - 1, to).join('\n');
+await db.exec(lines('045_account_deletion.sql', 18, 38)); // bw_account_deletion_blockers as live
 await db.exec(readFileSync(MIG, 'utf8'));
 await db.exec(readFileSync(MIG, 'utf8')); // idempotent
 ok(true, 'migration runs twice');
@@ -69,6 +80,64 @@ ok(r.personal_left === 0, 'ready once the personal files are gone');
 const grants = (await db.query(`SELECT has_function_privilege('authenticated', 'public.bw_account_storage_release(uuid)', 'EXECUTE') AS a,
   has_function_privilege('service_role', 'public.bw_account_storage_release(uuid)', 'EXECUTE') AS s`).catch(() => ({ rows: [{}] }))).rows[0];
 ok(grants.a === false && grants.s === true, `server only (${JSON.stringify(grants)})`);
+
+// ── Codex review #282 ──────────────────────────────────────────────────────
+const q = async (sql) => { try { return { rows: (await db.query(sql)).rows }; } catch (e) { return { error: e.message }; } };
+// Several statements, rolled back: only whether it errors.
+const tryTx = async (sql) => { try { await db.exec(`BEGIN; ${sql}; ROLLBACK;`); return {}; } catch (e) { await db.exec('ROLLBACK').catch(() => {}); return { error: e.message }; } };
+// The profile photo is personal: never released, and it holds the deletion.
+await db.exec(`INSERT INTO storage.objects (bucket_id, name, owner, owner_id) VALUES ('avatars', '${ADMIN1}/me.png', '${ADMIN1}', '${ADMIN1}')`);
+r = await rel();
+ok(r.personal_left === 1, `a profile photo still there holds the deletion (${JSON.stringify(r)})`);
+const av = (await db.query(`SELECT owner FROM storage.objects WHERE bucket_id = 'avatars'`)).rows[0];
+ok(av?.owner === ADMIN1, 'and is not released (it must be removed, not left public)');
+await db.exec(`DELETE FROM storage.objects WHERE bucket_id = 'avatars'`);
+ok((await rel()).personal_left === 0, 'ready once the photo is gone');
+
+// The band check holds while personal files are removed.
+let b = await q(`SELECT public.bw_account_deletion_begin('${ADMIN1}') AS r`);
+ok(b.rows?.[0]?.r?.ok === true, `deletion can begin: another admin stays (${b.error ?? JSON.stringify(b.rows?.[0]?.r)})`);
+ok(JSON.stringify(b.rows?.[0]?.r?.band_ids) === JSON.stringify([SOLO]), 'the solo band is noted for cleanup');
+let d = await q(`UPDATE band_members SET role = 'member' WHERE band_id = '${BAND}' AND user_id = '${ADMIN2}'`);
+ok(!!d.error, `the other admin can't step down meanwhile (${d.error ?? 'stepped down'})`);
+d = await q(`DELETE FROM band_members WHERE band_id = '${BAND}' AND user_id = '${ADMIN2}'`);
+ok(!!d.error, "nor be removed");
+d = await q(`UPDATE band_members SET is_active = false WHERE band_id = '${BAND}' AND user_id = '${ADMIN2}'`);
+ok(!!d.error, "nor leave");
+await db.exec(`UPDATE band_members SET role = 'admin' WHERE band_id = '${BAND}' AND user_id = '${MEM}'`);
+d = await q(`UPDATE band_members SET role = 'member' WHERE band_id = '${BAND}' AND user_id = '${ADMIN2}'`);
+ok(!d.error, `with a third admin, stepping down is fine (${d.error ?? 'ok'})`);
+await db.exec(`UPDATE band_members SET role = 'admin' WHERE band_id = '${BAND}' AND user_id = '${ADMIN2}';
+  UPDATE band_members SET role = 'member' WHERE band_id = '${BAND}' AND user_id = '${MEM}'`);
+await db.exec(`UPDATE account_deletions_pending SET started_at = now() - interval '20 minutes'`);
+d = await q(`UPDATE band_members SET role = 'admin' WHERE band_id = '${BAND}' AND user_id = '${ADMIN2}'`);
+d = await tryTx(`UPDATE band_members SET role = 'member' WHERE band_id = '${BAND}' AND user_id = '${ADMIN2}'`);
+ok(!d.error, `an old pending deletion no longer holds anyone (${d.error ?? 'ok'})`);
+// A retry after the solo band is gone still knows it.
+await db.exec(`DELETE FROM bands WHERE id = '${SOLO}'`);
+b = await q(`SELECT public.bw_account_deletion_begin('${ADMIN1}') AS r`);
+ok(JSON.stringify(b.rows?.[0]?.r?.band_ids) === JSON.stringify([SOLO]), `a retry still cleans the band already deleted (${JSON.stringify(b.rows?.[0]?.r?.band_ids)})`);
+// Blocked: the other admin left earlier and members remain.
+await db.exec(`DELETE FROM account_deletions_pending; UPDATE band_members SET role = 'member' WHERE band_id = '${BAND}' AND user_id = '${ADMIN2}'`);
+b = await q(`SELECT public.bw_account_deletion_begin('${ADMIN1}') AS r`);
+ok(b.rows?.[0]?.r?.ok === false && b.rows[0].r.bands?.[0] === 'Hudson Horns', `last admin with members: refused (${JSON.stringify(b.rows?.[0]?.r)})`);
+ok((await db.query(`SELECT count(*)::int AS n FROM account_deletions_pending`)).rows[0].n === 0, 'and nothing pending');
+await db.exec(`UPDATE band_members SET role = 'admin' WHERE band_id = '${BAND}' AND user_id = '${ADMIN2}'`);
+b = await q(`SELECT public.bw_account_deletion_begin('${ADMIN1}') AS r`);
+d = await tryTx(`DELETE FROM bands WHERE id = '${BAND}'`);
+ok(!d.error, `deleting the whole band is never held (${d.error ?? 'ok'})`);
+// A member leaves after the deletion began: prepare deletes that band too,
+// and notes it, so its files are cleaned.
+await db.exec(`INSERT INTO bands VALUES ('${DUO}', 'Duo'); INSERT INTO band_members VALUES ('${DUO}','${ADMIN1}','admin',true), ('${DUO}','${MEM}','member',true)`);
+b = await q(`SELECT public.bw_account_deletion_begin('${ADMIN1}') AS r`);
+await db.exec(`UPDATE band_members SET is_active = false WHERE band_id = '${DUO}' AND user_id = '${MEM}'`);
+d = await q(`SELECT public.bw_prepare_account_deletion('${ADMIN1}')`);
+const noted = (await db.query(`SELECT band_ids FROM account_deletions_pending WHERE user_id = '${ADMIN1}'`)).rows[0]?.band_ids ?? [];
+ok(!d.error && noted.includes(DUO), `prepare notes every band it deletes (${d.error ?? JSON.stringify(noted)})`);
+ok((await db.query(`SELECT count(*)::int AS n FROM bands WHERE id = '${BAND}'`)).rows[0].n === 1, 'the band that goes on stays');
+const g2 = (await db.query(`SELECT has_function_privilege('authenticated', 'public.bw_account_deletion_begin(uuid)', 'EXECUTE') AS a,
+  has_table_privilege('authenticated', 'public.account_deletions_pending', 'SELECT') AS t`).catch(() => ({ rows: [{}] }))).rows[0];
+ok(g2.a === false && g2.t === false, `server only (${JSON.stringify(g2)})`);
 
 // Deleting the poll creator's account (02 #8 / 04 #8).
 let blocked = null;

@@ -194,13 +194,17 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
     setPendingRemoval(member);
   };
 
+  // A co-admin's account deletion holds the band's last-admin check (180).
+  const isDeletionHold = (error: { message?: string } | null | undefined) =>
+    /account_deletion_in_progress/.test(error?.message ?? '');
+
   const confirmRemoveMember = async () => {
     if (!pendingRemoval || removing) return;
     setRemoving(true);
     const { error } = await removeMember(pendingRemoval.id);
     setRemoving(false);
     if (error) {
-      flashNotice(error.message || t('Could not remove the member. Try again.'));
+      flashNotice(isDeletionHold(error) ? t('Another admin of this band is deleting their account. Try again in a few minutes.') : error.message || t('Could not remove the member. Try again.'));
       return;
     }
     // The database notifies the removed member and the band (migration 046).
@@ -232,7 +236,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
       setLeaving(false);
       setLeaveOpen(false);
       setDetailId(null);
-      flashNotice(t('Could not leave the band. Try again.'));
+      flashNotice(isDeletionHold(error) ? t('Another admin of this band is deleting their account. Try again in a few minutes.') : t('Could not leave the band. Try again.'));
       return;
     }
     // The database tells the band (046). Back to another band, or to the
@@ -276,7 +280,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
     }
     const { error } = await updateMemberRole(member.id, newRole);
     if (error) {
-      flashNotice(error.message || t('Could not change the role. Try again.'));
+      flashNotice(isDeletionHold(error) ? t('Another admin of this band is deleting their account. Try again in a few minutes.') : error.message || t('Could not change the role. Try again.'));
       return;
     }
     setMembers((prev) =>
