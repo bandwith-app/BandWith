@@ -631,17 +631,52 @@ export async function markQuoteBalanceSent(
   kind: 'sent' | 'reminded',
   channel: QuoteChannel,
   balanceVersion?: number | null,
-): Promise<Result<string>> {
+  /**
+   * #293 round 6 (185): true records an email's send before it goes out (the
+   * page shows this balance at once), false confirms it after. A database
+   * without it: true records the send as before (still ahead of the email)
+   * and `pending` comes back false, so the caller confirms nothing.
+   */
+  pending?: boolean,
+): Promise<Result<string> & { pending?: boolean }> {
   const args = { p_quote_id: quoteId, p_kind: kind, p_channel: channel };
+  const missing = (e: { code?: string; message?: string } | null) =>
+    !!e && (e.code === 'PGRST202' || /could not find the function/i.test(e.message || ''));
+  const withVersion = balanceVersion != null ? { ...args, p_balance_version: balanceVersion } : args;
+  let usedPending = pending != null && balanceVersion != null;
   let { data, error } = await supabase.rpc(
     'bw_quote_balance_mark_sent',
-    balanceVersion != null ? { ...args, p_balance_version: balanceVersion } : args,
+    usedPending ? { ...withVersion, p_pending: pending } : withVersion,
   );
-  if (error && balanceVersion != null && (error.code === 'PGRST202' || /could not find the function/i.test(error.message || ''))) {
+  if (error && usedPending && missing(error)) {
+    usedPending = false;
+    if (pending === false) return { data: null, error: null, pending: false };
+    ({ data, error } = await supabase.rpc('bw_quote_balance_mark_sent', withVersion));
+  }
+  if (error && balanceVersion != null && missing(error)) {
     ({ data, error } = await supabase.rpc('bw_quote_balance_mark_sent', args));
   }
-  return error ? { data: null, error: asError(error) } : { data: String(data), error: null };
+  return error
+    ? { data: null, error: asError(error) }
+    : { data: data == null ? null : String(data), error: null, ...(pending != null ? { pending: usedPending && pending === true } : {}) };
 }
+
+/**
+ * #293 round 6 (185): the email of a send recorded first did not go out
+ * (the server said so): the client's page shows again what it showed
+ * before. Only that send (its version, still pending); false otherwise.
+ */
+export async function undoQuoteBalanceSend(quoteId: string, balanceVersion: number): Promise<Result<boolean>> {
+  const { data, error } = await supabase.rpc('bw_quote_balance_send_failed', { p_quote_id: quoteId, p_balance_version: balanceVersion });
+  return error ? { data: null, error: asError(error) } : { data: data === true, error: null };
+}
+
+/** send-email's codes that mean the email did not go out (a refusal before Resend, or Resend's own). */
+export const BALANCE_EMAIL_NOT_SENT = new Set([
+  'balance_changed', 'email_not_configured', 'too_soon', 'no_client_email', 'no_balance', 'link_changed',
+  // Claude r9: Resend refused it (send-email answers email_refused, 502).
+  'email_refused',
+]);
 
 /** The balance was received (or not after all): the gig made from the quote follows. */
 export async function markQuoteBalancePaid(quoteId: string, paid: boolean): Promise<Result<{ paid: boolean; event_id: string | null }>> {

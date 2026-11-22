@@ -40,7 +40,10 @@ import {
   quoteUpdateRecord,
   appMusiciansToDb,
   dbQuoteToAppQuote,
-  saveQuoteLineup,
+  saveQuoteWithLineup,
+  isLineupChangedError,
+  getQuote,
+  type QuoteLineupSaved,
   changedQuoteLineup,
   syncQuoteHoldEvent,
   isUuid,
@@ -168,6 +171,8 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
   const [isCreating, setIsCreating] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
   const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
+  // Round 6: bumped to open the wizard again on a quote reloaded after a refused save.
+  const [wizardKey, setWizardKey] = useState(0);
   const [sharingQuote, setSharingQuote] = useState<Partial<Quote> | null>(null);
   const [sharingAutoSend, setSharingAutoSend] = useState(false);
   
@@ -241,34 +246,55 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
         // stale-edit check compares with a change of client.
         const baseline = editingQuote && editingQuote.id === existing.id ? editingQuote : existing;
         const updates = quoteUpdateRecord(quoteData, currentBandId, baseline);
-        const { data, error } = await updateQuoteDB(existing.id, updates);
+        // Round 5: only a lineup changed in the wizard, checked against the
+        // one it opened with: a save of the venue alone never brings back a
+        // musician or a fee someone else changed meanwhile.
+        // Round 6: the quote and that lineup in one call (185): a lineup
+        // changed meanwhile refuses both, so the total never counts it.
+        const lineupEdit = changedQuoteLineup(quoteData.musicians, baseline.musicians);
+        const { data, lineup, error, lineupError } = lineupEdit
+          ? await saveQuoteWithLineup(existing.id, updates, lineupEdit)
+          : { ...(await updateQuoteDB(existing.id, updates)), lineup: null, lineupError: null };
         if (error || !data) {
           setQuotes(previous);
+          if (isLineupChangedError(error)) {
+            // Nothing was saved: the wizard opens again on the quote and lineup as stored now.
+            const fresh = await getQuote(existing.id);
+            if (!fresh.data) {
+              // Not reloaded (r9): the wizard would keep the old lineup, so it closes.
+              setIsCreating(false);
+              setEditingQuote(null);
+              notify(t('Someone else changed this quote’s lineup meanwhile, so nothing was saved, and the quote could not be reloaded. Close it and open it again.'), 'error');
+              return;
+            }
+            const reloaded = dbQuoteToAppQuote(fresh.data) as MockQuote;
+            setQuotes(prev => prev.map(q => (q.id === existing.id ? reloaded : q)));
+            setEditingQuote(reloaded);
+            setWizardKey(k => k + 1);
+            notify(t('Someone else changed this quote’s lineup meanwhile, so nothing was saved. The quote now shows the lineup as it is: make your change again.'), 'error');
+            return;
+          }
           notify(errorText(error, t('Failed to update quote')), 'error');
           return; // keep the wizard open so nothing is lost
         }
 
         // The lineup is saved with the quote (185): the screens show what is stored.
         let roster = existing.musicians;
-        let savedLineup: NonNullable<Awaited<ReturnType<typeof saveQuoteLineup>>['data']>['musicians'] | null = null;
+        let savedLineup: QuoteLineupSaved['musicians'] | null = null;
         // Round 4: the gig on hold got the lineup with the quote (one transaction).
         let lineupOnHold = false;
         let gigConfirmed = false;
-        // Round 5: only a lineup changed in the wizard, checked against the
-        // one it opened with: a save of the venue alone never brings back a
-        // musician or a fee someone else changed meanwhile.
-        const lineupEdit = changedQuoteLineup(quoteData.musicians, baseline.musicians);
         if (lineupEdit) {
-          const lineup = await saveQuoteLineup(existing.id, lineupEdit.musicians, lineupEdit.base);
-          if (lineup.error || !lineup.data) {
+          if (lineupError || !lineup) {
+            // A database before round 6's 185: the quote was saved alone.
             setQuotes(prev => prev.map(q => (q.id === existing.id ? ({ ...existing, ...dbQuoteToAppQuote(data), musicians: existing.musicians } as MockQuote) : q)));
-            notify(errorText(lineup.error, t('Quote saved, but the lineup was not')), 'error');
+            notify(errorText(lineupError, t('Quote saved, but the lineup was not')), 'error');
             return; // keep the wizard open: saving again saves the lineup
           }
-          savedLineup = lineup.data.musicians;
-          lineupOnHold = lineup.data.synced;
-          gigConfirmed = lineup.data.confirmed;
-          roster = dbQuoteToAppQuote({ ...data, musicians: lineup.data.musicians }).musicians;
+          savedLineup = lineup.musicians;
+          lineupOnHold = lineup.synced;
+          gigConfirmed = lineup.confirmed;
+          roster = dbQuoteToAppQuote({ ...data, musicians: lineup.musicians }).musicians;
         }
         const saved = { ...quoteData, ...dbQuoteToAppQuote(data), musicians: roster } as MockQuote;
         // The date on hold follows the quote (date, place, fee, lineup), so
@@ -678,6 +704,7 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
           <AnimatePresence>
             {isCreating && (
               <QuoteCreationWizard
+                key={`quote-wizard-${wizardKey}`}
                 onClose={() => {
                   setIsCreating(false);
                   setEditingQuote(null);

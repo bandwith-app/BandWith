@@ -439,6 +439,68 @@ export const saveQuoteLineup = async (
 };
 
 /**
+ * #293 round 6: the lineup was changed by someone else while the editor was
+ * open (bw_quote_lineup_current, 185: 40001, hint BW_LINEUP_CHANGED).
+ * Nothing was saved: the quote and its lineup are reloaded.
+ */
+export const isLineupChangedError = (e: unknown): boolean => {
+  const x = e as { code?: string; hint?: string; message?: string } | null;
+  return !!x && (x.hint === 'BW_LINEUP_CHANGED' || /BW_LINEUP_CHANGED/.test(String(x.message || '')));
+};
+
+/** An error that keeps the server's code and hint (the screens read them). */
+const rpcError = (error: { message?: string; code?: string; hint?: string; details?: string }) =>
+  Object.assign(new Error(error.message || 'Request failed'), { code: error.code, hint: error.hint, details: error.details });
+
+/**
+ * #293 round 6: an edited quote and its changed lineup in one call
+ * (bw_quote_save_with_lineup, 185), so neither is saved without the other.
+ * Written one after the other, a quote saved over a lineup someone else
+ * changed kept their removed musician's fee in its total while the lineup
+ * was refused, and every retry was refused again. `lineup` null: only the
+ * quote (updateQuote, as before). A database without the function: the two
+ * calls of round 5.
+ */
+export const saveQuoteWithLineup = async (
+  quoteId: string,
+  updates: Partial<Quote>,
+  lineup: ReturnType<typeof changedQuoteLineup>,
+): Promise<{ data: Quote | null; lineup: QuoteLineupSaved | null; error: Error | null; lineupError?: Error | null }> => {
+  if (!lineup) {
+    const r = await updateQuote(quoteId, updates);
+    return { data: r.data, lineup: null, error: r.error };
+  }
+  const rows = (list: Omit<QuoteMusician, 'id' | 'quote_id' | 'created_at'>[]) => list.map((m) => ({
+    user_id: m.user_id ?? null,
+    name: m.name,
+    instrument: m.instrument ?? null,
+    fee: roundCents(Number(m.fee) || 0),
+    is_external: !!m.is_external,
+    is_available: m.is_available !== false,
+  }));
+  const { data, error } = await supabase.rpc('bw_quote_save_with_lineup', {
+    p_quote_id: quoteId,
+    p_updates: updates,
+    p_musicians: rows(lineup.musicians),
+    ...(Array.isArray(lineup.base) ? { p_base: rows(lineup.base) } : {}),
+  });
+  if (error && isMissingRpc(error)) {
+    const q = await updateQuote(quoteId, updates);
+    if (q.error || !q.data) return { data: null, lineup: null, error: q.error };
+    const l = await saveQuoteLineup(quoteId, lineup.musicians, lineup.base);
+    return { data: q.data, lineup: l.data, error: null, lineupError: l.error };
+  }
+  if (error) return { data: null, lineup: null, error: rpcError(error) };
+  const r = (data || {}) as { quote?: Quote; lineup?: { musicians?: QuoteMusician[]; event_id?: string | null; synced?: boolean; confirmed?: boolean } };
+  const l = r.lineup || {};
+  return {
+    data: r.quote ?? null,
+    lineup: { musicians: Array.isArray(l.musicians) ? l.musicians : [], eventId: l.event_id ?? null, synced: !!l.synced, confirmed: !!l.confirmed },
+    error: r.quote ? null : new Error('Quote not saved'),
+  };
+};
+
+/**
  * Deletes a quote and the tentative calendar event that holds its date (made
  * with the quote: converted_to_event_id, or events.quote_id). Only while that
  * event is still tentative: a gig confirmed from the quote stays.
@@ -1186,14 +1248,17 @@ export const appMusiciansToDb = (
     }));
 
 /**
- * Round 5: a lineup as one comparable value: who, what they play, their fee,
- * in any order (as bw_quote_lineup_key, 185). The editors save the lineup
+ * Round 5: a lineup as one comparable value: who (round 6: with their
+ * profile), what they play, their fee, in any order (as bw_quote_lineup_key,
+ * 185). The editors save the lineup
  * only when it differs from the one they opened with.
  */
 export const quoteLineupKey = (musicians?: AppQuoteMusician[]): string =>
   JSON.stringify(
     appMusiciansToDb(musicians)
       .map((m) => JSON.stringify([
+        // Round 6: who includes the profile (two of the same name are two people).
+        m.user_id ? String(m.user_id).toLowerCase() : '',
         String(m.name || '').trim().toLowerCase(),
         String(m.instrument || '').trim().toLowerCase(),
         roundCents(Number(m.fee) || 0).toFixed(2),

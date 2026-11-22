@@ -384,8 +384,8 @@ const gig = (E) => q(`SELECT deposit_paid, payment_status FROM events WHERE id =
   // Older builds: three named arguments, no version, as before.
   const old = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_balance_mark_sent(p_quote_id => $1, p_kind => 'reminded', p_channel => 'whatsapp')`, [Q])));
   ok(!old.e, `older builds (no version) still record (${old.e || 'ok'})`);
-  const grants = await tryIt(q(`SELECT has_function_privilege('anon', 'public.bw_quote_balance_mark_sent(uuid, text, text, int)', 'EXECUTE') a,
-                                   has_function_privilege('authenticated', 'public.bw_quote_balance_mark_sent(uuid, text, text, int)', 'EXECUTE') u,
+  const grants = await tryIt(q(`SELECT has_function_privilege('anon', 'public.bw_quote_balance_mark_sent(uuid, text, text, int, boolean)', 'EXECUTE') a,
+                                   has_function_privilege('authenticated', 'public.bw_quote_balance_mark_sent(uuid, text, text, int, boolean)', 'EXECUTE') u,
                                    (SELECT count(*)::int FROM pg_proc WHERE proname = 'bw_quote_balance_mark_sent') n`).then((x) => x.rows[0]));
   ok(!grants.e && !grants.r.a && grants.r.u && grants.r.n === 1, `mark sent: one function, admins (authenticated) only, no anon (${grants.e || JSON.stringify(grants.r)})`);
 }
@@ -517,7 +517,7 @@ const gig = (E) => q(`SELECT deposit_paid, payment_status FROM events WHERE id =
     `round 5: a lineup saved over one changed meanwhile is refused, Sam stays off (${stale.e})`);
   // The same lineup as stored (any order, fee as a number or text): accepted.
   const same = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_save_lineup($1, $2::jsonb, $3::jsonb) r`,
-    [Q, JSON.stringify([{ ...keep[0], fee: 325 }]), JSON.stringify([{ name: ' maya brooks ', instrument: 'bass', fee: '300.00' }])])));
+    [Q, JSON.stringify([{ ...keep[0], fee: 325 }]), JSON.stringify([{ user_id: MEMBER.toUpperCase(), name: ' maya brooks ', instrument: 'bass', fee: '300.00' }])])));
   ok(!same.e && (await lineupOf(Q))[0].fee === 325, `round 5: the lineup as opened saves (${same.e || 'fee 325'})`);
   // An old call (no base) keeps working.
   const old = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_save_lineup($1, $2::jsonb) r`, [Q, JSON.stringify(keep)])));
@@ -541,6 +541,103 @@ const gig = (E) => q(`SELECT deposit_paid, payment_status FROM events WHERE id =
                  SELECT '${Q3}', '${BAND}', 'client_message', 'more ' || g, 1, (SELECT id FROM quote_links WHERE quote_id = '${Q3}') FROM generate_series(1, 19) g`);
   const limit = await tryIt(asAnon(() => q(`SELECT public.bw_quote_link_message($1, 'One more') v`, [T3])));
   ok(!!limit.e && /Too many/.test(limit.e), `round 5: 20 on this link and the next waits (${limit.e})`);
+}
+
+// ---------------------------------------------------------------- 9. round 6 (Codex + Claude review of #293)
+{
+  await db.exec(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS base_fee numeric(10,2), ADD COLUMN IF NOT EXISTS venue_name text`);
+  const lineupOf = (Q) => q(`SELECT name, fee::float AS fee FROM quote_musicians WHERE quote_id = $1 ORDER BY name`, [Q]).then((r) => r.rows);
+  const baseFee = (Q) => q(`SELECT base_fee::float AS f, venue_name FROM quotes WHERE id = $1`, [Q]).then((r) => r.rows[0]);
+  const m = (name, fee, user_id = null) => ({ user_id, name, instrument: name === 'Sam Ortiz' ? 'Drums' : 'Guitar', fee, is_external: !user_id, is_available: true });
+  const save = (who, Q, updates, musicians, base) => tryIt(who(() => q(`SELECT public.bw_quote_save_with_lineup($1, $2::jsonb, $3::jsonb, $4::jsonb) r`,
+    [Q, JSON.stringify(updates), JSON.stringify(musicians), base == null ? null : JSON.stringify(base)]).then((r) => r.rows[0].r)));
+
+  // Blocker (r8): A has Sam $200 + Jo $150 open; B removes Sam; A raises Jo to $180.
+  const { Q, E } = await quote();
+  await db.exec(`UPDATE events SET status = 'tentative' WHERE id = '${E}'`);
+  await db.exec(`UPDATE quotes SET base_fee = 350 WHERE id = '${Q}'`);
+  await db.exec(`INSERT INTO quote_musicians (quote_id, user_id, name, instrument, fee) VALUES ('${Q}', '${SUB}', 'Sam Ortiz', 'Drums', 200), ('${Q}', NULL, 'Jo Kim', 'Guitar', 150)`);
+  const opened = [m('Sam Ortiz', 200, SUB), m('Jo Kim', 150)];
+  const b = await save(asAdmin, Q, { base_fee: 150 }, [m('Jo Kim', 150)], opened);
+  ok(!b.e && b.r.quote.base_fee == 150 && b.r.lineup.musicians.length === 1 && b.r.lineup.synced === true,
+    `round 6: B removes Sam, the quote and the lineup together (${b.e || JSON.stringify(b.r && b.r.quote.base_fee)})`);
+  const a = await save(asAdmin, Q, { base_fee: 380, venue_name: 'Brooklyn Bowl' }, [m('Sam Ortiz', 200, SUB), m('Jo Kim', 180)], opened);
+  const afterA = await baseFee(Q);
+  const lA = await lineupOf(Q);
+  ok(!!a.e && /changed this quote’s lineup/.test(a.e) && afterA.f === 150 && afterA.venue_name === null && lA.length === 1 && lA[0].fee === 150,
+    `round 6: A's stale save is refused whole: base fee ${afterA.f}, venue ${afterA.venue_name}, lineup ${JSON.stringify(lA)} (${a.e})`);
+  const hint = await tryIt(asAdmin(() => q(`DO $d$ DECLARE h text; c text; BEGIN
+      PERFORM public.bw_quote_save_with_lineup('${Q}', '{"base_fee":380}'::jsonb, '[]'::jsonb, '${JSON.stringify(opened)}'::jsonb);
+    EXCEPTION WHEN OTHERS THEN GET STACKED DIAGNOSTICS h = PG_EXCEPTION_HINT, c = RETURNED_SQLSTATE; RAISE EXCEPTION 'got %/%', c, h; END $d$`)));
+  ok(/got 40001\/BW_LINEUP_CHANGED/.test(hint.e || ''), `round 6: refused as 40001, hint BW_LINEUP_CHANGED (${hint.e})`);
+  // Reloaded: the lineup as stored now, then the raise saves both.
+  const fresh = await save(asAdmin, Q, { base_fee: 180, venue_name: 'Brooklyn Bowl' }, [m('Jo Kim', 180)], [m('Jo Kim', 150)]);
+  const afterF = await baseFee(Q);
+  ok(!fresh.e && afterF.f === 180 && afterF.venue_name === 'Brooklyn Bowl' && (await lineupOf(Q))[0].fee === 180 && fresh.r.quote.venue_name === 'Brooklyn Bowl',
+    `round 6: reopened with the lineup as stored, the raise saves the quote and the lineup (${fresh.e || afterF.f})`);
+  // Refusals write nothing either: an unknown column, a member, anon.
+  const col = await save(asAdmin, Q, { base_fee: 1, no_such_column: 1 }, [m('Jo Kim', 1)], [m('Jo Kim', 180)]);
+  ok(!!col.e && /no_such_column/.test(col.e) && (await baseFee(Q)).f === 180 && (await lineupOf(Q))[0].fee === 180,
+    `round 6: an unknown column: nothing written (${col.e})`);
+  const mem = await save(asMember, Q, { base_fee: 1 }, [m('Jo Kim', 1)], null);
+  const an = await save(asAnon, Q, { base_fee: 1 }, [m('Jo Kim', 1)], null);
+  ok(!!mem.e && !!an.e && (await baseFee(Q)).f === 180, `round 6: members and anon cannot save through it (${mem.e} / ${an.e})`);
+  const g = await q(`SELECT has_function_privilege('anon', 'public.bw_quote_save_with_lineup(uuid, jsonb, jsonb, jsonb)', 'EXECUTE') a,
+                             has_function_privilege('authenticated', 'public.bw_quote_save_with_lineup(uuid, jsonb, jsonb, jsonb)', 'EXECUTE') u,
+                             (SELECT prosecdef FROM pg_proc WHERE proname = 'bw_quote_save_with_lineup') d,
+                             has_function_privilege('anon', 'public.bw_quote_lineup_current(uuid, jsonb)', 'EXECUTE') ca`).then((r) => r.rows[0], (e) => ({ a: true, e: e.message }));
+  ok(!g.a && g.u && g.d === false && !g.ca, `round 6: authenticated only, security invoker (${JSON.stringify(g)})`);
+  // Older builds: the direct update and the two calls still work.
+  const oldWay = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_save_lineup($1, $2::jsonb, $3::jsonb) r`, [Q, JSON.stringify([m('Jo Kim', 190)]), JSON.stringify([m('Jo Kim', 180)])])));
+  ok(!oldWay.e, `round 6: bw_quote_save_lineup as round 5 calls it (${oldWay.e || 'ok'})`);
+
+  // Item 9: who includes the profile; a profile not of the band counts as none.
+  const { Q: Q9 } = await quote();
+  await db.exec(`INSERT INTO quote_musicians (quote_id, user_id, name, instrument, fee) VALUES ('${Q9}', '${SUB}', 'Sam Ortiz', 'Drums', 250)`);
+  const other = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_save_lineup($1, '[]'::jsonb, $2::jsonb)`, [Q9, JSON.stringify([m('Sam Ortiz', 250, MEMBER)])])));
+  ok(!!other.e && /changed this quote’s lineup/.test(other.e) && (await lineupOf(Q9)).length === 1,
+    `round 6: another Sam Ortiz (another profile, same fee) is another lineup (${other.e})`);
+  await db.exec(`UPDATE quote_musicians SET user_id = '${OTHER}' WHERE quote_id = '${Q9}'`);
+  const former = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_save_lineup($1, $2::jsonb, $3::jsonb)`, [Q9, JSON.stringify([m('Sam Ortiz', 275)]), JSON.stringify([m('Sam Ortiz', 250)])])));
+  ok(!former.e && (await lineupOf(Q9))[0].fee === 275, `round 6: a former member's profile counts as none on both sides (${former.e || 'saved'})`);
+
+  // Item 7: the email's send is recorded first (pending), then confirmed or put back.
+  const { Q: Q7, T: T7 } = await quote({ accepted: true });
+  const pub = async (amount) => (await asAdmin(() => q(`SELECT public.bw_quote_balance_publish($1, $2::jsonb) r`, [Q7, balance(amount)]))).rows[0].r;
+  const ver = (await pub(700)).balance_version;
+  const kinds = () => q(`SELECT kind FROM quote_activity WHERE quote_id = $1 AND kind LIKE 'balance_%' ORDER BY created_at`, [Q7]).then((r) => r.rows.map((x) => x.kind));
+  const pend = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_balance_mark_sent($1, 'sent', 'email', $2, true) k`, [Q7, ver]).then((r) => r.rows[0].k)));
+  const pl = await link(Q7);
+  ok(!pend.e && (await view(T7)).balance?.amount === 700 && pl.balance_send_pending?.version === ver,
+    `round 6: before the email, the page already shows the balance it names (${pend.e || (await view(T7)).balance?.amount})`);
+  const failed = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_balance_send_failed($1, $2) r`, [Q7, ver]).then((r) => r.rows[0].r)));
+  ok(!failed.e && failed.r === true && (await view(T7)).balance === null && (await kinds()).length === 0 && (await link(Q7)).balance_send_pending === null,
+    `round 6: the email did not go out: the page and the timeline are as before (${failed.e || JSON.stringify(await kinds())})`);
+  await tryIt(asAdmin(() => q(`SELECT public.bw_quote_balance_mark_sent($1, 'sent', 'email', $2, true)`, [Q7, ver])));
+  const conf = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_balance_mark_sent($1, 'sent', 'email', $2, false) k`, [Q7, ver]).then((r) => r.rows[0].k)));
+  ok(!conf.e && conf.r === 'balance_requested' && (await kinds()).length === 1 && (await link(Q7)).balance_send_pending === null,
+    `round 6: the email went out: confirmed, recorded once (${conf.e || JSON.stringify(await kinds())})`);
+  const late = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_balance_send_failed($1, $2) r`, [Q7, ver]).then((r) => r.rows[0].r)));
+  ok(!late.e && late.r === false && (await view(T7)).balance?.amount === 700, 'round 6: a confirmed send is never put back');
+  // A changed balance, its email refused: the page goes back to the one sent before.
+  const sentAt = (await link(Q7)).balance_sent_at;
+  const v2 = (await pub(820)).balance_version;
+  await tryIt(asAdmin(() => q(`SELECT public.bw_quote_balance_mark_sent($1, 'sent', 'email', $2, true)`, [Q7, v2])));
+  ok((await view(T7)).balance?.amount === 820 && (await kinds()).length === 3, 'round 6: the changed balance is on the page before its email');
+  const other7 = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_balance_send_failed($1, $2) r`, [Q7, ver]).then((r) => r.rows[0].r)));
+  ok(!other7.e && other7.r === false && (await view(T7)).balance?.amount === 820, 'round 6: another version is not put back');
+  await tryIt(asAdmin(() => q(`SELECT public.bw_quote_balance_send_failed($1, $2)`, [Q7, v2])));
+  const back = await link(Q7);
+  ok((await view(T7)).balance?.amount === 700 && (await kinds()).length === 1 && String(back.balance_sent_at) === String(sentAt),
+    `round 6: refused email of a changed balance: the page shows the one sent before (${(await view(T7)).balance?.amount})`);
+  // Paid: no email goes out, so none is recorded.
+  await asAdmin(() => q(`SELECT public.bw_quote_balance_mark_paid($1, true)`, [Q7]));
+  const paid = await tryIt(asAdmin(() => q(`SELECT public.bw_quote_balance_mark_sent($1, 'sent', 'email', $2, true)`, [Q7, v2])));
+  ok(!!paid.e && /no open balance/.test(paid.e), `round 6: a paid balance records no email send (${paid.e})`);
+  const fn = await q(`SELECT has_function_privilege('anon', 'public.bw_quote_balance_send_failed(uuid, int)', 'EXECUTE') a,
+                              has_function_privilege('authenticated', 'public.bw_quote_balance_send_failed(uuid, int)', 'EXECUTE') u`).then((r) => r.rows[0], (e) => ({ a: true, e: e.message }));
+  const memFail = await tryIt(asMember(() => q(`SELECT public.bw_quote_balance_send_failed($1, $2)`, [Q7, v2])));
+  ok(!fn.a && fn.u && !!memFail.e, `round 6: put back: admins only (${JSON.stringify(fn)}, member ${memFail.e ? 'refused' : 'allowed'})`);
 }
 
 // ---------------------------------------------------------------- 7. 187 is a superset of 183 (round 3)

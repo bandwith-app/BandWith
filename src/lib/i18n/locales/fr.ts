@@ -4690,6 +4690,8 @@ const dict: Dictionary = {
   // Money audit (383f15b)
   "Quote saved, but the lineup was not": "Devis enregistré, mais pas le line-up",
   "Quote saved, but the lineup was not: {error}": "Devis enregistré, mais pas le line-up : {error}",
+  "Someone else changed this quote’s lineup meanwhile, so nothing was saved. The quote now shows the lineup as it is: make your change again.": "Quelqu’un a modifié les musiciens de ce devis entre-temps, donc rien n’a été enregistré. Le devis montre maintenant les musiciens actuels : refais ta modification.",
+  "Someone else changed this quote’s lineup meanwhile, so nothing was saved, and the quote could not be reloaded. Close it and open it again.": "Quelqu’un a modifié les musiciens de ce devis entre-temps, donc rien n’a été enregistré, et le devis n’a pas pu être rechargé. Ferme-le et rouvre-le.",
   "Not saved. Check your connection and try again.": "Non enregistré. Vérifiez la connexion et réessayez.",
   "Enter an amount, like {example}.": "Saisissez un montant, par exemple {example}.",
   "The preview could not be opened. Try again.": "Impossible d’ouvrir l’aperçu. Réessayez.",

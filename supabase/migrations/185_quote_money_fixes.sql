@@ -120,17 +120,25 @@ GRANT EXECUTE ON FUNCTION public.bw_quote_save_musicians(uuid, jsonb) TO authent
 -- it returns the quote's rows (quote_musicians: admins only) and never a
 -- member's fee to anyone else.
 -- Round 5: the lineup the musicians of a quote make, as one comparable
--- value (who, what they play, their fee; in any order). user_id is left out:
--- bw_quote_save_musicians drops the link of a former member, which is not a
--- change anyone made.
-CREATE OR REPLACE FUNCTION public.bw_quote_lineup_key(p_musicians jsonb)
+-- value (who, what they play, their fee; in any order).
+-- Round 6 (Codex): who includes the profile (user_id), so two musicians
+-- with the same name and fee are told apart. A profile that is not of the
+-- band counts as none, on both sides: bw_quote_save_musicians drops the
+-- link of a former member, which is not a change anyone made. The
+-- one-argument form of round 5 is replaced (never shipped in a build).
+DROP FUNCTION IF EXISTS public.bw_quote_lineup_key(jsonb);
+CREATE OR REPLACE FUNCTION public.bw_quote_lineup_key(p_musicians jsonb, p_band uuid)
 RETURNS jsonb
 LANGUAGE sql
-IMMUTABLE
+STABLE
 SET search_path = public
 AS $$
   SELECT coalesce(jsonb_agg(k ORDER BY k::text), '[]'::jsonb)
     FROM (SELECT jsonb_build_array(
+                   CASE WHEN (m ->> 'user_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                         AND EXISTS (SELECT 1 FROM public.band_members bm
+                                      WHERE bm.band_id = p_band AND bm.user_id = (m ->> 'user_id')::uuid)
+                        THEN lower(m ->> 'user_id') ELSE '' END,
                    lower(left(btrim(coalesce(m ->> 'name', '')), 255)),
                    lower(coalesce(left(btrim(m ->> 'instrument'), 100), '')),
                    CASE WHEN (m ->> 'fee') ~ '^-?\d+(\.\d+)?$' THEN round((m ->> 'fee')::numeric, 2)::text
@@ -138,7 +146,7 @@ AS $$
             FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p_musicians) = 'array' THEN p_musicians ELSE '[]'::jsonb END) m
            WHERE nullif(btrim(coalesce(m ->> 'name', '')), '') IS NOT NULL) x;
 $$;
-REVOKE ALL ON FUNCTION public.bw_quote_lineup_key(jsonb) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.bw_quote_lineup_key(jsonb, uuid) FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.bw_quote_lineup_stale_message()
 RETURNS text
@@ -157,6 +165,30 @@ AS $$
   END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_quote_lineup_stale_message() FROM PUBLIC, anon, authenticated;
+
+-- Round 6 (Claude review): the check of p_base on its own, the quote
+-- locked first. Raises 40001 (hint BW_LINEUP_CHANGED) when the lineup
+-- stored is not the one p_base says the editor opened with; null p_base:
+-- no check. Admins only. bw_quote_save_lineup and
+-- bw_quote_save_with_lineup both call it before writing anything.
+CREATE OR REPLACE FUNCTION public.bw_quote_lineup_current(p_quote_id uuid, p_base jsonb)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_band uuid := public.bw_quote_admin_band(p_quote_id);
+BEGIN
+  PERFORM 1 FROM public.quotes q WHERE q.id = p_quote_id FOR UPDATE;
+  IF p_base IS NOT NULL AND public.bw_quote_lineup_key(p_base, v_band) IS DISTINCT FROM public.bw_quote_lineup_key(
+       (SELECT coalesce(jsonb_agg(to_jsonb(qm)), '[]'::jsonb) FROM public.quote_musicians qm WHERE qm.quote_id = p_quote_id), v_band) THEN
+    RAISE EXCEPTION '%', public.bw_quote_lineup_stale_message() USING ERRCODE = '40001', HINT = 'BW_LINEUP_CHANGED';
+  END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_quote_lineup_current(uuid, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_quote_lineup_current(uuid, jsonb) TO authenticated;
 
 -- Round 5: p_base (optional) is the lineup the wizard opened with. When
 -- given, a lineup someone else changed meanwhile is refused (40001, hint
@@ -181,11 +213,7 @@ DECLARE
   v_before uuid[];
 BEGIN
   -- The quote first (as bw_quote_save_musicians), then the gig.
-  PERFORM 1 FROM public.quotes q WHERE q.id = p_quote_id FOR UPDATE;
-  IF p_base IS NOT NULL AND public.bw_quote_lineup_key(p_base) IS DISTINCT FROM public.bw_quote_lineup_key(
-       (SELECT coalesce(jsonb_agg(to_jsonb(qm)), '[]'::jsonb) FROM public.quote_musicians qm WHERE qm.quote_id = p_quote_id)) THEN
-    RAISE EXCEPTION '%', public.bw_quote_lineup_stale_message() USING ERRCODE = '40001', HINT = 'BW_LINEUP_CHANGED';
-  END IF;
+  PERFORM public.bw_quote_lineup_current(p_quote_id, p_base);
   -- Who the quote's lineup had before this save (the only ones it can take off the gig).
   v_before := ARRAY(SELECT DISTINCT qm.user_id FROM public.quote_musicians qm
                      WHERE qm.quote_id = p_quote_id AND qm.user_id IS NOT NULL);
@@ -229,6 +257,72 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_quote_save_lineup(uuid, jsonb, jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_quote_save_lineup(uuid, jsonb, jsonb) TO authenticated;
+
+-- Round 6 (Claude review r8): an edited quote and its lineup in one call,
+-- so neither is written without the other. With the quote written first
+-- and the lineup refused after (40001), a stale editor's base fee (a
+-- musician someone else removed, still counted) stayed in the quote's
+-- total, and every retry was refused again. Here p_base is checked first,
+-- under the quote's lock; then the quote's columns (p_updates, as the
+-- table update: SECURITY INVOKER, so RLS and the column grants apply as
+-- they do to the app's direct update, and the quote's own triggers run);
+-- then the lineup and the gig on hold (bw_quote_save_lineup). Any refusal
+-- rolls everything back. Older builds keep the direct update and the two
+-- calls, unchanged. Returns {quote: the row saved, lineup: as
+-- bw_quote_save_lineup}.
+CREATE OR REPLACE FUNCTION public.bw_quote_save_with_lineup(
+  p_quote_id uuid,
+  p_updates jsonb,
+  p_musicians jsonb,
+  p_base jsonb DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public
+AS $$
+DECLARE
+  v_bad text;
+  v_cols text;
+  v_vals text;
+  v_row jsonb;
+BEGIN
+  IF jsonb_typeof(p_updates) IS DISTINCT FROM 'object' THEN
+    RAISE EXCEPTION 'p_updates must be an object' USING ERRCODE = '22023';
+  END IF;
+  SELECT k INTO v_bad
+    FROM jsonb_object_keys(p_updates) k
+   WHERE NOT EXISTS (SELECT 1 FROM pg_attribute a
+                      WHERE a.attrelid = 'public.quotes'::regclass AND a.attname = k
+                        AND a.attnum > 0 AND NOT a.attisdropped)
+   LIMIT 1;
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'column "%" of relation "quotes" does not exist', v_bad USING ERRCODE = '42703';
+  END IF;
+
+  -- The lineup it opened with, under the quote's lock, before anything is written.
+  PERFORM public.bw_quote_lineup_current(p_quote_id, p_base);
+
+  SELECT string_agg(format('%I', k), ', ' ORDER BY k), string_agg(format('r.%I', k), ', ' ORDER BY k)
+    INTO v_cols, v_vals
+    FROM jsonb_object_keys(p_updates - 'id') k;
+  IF v_cols IS NULL THEN
+    SELECT to_jsonb(q.*) INTO v_row FROM public.quotes q WHERE q.id = p_quote_id;
+  ELSE
+    EXECUTE format('UPDATE public.quotes q SET (%s) = (SELECT %s FROM jsonb_populate_record(NULL::public.quotes, $1) r) '
+                   'WHERE q.id = $2 RETURNING to_jsonb(q.*)', v_cols, v_vals)
+       INTO v_row USING p_updates, p_quote_id;
+  END IF;
+  IF v_row IS NULL THEN
+    RAISE EXCEPTION 'Quote not found or you do not have permission to update it' USING ERRCODE = 'P0002';
+  END IF;
+
+  RETURN jsonb_build_object('quote', v_row,
+                            'lineup', public.bw_quote_save_lineup(p_quote_id, p_musicians, p_base));
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_quote_save_with_lineup(uuid, jsonb, jsonb, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_quote_save_with_lineup(uuid, jsonb, jsonb, jsonb) TO authenticated;
 
 -- --------------------------------------------------------------------
 -- 2. Mark as paid remembers the deposit, Undo puts it back (168 + #7)
@@ -445,12 +539,26 @@ GRANT EXECUTE ON FUNCTION public.bw_quote_balance_publish(uuid, jsonb) TO authen
 -- asks for an amount the client was not sent. Older builds don't pass it
 -- and record as before. Dropped and created again with the new parameter
 -- (a default: the three named arguments of older builds still find it).
+-- Round 6 (Codex): p_pending (new, optional). An email is sent by the
+-- server after the app asks, and an app closed right after the send never
+-- recorded it: the client had the email with the new amount and a page
+-- with the old one. Now the app records the send first (p_pending true:
+-- the page shows this balance at once, and the link keeps what it showed
+-- before in balance_send_pending), then sends the email, then confirms it
+-- (p_pending false: nothing new is recorded, the pending mark goes). When
+-- the server says the email did not go out, bw_quote_balance_send_failed
+-- puts back what the page showed. Null (older builds, WhatsApp, Copy): as
+-- round 3. Dropped and created again with the new parameter (a default:
+-- older builds' named arguments still find it).
+ALTER TABLE public.quote_links ADD COLUMN IF NOT EXISTS balance_send_pending jsonb;
 DROP FUNCTION IF EXISTS public.bw_quote_balance_mark_sent(uuid, text, text);
+DROP FUNCTION IF EXISTS public.bw_quote_balance_mark_sent(uuid, text, text, int);
 CREATE OR REPLACE FUNCTION public.bw_quote_balance_mark_sent(
   p_quote_id uuid,
   p_kind text DEFAULT 'sent',
   p_channel text DEFAULT NULL,
-  p_balance_version int DEFAULT NULL
+  p_balance_version int DEFAULT NULL,
+  p_pending boolean DEFAULT NULL
 )
 RETURNS text
 LANGUAGE plpgsql
@@ -462,6 +570,8 @@ DECLARE
   v_link public.quote_links;
   v_channel text := nullif(lower(btrim(coalesce(p_channel, ''))), '');
   v_kind text;
+  v_updated uuid;
+  v_requested uuid;
 BEGIN
   -- Round 3: the quote, then the link (then the gig, through mark paid).
   PERFORM 1 FROM public.quotes q WHERE q.id = p_quote_id FOR UPDATE;
@@ -472,8 +582,21 @@ BEGIN
   IF p_balance_version IS NOT NULL AND p_balance_version IS DISTINCT FROM v_link.balance_version THEN
     RAISE EXCEPTION 'BW_BALANCE_CHANGED: the balance was changed after this one was sent' USING ERRCODE = 'P0001';
   END IF;
+  -- Round 6: the email went out: the send was recorded before it.
+  IF p_pending IS FALSE THEN
+    IF jsonb_typeof(v_link.balance_send_pending) = 'object'
+       AND (v_link.balance_send_pending ->> 'version')::int IS NOT DISTINCT FROM v_link.balance_version THEN
+      UPDATE public.quote_links l SET balance_send_pending = NULL WHERE l.id = v_link.id;
+      RETURN v_link.balance_send_pending ->> 'kind';
+    END IF;
+    RETURN NULL;
+  END IF;
   IF v_link.revoked_at IS NOT NULL THEN
     RAISE EXCEPTION 'The client link is turned off' USING ERRCODE = '22023';
+  END IF;
+  -- An email goes out only for an open balance (send-email says no_balance).
+  IF p_pending AND v_link.balance_paid_at IS NOT NULL THEN
+    RAISE EXCEPTION 'There is no open balance to send' USING ERRCODE = 'P0001', HINT = 'BW_NO_BALANCE';
   END IF;
   IF v_channel IS NOT NULL AND v_channel NOT IN ('whatsapp', 'sms', 'email', 'copy', 'share') THEN v_channel := NULL; END IF;
   -- A changed balance sent after "Mark as paid": a new request, so not paid
@@ -484,19 +607,64 @@ BEGIN
   END IF;
   IF v_link.balance_sent_at IS NOT NULL AND v_link.balance_sent IS DISTINCT FROM v_link.balance THEN
     INSERT INTO public.quote_activity (quote_id, band_id, kind, body, version, actor_id)
-    VALUES (p_quote_id, v_band, 'balance_updated', left(v_link.balance ->> 'amountLabel', 60), v_link.balance_version, auth.uid());
+    VALUES (p_quote_id, v_band, 'balance_updated', left(v_link.balance ->> 'amountLabel', 60), v_link.balance_version, auth.uid())
+    RETURNING id INTO v_updated;
   END IF;
   v_kind := CASE WHEN p_kind = 'reminded' AND v_link.balance_sent_at IS NOT NULL THEN 'balance_reminded' ELSE 'balance_requested' END;
   INSERT INTO public.quote_activity (quote_id, band_id, kind, body, channel, version, actor_id)
-  VALUES (p_quote_id, v_band, v_kind, left(v_link.balance ->> 'amountLabel', 60), v_channel, v_link.balance_version, auth.uid());
+  VALUES (p_quote_id, v_band, v_kind, left(v_link.balance ->> 'amountLabel', 60), v_channel, v_link.balance_version, auth.uid())
+  RETURNING id INTO v_requested;
   UPDATE public.quote_links l
-     SET balance_sent_at = coalesce(l.balance_sent_at, now()), balance_sent = l.balance, updated_at = now()
+     SET balance_sent_at = coalesce(l.balance_sent_at, now()), balance_sent = l.balance, updated_at = now(),
+         balance_send_pending = CASE WHEN p_pending THEN jsonb_build_object(
+           'version', v_link.balance_version, 'kind', v_kind, 'at', now(),
+           'activity', jsonb_build_array(v_requested) || CASE WHEN v_updated IS NULL THEN '[]'::jsonb ELSE jsonb_build_array(v_updated) END,
+           'sent', v_link.balance_sent, 'sent_at', v_link.balance_sent_at) END
    WHERE l.id = v_link.id;
   RETURN v_kind;
 END;
 $$;
-REVOKE ALL ON FUNCTION public.bw_quote_balance_mark_sent(uuid, text, text, int) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.bw_quote_balance_mark_sent(uuid, text, text, int) TO authenticated;
+REVOKE ALL ON FUNCTION public.bw_quote_balance_mark_sent(uuid, text, text, int, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_quote_balance_mark_sent(uuid, text, text, int, boolean) TO authenticated;
+
+-- Round 6: the email of a send recorded first (p_pending) did not go out
+-- (the server said so): the page shows again what it showed before, and
+-- the timeline loses that send. Only that send: another balance published
+-- or sent since (another version, or no pending mark) is left as it is.
+-- Returns whether it was put back.
+CREATE OR REPLACE FUNCTION public.bw_quote_balance_send_failed(p_quote_id uuid, p_balance_version int)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_band uuid := public.bw_quote_admin_band(p_quote_id);
+  v_link public.quote_links;
+  v_p jsonb;
+BEGIN
+  PERFORM 1 FROM public.quotes q WHERE q.id = p_quote_id FOR UPDATE;
+  SELECT * INTO v_link FROM public.quote_links l WHERE l.quote_id = p_quote_id FOR UPDATE;
+  v_p := v_link.balance_send_pending;
+  IF v_link.id IS NULL OR jsonb_typeof(v_p) IS DISTINCT FROM 'object'
+     OR (v_p ->> 'version')::int IS DISTINCT FROM p_balance_version
+     OR v_link.balance_version IS DISTINCT FROM p_balance_version THEN
+    RETURN false;
+  END IF;
+  DELETE FROM public.quote_activity a
+   WHERE a.quote_id = p_quote_id AND a.band_id = v_band
+     AND a.id IN (SELECT (x #>> '{}')::uuid FROM jsonb_array_elements(coalesce(v_p -> 'activity', '[]'::jsonb)) x);
+  UPDATE public.quote_links l
+     SET balance_sent = CASE WHEN jsonb_typeof(v_p -> 'sent') = 'object' THEN v_p -> 'sent' END,
+         balance_sent_at = (v_p ->> 'sent_at')::timestamptz,
+         balance_send_pending = NULL,
+         updated_at = now()
+   WHERE l.id = v_link.id;
+  RETURN true;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_quote_balance_send_failed(uuid, int) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_quote_balance_send_failed(uuid, int) TO authenticated;
 
 -- The admin's preview: keeps the draft (nothing the client sees changes)
 -- and returns the key the preview page opens it with.

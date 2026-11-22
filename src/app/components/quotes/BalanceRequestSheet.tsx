@@ -34,6 +34,8 @@ import {
   getQuoteLinkState,
   markQuoteBalancePaid,
   markQuoteBalanceSent,
+  undoQuoteBalanceSend,
+  BALANCE_EMAIL_NOT_SENT,
   isBalanceChangedError,
   previewQuoteBalance,
   publishQuoteBalance,
@@ -317,9 +319,28 @@ export const BalanceRequestSheet: React.FC<BalanceRequestSheetProps> = ({
         say(t('The client page could not be updated. Try again.'), 'error');
         return;
       }
+      // Round 6: the send is recorded before the email goes out (185), so
+      // the client's page names the same balance as the email even when the
+      // app closes right after the send.
+      const kindSent = plan.mode === 'remind' ? 'reminded' : 'sent';
+      const version = pub.data.balance_version;
+      const recorded = await markQuoteBalanceSent(quoteId, kindSent, 'email', version, true);
+      if (recorded.error) {
+        say(
+          isBalanceChangedError(recorded.error)
+            ? t('Someone changed the balance meanwhile, so nothing was sent. Check the balance and send it again.')
+            : t('The client page could not be updated. Try again.'),
+          'error',
+        );
+        return;
+      }
       // Round 4: the email is for this balance; another admin's newer one: nothing is sent.
-      const res = await sendQuoteBalanceEmail(quoteId, sendKind, pub.data.balance_version);
+      const res = await sendQuoteBalanceEmail(quoteId, sendKind, version);
       if (!res.ok) {
+        // It did not go out: the page shows again what it showed before.
+        if (recorded.pending && res.code && BALANCE_EMAIL_NOT_SENT.has(res.code)) await undoQuoteBalanceSend(quoteId, version);
+        const state = await getQuoteLinkState(quoteId);
+        if (state.data?.link) setLink(state.data.link);
         say(
           res.code === 'balance_changed'
             ? t('Someone changed the balance meanwhile, so nothing was sent. Check the balance and send it again.')
@@ -334,24 +355,10 @@ export const BalanceRequestSheet: React.FC<BalanceRequestSheetProps> = ({
         );
         return;
       }
-      // The send record is what puts this balance on the client's page (185):
-      // the email has the new amount, so the page must not keep the old one.
-      const kindSent = plan.mode === 'remind' ? 'reminded' : 'sent';
-      let recorded = await markQuoteBalanceSent(quoteId, kindSent, 'email', pub.data.balance_version);
-      if (recorded.error && !isBalanceChangedError(recorded.error)) {
-        recorded = await markQuoteBalanceSent(quoteId, kindSent, 'email', pub.data.balance_version);
-      }
+      // Sent: the record made before it stays; the pending mark goes.
+      if (recorded.pending) await markQuoteBalanceSent(quoteId, kindSent, 'email', version, false);
       const state = await getQuoteLinkState(quoteId);
       if (state.data?.link) setLink(state.data.link);
-      if (recorded.error) {
-        say(
-          isBalanceChangedError(recorded.error)
-            ? t('The email went out, but someone changed the balance meanwhile, so the client’s page still shows the earlier one. Check the balance and send it again.')
-            : t('The email went out, but the client’s page still shows the earlier balance. Use Copy link to update it.'),
-          'error',
-        );
-        return;
-      }
       say(
         plan.mode === 'remind'
           ? t('Reminder sent to {email}', { email: quote.clientEmail })

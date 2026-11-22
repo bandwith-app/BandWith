@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   preview: vi.fn(),
   markSent: vi.fn(),
   email: vi.fn(),
+  undo: vi.fn(),
   open: vi.fn(),
 }));
 vi.mock('@/lib/supabase', () => ({ supabase: { rpc: vi.fn(), from: vi.fn(), functions: { invoke: vi.fn() } } }));
@@ -39,6 +40,7 @@ vi.mock('@/lib/services/quoteLinks', async (orig) => ({
   previewQuoteBalance: mocks.preview,
   markQuoteBalanceSent: mocks.markSent,
   sendQuoteBalanceEmail: mocks.email,
+  undoQuoteBalanceSend: mocks.undo,
 }));
 
 // Rendering the whole sheet is slow on a loaded machine.
@@ -57,8 +59,9 @@ beforeEach(() => {
   for (const m of Object.values(mocks)) m.mockReset();
   mocks.publish.mockResolvedValue({ data: { token: link.token, balance_version: 1, changed: true }, error: null });
   mocks.preview.mockResolvedValue({ data: 'b'.repeat(64), error: null });
-  mocks.markSent.mockResolvedValue({ data: 'balance_requested', error: null });
+  mocks.markSent.mockResolvedValue({ data: 'balance_requested', error: null, pending: true });
   mocks.email.mockResolvedValue({ ok: true });
+  mocks.undo.mockResolvedValue({ data: true, error: null });
 });
 afterEach(async () => {
   cleanup();
@@ -111,8 +114,29 @@ describe('BalanceRequestSheet: other payments and preview', () => {
     expect(String(mocks.open.mock.calls[0][0])).toContain(`&k=${'b'.repeat(64)}`);
   });
 
-  // Review of #293: the email has the new amount; the page shows only what the send record puts there.
-  it('Send by email: a send that could not be recorded says the page still shows the earlier balance', async () => {
+  // Codex round 6 (BalanceRequestSheet:340): an app closed right after the
+  // email never recorded the send, so the page kept the earlier balance.
+  // The send is recorded first (pending), then the email, then confirmed.
+  it('Send by email: the send is recorded before the email goes out, and confirmed after', async () => {
+    mocks.publish.mockResolvedValue({ data: { token: link.token, balance_version: 5, changed: true }, error: null });
+    render(<BalanceRequestSheet open onClose={() => {}} quote={quote} bandId="band-1" bandName="The Night Shift" />);
+    fireEvent.change(await otherField(), { target: { value: '100' } });
+    const send = await waitFor(() => {
+      const b = screen.getAllByRole('button').find((x) => /send by email/i.test(x.textContent || ''));
+      expect(b && !b.hasAttribute('disabled')).toBe(true);
+      return b!;
+    });
+    fireEvent.click(send);
+    await waitFor(() => expect(mocks.markSent).toHaveBeenCalledTimes(2));
+    expect(mocks.markSent.mock.calls[0]).toEqual(['q-1', 'sent', 'email', 5, true]);
+    expect(mocks.markSent.mock.calls[1]).toEqual(['q-1', 'sent', 'email', 5, false]);
+    expect(mocks.markSent.mock.invocationCallOrder[0]).toBeLessThan(mocks.email.mock.invocationCallOrder[0]);
+    expect(mocks.email.mock.invocationCallOrder[0]).toBeLessThan(mocks.markSent.mock.invocationCallOrder[1]);
+    expect(await screen.findByText(/Balance request sent to/)).toBeTruthy();
+    expect(mocks.undo).not.toHaveBeenCalled();
+  });
+
+  it('Send by email: a send that could not be recorded sends no email', async () => {
     mocks.markSent.mockResolvedValue({ data: null, error: new Error('Failed to fetch') });
     render(<BalanceRequestSheet open onClose={() => {}} quote={quote} bandId="band-1" bandName="The Night Shift" />);
     fireEvent.change(await otherField(), { target: { value: '100' } });
@@ -122,13 +146,13 @@ describe('BalanceRequestSheet: other payments and preview', () => {
       return b!;
     });
     fireEvent.click(send);
-    await waitFor(() => expect(mocks.email).toHaveBeenCalled());
-    expect(await screen.findByText(/still shows the earlier balance/)).toBeTruthy();
+    expect(await screen.findByText('The client page could not be updated. Try again.')).toBeTruthy();
+    expect(mocks.email).not.toHaveBeenCalled();
     expect(screen.queryByText(/Balance request sent to/)).toBeNull();
   });
 
   // Codex round 3 (185:314): the send records the balance it published, not whatever is on the link by then.
-  it('Send by email: records the balance version it published; one replaced meanwhile says so and is not retried', async () => {
+  it('Send by email: records the balance version it published; one replaced meanwhile sends nothing', async () => {
     mocks.publish.mockResolvedValue({ data: { token: link.token, balance_version: 3, changed: true }, error: null });
     mocks.markSent.mockResolvedValue({ data: null, error: new Error('BW_BALANCE_CHANGED: the balance was changed after this one was sent') });
     render(<BalanceRequestSheet open onClose={() => {}} quote={quote} bandId="band-1" bandName="The Night Shift" />);
@@ -139,12 +163,57 @@ describe('BalanceRequestSheet: other payments and preview', () => {
       return b!;
     });
     fireEvent.click(send);
-    await waitFor(() => expect(mocks.email).toHaveBeenCalled());
-    expect(
-      await screen.findByText('The email went out, but someone changed the balance meanwhile, so the client’s page still shows the earlier one. Check the balance and send it again.'),
-    ).toBeTruthy();
+    expect(await screen.findByText('Someone changed the balance meanwhile, so nothing was sent. Check the balance and send it again.')).toBeTruthy();
     expect(mocks.markSent).toHaveBeenCalledTimes(1);
-    expect(mocks.markSent.mock.calls[0]).toEqual(['q-1', 'sent', 'email', 3]);
+    expect(mocks.markSent.mock.calls[0]).toEqual(['q-1', 'sent', 'email', 3, true]);
+    expect(mocks.email).not.toHaveBeenCalled();
+  });
+
+  it('Send by email: an email that did not go out puts the page back; one that may have gone out keeps the record', async () => {
+    mocks.publish.mockResolvedValue({ data: { token: link.token, balance_version: 6, changed: true }, error: null });
+    mocks.email.mockResolvedValue({ ok: false, code: 'too_soon' });
+    render(<BalanceRequestSheet open onClose={() => {}} quote={quote} bandId="band-1" bandName="The Night Shift" />);
+    fireEvent.change(await otherField(), { target: { value: '100' } });
+    const send = await waitFor(() => {
+      const b = screen.getAllByRole('button').find((x) => /send by email/i.test(x.textContent || ''));
+      expect(b && !b.hasAttribute('disabled')).toBe(true);
+      return b!;
+    });
+    fireEvent.click(send);
+    expect(await screen.findByText('An email was just sent. Wait a minute and try again.')).toBeTruthy();
+    expect(mocks.undo).toHaveBeenCalledWith('q-1', 6);
+    cleanup();
+    mocks.undo.mockClear();
+    mocks.email.mockResolvedValue({ ok: false, code: undefined, error: new Error('Failed to fetch') });
+    {
+      render(<BalanceRequestSheet open onClose={() => {}} quote={quote} bandId="band-1" bandName="The Night Shift" />);
+      fireEvent.change(await otherField(), { target: { value: '100' } });
+      const send = await waitFor(() => {
+        const b = screen.getAllByRole('button').find((x) => /send by email/i.test(x.textContent || ''));
+        expect(b && !b.hasAttribute('disabled')).toBe(true);
+        return b!;
+      });
+      fireEvent.click(send);
+      expect(await screen.findByText('The email could not be sent. Share the link instead.')).toBeTruthy();
+    }
+    expect(mocks.undo).not.toHaveBeenCalled();
+  });
+
+  // Claude r9 (send-email:669): Resend refused it, nothing went out: the page is put back too.
+  it('Send by email: an email Resend refused (email_refused) puts the page back', async () => {
+    mocks.publish.mockResolvedValue({ data: { token: link.token, balance_version: 7, changed: true }, error: null });
+    mocks.email.mockResolvedValue({ ok: false, code: 'email_refused', error: new Error('Edge Function returned a non-2xx status code') });
+    render(<BalanceRequestSheet open onClose={() => {}} quote={quote} bandId="band-1" bandName="The Night Shift" />);
+    fireEvent.change(await otherField(), { target: { value: '100' } });
+    const send = await waitFor(() => {
+      const b = screen.getAllByRole('button').find((x) => /send by email/i.test(x.textContent || ''));
+      expect(b && !b.hasAttribute('disabled')).toBe(true);
+      return b!;
+    });
+    fireEvent.click(send);
+    expect(await screen.findByText('The email could not be sent. Share the link instead.')).toBeTruthy();
+    expect(mocks.undo).toHaveBeenCalledWith('q-1', 7);
+    expect(mocks.markSent.mock.calls).toEqual([['q-1', 'sent', 'email', 7, true]]);
   });
 
   // Claude round 4 (#286 send-email): the email names the balance version it is for.
@@ -162,6 +231,8 @@ describe('BalanceRequestSheet: other payments and preview', () => {
     await waitFor(() => expect(mocks.email).toHaveBeenCalled());
     expect(mocks.email.mock.calls[0]).toEqual(['q-1', 'sent', 4]);
     expect(await screen.findByText('Someone changed the balance meanwhile, so nothing was sent. Check the balance and send it again.')).toBeTruthy();
-    expect(mocks.markSent).not.toHaveBeenCalled();
+    // Round 6: recorded first, then put back as the email did not go out.
+    expect(mocks.markSent.mock.calls).toEqual([['q-1', 'sent', 'email', 4, true]]);
+    expect(mocks.undo).toHaveBeenCalledWith('q-1', 4);
   });
 });

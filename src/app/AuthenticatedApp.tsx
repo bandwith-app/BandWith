@@ -142,7 +142,7 @@ import {
 
 import { RoleTourModal, markRoleTourSeen, roleTourSeen } from "@/app/components/onboarding/RoleTourModal";
 import { Quote } from "@/app/data/quotes";
-import { createQuote as createQuoteDB, updateQuote as updateQuoteDB, appQuoteToDbRecord, quoteUpdateRecord, appMusiciansToDb, dbQuoteToAppQuote, saveQuoteLineup, changedQuoteLineup } from "@/lib/services/quotes";
+import { createQuote as createQuoteDB, updateQuote as updateQuoteDB, getQuote as getQuoteDB, appQuoteToDbRecord, quoteUpdateRecord, appMusiciansToDb, dbQuoteToAppQuote, saveQuoteWithLineup, isLineupChangedError, changedQuoteLineup } from "@/lib/services/quotes";
 import { republishClientQuote } from "@/lib/services/quoteLinks";
 import type { Quote as AppQuote } from "@/app/data/quotes";
 import { quoteMusicianFee } from "@/lib/services/quoteMath";
@@ -395,6 +395,8 @@ export default function AuthenticatedApp() {
   const quoteSaveRunningRef = useRef(false);
   /** EDIT QUOTE on a quote event: the quote itself, in the quote wizard. */
   const [editingLinkedQuote, setEditingLinkedQuote] = useState<{ quote: AppQuote; eventId: string; bandId: string } | null>(null);
+  // Round 6: bumped to open the wizard again on a quote reloaded after a refused save.
+  const [linkedQuoteWizardKey, setLinkedQuoteWizardKey] = useState(0);
   // RSVP answers arrive late: they only apply if their event is still open.
   const eventKeyOf = (e: EventData) => e.eventId || e.id?.toString() || null;
   const { isCurrent: isOpenEvent, markCurrent: markOpenEvent } = useCurrentKey(
@@ -2902,8 +2904,27 @@ export default function AuthenticatedApp() {
     try {
       // Only what changed, never the status the wizard was opened with (183).
       const updates = quoteUpdateRecord(q, editing.bandId, editing.quote);
-      const { data, error } = await updateQuoteDB(editing.quote.id, updates);
+      // Round 5: only a lineup changed in the wizard, checked against the one it opened with.
+      // Round 6: the quote and that lineup in one call (185): neither without the other.
+      const lineupEdit = changedQuoteLineup(q.musicians, editing.quote.musicians);
+      const { data, lineup, error, lineupError } = lineupEdit
+        ? await saveQuoteWithLineup(editing.quote.id, updates, lineupEdit)
+        : { ...(await updateQuoteDB(editing.quote.id, updates)), lineup: null, lineupError: null };
       if (error || !data) {
+        if (isLineupChangedError(error)) {
+          // Nothing was saved: the wizard opens again on the quote and lineup as stored now.
+          const fresh = await getQuoteDB(editing.quote.id);
+          if (!fresh.data) {
+            // Not reloaded (r9): the wizard would keep the old lineup, so it closes.
+            setEditingLinkedQuote(null);
+            setSaveToast({ message: t('Someone else changed this quote’s lineup meanwhile, so nothing was saved, and the quote could not be reloaded. Close it and open it again.'), type: 'error' });
+            return;
+          }
+          setEditingLinkedQuote({ ...editing, quote: dbQuoteToAppQuote(fresh.data as any) });
+          setLinkedQuoteWizardKey((k) => k + 1);
+          setSaveToast({ message: t('Someone else changed this quote’s lineup meanwhile, so nothing was saved. The quote now shows the lineup as it is: make your change again.'), type: 'error' });
+          return;
+        }
         // The wizard stays open with what was typed.
         setSaveToast({ message: t('Quote not saved: {error}', { error: error?.message || t('unknown error') }), type: 'error' });
         return;
@@ -2911,17 +2932,14 @@ export default function AuthenticatedApp() {
       // The lineup is saved with the quote and the gig on hold, in one go (185).
       let roster = editing.quote.musicians;
       let gigConfirmed = false;
-      // Round 5: only a lineup changed in the wizard, checked against the one it opened with.
-      const lineupEdit = changedQuoteLineup(q.musicians, editing.quote.musicians);
       if (lineupEdit) {
-        const lineup = await saveQuoteLineup(editing.quote.id, lineupEdit.musicians, lineupEdit.base);
-        if (lineup.error || !lineup.data) {
-          // The wizard stays open: saving again saves the lineup.
-          setSaveToast({ message: t('Quote saved, but the lineup was not: {error}', { error: lineup.error?.message || t('unknown error') }), type: 'error' });
+        if (lineupError || !lineup) {
+          // A database before round 6's 185: the quote was saved alone; saving again saves the lineup.
+          setSaveToast({ message: t('Quote saved, but the lineup was not: {error}', { error: lineupError?.message || t('unknown error') }), type: 'error' });
           return;
         }
-        roster = dbQuoteToAppQuote({ ...(data as any), musicians: lineup.data.musicians }).musicians;
-        gigConfirmed = lineup.data.confirmed;
+        roster = dbQuoteToAppQuote({ ...(data as any), musicians: lineup.musicians }).musicians;
+        gigConfirmed = lineup.confirmed;
       }
       // The event shows the quote's date, time, place, client and fee, as
       // saved (round 6: the row the database returns, with its own totals
@@ -4737,6 +4755,7 @@ export default function AuthenticatedApp() {
           <AnimatePresence key="nested-presence-edit-quote">
             {editingLinkedQuote && (
               <QuoteCreationWizard
+                key={`linked-quote-wizard-${linkedQuoteWizardKey}`}
                 bandMembers={memoizedBandMembers}
                 initialData={editingLinkedQuote.quote}
                 initialClientName={editingLinkedQuote.quote.clientName}

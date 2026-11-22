@@ -33,6 +33,15 @@ vi.mock('@/lib/services/quotes', async (orig) => ({
   createQuote: mocks.createQuote,
   updateQuote: mocks.updateQuote,
   saveQuoteLineup: mocks.saveQuoteLineup,
+  // Round 6: one call for the quote and a changed lineup; here as a
+  // database without it (the two calls), so these checks keep their shape.
+  // The atomic path: QuotesExpanded.lineupStale.test.tsx.
+  saveQuoteWithLineup: async (id: string, updates: unknown, lineup: { musicians: unknown; base: unknown }) => {
+    const q = await mocks.updateQuote(id, updates);
+    if (q.error || !q.data) return { data: null, lineup: null, error: q.error };
+    const l = await mocks.saveQuoteLineup(id, lineup.musicians, lineup.base);
+    return { data: q.data, lineup: l.data, error: null, lineupError: l.error };
+  },
   syncQuoteHoldEvent: mocks.syncQuoteHoldEvent,
 }));
 vi.mock('@/lib/services/quoteLinks', () => ({ republishClientQuote: vi.fn().mockResolvedValue({ error: null }) }));
