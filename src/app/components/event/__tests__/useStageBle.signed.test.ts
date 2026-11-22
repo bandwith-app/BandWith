@@ -126,7 +126,7 @@ vi.mock('@/lib/stageBleNative', () => ({
 }));
 
 const stageBleHook = await import('../useStageBle');
-const { useStageBle, LEADER_CHECK_MS } = stageBleHook;
+const { useStageBle, LEADER_CHECK_MS, SIGNER_RECHECK_MS } = stageBleHook;
 
 const lead = (from: string, seq: number, songId: string): StageLiveState => ({ seq, from, songId, order: null });
 let admins: StageKeyPair;
@@ -278,6 +278,48 @@ describe('useStageBle: only an admin can lead (audit #1)', () => {
     result.current.publish(lead('a', 7, 'c3'));
     await waitFor(() => expect(air.updates.length).toBe(1));
     expect(air.signedUpdates.length).toBe(0);
+    unmount();
+  });
+});
+
+describe("useStageBle: the leader re-checks it may sign (Claude on #288)", () => {
+  const leader = () => renderHook(() => useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: true, onState: () => {} }));
+
+  it('demoted while Stage is open (online): the next check stops the signed state and the clock', async () => {
+    expect(SIGNER_RECHECK_MS).toBe(5 * 60_000);
+    air.signer = { ...admins, version: 1 };
+    const { result, unmount } = leader();
+    await waitFor(() => expect(air.started.length).toBe(1));
+    expect(air.started[0]).toHaveProperty('signKey', admins.private);
+    // The server says no now (role changed): stageSigner returns null.
+    air.signer = null;
+    await vi.advanceTimersByTimeAsync(SIGNER_RECHECK_MS + 100);
+    await waitFor(() => expect(air.started.length).toBe(2));
+    expect(air.started[1]).not.toHaveProperty('signKey');
+    air.signedUpdates = [];
+    result.current.publish(lead('a', 7, 'c3'));
+    await waitFor(() => expect(air.updates.length).toBeGreaterThan(0));
+    await new Promise((r) => setTimeout(r, 200));
+    expect(air.signedUpdates.length).toBe(0);
+    unmount();
+  });
+
+  it('the same pair at the next check: Stage keeps running as it is', async () => {
+    air.signer = { ...admins, version: 1 };
+    const { unmount } = leader();
+    await waitFor(() => expect(air.started.length).toBe(1));
+    await vi.advanceTimersByTimeAsync(SIGNER_RECHECK_MS + 100);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(air.started.length).toBe(1);
+    unmount();
+  });
+
+  it("a private key that doesn't match the public one is never used to sign", async () => {
+    const other = await generateSigner();
+    air.signer = { public: admins.public, private: other.private, version: 1 };
+    const { unmount } = leader();
+    await waitFor(() => expect(air.started.length).toBe(1));
+    expect(air.started[0]).not.toHaveProperty('signKey');
     unmount();
   });
 });

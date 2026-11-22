@@ -98,6 +98,16 @@ export async function verifyBytes(publicRaw: string, data: Uint8Array, sig: Uint
   }
 }
 
+/** The private key signs what the public one checks (a pair stored wrong would sign frames nobody accepts). */
+export async function pairMatches(pair: StageKeyPair): Promise<boolean> {
+  const probe = new TextEncoder().encode('bandwith-stage-pair');
+  try {
+    return await verifyBytes(pair.public, probe, await signBytes(pair.private, probe));
+  } catch {
+    return false;
+  }
+}
+
 /** A public key's well-formedness (65 bytes, uncompressed point). */
 export const isPublicKey = (raw: unknown): raw is string => {
   if (typeof raw !== 'string') return false;

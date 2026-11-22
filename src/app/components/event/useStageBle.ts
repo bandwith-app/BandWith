@@ -25,7 +25,7 @@ import {
 } from '@/lib/stageBleSync';
 import { bestSample, clockSample, nowMs, type ClockSample, type PeerClock } from '@/lib/stageClick';
 import { isNewer, seqPlausible, type StageLiveState } from '@/lib/stageLive';
-import type { StageSigner, StageVerifyKey } from '@/lib/stageSign';
+import { pairMatches, type StageSigner, type StageVerifyKey } from '@/lib/stageSign';
 import { bleProblem, type StageBleStatus } from '@/lib/stageBleNotice';
 
 export type { StageBleStatus };
@@ -65,6 +65,13 @@ export const PROBE_TIMEOUT_MS = 2_000;
 export const SEARCH_RESTART_MS = 10_000;
 /** A phone whose states aren't the leader's (a failed signature) is skipped this long. */
 export const DISTRUST_MS = 60_000;
+/**
+ * The leader asks the server this often whether it may still sign (still an
+ * admin, the same pair): a demoted admin's phone stops signing at the next
+ * check while online. Offline it keeps the kept pair (members with the new
+ * pair refuse it, see migration 190's rotation).
+ */
+export const SIGNER_RECHECK_MS = 5 * 60_000;
 /** Failed signature checks within AUTH_FAIL_WINDOW_MS that make a phone "not the leader". */
 const AUTH_FAILS_MAX = 3;
 const AUTH_FAIL_WINDOW_MS = 10_000;
@@ -222,6 +229,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     let cancelled = false;
     let listener: PluginListenerHandle | null = null;
     let recalibrate: ReturnType<typeof setInterval> | undefined;
+    let recheck: ReturnType<typeof setInterval> | undefined;
     const calibrate = async () => {
       try {
         const offset = await calibrateClock();
@@ -235,7 +243,9 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       if (cancelled || !key) return;
       // No key pair on this phone (offline before it was made): it leads as
       // older apps do, members on this app show the "update" line.
-      const signer = await stageSigner(eventId);
+      const fetched = await stageSigner(eventId);
+      // A pair whose private key doesn't match its public one would sign frames nobody accepts.
+      const signer = fetched && (await pairMatches(fetched)) ? fetched : null;
       if (cancelled) return;
       keyRef.current = key;
       signerRef.current = signer;
@@ -274,6 +284,13 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         await calibrate();
         if (cancelled) return;
         recalibrate = setInterval(() => void calibrate(), CLOCK_RESYNC_MS);
+        // Still allowed to sign? Demoted, or a new pair: start again with what the server says.
+        recheck = setInterval(() => {
+          void stageSigner(eventId).then((fresh) => {
+            if (cancelled) return;
+            if ((fresh?.public ?? null) !== (fetched?.public ?? null) || (fresh?.version ?? null) !== (fetched?.version ?? null)) setAttempt((n) => n + 1);
+          });
+        }, SIGNER_RECHECK_MS);
         const pending = pendingRef.current;
         pendingRef.current = null;
         if (pending) void push(pending);
@@ -284,6 +301,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     return () => {
       cancelled = true;
       clearInterval(recalibrate);
+      clearInterval(recheck);
       setFollowers(0);
       startedRef.current = false;
       pendingRef.current = null;
