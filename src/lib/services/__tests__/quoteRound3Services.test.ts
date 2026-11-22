@@ -78,6 +78,16 @@ describe('sameQuoteContact', () => {
   it('the wizard saves an empty name as "Client"', () => {
     expect(sameQuoteContact({ client_name: 'Client', client_email: null, client_phone: null }, { clientName: '' })).toBe(true);
   });
+  it('round 10: "Client" in any case, on either side, is no name (as the server, 183)', () => {
+    const none = { client_name: null, client_email: null, client_phone: null };
+    expect(sameQuoteContact({ ...none, client_name: 'client' }, { clientName: '' })).toBe(true);
+    expect(sameQuoteContact({ ...none, client_name: 'CLIENT' }, {})).toBe(true);
+    expect(sameQuoteContact({ ...none, client_name: '' }, { clientName: ' Client ' })).toBe(true);
+    expect(sameQuoteContact({ ...none, client_name: 'Client' }, { clientName: 'client' })).toBe(true);
+    // A real name is still another client.
+    expect(sameQuoteContact({ ...none, client_name: 'Client' }, { clientName: 'Emma Carter' })).toBe(false);
+    expect(sameQuoteContact({ ...none, client_name: 'Emma Carter' }, { clientName: 'CLIENT' })).toBe(false);
+  });
 });
 
 describe('quoteUpdateRecord: an edit clears what the wizard has empty', () => {
