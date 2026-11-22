@@ -262,6 +262,31 @@ await db.exec(`UPDATE band_members SET is_active = false WHERE user_id = '${ADMI
   const v = json(await as(OFF, verify(GIG)));
   ok(v && v.public === null && v.version === 3, `a demotion with the pair still empty still raises the version (3), got ${JSON.stringify(v)}`);
 }
+// A band whose gigs never had a pair (its admins all on 383f15b, which never makes one):
+// a demotion leaves them as they were, so members keep following the band-key state there
+// instead of going "pending" (Claude on #288, blocker).
+{
+  const [B2, A4, A5, M2, G2] = [20, 21, 22, 23, 32].map(id);
+  await db.exec(`
+INSERT INTO auth.users (id) SELECT unnest(ARRAY['${A4}','${A5}','${M2}']::uuid[]);
+INSERT INTO bands VALUES ('${B2}', 'Bronx Brass');
+INSERT INTO band_members (band_id, user_id, role, is_active) VALUES ('${B2}','${A4}','admin',true), ('${B2}','${A5}','admin',true), ('${B2}','${M2}','member',true);
+INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date) VALUES ('${G2}','${B2}','Pier 17','confirmed','gig','${A4}', current_date + 4);
+INSERT INTO event_members (event_id, user_id, status) VALUES ('${G2}','${M2}','confirmed');
+`);
+  ok((await as(A4, `SELECT (public.bw_stage_key('${G2}') IS NOT NULL)::text`)).v === 'true', 'old-app band: the band key is made (no pair)');
+  await db.exec(`UPDATE band_members SET role = 'member' WHERE user_id = '${A5}'`);
+  const v = json(await as(M2, verify(G2)));
+  ok(v === null, `old-app band, a demotion: members get no "pending" (still no pair, follow the band key), got ${JSON.stringify(v)}`);
+  const ver = (await db.query(`SELECT sign_version FROM stage_keys WHERE event_id = '${G2}'`)).rows[0]?.sign_version;
+  ok(ver === 1, `old-app band: the version stays 1, got ${ver}`);
+  // The first pair made there afterwards is version 1, and a demotion after that does rotate.
+  ok(json(await as(A4, set(G2, await pair())))?.version === 1, 'old-app band: the first pair is version 1');
+  await db.exec(`UPDATE band_members SET is_active = false WHERE user_id = '${A4}'`);
+  const after = json(await as(M2, verify(G2)));
+  ok(after && after.public === null && after.version === 2, `once it had a pair, a demotion makes it "pending" (version 2), got ${JSON.stringify(after)}`);
+}
+
 // The next admin makes a pair at the new version.
 const p3 = await pair();
 ok(json(await as(ADMIN, set(GIG, p3)))?.version === 3, 'the next pair is stored at version 3');

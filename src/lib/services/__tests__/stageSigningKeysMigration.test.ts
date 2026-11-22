@@ -47,6 +47,28 @@ describe('190 the stage signing keys', () => {
     expect(update).toBeGreaterThan(lock);
   });
 
+  it("a pair stored while an admin is demoted can't slip past the rotation: both take the band's row (Claude on #288)", () => {
+    // The trigger locks the band for update before it looks at the pairs; storing a pair takes
+    // the same row for share after the caller's admin row (that order: no deadlock with a demotion
+    // of the caller) and re-checks the gig is still that band's.
+    const trig = fn('bw_stage_rotate_signer');
+    const tLock = trig.search(/PERFORM 1 FROM public\.bands b WHERE b\.id = OLD\.band_id FOR NO KEY UPDATE;/);
+    expect(tLock).toBeGreaterThan(-1);
+    expect(trig.search(/UPDATE public\.stage_keys/)).toBeGreaterThan(tLock);
+    const f = fn('bw_stage_set_signer');
+    const admin = f.search(/AND bm\.role = 'admin' AND COALESCE\(bm\.is_active, true\)\s+FOR SHARE;/);
+    const band = f.search(/PERFORM 1 FROM public\.bands b WHERE b\.id = band FOR SHARE;/);
+    const still = f.search(/PERFORM 1 FROM public\.events e WHERE e\.id = p_event_id AND e\.band_id = band;\s+IF NOT FOUND THEN\s+RETURN NULL;/);
+    expect(admin).toBeGreaterThan(-1);
+    expect(band).toBeGreaterThan(admin);
+    expect(still).toBeGreaterThan(band);
+    expect(f.search(/UPDATE public\.stage_keys/)).toBeGreaterThan(still);
+    const moved = fn('bw_stage_event_moved');
+    const mLock = moved.search(/PERFORM 1 FROM public\.bands b WHERE b\.id = OLD\.band_id FOR NO KEY UPDATE;/);
+    expect(mLock).toBeGreaterThan(-1);
+    expect(moved.search(/UPDATE public\.stage_keys/)).toBeGreaterThan(mLock);
+  });
+
   it('keys can never be NULL (decode(NULL) would pass every length check)', () => {
     expect(fn('bw_stage_set_signer')).toMatch(/IF p_public IS NULL OR p_private IS NULL THEN\s+RAISE EXCEPTION 'bad stage key'/);
   });
@@ -83,8 +105,9 @@ describe('190 the stage signing keys', () => {
     expect(trig).toMatch(/NOT COALESCE\(NEW\.is_active, true\)/);
     expect(trig).toMatch(/SET sign_public = NULL, sign_private = NULL, sign_version = s\.sign_version \+ 1/);
     expect(trig).toMatch(/e\.band_id = OLD\.band_id/);
-    // Also where the pair is still empty (Codex on #288, B1).
-    expect(trig).not.toMatch(/sign_public IS NOT NULL/);
+    // Only gigs that had a real pair go "pending" (Claude on #288, blocker): one that never had
+    // one (a band whose admins are all on 383f15b) keeps following band-key states.
+    expect(trig).toMatch(/AND \(s\.sign_public IS NOT NULL OR s\.sign_version > 1\)/);
     expect(sql).toMatch(/CREATE TRIGGER bw_stage_rotate_signer\s+AFTER UPDATE OF role, is_active, band_id, user_id OR DELETE ON public\.band_members/);
     expect(sql).toMatch(/REVOKE EXECUTE ON FUNCTION public\.bw_stage_rotate_signer\(\) FROM PUBLIC, anon, authenticated/);
   });

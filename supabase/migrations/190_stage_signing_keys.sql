@@ -166,6 +166,17 @@ BEGIN
   IF NOT FOUND THEN
     RETURN NULL;
   END IF;
+  -- Then the band's row, which a rotation (bw_stage_rotate_signer,
+  -- bw_stage_event_moved) locks for update before it looks at the pairs: a
+  -- pair stored while another admin is demoted can't slip past it unseen
+  -- (READ COMMITTED skips a row whose committed pair is still empty). After
+  -- the caller's admin row, so a demotion of the caller can't deadlock with
+  -- this. And the gig must still be that band's (a move may have committed).
+  PERFORM 1 FROM public.bands b WHERE b.id = band FOR SHARE;
+  PERFORM 1 FROM public.events e WHERE e.id = p_event_id AND e.band_id = band;
+  IF NOT FOUND THEN
+    RETURN NULL;
+  END IF;
   -- The row (and the band key) are made on first use.
   PERFORM public.bw_stage_key(p_event_id);
   UPDATE public.stage_keys
@@ -182,11 +193,18 @@ REVOKE EXECUTE ON FUNCTION public.bw_stage_set_signer(uuid, text, text, text) FR
 GRANT EXECUTE ON FUNCTION public.bw_stage_set_signer(uuid, text, text, text) TO authenticated;
 
 -- An admin stops being one (demoted, inactive, removed, moved): the band's
--- gig pairs are cleared and their version goes up, also where the pair is
--- still empty (a pair being made meanwhile is then made for the new version,
--- see the lock in bw_stage_set_signer). Their phone may keep the old private
--- key, but members with the new public key (and the new version) refuse
--- what it signs, and until then refuse band-key states ("pending").
+-- gig pairs are cleared and their version goes up. Their phone may keep the
+-- old private key, but members with the new public key (and the new version)
+-- refuse what it signs, and until then refuse band-key states ("pending").
+-- Only gigs that had a real pair (one now, or a version past 1): one that
+-- never had one (a band whose admins are all on 383f15b, which never makes
+-- one) stays as it was, so members keep following its band-key state
+-- instead of waiting for a pair nobody makes. The band's row is locked first
+-- (bw_stage_set_signer takes it for share): a pair being stored meanwhile is
+-- either committed before this looks (and cleared) or stored after the
+-- demotion is (when the demoted admin can't fetch it).
+-- Note for older apps: after an admin's role change, a gig that had a pair
+-- needs an admin on this app to open it online once (Academy, Stage mode).
 CREATE OR REPLACE FUNCTION public.bw_stage_rotate_signer()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -200,10 +218,13 @@ BEGIN
           OR NOT COALESCE(NEW.is_active, true)
           OR NEW.band_id IS DISTINCT FROM OLD.band_id
           OR NEW.user_id IS DISTINCT FROM OLD.user_id) THEN
+    -- NO KEY UPDATE: conflicts with bw_stage_set_signer's FOR SHARE, not with foreign-key checks.
+    PERFORM 1 FROM public.bands b WHERE b.id = OLD.band_id FOR NO KEY UPDATE;
     UPDATE public.stage_keys s
        SET sign_public = NULL, sign_private = NULL, sign_version = s.sign_version + 1
       FROM public.events e
-     WHERE e.id = s.event_id AND e.band_id = OLD.band_id;
+     WHERE e.id = s.event_id AND e.band_id = OLD.band_id
+       AND (s.sign_public IS NOT NULL OR s.sign_version > 1);
   END IF;
   RETURN NULL;
 END;
@@ -227,9 +248,12 @@ SET search_path TO 'public'
 AS $$
 BEGIN
   IF NEW.band_id IS DISTINCT FROM OLD.band_id THEN
+    -- As in bw_stage_rotate_signer: an old-band admin storing a pair meanwhile waits, then finds the gig moved.
+    PERFORM 1 FROM public.bands b WHERE b.id = OLD.band_id FOR NO KEY UPDATE;
     UPDATE public.stage_keys s
        SET sign_public = NULL, sign_private = NULL, sign_version = s.sign_version + 1
-     WHERE s.event_id = NEW.id;
+     WHERE s.event_id = NEW.id
+       AND (s.sign_public IS NOT NULL OR s.sign_version > 1);
   END IF;
   RETURN NULL;
 END;
