@@ -57,7 +57,7 @@ async function expectSongOnly(app: App, song: string, text: RegExp) {
   await expect(app.page.locator('.bw-nav-bar').filter({ visible: true })).toHaveCount(0);
   const vp = app.page.viewportSize()!;
   if (isLaptop()) {
-    // Laptop pose: the song on the Display, the four pads on the Deck.
+    // Laptop pose: the song on the Display, the pads on the Deck (the leader's Count in by the click).
     const display = app.page.getByRole('region', { name: app.t('Now playing') });
     const deck = app.page.getByRole('region', { name: app.t('Song controls') });
     await expect(display).toContainText(text);
@@ -67,7 +67,7 @@ async function expectSongOnly(app: App, song: string, text: RegExp) {
     await expect(deck.getByRole('tablist')).toHaveCount(0);
     const names = await deck.getByRole('button').evaluateAll((bs) => bs.map((b) => b.getAttribute('aria-label') ?? b.textContent?.trim()));
     expect(names.map((n) => (n?.startsWith(app.t('Start the click')) ? 'click' : n))).toEqual([
-      app.t('Show everything'), app.t('Previous song'), 'click', app.t('Next song'),
+      app.t('Show everything'), app.t('Previous song'), 'click', ...(app.role === 'admin' ? [app.t('Count in the band')] : []), app.t('Next song'),
     ]);
     return;
   }
@@ -85,16 +85,16 @@ async function expectSongOnly(app: App, song: string, text: RegExp) {
   );
   expect(onTop, 'nothing of the live screen shows through').toBe(true);
   // No title heading, no tabs, no status: the song, one small line naming it, and
-  // the four controls. (The song's own section names, Verse / Chorus, are part of the song.)
+  // the controls, the leader's Count in by the click. (The song's own section names, Verse / Chorus, are part of the song.)
   await expect(view.getByRole('heading', { name: song })).toHaveCount(0);
   await expect(view.getByRole('tablist')).toHaveCount(0);
   await expect(view.getByText(song, { exact: true }).filter({ visible: true })).toHaveCount(1);
   const buttons = view.getByRole('button');
   const names = await buttons.evaluateAll((bs) => bs.map((b) => b.getAttribute('aria-label')));
   expect(names.map((n) => (n?.startsWith(app.t('Start the click')) ? 'click' : n))).toEqual([
-    app.t('Show everything'), app.t('Previous song'), 'click', app.t('Next song'),
+    app.t('Show everything'), app.t('Previous song'), 'click', ...(app.role === 'admin' ? [app.t('Count in the band')] : []), app.t('Next song'),
   ]);
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < names.length; i++) {
     const b = buttons.nth(i);
     await expect(b).toBeInViewport({ ratio: 1 });
     const bb = (await b.boundingBox())!;

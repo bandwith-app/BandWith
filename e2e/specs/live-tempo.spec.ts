@@ -71,19 +71,34 @@ async function openWithCount(app: App, song: { bpm: number; time: string; bars?:
   await app.open();
 }
 
-/** Records every number the countdown shows, with when (this page's clock, ms since epoch). */
+/**
+ * Records every number the countdown shows: when it went up (`at`) and the
+ * moment of its beat on this phone's clock (`beat`, the number's data-at), both
+ * in ms since epoch. The beat is the app's timing; `at` also holds the
+ * browser's frame rate (a CI runner paints WebKit in software, a few frames a
+ * second while the count runs), so tempo and "same moment" are checked on the
+ * beat, and `at` only has to fall inside its own beat.
+ */
+type Shown = { text: string; at: number; beat: number };
 const recordCount = (page: Page) =>
   page.evaluate(() => {
-    const w = window as unknown as { __count: { text: string; at: number }[] };
+    const w = window as unknown as { __count: Shown[] };
     w.__count = [];
     new MutationObserver(() => {
-      const el = document.querySelector('[data-testid="countin-number"]');
+      const el = document.querySelector<HTMLElement>('[data-testid="countin-number"]');
       const text = el?.textContent ?? '';
       const last = w.__count[w.__count.length - 1];
-      if (text && last?.text !== text) w.__count.push({ text, at: performance.timeOrigin + performance.now() });
-    }).observe(document.body, { subtree: true, childList: true, characterData: true });
+      if (text && last?.text !== text) w.__count.push({ text, at: performance.timeOrigin + performance.now(), beat: Number(el?.dataset.at) });
+    }).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['data-at'] });
   });
-const counted = (page: Page) => page.evaluate(() => (window as unknown as { __count: { text: string; at: number }[] }).__count);
+const counted = (page: Page) => page.evaluate(() => (window as unknown as { __count: Shown[] }).__count);
+
+/** Each number went up on its beat or after it (the next frame), never before it, and before the next beat. */
+const onItsBeat = (seen: Shown[]) =>
+  seen.forEach((s, i) => {
+    expect(s.at, `${s.text} before its beat`).toBeGreaterThanOrEqual(s.beat - 2);
+    if (seen[i + 1]) expect(s.at, `${s.text} after the next beat`).toBeLessThan(seen[i + 1].beat + 2);
+  });
 
 const countDialog = (page: Page, app: App) => page.getByRole('dialog', { name: app.t('Count-in · {title}', { title: 'Superstition' }) });
 
@@ -126,9 +141,11 @@ test.describe('Count-in: every meter', () => {
       await expect(countDialog(app.page, app)).toBeHidden({ timeout: 15_000 });
       const seen = await counted(app.page);
       expect(seen.map((s) => s.text)).toEqual([...m.labels, app.t('GO')]);
-      // A beat apart (the first beats; 7/8's last one is the long one).
-      const gaps = seen.slice(1).map((s, i) => s.at - seen[i].at);
-      for (const gap of gaps.slice(0, m.time === '7/8' ? 2 : gaps.length)) expect(Math.abs(gap - m.ms)).toBeLessThan(90);
+      // A beat apart (the first beats; 7/8's last one is the long one), to the millisecond.
+      const gaps = seen.slice(1).map((s, i) => s.beat - seen[i].beat);
+      for (const gap of gaps.slice(0, m.time === '7/8' ? 2 : gaps.length)) expect(Math.abs(gap - m.ms)).toBeLessThanOrEqual(2);
+      if (m.time === '7/8') expect(Math.abs(gaps[2] - 750)).toBeLessThanOrEqual(2);
+      onItsBeat(seen);
     });
   }
 
@@ -172,8 +189,11 @@ test.describe('Count-in on two devices, one clock', () => {
     const want = ['3', '2', '1', app.t('GO')];
     expect(lead.map((s) => s.text)).toEqual(want);
     expect(member.map((s) => s.text)).toEqual(want);
-    // Same machine, same clock: each count within a frame or two of the leader's.
-    lead.forEach((s, i) => expect(Math.abs(s.at - member[i].at)).toBeLessThan(120));
+    // Same machine, one clock: each beat at the same moment on both phones (the
+    // member's through its clock offset), and each number up on its own beat.
+    lead.forEach((s, i) => expect(Math.abs(s.beat - member[i].beat)).toBeLessThan(120));
+    onItsBeat(lead);
+    onItsBeat(member);
 
     // Stop during the count: gone on both.
     await countIn(app);

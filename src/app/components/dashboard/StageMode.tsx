@@ -723,9 +723,11 @@ export const StageMode: React.FC<StageModeProps> = ({
               className="pb-1"
             />
           )}
-          <div className="flex items-center justify-between gap-3 shrink-0 pb-2 min-h-11">
+          {/* The tabs never shrink under the pills: when both don't fit (a member's
+              "Waiting for leader" by Count-in on a phone), the pills take a line of their own. */}
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 shrink-0 pb-2 min-h-11">
             {views.length > 1 ? (
-              <span className="flex items-center gap-1 min-w-0" role="tablist" aria-label={t('Setlist')}>
+              <span className="flex items-center gap-1 shrink-0" role="tablist" aria-label={t('Setlist')}>
                 {views.map((v) => (
                   <button
                     key={v}
@@ -762,7 +764,7 @@ export const StageMode: React.FC<StageModeProps> = ({
               </span>
             )}
             {live && songs.length > 0 && (
-              <span className="flex items-center gap-2 min-w-0 shrink-0 max-w-[70%]">
+              <span className="flex items-center justify-end gap-2 min-w-0 max-w-full ml-auto">
                 {/* Count-in options (this phone's vibration and sound; the band's direction; Count in anyway). */}
                 {live.countIn && <CountInSheetButton onPress={() => setCountSheet(true)} />}
                 {live.isLeader ? (

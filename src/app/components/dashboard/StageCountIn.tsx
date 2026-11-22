@@ -223,7 +223,11 @@ export const StageCountInOverlay: React.FC<{
       const e = pos.event >= 0 ? plan.events[pos.event] : null;
       if (e && pos.event !== last) {
         last = pos.event;
-        if (numRef.current) numRef.current.textContent = e.go ? t('GO') : e.label;
+        if (numRef.current) {
+          numRef.current.textContent = e.go ? t('GO') : e.label;
+          // When this beat falls on this phone's clock: what the count means, whatever the frame rate.
+          numRef.current.dataset.at = String(Math.round(state.startAt + e.at - offsetRef.current));
+        }
         if (subRef.current) subRef.current.textContent = e.half ? t('Half time') : plan.endAt > plan.barMs + 1 ? t('Bar {n} of {total}', { n: e.bar + 1, total: Math.round(plan.endAt / plan.barMs) }) : '';
         if (dotsRef.current) {
           const n = e.dots > 1 ? e.dots : 0;

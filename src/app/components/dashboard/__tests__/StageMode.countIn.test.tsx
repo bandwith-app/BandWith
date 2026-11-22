@@ -125,6 +125,27 @@ describe('Stage mode count-in (plan §6)', () => {
     localStorage.clear();
   });
 
+  it('each number carries the moment of its beat on this phone (the leader’s clock, through the offset)', () => {
+    vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'setTimeout', 'clearTimeout'] });
+    const now = performance.timeOrigin + performance.now();
+    const state = startCountIn({ from: 'leader', songId: 'r1', bpm: 120, meter: meterOf('4/4'), now });
+    const member = live({ isLeader: false }, state);
+    // The leader's clock runs 40 ms ahead of this phone's.
+    member.controls.countIn!.offset = 40;
+    stage(member.controls);
+    const beat = (i: number) => String(Math.round(state.startAt + countInPlan(state).events[i].at - 40));
+    act(() => void vi.advanceTimersByTime(COUNTIN_LEAD_MS + 20));
+    const num = screen.getByTestId('countin-number');
+    expect(num.textContent).toBe('4');
+    expect(num.dataset.at).toBe(beat(0));
+    act(() => void vi.advanceTimersByTime(500));
+    expect(num.textContent).toBe('3');
+    expect(num.dataset.at).toBe(beat(1));
+    act(() => void vi.advanceTimersByTime(1500));
+    expect(num.textContent).toBe('GO');
+    expect(num.dataset.at).toBe(beat(4));
+  });
+
   it('every phone shows the countdown full screen on the shared clock; a member can hide it, the leader stops it', () => {
     vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'setTimeout', 'clearTimeout'] });
     const now = performance.timeOrigin + performance.now();
