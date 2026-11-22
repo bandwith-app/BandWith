@@ -26,6 +26,7 @@ import { SortableSongList } from '@/app/components/ui/SortableSongList';
 import { TransposeControl, TransposeProvider, useSongTranspose } from '@/app/components/ui/Transpose';
 import { keyLabel } from '@/lib/ireal';
 import { StageClickButton, StageClickFrame, useStageClickUi, type StageClickControls } from './StageClick';
+import { CountInButton, CountInSheet, CountInSheetButton, StageCountInOverlay, useBandCountInStyle, useCountInUi, type StageCountInControls, type StagePlayheadControls } from './StageCountIn';
 import { useKeepAwake } from '@/lib/posture';
 import type { StageSaveState } from '@/app/components/event/useStageLive';
 import type { StageBleStatus } from '@/app/components/event/useStageBle';
@@ -106,6 +107,10 @@ export interface StageLiveControls {
   toggleSkip?: (index: number) => void;
   /** Visual metronome (useStageLive): newest click, ours or the leader's. */
   click?: StageClickControls;
+  /** Count-in (useStageLive): the leader's reaches every phone. */
+  countIn?: StageCountInControls;
+  /** Follow the tempo (useStageLive): started by the count-in at bar 1. */
+  playhead?: StagePlayheadControls;
 }
 
 interface StageModeProps {
@@ -281,6 +286,18 @@ export const StageMode: React.FC<StageModeProps> = ({
   const currentSong = songs[Math.max(0, current)];
   const clickUi = useStageClickUi(click, currentSong);
   const { state: clickState, running: clickRunning, hidden: clickHidden, show: showClick, press: pressClick } = clickUi;
+  // Count-in (plan §6): the leader's button by the click, the countdown on every phone.
+  const [countStyle, setCountStyle] = useBandCountInStyle(bandId);
+  const regiaPlaying = (!!regia?.on && regia.status === 'playing') || !!regia?.nowPlaying?.state.playing;
+  const countUi = useCountInUi({ countIn: live?.countIn, click, playhead: live?.playhead, song: currentSong, isLeader: !!live?.isLeader, regiaPlaying, style: countStyle });
+  const [countSheet, setCountSheet] = useState(false);
+  const countStopping = countUi.counting && countUi.mine;
+  const countButton =
+    countUi.available || countStopping ? <CountInButton counting={countStopping} onPress={countStopping ? countUi.stop : countUi.start} /> : null;
+  const countForce =
+    countUi.forceable && !countUi.available
+      ? { reason: currentSong?.backingTrack ? t('This song is played with a backing track: the track starts the band.') : t('The stage manager is playing this song.'), start: countUi.start }
+      : null;
   const lyricsRef = useRef<HTMLDivElement | null>(null);
   const sectionRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -805,6 +822,7 @@ export const StageMode: React.FC<StageModeProps> = ({
                 <span className="flex-1 min-w-0 bw-h2 normal-case leading-[1.15] truncate" style={{ color: accentColor }} aria-live="polite">
                   {lyricsSong.title}
                 </span>
+                {live?.countIn && <CountInSheetButton onPress={() => setCountSheet(true)} />}
                 <button
                   type="button"
                   disabled={lyricsSize.min}
@@ -1025,7 +1043,7 @@ export const StageMode: React.FC<StageModeProps> = ({
 
         {/* Song steps: the leader's reach the whole band. */}
         {live && songs.length > 0 && (
-          <div className={cn('grid gap-3 shrink-0', click ? 'grid-cols-[1fr_auto_1fr]' : 'grid-cols-2', ' [@media(max-height:520px)_and_(min-width:600px)]:col-start-1 [@media(max-height:520px)_and_(min-width:600px)]:row-start-3 [@media(max-height:520px)_and_(min-width:600px)]:self-end', split && 'col-start-1 row-start-3 self-end', split && showSide && 'row-start-4', showSide && !split && '[@media(min-width:900px)_and_(min-height:521px)]:col-start-2 [@media(min-width:900px)_and_(min-height:521px)]:row-start-3')}>
+          <div className={cn('grid gap-3 shrink-0', click && countButton ? 'grid-cols-[1fr_auto_auto_1fr]' : click || countButton ? 'grid-cols-[1fr_auto_1fr]' : 'grid-cols-2', ' [@media(max-height:520px)_and_(min-width:600px)]:col-start-1 [@media(max-height:520px)_and_(min-width:600px)]:row-start-3 [@media(max-height:520px)_and_(min-width:600px)]:self-end', split && 'col-start-1 row-start-3 self-end', split && showSide && 'row-start-4', showSide && !split && '[@media(min-width:900px)_and_(min-height:521px)]:col-start-2 [@media(min-width:900px)_and_(min-height:521px)]:row-start-3')}>
             <button
               type="button"
               disabled={current <= 0}
@@ -1049,6 +1067,7 @@ export const StageMode: React.FC<StageModeProps> = ({
                 accent={accentColor}
               />
             )}
+            {countButton}
             <button
               type="button"
               disabled={current >= songs.length - 1}
@@ -1085,15 +1104,20 @@ export const StageMode: React.FC<StageModeProps> = ({
           accent={accentColor}
           onShowAll={showAll}
           click={
-            click ? (
-              <StageClickButton
-                bpm={currentSong?.bpm}
-                running={clickRunning}
-                following={clickRunning && !click.mine}
-                hidden={clickHidden}
-                onPress={pressClick}
-                accent={accentColor}
-              />
+            click || countButton ? (
+              <div className="flex gap-3">
+                {click && (
+                  <StageClickButton
+                    bpm={currentSong?.bpm}
+                    running={clickRunning}
+                    following={clickRunning && !click.mine}
+                    hidden={clickHidden}
+                    onPress={pressClick}
+                    accent={accentColor}
+                  />
+                )}
+                {countButton}
+              </div>
             ) : undefined
           }
           clickFrame={
@@ -1104,6 +1128,24 @@ export const StageMode: React.FC<StageModeProps> = ({
         />
         </VoiceAssignmentScope>
       )}
+      {live?.countIn?.state?.on && (
+        <StageCountInOverlay
+          key={live.countIn.state.seq}
+          state={live.countIn.state}
+          offset={live.countIn.offset}
+          title={songs.find((s) => s.id && s.id === live.countIn!.state!.songId)?.title ?? currentSong?.title}
+          accent={accentColor}
+          canStop={live.countIn.mine}
+          onStop={countUi.stop}
+          big={laptop}
+        />
+      )}
+      <CountInSheet
+        open={countSheet}
+        onClose={() => setCountSheet(false)}
+        force={countForce}
+        style={live?.isLeader && bandId ? { value: countStyle, set: setCountStyle } : null}
+      />
       <AnimatePresence>
         {summary && session && (
           <RehearsalSummaryDialog

@@ -53,6 +53,7 @@ import { useEventLiveRefresh } from '@/app/components/event/useEventLiveRefresh'
 import { useStageLive, SETLIST_ORDER_SAVED, type StageRegiaBridge, type StageSessionBridge } from '@/app/components/event/useStageLive';
 import { useRehearsalSession } from '@/app/components/event/useRehearsalSession';
 import { useStageRegia } from '@/app/components/event/useStageRegia';
+import { useBandCountInStyle, useCountInUi } from '@/app/components/dashboard/StageCountIn';
 import { Capacitor } from '@capacitor/core';
 import { OfflineAudioCard } from '@/app/components/event/OfflineAudioCard';
 import { inPrefetchWindow, localToday } from '@/lib/audioPrefetch';
@@ -779,6 +780,18 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     jumpTo: stageLive.jumpTo,
   });
   const liveSong = stageLive.songs[stageLive.index];
+  // The floor wedge's Count in (the countdown itself is Stage mode's).
+  const [countStyle] = useBandCountInStyle(isStageOpen ? event.band_id ?? undefined : undefined);
+  const wedgeCount = useCountInUi({
+    countIn: stageLive.countIn,
+    click: stageLive.click,
+    playhead: stageLive.playhead,
+    song: liveSong,
+    isLeader: stageLive.isLeader,
+    regiaPlaying: (stageRegia.on && stageRegia.status === 'playing') || !!stageRegia.nowPlaying?.state.playing,
+    style: countStyle,
+  });
+  const wedgeCountStop = wedgeCount.counting && wedgeCount.mine;
   // Audio on this device (admins: whoever can be the stage manager): the
   // setlist's song files ahead of time, so Stage mode plays them with no
   // internet; on its own in the days before a confirmed gig (the phone app).
@@ -3069,6 +3082,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
           onIndexChange={stageLive.select}
           skipped={stageLive.skipped}
           click={stageLive.click}
+          countIn={wedgeCount.available || wedgeCountStop ? { counting: wedgeCountStop, onPress: wedgeCountStop ? wedgeCount.stop : wedgeCount.start } : null}
           follow={{
             isLeader: stageLive.isLeader,
             following: stageLive.following,

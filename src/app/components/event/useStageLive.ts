@@ -36,10 +36,13 @@ import {
 } from '@/lib/stageClick';
 import { REGIA_EVENT } from '@/lib/stageRegia';
 import { parsePlayheadState, PLAYHEAD_EVENT, stopPlayhead, type PlayheadState } from '@/lib/playhead';
+import { COUNTIN_EVENT, parseCountInState, stopCountIn, type CountInState } from '@/lib/countIn';
 
 /** Round trips measured when a click starts; the fastest sets the offset. */
 const PINGS = 6;
 const PING_GAP_MS = 200;
+/** A fresh burst (count-in): quicker, it must land inside the 1.5 s lead. */
+const FRESH_PING_GAP_MS = 110;
 /** Measure again after this long (clocks drift slowly). */
 const RESYNC_MS = 60_000;
 
@@ -176,6 +179,9 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   // Follow the tempo (playhead.ts): the newest playhead state, ours or the leader's.
   const [playhead, setPlayheadState] = useState<PlayheadState | null>(null);
   const playheadRef = useRef<PlayheadState | null>(null);
+  // Count-in (countIn.ts): the newest one, ours or the leader's.
+  const [countIn, setCountInState] = useState<CountInState | null>(null);
+  const countInRef = useRef<CountInState | null>(null);
 
   const live = !!eventId && open;
   const ordered = useMemo(() => applyOrder(songs, order), [songs, order]);
@@ -251,7 +257,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       pingTimers.current = Array.from({ length: PINGS }, (_, i) =>
         setTimeout(() => {
           void channelRef.current?.send({ type: 'broadcast', event: PING_EVENT, payload: { from: clientId, to: peer, t0: nowMs() } });
-        }, i * PING_GAP_MS),
+        }, i * (fresh ? FRESH_PING_GAP_MS : PING_GAP_MS)),
       );
     },
     [clientId],
@@ -284,6 +290,21 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     [clientId, syncWith],
   );
 
+  const receiveCountIn = useCallback(
+    (state: CountInState) => {
+      if (state.from === clientId) return;
+      if (countInRef.current && !isNewer(state, countInRef.current)) return;
+      countInRef.current = state;
+      setCountInState(state);
+      // Measure the leader's clock again now, over Realtime and Bluetooth: the count must be on the beat.
+      if (state.on) {
+        syncWith(state.from, true);
+        bleBurst();
+      }
+    },
+    [clientId, syncWith, bleBurst],
+  );
+
   // The channel lives while Stage mode is open.
   useEffect(() => {
     if (!live || !eventId) return;
@@ -309,6 +330,10 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       .on('broadcast', { event: PLAYHEAD_EVENT }, (msg: { payload?: unknown }) => {
         const state = parsePlayheadState(msg?.payload);
         if (state) receivePlayhead(state);
+      })
+      .on('broadcast', { event: COUNTIN_EVENT }, (msg: { payload?: unknown }) => {
+        const state = parseCountInState(msg?.payload);
+        if (state) receiveCountIn(state);
       })
       .on('broadcast', { event: PING_EVENT }, (msg: { payload?: { from?: unknown; to?: unknown; t0?: unknown } }) => {
         // A bandmate measuring our clock: answer straight away with our time.
@@ -337,6 +362,10 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         // …and the playhead (Follow the tempo), so a late phone lands on the right bar.
         if (isLeader && playheadRef.current?.from === clientId && playheadRef.current.on) {
           void channel.send({ type: 'broadcast', event: PLAYHEAD_EVENT, payload: playheadRef.current });
+        }
+        // …and a count-in still running: the late phone joins on the right beat.
+        if (isLeader && countInRef.current?.from === clientId && countInRef.current.on) {
+          void channel.send({ type: 'broadcast', event: COUNTIN_EVENT, payload: countInRef.current });
         }
         // So does the rehearsal session (timer) the leader runs.
         const sessionNow = isLeader ? sessionRef.current?.current.latest?.() : null;
@@ -370,6 +399,12 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         clickRef.current = off;
         void channel.send({ type: 'broadcast', event: CLICK_EVENT, payload: clickWire(off) });
       }
+      const count = countInRef.current;
+      if (isLeader && count?.from === clientId && count.on) {
+        const off = stopCountIn(count);
+        countInRef.current = off;
+        void channel.send({ type: 'broadcast', event: COUNTIN_EVENT, payload: off });
+      }
       const head = playheadRef.current;
       if (isLeader && head?.from === clientId && head.on) {
         const off = stopPlayhead(head);
@@ -380,7 +415,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       setConnected(false);
       void supabase.removeChannel(channel);
     };
-  }, [live, eventId, clientId, isLeader, receive, receiveClick, receivePlayhead]);
+  }, [live, eventId, clientId, isLeader, receive, receiveClick, receivePlayhead, receiveCountIn]);
 
   /**
    * Save the pending order now. `closing`: Stage mode is closing, so only the
@@ -477,6 +512,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     setRtClock(null);
     playheadRef.current = null;
     setPlayheadState(null);
+    countInRef.current = null;
+    setCountInState(null);
     pingTimers.current.forEach(clearTimeout);
   }, [open]);
 
@@ -529,6 +566,17 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     [clientId, isLeader],
   );
 
+  /** Leader: a count-in (start or Stop) on every phone; anyone else's stays on their phone. */
+  const setCountIn = useCallback(
+    (next: CountInState) => {
+      const state = { ...next, from: clientId };
+      countInRef.current = state;
+      setCountInState(state);
+      if (isLeader) void channelRef.current?.send({ type: 'broadcast', event: COUNTIN_EVENT, payload: state });
+    },
+    [clientId, isLeader],
+  );
+
   /** Make song `i` (in the live order) the current one. */
   const select = useCallback(
     (i: number) => {
@@ -539,6 +587,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       // Another song: the playhead stops (for everyone, when the leader moves).
       const head = playheadRef.current;
       if (head?.on && head.songId !== id && (isLeader || head.from === clientId)) setPlayhead(stopPlayhead(head));
+      const count = countInRef.current;
+      if (count?.on && count.songId !== id && (isLeader || count.from === clientId)) setCountIn(stopCountIn(count));
       if (isLeader) {
         send({ songId: id, order });
       } else if (followingRef.current) {
@@ -546,7 +596,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         setFollowingState(false);
       }
     },
-    [ordered, isLeader, send, order, setPlayhead, clientId],
+    [ordered, isLeader, send, order, setPlayhead, setCountIn, clientId],
   );
 
   const skippedSet = useMemo(() => new Set(skipped), [skipped]);
@@ -624,6 +674,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   // The playhead's sender is measured the same way (usually the same leader).
   const playheadPeer = playhead && playhead.from !== clientId ? playhead.from : null;
   const playheadOffset = pickClock(playheadPeer, [rtClock, ble.clock])?.offset ?? 0;
+  const countInPeer = countIn && countIn.from !== clientId ? countIn.from : null;
+  const countInOffset = pickClock(countInPeer, [rtClock, ble.clock])?.offset ?? 0;
 
   return {
     /** The setlist in its live order. */
@@ -677,6 +729,13 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       offset: playheadOffset,
       set: setPlayhead,
       clientId,
+    },
+    /** The count-in (countIn.ts): newest state, whose, offset, and (leader) send. */
+    countIn: {
+      state: countIn,
+      mine: !!countIn && countIn.from === clientId,
+      offset: countInOffset,
+      set: setCountIn,
     },
   };
 }

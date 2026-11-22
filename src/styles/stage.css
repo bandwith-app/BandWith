@@ -50,3 +50,37 @@
   padding-left: var(--bw-rail-w);
   padding-right: 0;
 }
+
+/* Count-in (StageCountIn): the eighths inside a 6/8 or 7/8 count. */
+.bw-countin-dot {
+  width: 2.2vmin;
+  height: 2.2vmin;
+  min-width: 8px;
+  min-height: 8px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.22);
+}
+.bw-countin-dot[data-on='1'] {
+  background: #fff;
+}
+
+/* The countdown covers everything but the Duo rail (z 190), which stays
+   usable: clear of it on its edge, and of the rail laid along the Deck's
+   bottom in Laptop pose; with the side bar hidden there is no rail. */
+.bw-countin {
+  padding-top: calc(var(--safe-top, 0px) + 12px);
+  padding-bottom: calc(var(--safe-bottom, 0px) + 16px);
+  padding-left: max(var(--safe-left, 0px), var(--bw-status-clear-left, 0px));
+  padding-right: max(var(--safe-right, 0px), var(--bw-status-clear-x, 0px));
+}
+:root[data-bw-rail][data-bw-rail-edge="right"]:not([data-bw-stage-full]) .bw-countin {
+  padding-left: 0;
+  padding-right: var(--bw-rail-w);
+}
+:root[data-bw-rail][data-bw-rail-edge="left"]:not([data-bw-stage-full]) .bw-countin {
+  padding-left: var(--bw-rail-w);
+  padding-right: 0;
+}
+:root[data-bw-rail-host]:not([data-bw-stage-full]) .bw-countin {
+  padding-bottom: var(--content-bottom-clearance, calc(var(--safe-bottom, 0px) + 100px));
+}

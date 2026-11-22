@@ -17,6 +17,7 @@ import { keyLabel, type SongChart } from '@/lib/ireal';
 import { useT } from '@/lib/i18n';
 import { exitBrowserFullScreen, requestBrowserFullScreen, useStageBarHidden, useStageSongOnly } from '@/lib/stageChrome';
 import { StageClickButton, StageClickFrame, useStageClickUi, type StageClickControls } from '@/app/components/dashboard/StageClick';
+import { CountInButton } from '@/app/components/dashboard/StageCountIn';
 import { useSessionSeconds } from '@/app/components/dashboard/RehearsalSession';
 import type { RehearsalSessionControls } from '@/app/components/event/useRehearsalSession';
 import { formatClock } from '@/lib/rehearsalSession';
@@ -86,6 +87,8 @@ export interface FloorWedgeModeProps {
   };
   /** Visual metronome (useStageLive().click): the button on the Deck, the glow above the wedge. */
   click?: StageClickControls;
+  /** The leader's Count in (StageCountIn), next to the click; the countdown itself is Stage mode's, above the wedge. */
+  countIn?: { counting: boolean; onPress: () => void } | null;
   /** When the set started (elapsed time); defaults to when the mode mounted. */
   startedAt?: Date | number;
   /** See FoldSplit. Default 125 (above Stage mode). */
@@ -123,6 +126,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   skipped,
   follow,
   click,
+  countIn,
   startedAt,
   // Set inline, so the wedge stays when a hub (search, Calendar) lies under
   // Stage mode: the Laptop rule hides inline-less page splits while a hub is open.
@@ -352,7 +356,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
 
   const deck = songOnly ? (
     <div className="min-h-full flex flex-col px-4 pt-3 pb-3 text-white">
-      <div className={cn('grid gap-3 flex-1 min-h-[88px]', click ? 'grid-cols-[auto_1fr_auto_1fr]' : 'grid-cols-[auto_1fr_1fr]')}>
+      <div className={cn('grid gap-3 flex-1 min-h-[88px]', click && countIn ? 'grid-cols-[auto_1fr_auto_auto_1fr]' : click || countIn ? 'grid-cols-[auto_1fr_auto_1fr]' : 'grid-cols-[auto_1fr_1fr]')}>
         <button
           type="button"
           onClick={showAll}
@@ -382,6 +386,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
             accent="var(--accent)"
           />
         )}
+        {countIn && <CountInButton counting={countIn.counting} onPress={countIn.onPress} className="h-full" />}
         <DeckButton
           size="pad"
           tone="accent"
@@ -566,7 +571,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
           onMark={() => notes.controls.mark({ songId: song?.songId ?? null, songTitle: song?.title ?? null, markedAtS: notes.elapsed() })}
         />
       )}
-      <div className={cn('grid gap-3 flex-1 min-h-[88px]', click ? 'grid-cols-[1fr_auto_1fr]' : 'grid-cols-2')}>
+      <div className={cn('grid gap-3 flex-1 min-h-[88px]', click && countIn ? 'grid-cols-[1fr_auto_auto_1fr]' : click || countIn ? 'grid-cols-[1fr_auto_1fr]' : 'grid-cols-2')}>
         <DeckButton
           size="pad"
           tone="muted"
@@ -587,6 +592,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
             accent="var(--accent)"
           />
         )}
+        {countIn && <CountInButton counting={countIn.counting} onPress={countIn.onPress} className="h-full" />}
         <DeckButton
           size="pad"
           tone="accent"
