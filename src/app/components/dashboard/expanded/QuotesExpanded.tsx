@@ -213,8 +213,9 @@ export const QuotesExpanded: React.FC<QuotesExpandedProps> = ({
         onQuotesChanged?.();
         if (opts?.share) setSharingQuote(saved);
         // Already sent with the client link: the page shows the new version.
-        republishClientQuote(saved, currentBandId, selectedBand?.name || 'Band').then(({ data: version, error: pubError }) => {
+        republishClientQuote(saved, currentBandId, selectedBand?.name || 'Band').then(({ data: version, error: pubError, newRecipient }) => {
           if (pubError) notify(t('The client page could not be updated. Try again.'), 'error');
+          else if (newRecipient) notify(t('New client, new link: the old one no longer works. Send the quote to the new client.'), 'success');
           else if (version && version > 1) notify(t('The client’s page now shows version {n}.', { n: version }), 'success');
         });
         return;

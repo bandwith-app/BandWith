@@ -398,7 +398,7 @@ const business: AreaModule = {
         },
         { type: 'p', text: 'Admins get a push and an in-app notification when the client opens the quote the first time, accepts, declines or writes.' },
         { type: 'note', tone: 'warning', text: '**New link** and **Turn off link** ask first, because the client\'s current link stops working right away.' },
-        { type: 'p', text: 'A quote never sent shows **Send to client** here instead.' },
+        { type: 'p', text: 'A quote never sent shows **Send to client** here instead. So does a sent quote whose client you change (another email, or another phone when it has no email): the old link stops working, and the new client sees only their own conversation once you send it.' },
       ],
     },
     {

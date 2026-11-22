@@ -135,10 +135,19 @@ function readFields() {
   if (box) draft.checked = box.checked;
 }
 
-function applyView(next: QuoteLinkView | null) {
+/**
+ * Show a view from the server. `keepStale` (the poll): a notice already on
+ * screen stays. A different version of a quote not yet accepted is a new
+ * quote for the client: the "I accept" box ticked for the old one is
+ * cleared (the typed name stays) and the page says it was updated, so an
+ * acceptance is always given on the version on screen.
+ */
+function applyView(next: QuoteLinkView | null, keepStale = false) {
   if (!next) return;
+  const revised = !!view && next.status !== 'accepted' && next.version !== view.version;
+  if (revised) draft.checked = false;
   view = next;
-  stale = !!next.stale;
+  stale = !!next.stale || revised || (keepStale && stale);
   currency = next.quote?.currency || 'EUR';
   if (!forcedLang && next.lang && next.lang in QUOTE_STRINGS && next.lang !== lang) {
     lang = next.lang as QuoteLang;
@@ -454,12 +463,14 @@ function depositCard(v: QuoteLinkView, q: ClientQuoteSnapshot) {
   const amount = money(q.deposit.amount);
   const kicker = h('div', { class: 'kicker' }, `${v.band_name} · ${S.depositKicker}${q.ref ? ` ${q.ref}` : ''}`);
   if (v.deposit_paid) {
+    // 183: what the band recorded (€300 on a €500 deposit says €300); before 183, what was asked.
+    const received = v.deposit_paid_amount != null && v.deposit_paid_amount > 0 ? money(v.deposit_paid_amount) : amount;
     return h(
       'section',
       { class: 'card', role: 'status', 'data-testid': 'deposit-paid' },
       kicker,
       h('h2', { style: 'margin-top:12px' }, S.depositPaidTitle),
-      h('p', {}, fill(S.depositPaidBody, { ...vars(v), amount })),
+      h('p', {}, fill(S.depositPaidBody, { ...vars(v), amount: received })),
     );
   }
   const pay = q.pay;
@@ -641,11 +652,13 @@ function poll() {
     if (document.hidden || busy || !view) return;
     try {
       const next = await api.view();
+      // A new version counts too, with or without a message (183).
       const changed = (a: QuoteLinkView, b: QuoteLinkView) =>
-        JSON.stringify([a.messages, a.balance, a.balance_paid, a.deposit_paid]) !== JSON.stringify([b.messages, b.balance, b.balance_paid, b.deposit_paid]);
+        JSON.stringify([a.version, a.messages, a.balance, a.balance_paid, a.deposit_paid, a.deposit_paid_amount]) !==
+        JSON.stringify([b.version, b.messages, b.balance, b.balance_paid, b.deposit_paid, b.deposit_paid_amount]);
       if (next && changed(next, view)) {
         readFields();
-        applyView({ ...next, stale });
+        applyView(next, true);
         render();
       }
     } catch {

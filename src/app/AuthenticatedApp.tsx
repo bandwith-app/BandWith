@@ -2769,8 +2769,9 @@ export default function AuthenticatedApp() {
         : { message: t('Quote updated'), type: 'success' });
       if (opts?.share) setSharingQuote(saved);
       // Already sent with the client link: the page shows the new version.
-      republishClientQuote(saved as any, editing.bandId, realBand?.name || 'Band').then(({ data: version, error: pubError }) => {
+      republishClientQuote(saved as any, editing.bandId, realBand?.name || 'Band').then(({ data: version, error: pubError, newRecipient }) => {
         if (pubError) setSaveToast({ message: t('The client page could not be updated. Try again.'), type: 'error' });
+        else if (newRecipient) setSaveToast({ message: t('New client, new link: the old one no longer works. Send the quote to the new client.'), type: 'success' });
         else if (version && version > 1) setSaveToast({ message: t('The client’s page now shows version {n}.', { n: version }), type: 'success' });
       });
       refetchExpandedQuotes();

@@ -160,7 +160,8 @@ export const QuoteClientLink: React.FC<QuoteClientLinkProps> = ({
       case 'declined':
         return a.body ? t('Declined: “{reason}”', { reason: a.body }) : t('Declined');
       case 'link_rotated':
-        return t('New link created');
+        // 183: the client changed, the old client's link stopped working.
+        return a.body === 'recipient_changed' ? t('New link for the new client') : t('New link created');
       case 'link_revoked':
         return t('Link turned off');
       case 'balance_requested':
