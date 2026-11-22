@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeLatestPage, prependOlder, normalizeChatType, appendIncoming, isReplySwipe, SWIPE_REPLY_PX } from '../chatMessages';
+import { mergeLatestPage, restartFromLatest, prependOlder, normalizeChatType, appendIncoming, isReplySwipe, SWIPE_REPLY_PX, catchUpPage, markSendFailed, attachReplies, replyTargetIds } from '../chatMessages';
 import type { Message } from '@/lib/services/chats';
 
 const msg = (i: number, over: Partial<Message> = {}): Message => ({
@@ -44,14 +44,39 @@ describe('mergeLatestPage (3 s poll)', () => {
     expect(ids(next)).toEqual(['m0', 'm1', 'temp-1']);
   });
 
+  // Codex review #291 r3: a message from Realtime that arrived while the
+  // page was being fetched (newer than the page) disappeared.
+  it('keeps a Realtime message that arrived after the page was fetched', () => {
+    const known = new Set(ids(range(0, 3)));
+    const next = mergeLatestPage([...range(0, 3), msg(5)], range(0, 3), known);
+    expect(ids(next)).toEqual(['m0', 'm1', 'm2', 'm5']);
+  });
+
+  it('a message on screen before the fetch and gone from the page (deleted) still goes', () => {
+    const known = new Set(ids(range(0, 4)));
+    expect(ids(mergeLatestPage(range(0, 4), range(0, 3), known))).toEqual(['m0', 'm1', 'm2']);
+  });
+
+  it('same message in both: the newer row wins', () => {
+    const edited = msg(2, { content: 'fixed', edited: true, edited_at: new Date(Date.UTC(2026, 10, 1, 1)).toISOString() });
+    const next = mergeLatestPage([msg(0), msg(1), edited], range(0, 3));
+    expect(next[2].content).toBe('fixed');
+  });
+
+  it('too far behind: the latest page, and what Realtime brought meanwhile', () => {
+    const temp = msg(99, { id: 'temp-1', content: 'sending…' });
+    const next = restartFromLatest([...range(0, 3), msg(60), temp], range(40, 50), new Set(ids(range(0, 3))));
+    expect(ids(next)).toEqual([...ids(range(40, 50)), 'm60', 'temp-1']);
+  });
+
   it('an empty page (chat cleared) empties the list as before', () => {
     expect(mergeLatestPage(range(0, 3), [])).toEqual([]);
   });
 
   it('hides only the server copy of a pending message, not older messages with the same text', () => {
     const old = msg(0, { content: 'ok', sender_id: 'me' });
-    const temp = msg(99, { id: 'temp-1', content: 'ok', sender_id: 'me' });
-    const copy = msg(2, { content: 'ok', sender_id: 'me' });
+    const temp = msg(99, { id: 'temp-1', content: 'ok', sender_id: 'me', client_id: 'cid-1' });
+    const copy = msg(2, { content: 'ok', sender_id: 'me', client_id: 'cid-1' });
     const next = mergeLatestPage([old, msg(1), temp], [old, msg(1), copy]);
     expect(ids(next)).toEqual(['m0', 'm1', 'temp-1']);
   });
@@ -71,15 +96,85 @@ describe('appendIncoming (realtime)', () => {
     expect(ids(next)).toEqual(['m0', 'm1', 'temp-1']);
   });
 
-  it('replaces the pending bubble with its server copy', () => {
-    const temp = msg(99, { id: 'temp-1', content: 'hi', sender_id: 'me' });
-    const next = appendIncoming([msg(0), temp], msg(1, { content: 'hi', sender_id: 'me' }));
+  it('replaces the pending bubble with its server copy (same client id)', () => {
+    const temp = msg(99, { id: 'temp-1', content: 'hi', sender_id: 'me', client_id: 'cid-1' });
+    const next = appendIncoming([msg(0), temp], msg(1, { content: 'hi', sender_id: 'me', client_id: 'cid-1' }));
     expect(ids(next)).toEqual(['m0', 'm1']);
+  });
+
+  // Codex #291 r4 (B4): same sender and text is no proof of delivery.
+  it('two identical "OK"s waiting: the one delivered (client id) goes, the other stays', () => {
+    const a = msg(98, { id: 'temp-a', content: 'OK', sender_id: 'me', client_id: 'cid-a', failed: true, queued: true });
+    const b = msg(99, { id: 'temp-b', content: 'OK', sender_id: 'me', client_id: 'cid-b', failed: true, queued: true });
+    const next = appendIncoming([msg(0), a, b], msg(1, { content: 'OK', sender_id: 'me', client_id: 'cid-b' }));
+    expect(ids(next)).toEqual(['m0', 'm1', 'temp-a']);
+    const page = mergeLatestPage([msg(0), a, b], [msg(0), msg(2, { content: 'OK', sender_id: 'me', client_id: 'cid-a' })]);
+    expect(ids(page)).toEqual(['m0', 'm2', 'temp-b']);
+  });
+
+  // Claude #291 CR6 M4: only the client id proves arrival. A row without
+  // one (a database before 192) with the same sender and text is not proof:
+  // the bubble stays until its send answers.
+  it('a row without a client id stands in for no bubble, not even one being sent', () => {
+    const sending = msg(99, { id: 'temp-1', content: 'hi', sender_id: 'me', client_id: 'cid-1' });
+    const legacy = msg(1, { content: 'hi', sender_id: 'me' });
+    expect(ids(appendIncoming([msg(0), sending], legacy))).toEqual(['m0', 'm1', 'temp-1']);
+    expect(ids(mergeLatestPage([msg(0), sending], [msg(0), legacy]))).toEqual(['m0', 'm1', 'temp-1']);
+    expect(ids(appendIncoming([msg(0), sending], { ...legacy, client_id: 'cid-2' }))).toEqual(['m0', 'm1', 'temp-1']);
+    expect(ids(appendIncoming([msg(0), sending], { ...legacy, client_id: 'cid-1' }))).toEqual(['m0', 'm1']);
+  });
+
+  // Claude #291 r5: client ids are unique per sender; another account's row
+  // with the same client id is not my message.
+  it("another sender's row with my client id confirms nothing", () => {
+    const mine = msg(99, { id: 'temp-1', content: 'hi', sender_id: 'me', client_id: 'cid-1' });
+    const theirs = msg(1, { content: 'hi', sender_id: 'u1', client_id: 'cid-1' });
+    expect(ids(appendIncoming([msg(0), mine], theirs))).toEqual(['m0', 'm1', 'temp-1']);
+    expect(ids(mergeLatestPage([msg(0), mine], [msg(0), theirs]))).toEqual(['m0', 'm1', 'temp-1']);
+  });
+
+  it('a row with the same text and no client id confirms nothing waiting', () => {
+    const a = msg(98, { id: 'temp-a', content: 'OK', sender_id: 'me', client_id: 'cid-a', failed: true, queued: true });
+    const legacy = msg(1, { content: 'OK', sender_id: 'me' });
+    expect(ids(appendIncoming([msg(0), a], legacy))).toEqual(['m0', 'm1', 'temp-a']);
+    expect(ids(mergeLatestPage([msg(0), a], [msg(0), legacy]))).toEqual(['m0', 'm1', 'temp-a']);
   });
 
   it('ignores a message already in the list', () => {
     const prev = range(0, 3);
     expect(appendIncoming(prev, msg(1))).toBe(prev);
+  });
+
+  // Codex review #291 r4: each arrival is fetched in full, so two quick
+  // messages could land out of order.
+  it('puts a message in its place by time, not by arrival', () => {
+    const temp = msg(99, { id: 'temp-1', content: 'sending…', sender_id: 'me' });
+    const next = appendIncoming([msg(0), msg(2), temp], msg(1));
+    expect(ids(next)).toEqual(['m0', 'm1', 'm2', 'temp-1']);
+  });
+
+  it('marks it as come by Realtime (not yet confirmed by a page)', () => {
+    expect(appendIncoming([msg(0)], msg(1)).find((m) => m.id === 'm1')?.live).toBe(true);
+  });
+});
+
+// Codex review #291 r4: a refresh compared only the quote's id, so a quote
+// whose message was deleted (or edited) since kept its old text.
+describe('refresh compares the quote', () => {
+  it('a quoted message deleted since: the list updates', () => {
+    const quote = { ...msg(0), content: 'Can you bring the XLR?' };
+    const prev = [msg(0), msg(1, { reply_to_id: 'm0', reply_to: quote })];
+    const page = [msg(0), msg(1, { reply_to_id: 'm0', reply_to: { ...quote, content: 'Message deleted', deleted: true } })];
+    const next = mergeLatestPage(prev, page);
+    expect(next).not.toBe(prev);
+    expect(next[1].reply_to?.content).toBe('Message deleted');
+  });
+
+  it('a quoted message edited since: the list updates', () => {
+    const quote = { ...msg(0), content: 'at 8' };
+    const prev = [msg(0), msg(1, { reply_to_id: 'm0', reply_to: quote })];
+    const next = mergeLatestPage(prev, [msg(0), msg(1, { reply_to_id: 'm0', reply_to: { ...quote, content: 'at 9' } })]);
+    expect(next[1].reply_to?.content).toBe('at 9');
   });
 });
 
@@ -110,3 +205,85 @@ describe('isReplySwipe', () => {
     expect(isReplySwipe(60, 90)).toBe(false);
   });
 });
+
+// Audit 07 #7: 10 on screen, 60 more arrive while away; the latest page is 20–69.
+describe('catchUpPage', () => {
+  const history = range(0, 70);
+  const after = async (t: string) => history.filter((m) => m.created_at >= t).slice(0, 50);
+
+  it('fetches forward from the newest message on screen until it meets the latest page', async () => {
+    const { page, complete } = await catchUpPage(range(0, 10), range(20, 70), after);
+    expect(complete).toBe(true);
+    expect(ids(mergeLatestPage(range(0, 10), page))).toEqual(ids(history));
+  });
+
+  it('nothing to do when the latest page overlaps what is on screen', async () => {
+    let calls = 0;
+    const page = range(10, 60);
+    const res = await catchUpPage(range(0, 30), page, async () => { calls++; return []; });
+    expect(res).toEqual({ page, complete: true });
+    expect(calls).toBe(0);
+  });
+
+  it('too far behind: says so (the chat then shows the latest page only)', async () => {
+    const res = await catchUpPage(range(0, 10), range(20, 70), after, 0);
+    expect(res.complete).toBe(false);
+  });
+
+  // Codex review #291: one Realtime arrival (69) before the refresh made the
+  // latest page look connected, and 10–19 never came.
+  // Codex review #291 r4: the first message of the latest page had come by
+  // Realtime, so the page looked connected and 10–19 never came.
+  it('the page starting at a message that came by Realtime is not proof of overlap', async () => {
+    const prev = [...range(0, 10), msg(20, { live: true })];
+    const { page, complete } = await catchUpPage(prev, range(20, 70), after);
+    expect(complete).toBe(true);
+    expect(ids(mergeLatestPage(prev, page))).toEqual(ids(history));
+  });
+
+  it('a page merged in confirms its messages (no longer marked Realtime)', () => {
+    const next = mergeLatestPage([msg(0, { live: true })], [msg(0)]);
+    expect(next[0].live).toBeUndefined();
+  });
+
+  it('a message that arrived by Realtime does not hide the gap', async () => {
+    const prev = [...range(0, 10), msg(69)];
+    const { page, complete } = await catchUpPage(prev, range(20, 70), after);
+    expect(complete).toBe(true);
+    expect(ids(mergeLatestPage(prev, page))).toEqual(ids(history));
+  });
+});
+
+// Audit 07 #5
+describe('failed sends', () => {
+  const temp = (over: Partial<Message> = {}) => msg(99, { id: 'temp-1', content: 'message A', ...over });
+
+  it('a failed bubble stays through the poll', () => {
+    const prev = markSendFailed([...range(0, 3), temp()], 'temp-1');
+    const next = mergeLatestPage(prev, range(0, 3));
+    expect(next.find((m) => m.id === 'temp-1')?.failed).toBe(true);
+  });
+
+  it('it gives way to its server copy if the message got through after all', () => {
+    const prev = markSendFailed([...range(0, 3), temp({ client_id: 'cid-a' })], 'temp-1');
+    const server = msg(4, { content: 'message A', client_id: 'cid-a' });
+    expect(ids(mergeLatestPage(prev, [...range(0, 3), server]))).toEqual(['m0', 'm1', 'm2', 'm4']);
+  });
+});
+
+// Audit 07 #11
+describe('reply quotes', () => {
+  const reply = msg(5, { reply_to_id: 'm1' });
+  const target = { id: 'm1', content: 'text 1', sender_id: 'u2', created_at: msg(1).created_at };
+
+  it('asks only for quotes not loaded yet', () => {
+    expect(replyTargetIds([reply, msg(6), msg(7, { reply_to_id: 'm1' })])).toEqual(['m1']);
+    expect(replyTargetIds([{ ...reply, reply_to: msg(1) }])).toEqual([]);
+  });
+
+  it('attaches the quote, but not one from before the reader cleared the chat', () => {
+    expect(attachReplies([reply], [target], null)[0].reply_to?.content).toBe('text 1');
+    expect(attachReplies([reply], [target], msg(3).created_at)[0].reply_to).toBeUndefined();
+  });
+});
+

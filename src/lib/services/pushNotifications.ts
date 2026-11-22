@@ -305,6 +305,19 @@ export const setupNativePushListeners = (
   LocalNotifications.requestPermissions().catch(() => {});
 
   const handles: Array<{ remove: () => Promise<void> }> = [];
+  // The bridge can hand a listener back after cleanup ran (sign out while
+  // it was still registering): remove it then, or the next sign-in adds a
+  // second set and one push shows two banners (audit 07 #12).
+  let disposed = false;
+  const keep = (h: { remove: () => Promise<void> }) => {
+    if (disposed) {
+      try {
+        h.remove().catch(() => {});
+      } catch (_) {}
+      return;
+    }
+    handles.push(h);
+  };
 
   // Listen for push notifications received while app is in foreground
   PushNotifications.addListener('pushNotificationReceived', async (notification) => {
@@ -369,7 +382,7 @@ export const setupNativePushListeners = (
       body: notification.body,
       data: notification.data,
     });
-  }).then(h => handles.push(h));
+  }).then(keep);
   
   // Listen for push notification actions (when user taps the notification)
   PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
@@ -381,7 +394,7 @@ export const setupNativePushListeners = (
       },
       actionId: action.actionId,
     });
-  }).then(h => handles.push(h));
+  }).then(keep);
 
   // Also listen for local notification actions
   LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
@@ -393,11 +406,12 @@ export const setupNativePushListeners = (
       },
       actionId: action.actionId,
     });
-  }).then(h => handles.push(h));
+  }).then(keep);
   
   // Return cleanup function removing only this instance's listeners
   return () => {
-    handles.forEach(h => {
+    disposed = true;
+    handles.splice(0).forEach(h => {
       try {
         h.remove().catch(() => {});
       } catch (_) {}

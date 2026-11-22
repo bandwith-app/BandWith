@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { onAppResume } from '@/lib/appResume';
 import { startSafetyNetPoll } from '@/lib/safetyNetPoll';
+import { createChatSync, CHAT_LIST_FALLBACK_POLL_MS } from '@/lib/chatSync';
 import { useAuth } from '@/lib/AuthContext';
 import { useFlag } from '@/lib/appFlags';
 import * as bandsService from '@/lib/services/bands';
@@ -10,6 +11,7 @@ import * as songsService from '@/lib/services/songs';
 import * as notificationsService from '@/lib/services/notifications';
 import * as transactionsService from '@/lib/services/transactions';
 import * as chatsService from '@/lib/services/chats';
+import { dropRefusedOutsideChats } from '@/lib/chatOutbox';
 import * as rehearsalPollsService from '@/lib/services/rehearsalPolls';
 import { supabase, getSafeUser } from '@/lib/supabase';
 import { getOfflineItem, setOfflineItem, getCacheKey, onCachedRolesChanged } from '@/lib/offline/storage';
@@ -784,6 +786,8 @@ export const useNotifications = (options?: {
   limit?: number;
   /** Inbox only: chat rows stay out of the list (and of realtime inserts). */
   excludeChat?: boolean;
+  /** Inbox only: unread items older than `limit` come too (up to this many). */
+  withOlderUnread?: number;
   onNewEventInvite?: (notification: notificationsService.Notification) => void;
   onNewRehearsalPoll?: (notification: notificationsService.Notification) => void;
 }) => {
@@ -1513,16 +1517,20 @@ export const useChats = (bandId?: string) => {
     if (!isAuthenticated) { setLoading(false); return; }
     
     setLoading(true);
-    const { data, error } = await chatsService.getChats(bandId);
+    const { data, error, allChatIds } = await chatsService.getChats(bandId);
     if (bandRef.current !== bandId) return;
     // A failed refetch (offline, network blip) keeps the list on screen.
     if (data) {
       setChats(data);
       setOfflineItem(cacheKey, data).catch(() => {});
     }
+    // "Not sent" messages for a chat this account can no longer use go
+    // (Claude #291 r5; waiting ones stay), only after a complete list
+    // (CR6 M3: every chat of the account, whatever band is shown).
+    if (data && allChatIds && user?.id) void dropRefusedOutsideChats(user.id, allChatIds);
     setError(error);
     setLoading(false);
-  }, [isAuthenticated, bandId, cacheKey]);
+  }, [isAuthenticated, bandId, cacheKey, user?.id]);
 
   useEffect(() => {
     fetchChats();
@@ -1532,10 +1540,15 @@ export const useChats = (bandId?: string) => {
   useEffect(() => {
     if (!isAuthenticated) { setLoading(false); return; }
 
+    // The list (last message, unread badge) follows Realtime. A message that
+    // arrived while the socket was down was never refetched (audit 07 #8):
+    // now the list is fetched again when the channel (re)joins and slowly
+    // while it is down (src/lib/chatSync.ts).
+    const sync = createChatSync(fetchChats, CHAT_LIST_FALLBACK_POLL_MS);
     const unsubscribe = chatsService.subscribeToNewMessages(() => {
       // Refetch chats to update last message and unread counts
       fetchChats();
-    });
+    }, { onStatus: (status) => sync.onStatus(status) });
 
     // Ticks in the list: refresh (debounced) when someone receives/reads.
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1549,6 +1562,7 @@ export const useChats = (bandId?: string) => {
     const offResume = onAppResume(() => { fetchChats(); });
 
     return () => {
+      sync.stop();
       unsubscribe();
       unsubscribeReceipts();
       clearTimeout(timer);

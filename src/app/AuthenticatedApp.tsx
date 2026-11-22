@@ -1,6 +1,7 @@
 import { handleBackFromStack, setAppBack, type BackMode } from '@/lib/backStack';
 import { allowAndroidInstalls, androidInstallMessage, openAndroidUpdate, useAndroidInstallState, useAndroidUpdate } from '@/lib/androidUpdate';
 import { runGuarded } from '@/lib/unsavedGuard';
+import { APP_TOAST_EVENT, type AppToast } from '@/lib/appToast';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { uuidToNumericId } from '@/lib/numericId';
 import { useCurrentKey } from '@/lib/useCurrentKey';
@@ -34,6 +35,8 @@ import {
 import {
   markAsRead as markNotificationAsRead,
   markAllAsRead as markAllNotificationsAsRead,
+  markIdsAsRead,
+  unreadInboxIds,
   notifyEventMembersCreated,
   notifyEventMembersRemoved,
   notifyEventPendingConfirmations,
@@ -185,6 +188,7 @@ import { findPack } from "@/lib/livePackStore";
 import { isFlagOn, startAppFlags } from "@/lib/appFlags";
 import { useLiveOutboxFlush } from "@/app/hooks/useLiveOutbox";
 import { useLayerOpen } from "@/app/hooks/useLayerOpen";
+import { useChatOutboxFlush } from "@/app/hooks/useChatOutbox";
 
 const mapEventStatus = (event: Event): EventStatus => {
   // event_type is the primary classifier
@@ -448,6 +452,17 @@ export default function AuthenticatedApp() {
     const timer = setTimeout(() => setSaveToast(null), duration);
     return () => clearTimeout(timer);
   }, [saveToast]);
+  // Toasts raised outside this screen (src/lib/appToast.ts), e.g. a chat
+  // message that could not be kept on this phone (#291 round 8).
+  useEffect(() => {
+    // (`Event` here is the app's calendar type: the DOM one comes via EventListener.)
+    const onToast: EventListener = (e) => {
+      const d = (e as CustomEvent<AppToast>).detail;
+      if (d?.message) setSaveToast({ message: d.message, type: d.type, duration: d.type === 'error' ? 8000 : undefined });
+    };
+    window.addEventListener(APP_TOAST_EVENT, onToast);
+    return () => window.removeEventListener(APP_TOAST_EVENT, onToast);
+  }, []);
 
   // Android test builds come from GitHub releases: offer a newer one
   // (src/lib/androidUpdate.ts), at most once a day per version.
@@ -541,6 +556,8 @@ export default function AuthenticatedApp() {
     // means 20 inbox items however busy the band chat is.
     limit: 20,
     excludeChat: true,
+    // Unread items older than those 20 come too: the bell shows and counts them.
+    withOlderUnread: 100,
     onNewEventInvite: (notif) => {
       if (notif.data?.creator_id === user?.id) return;
       // A re-sent invite for a gig already answered needs no pop-up.
@@ -1238,6 +1255,8 @@ export default function AuthenticatedApp() {
 
   // Changes made with no signal (notes, suggestions, the leader's order): sent when back online.
   useLiveOutboxFlush(user?.id);
+  // Chat messages written offline (chatOutbox): sent with the chat closed too.
+  useChatOutboxFlush(user?.id);
 
   // The live_pack_ready push: open the event with the offline consent sheet.
   const [livePackOnOpen, setLivePackOnOpen] = useState<string | null>(null);
@@ -1691,12 +1710,15 @@ export default function AuthenticatedApp() {
     setSelectedNotifications(nonChatNotifs);
     setInboxOpen(true);
     setSelectedNotification(null);
-    if (unreadCount > 0) {
-      markAllNotificationsAsRead().then(() => {
+    // Only what the bell shows is marked read (07 #10): older unread items
+    // come with the list (withOlderUnread), never marked unseen.
+    const shown = unreadInboxIds(realNotifications || []);
+    if (shown.length > 0) {
+      markIdsAsRead(shown).then(() => {
         refetchNotifications?.();
       });
     }
-  }, [realNotifications, unreadCount, refetchNotifications]);
+  }, [realNotifications, refetchNotifications]);
 
   // Computed values
   const notificationGroups = useMemo(() => {
@@ -4728,7 +4750,16 @@ export default function AuthenticatedApp() {
               setSelectedNotifications([]); // the inbox stays open, empty
               removeNotifications(ids);
             }}
-            onMarkAsRead={(id) => { const nid = id || selectedNotification?.id; if (nid) markNotificationAsRead(nid).then(() => refetchNotifications?.()); if (!id) { setSelectedNotification(null); setSelectedNotifications([]); setInboxOpen(false); } }}
+            onMarkAsRead={(id) => {
+              const nid = id || selectedNotification?.id;
+              if (nid) {
+                // The open item is a snapshot: mark it read there too (07 #9).
+                setSelectedNotification((n) => (n && n.id === nid && !n.read ? { ...n, read: true } : n));
+                setSelectedNotifications((list) => (list.some((n) => n.id === nid && !n.read) ? list.map((n) => (n.id === nid ? { ...n, read: true } : n)) : list));
+                markNotificationAsRead(nid).then(() => refetchNotifications?.());
+              }
+              if (!id) { setSelectedNotification(null); setSelectedNotifications([]); setInboxOpen(false); }
+            }}
             onMarkAllAsRead={() => {
               // The open list is a snapshot: clear its unread dots and count too.
               setSelectedNotifications((p) => p.map((n) => (n.read ? n : { ...n, read: true })));

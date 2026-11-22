@@ -298,6 +298,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setDeleteError(null);
     const result = await deleteMyAccount();
     if (result.ok) {
+      // Its unsent chat messages go with it (sign-out alone keeps them).
+      await import('@/lib/chatOutbox').then((m) => m.discardChatOutbox(user?.id)).catch(() => {});
       // Quick sign-in (Face ID) must not keep the deleted account's session.
       await import('@/lib/services/biometric')
         .then((m) => m.forgetQuickSignInFor(user?.id, user?.email))

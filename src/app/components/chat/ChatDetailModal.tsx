@@ -21,7 +21,7 @@ import { eventKindOf, type EventKind, HeaderAction, IconButton, NavBackButton, T
 import { supabase } from '@/lib/supabase';
 import { createChatSync } from '@/lib/chatSync';
 import { onAppResume } from '@/lib/appResume';
-import { getMessages, sendMessage, markChatAsRead, subscribeToChat, subscribeToReceipts, getChatParticipants, deleteChat, getChat, receiptFor, chatErrorMessage } from '@/lib/services/chats';
+import { getMessages, sendMessage, markChatAsRead, subscribeToChat, subscribeToReceipts, getChatParticipants, deleteChat, getChat, receiptFor, chatErrorMessage, isOffTheGig, ACTIVE_MEMBER, ChatSenderChangedError } from '@/lib/services/chats';
 import type { Message, ChatParticipant, ReceiptStatus } from '@/lib/services/chats';
 import { ReceiptTicks } from '@/app/components/chat/ReceiptTicks';
 import { DeleteChatSheet } from '@/app/components/chat/DeleteChatSheet';
@@ -37,8 +37,11 @@ import { createPortal } from 'react-dom';
 import { useRailLayout } from '@/lib/deviceRegions';
 import { useLineupSoFar } from '@/app/hooks/useLineupSoFar';
 import { ChatEventContextPane } from '@/app/components/chat/ChatEventContextPane';
-import { CHAT_PAGE_SIZE, mergeLatestPage, prependOlder, appendIncoming, normalizeChatType, isReplySwipe, type ChatKind } from '@/lib/chatMessages';
+import { CHAT_PAGE_SIZE, mergeLatestPage, restartFromLatest, prependOlder, appendIncoming, normalizeChatType, isReplySwipe, catchUpPage, markSendFailed, canReplyTo, firstWords, newClientId, type ChatKind } from '@/lib/chatMessages';
 import { isOfflineError } from '@/lib/offline/networkErrors';
+import { offlinePermission, readChatPermission, saveChatPermission, type ChatPermission } from '@/lib/chatPermission';
+import { CHAT_OUTBOX_EVENT, beginChatSend, dropChatOutbox, flushChatOutbox, holdUnsavedChatMessage, isDenied, isRefusal, isSignedInAs, listChatOutbox, putChatOutbox, type ChatOutboxItem, type ChatOutboxResult } from '@/lib/chatOutbox';
+import { showAppToast } from '@/lib/appToast';
 import { haptic } from '@/lib/haptics';
 
 /**
@@ -54,6 +57,8 @@ const hideChatKeyboard = () => {
   }
 };
 import { personName } from '@/lib/personName';
+
+type FullChat = NonNullable<Awaited<ReturnType<typeof getChat>>['data']>;
 
 interface ChatDetailModalProps {
   chat: {
@@ -138,6 +143,9 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
   // Event chats: the event pinned at the top (date, load-in, venue).
   const [eventContext, setEventContext] = useState<ChatEventContext | null>(null);
   const [canText, setCanText] = useState<boolean>(true);
+  // Whether the composer is on screen now (a send that ends later reads it).
+  const canTextRef = useRef(canText);
+  canTextRef.current = canText;
   const [restrictionReason, setRestrictionReason] = useState<string>('');
   // Band admins (user ids) for the chat's band: drives the " · Admin" sender label.
   const [bandAdminIds, setBandAdminIds] = useState<Set<string>>(() => new Set());
@@ -149,6 +157,13 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
   // The chat on screen. The same screen shows another chat when one is picked
   // beside it (two panes) or a push opens one: answers for the old chat are dropped.
   const chatIdRef = useRef(chat.id);
+  // False once this screen is closed (Codex 11-22): a send that answers
+  // later has no composer and no bubble to put its text back in.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const onlineUserIds = useOnlinePresence(user?.id);
 
   // Event chats on the open Duo and on a landscape tablet: the event's times,
@@ -182,6 +197,15 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
   const nearBottomRef = useRef(true);
   const lastIdRef = useRef<string | null>(null);
   const prependAnchorRef = useRef<{ height: number; top: number } | null>(null);
+  // Read by async handlers: what is on screen and in the composer right now.
+  const messagesRef = useRef<Message[]>(messages);
+  messagesRef.current = messages;
+  const draftRef = useRef(newMessage);
+  draftRef.current = newMessage;
+  const replyingToRef = useRef<Message | null>(replyingTo);
+  replyingToRef.current = replyingTo;
+  // A message whose send failed went back into the composer: its client id.
+  const returnedRef = useRef<{ chatId: string; content: string; replyToId?: string; clientId: string } | null>(null);
 
   useEffect(() => {
     if (chat.name && chat.name !== 'New Chat') {
@@ -229,6 +253,8 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
   };
   
   const handleReply = (message: Message) => {
+    // Not saved yet: its temp id is no reply_to_id (Codex review #291).
+    if (!canReplyTo(message)) return;
     setReplyingTo(message);
     inputRef.current?.focus();
   };
@@ -323,6 +349,125 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
     markChatAsRead(chat.id);
     markChatNotificationsAsRead(chat.id);
 
+    const uid = user?.id;
+    const apply = (p: ChatPermission) => {
+      if (!live()) return;
+      setCanText(p.permitted);
+      setRestrictionReason(p.reason ? t(p.reason) : '');
+    };
+    // Online, the server's answer wins and is kept for next time. No answer
+    // (offline): the last one kept for this chat and account, or open; the
+    // server still decides when the message goes out (main, #291 r4).
+    const answered = (p: ChatPermission) => {
+      apply(p);
+      void saveChatPermission(uid, id, p);
+    };
+    const unanswered = async () => {
+      const cached = await readChatPermission(uid, id);
+      if (!live()) return;
+      apply(offlinePermission(cached));
+    };
+    const checkPermission = async (fullChat: FullChat) => {
+      // Business rule check: members can only text admins or band/event they're in
+      if (user) {
+        let permitted = true;
+        let reason = '';
+        // A lookup that failed is no answer (offline), never a no.
+        let unknown = false;
+
+        if (fullChat.type === 'direct') {
+          const other = fullChat.participants.find(p => p.user_id !== user.id);
+          if (other) {
+            const { data: sharedMemberships, error: sharedError } = await supabase
+              .from('band_members')
+              .select('band_id, role, user_id')
+              .in('user_id', [user.id, other.user_id])
+              .or(ACTIVE_MEMBER);
+            if (sharedError) unknown = true;
+
+            const userBands = new Map<string, string>();
+            const otherBands = new Map<string, string>();
+            (sharedMemberships || []).forEach((m: any) => {
+              if (m.user_id === user.id) userBands.set(m.band_id, m.role);
+              if (m.user_id === other.user_id) otherBands.set(m.band_id, m.role);
+            });
+
+            let hasAdmin = false;
+            for (const [bId, userRole] of userBands.entries()) {
+              const otherRole = otherBands.get(bId);
+              if (otherRole && (userRole === 'admin' || otherRole === 'admin')) {
+                hasAdmin = true;
+                break;
+              }
+            }
+
+            if (!hasAdmin) {
+              permitted = false;
+              reason = 'Direct messaging is only available with band admins.';
+            }
+          }
+        } else if (fullChat.type === 'band' && fullChat.band_id) {
+          const { data: bm, error: bmError } = await supabase
+            .from('band_members')
+            .select('id')
+            .eq('band_id', fullChat.band_id)
+            .eq('user_id', user.id)
+            .or(ACTIVE_MEMBER)
+            .maybeSingle();
+          if (bmError) unknown = true;
+
+          if (!bm) {
+            permitted = false;
+            reason = 'You can only message in bands you are an active member of.';
+          }
+        } else if (fullChat.type === 'event' && fullChat.event_id) {
+          let hasAccess = false;
+          if (fullChat.band_id) {
+            const { data: bm, error: bmError } = await supabase
+              .from('band_members')
+              .select('role')
+              .eq('band_id', fullChat.band_id)
+              .eq('user_id', user.id)
+              .or(ACTIVE_MEMBER)
+              .maybeSingle();
+            if (bmError) unknown = true;
+            if (bm?.role === 'admin') hasAccess = true;
+          }
+          if (!hasAccess) {
+            const { data: em, error: emError } = await supabase
+              .from('event_members')
+              .select('id, status')
+              .eq('event_id', fullChat.event_id)
+              .eq('user_id', user.id)
+              .maybeSingle();
+            if (emError) unknown = true;
+            if (em && !isOffTheGig(em.status)) hasAccess = true;
+          }
+          if (!hasAccess) {
+            permitted = false;
+            reason = 'You can only message in events you are participating in.';
+          }
+        }
+
+        if (!live()) return;
+        // A yes found is a yes; a no is only a no when every lookup answered.
+        if (permitted || !unknown) answered({ permitted, reason });
+        else await unanswered();
+      }
+    };
+    // The channel joined again (reconnect, app back from the background):
+    // ask again, a band or gig may have dropped this account meanwhile
+    // (Claude #291 r5).
+    const recheck = async () => {
+      const { data: again, error: againError } = await getChat(id);
+      if (!live()) return;
+      if (!again && (againError as { code?: string } | null)?.code === 'PGRST116') {
+        answered({ permitted: false, reason: 'You no longer have access to this chat.' });
+        return;
+      }
+      if (again) await checkPermission(again);
+    };
+
     // Fetch full chat record to ensure real title and avatar
     (async () => {
       const { data: fullChat, error: chatError } = await getChat(chat.id);
@@ -330,8 +475,11 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
       // Not found for this user (left the band, dropped from the gig, another
       // account's push): say so instead of a composer that can't send.
       if (!fullChat && (chatError as { code?: string } | null)?.code === 'PGRST116') {
-        setCanText(false);
-        setRestrictionReason(t('You no longer have access to this chat.'));
+        answered({ permitted: false, reason: 'You no longer have access to this chat.' });
+        return;
+      }
+      if (!fullChat) {
+        await unanswered();
         return;
       }
       if (fullChat) {
@@ -392,90 +540,12 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
             .select('user_id')
             .eq('band_id', fullChat.band_id)
             .eq('role', 'admin')
-            .eq('is_active', true);
+            .or(ACTIVE_MEMBER);
           if (!live()) return;
           setBandAdminIds(new Set((admins || []).map((a: { user_id: string }) => a.user_id)));
         }
 
-        // Business rule check: members can only text admins or band/event they're in
-        if (user) {
-          let permitted = true;
-          let reason = '';
-
-          if (fullChat.type === 'direct') {
-            const other = fullChat.participants.find(p => p.user_id !== user.id);
-            if (other) {
-              const { data: sharedMemberships } = await supabase
-                .from('band_members')
-                .select('band_id, role, user_id')
-                .in('user_id', [user.id, other.user_id])
-                .eq('is_active', true);
-
-              const userBands = new Map<string, string>();
-              const otherBands = new Map<string, string>();
-              (sharedMemberships || []).forEach((m: any) => {
-                if (m.user_id === user.id) userBands.set(m.band_id, m.role);
-                if (m.user_id === other.user_id) otherBands.set(m.band_id, m.role);
-              });
-
-              let hasAdmin = false;
-              for (const [bId, userRole] of userBands.entries()) {
-                const otherRole = otherBands.get(bId);
-                if (otherRole && (userRole === 'admin' || otherRole === 'admin')) {
-                  hasAdmin = true;
-                  break;
-                }
-              }
-
-              if (!hasAdmin) {
-                permitted = false;
-                reason = t('Direct messaging is only available with band admins.');
-              }
-            }
-          } else if (fullChat.type === 'band' && fullChat.band_id) {
-            const { data: bm } = await supabase
-              .from('band_members')
-              .select('id')
-              .eq('band_id', fullChat.band_id)
-              .eq('user_id', user.id)
-              .eq('is_active', true)
-              .maybeSingle();
-
-            if (!bm) {
-              permitted = false;
-              reason = t('You can only message in bands you are an active member of.');
-            }
-          } else if (fullChat.type === 'event' && fullChat.event_id) {
-            let hasAccess = false;
-            if (fullChat.band_id) {
-              const { data: bm } = await supabase
-                .from('band_members')
-                .select('role')
-                .eq('band_id', fullChat.band_id)
-                .eq('user_id', user.id)
-                .eq('is_active', true)
-                .maybeSingle();
-              if (bm?.role === 'admin') hasAccess = true;
-            }
-            if (!hasAccess) {
-              const { data: em } = await supabase
-                .from('event_members')
-                .select('id, status')
-                .eq('event_id', fullChat.event_id)
-                .eq('user_id', user.id)
-                .maybeSingle();
-              if (em && em.status !== 'declined') hasAccess = true;
-            }
-            if (!hasAccess) {
-              permitted = false;
-              reason = t('You can only message in events you are participating in.');
-            }
-          }
-
-          if (!live()) return;
-          setCanText(permitted);
-          setRestrictionReason(reason);
-        }
+        await checkPermission(fullChat);
       }
     })();
     
@@ -495,22 +565,51 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
     // (re)joins, when the app comes back, or slowly while the channel is down
     // (src/lib/chatSync.ts). Never on a fast timer: that was most of our egress.
     const refreshLatest = async () => {
+      // On screen now: anything else in the list when the page lands came by
+      // Realtime meanwhile and is kept (Codex review #291 r3).
+      const known = new Set(messagesRef.current.map((m) => m.id));
       const { data } = await getMessages(chat.id, { limit: CHAT_PAGE_SIZE });
       if (!live()) return;
       if (data) {
         setLoadError(false);
-        setMessages(prev => mergeLatestPage(prev, data));
+        // More than a page arrived meanwhile: fetch forward from the newest
+        // message on screen so no block of history goes missing (07 #7).
+        const caught = await catchUpPage(messagesRef.current, data, async (after) =>
+          (await getMessages(id, { limit: CHAT_PAGE_SIZE, after })).data,
+        );
+        if (!live()) return;
+        if (caught.complete) {
+          setMessages(prev => mergeLatestPage(prev, caught.page, known));
+        } else {
+          // Too far behind: the latest page, and "Load earlier" from there.
+          setMessages(prev => restartFromLatest(prev, data, known));
+          setHasOlder(true);
+        }
       }
       loadParticipants();
+      // The server answered: bubbles that waited for the network go now
+      // (the 'online' event alone misses a connection that came back quietly).
+      if (data) void flushRef.current();
     };
     const sync = createChatSync(refreshLatest);
+    let joinedOnce = false;
     const offResume = onAppResume(() => sync.catchUp());
 
     const unsubscribe = subscribeToChat(chat.id, (message) => {
       if (!live()) return;
       setMessages(prev => appendIncoming(prev, message));
       markRead();
-    }, { onStatus: (status) => sync.onStatus(status) });
+    }, {
+      onStatus: (status) => {
+        sync.onStatus(status);
+        if (status !== 'SUBSCRIBED') return;
+        if (joinedOnce) void recheck();
+        joinedOnce = true;
+        // Connected again: what waits in the outbox goes now (Claude #291 r5),
+        // also when 'online' never fired (the connection came back quietly).
+        void flushRef.current();
+      },
+    });
 
     const unsubscribeReceipts = subscribeToReceipts((changedChatId) => {
       if (changedChatId === chat.id) loadParticipants();
@@ -550,12 +649,53 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
     el.scrollTop = anchor.top + (el.scrollHeight - anchor.height);
   }, [messages]);
 
+  // This account's messages for this chat still on the device (outbox):
+  // waiting ones and "Not sent" ones, as bubbles after the history.
+  // `outbox` is listChatOutbox's answer (the store is async), read first.
+  const withOutbox = (list: Message[], outbox: ChatOutboxItem[], chatId: string): Message[] => {
+    const uid = user?.id;
+    if (!uid) return list;
+    // Only this account's rows stand for its outbox items (Claude #291 r5).
+    const mine = (m: Message) => !!m.sender_id && m.sender_id.toLowerCase() === uid.toLowerCase();
+    const onScreen = new Set(list.filter(mine).map((m) => m.client_id).filter(Boolean) as string[]);
+    const bubbles: Message[] = [];
+    for (const o of outbox) {
+      if (o.chatId !== chatId) continue;
+      // Saved already (a reply that was lost): nothing waits any more.
+      if (onScreen.has(o.clientId)) {
+        if (list.some((m) => mine(m) && m.client_id === o.clientId && !m.id.startsWith('temp-'))) void dropChatOutbox(uid, o.clientId);
+        continue;
+      }
+      bubbles.push({
+        id: `temp-${o.clientId}`,
+        client_id: o.clientId,
+        chat_id: o.chatId,
+        sender_id: uid,
+        content: o.body,
+        message_type: 'text',
+        edited: false,
+        deleted: false,
+        created_at: o.createdAt,
+        reply_to_id: o.replyToId ?? undefined,
+        failed: true,
+        queued: o.refused === undefined,
+        fail_reason: o.refused || undefined,
+        sender: { id: uid, full_name: t('You') },
+      });
+    }
+    return bubbles.length ? [...list, ...bubbles] : list;
+  };
+
   const loadMessages = async () => {
     const id = chat.id;
     setLoading(true);
     const { data } = await getMessages(id, { limit: CHAT_PAGE_SIZE });
+    const outbox = await listChatOutbox(user?.id);
     if (chatIdRef.current !== id) return;
-    if (data) setMessages(data);
+    if (data) setMessages(withOutbox(data, outbox, id));
+    else setMessages(prev => withOutbox(prev, outbox, id));
+    // Opened online: what waited goes now.
+    if (data) void flushRef.current();
     setLoadError(!data);
     setHasOlder((data?.length ?? 0) >= CHAT_PAGE_SIZE);
     setLoading(false);
@@ -576,21 +716,252 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
     setMessages(prev => prependOlder(prev, data));
   };
 
+  // Sends a bubble already on screen (new, Try again, or one that waited for
+  // the network: `fromQueue`). Says how it went.
+  // The server said this account may not write here (a rule, or 42501): the
+  // composer locks with the reason, kept for offline too (Claude #291 r5).
+  const lockChat = (chatId: string, reason: string) => {
+    const p: ChatPermission = { permitted: false, reason: reason || 'You no longer have access to this chat.' };
+    void saveChatPermission(user?.id, chatId, p);
+    if (chatIdRef.current !== chatId) return;
+    setCanText(false);
+    setRestrictionReason(t(p.reason));
+  };
+
+  const deliver = async (pending: Message, opts: { fromQueue?: boolean } = {}): Promise<'sent' | 'queued' | 'failed'> => {
+    const sentFrom = pending.chat_id;
+    const author = pending.sender_id;
+    // A send from the screen: an outbox flush waits for it (Claude #291 r5).
+    const release = beginChatSend();
+    setSending(true);
+    setSendError('');
+    // Kept on this device (the outbox) before the first try, until saved
+    // (Claude #291 CR6 M4): a send that hangs, then the app closed, loses
+    // nothing; the next flush sends it with the same client id.
+    const keep = (refusedReason?: string) =>
+      pending.client_id && author
+        ? putChatOutbox(author, {
+            chatId: sentFrom,
+            clientId: pending.client_id,
+            body: pending.content,
+            createdAt: pending.created_at,
+            replyToId: pending.reply_to_id ?? null,
+            refused: refusedReason,
+          })
+        : Promise.resolve(false);
+    // Storage full or blocked (Codex #291 r7 B6): nothing waits on this
+    // device, so the chat never says "Waiting for connection" for it.
+    const notSaved = t('Couldn’t save this message offline: it hasn’t been sent.');
+    const unsaved = () => {
+      setSendError(notSaved);
+      if (!opts.fromQueue && canTextRef.current && !draftRef.current.trim() && !replyingToRef.current) {
+        // The text goes back into the composer, nothing is lost.
+        setMessages(prev => prev.filter(m => m.id !== pending.id));
+        setNewMessage(pending.content);
+        setReplyingTo(pending.reply_to ?? null);
+        returnedRef.current = { chatId: sentFrom, content: pending.content, replyToId: pending.reply_to_id, clientId: pending.client_id ?? newClientId() };
+      } else {
+        setMessages(prev => markSendFailed(prev, pending.id, { reason: notSaved }));
+      }
+    };
+    // Another chat is on screen and nothing could be kept on the device
+    // (Claude review #291 round 8, finding 2): the message is held in
+    // memory as "Not sent" for its chat, and a toast says so.
+    const strand = (reason?: string) => {
+      if (!author) return;
+      holdUnsavedChatMessage(author, {
+        chatId: sentFrom,
+        clientId: pending.client_id ?? newClientId(),
+        body: pending.content,
+        createdAt: pending.created_at,
+        replyToId: pending.reply_to_id ?? null,
+        refused: reason || notSaved,
+      });
+      showAppToast(t('Message not saved on this phone: {text}', { text: firstWords(pending.content) }), 'error');
+    };
+    try {
+      const kept = await keep();
+      // Only as the account that wrote it (Claude #291 r5): another account
+      // signed in meanwhile, or no answer, and it waits in the writer's outbox.
+      if (!(await isSignedInAs(author))) {
+        if (chatIdRef.current === sentFrom) {
+          if (!kept) {
+            unsaved();
+            return 'failed';
+          }
+          setMessages(prev => markSendFailed(prev, pending.id, { queued: true }));
+          if (typeof navigator !== 'undefined' && !navigator.onLine) setSendError(t('No connection. It’s sent when you’re back online.'));
+        } else if (!kept) {
+          strand();
+          return 'failed';
+        }
+        return 'queued';
+      }
+      const { data, error } = await sendMessage(sentFrom, pending.content, 'text', pending.reply_to_id, pending.client_id ?? undefined, author);
+      // Someone else signed in between the check above and the send: it was
+      // not sent; it waits in its writer's outbox.
+      if (error instanceof ChatSenderChangedError) {
+        if (chatIdRef.current === sentFrom) {
+          if (!kept) {
+            unsaved();
+            return 'failed';
+          }
+          setMessages(prev => markSendFailed(prev, pending.id, { queued: true }));
+        } else if (!kept) {
+          strand();
+          return 'failed';
+        }
+        return 'queued';
+      }
+      if (isDenied(error)) lockChat(sentFrom, chatErrorMessage(error, ''));
+      if (!error && data) void dropChatOutbox(author, pending.client_id);
+      // Another chat is on screen now: its composer is not this one. A
+      // refusal is kept as "Not sent"; anything else keeps waiting.
+      if (chatIdRef.current !== sentFrom) {
+        if (error && isRefusal(error)) {
+          const reason = chatErrorMessage(error, '');
+          if (!(await keep(reason))) strand(reason);
+        } else if (error && !kept) {
+          strand();
+        }
+        return error ? 'failed' : 'sent';
+      }
+
+      let outcome: 'sent' | 'queued' | 'failed' = 'sent';
+      if (error) {
+        const offline = (typeof navigator !== 'undefined' && !navigator.onLine) || isOfflineError(error);
+        const refused = chatErrorMessage(error, '');
+        if (offline && !kept) {
+          outcome = 'failed';
+          unsaved();
+        } else if (offline) {
+          // No connection: the bubble waits, kept on this device (chatOutbox:
+          // closing the chat or the app loses nothing), and goes out by itself
+          // when the network is back, with the same client id (main, #291 r4).
+          outcome = 'queued';
+          setSendError(t('No connection. It’s sent when you’re back online.'));
+          setMessages(prev => markSendFailed(prev, pending.id, { queued: true }));
+        } else if (opts.fromQueue) {
+          // A bubble already on screen (Try again) and the server said no, or
+          // a hiccup: "Not sent" with the reason; the text stays, kept too.
+          outcome = 'failed';
+          await keep(refused);
+          setSendError(refused || t('Message not sent. Try again.'));
+          setMessages(prev => markSendFailed(prev, pending.id, { reason: refused }));
+        } else {
+        outcome = 'failed';
+        setSendError(refused || t('Message not sent. Try again.'));
+        // A refusal (the composer may be locked by it) stays in the "Not
+        // sent" list with its reason, never in a hidden composer (Codex #291
+        // r7 B7). A hiccup with the composer on screen and empty: back there.
+        // Never once the chat was closed (Codex 11-22): there is no composer,
+        // so it is kept as "Not sent" below, not dropped.
+        if (mountedRef.current && !isRefusal(error) && canTextRef.current && !draftRef.current.trim() && !replyingToRef.current) {
+          // Nothing new typed: the text goes back into the composer.
+          setMessages(prev => prev.filter(m => m.id !== pending.id));
+          setNewMessage(pending.content);
+          setReplyingTo(pending.reply_to ?? null);
+          // Sent again as it is: same client id (the first insert may have
+          // landed before the error), so the server keeps one copy.
+          returnedRef.current = { chatId: sentFrom, content: pending.content, replyToId: pending.reply_to_id, clientId: pending.client_id ?? newClientId() };
+          void dropChatOutbox(author, pending.client_id);
+        } else {
+          // A refusal, or a new draft is in the composer (never overwritten,
+          // 07 #5): a "Not sent" bubble with Try again (kept). The same when
+          // the chat was closed meanwhile: "Not sent" when it is opened
+          // again, never sent again by itself; with nothing kept on the
+          // device and no bubble left, held in memory with a toast.
+          const saved = await keep(refused);
+          if (!saved && !mountedRef.current) strand(refused);
+          setMessages(prev => markSendFailed(prev, pending.id, { reason: refused }));
+        }
+        }
+      } else if (data) {
+        // Keep the quote on screen if the saved row came back without it.
+        const saved = data.reply_to_id && !data.reply_to?.content && pending.reply_to ? { ...data, reply_to: pending.reply_to } : data;
+        // Realtime may have brought it first (a database without client_id:
+        // nothing matched the bubble): one row, never two.
+        setMessages(prev => prev.some(m => m.id === saved.id)
+          ? prev.filter(m => m.id !== pending.id)
+          : prev.map(m => m.id === pending.id ? saved : m));
+      }
+
+      if (!opts.fromQueue) inputRef.current?.focus();
+      return outcome;
+    } finally {
+      release();
+      setSending(false);
+    }
+  };
+
+  // Back online (or the chat opened): what waits in this account's outbox
+  // goes out, oldest first (chatOutbox, one flush at a time on the device;
+  // useChatOutboxFlush does the same with the chat closed). The result comes
+  // back as an event, also from that hook: saved bubbles become the message,
+  // refused ones "Not sent" with the reason.
+  const flushQueued = async () => {
+    if (!user?.id) return;
+    await flushChatOutbox(user.id);
+  };
+  const flushRef = useRef(flushQueued);
+  flushRef.current = flushQueued;
+  useEffect(() => {
+    const onOnline = () => void flushRef.current();
+    const onResult = (e: Event) => {
+      const r = (e as CustomEvent<ChatOutboxResult>).detail;
+      if (!r || r.userId !== user?.id) return;
+      const here = chatIdRef.current;
+      const sent = new Map(r.sent.filter((x) => x.chatId === here).map((x) => [x.clientId, x.message]));
+      const refused = new Map(r.refused.filter((x) => x.chatId === here).map((x) => [x.clientId, x.reason]));
+      if (!sent.size && !refused.size) return;
+      if (refused.size) setSendError([...refused.values()].find(Boolean) || t('Message not sent. Try again.'));
+      const denied = r.refused.find((x) => x.chatId === here && x.denied);
+      if (denied) lockChat(here, denied.reason);
+      setMessages(prev => {
+        const ids = new Set(prev.map((m) => m.id));
+        return prev.flatMap((m) => {
+          const cid = m.client_id ?? '';
+          if (m.id.startsWith('temp-') && sent.has(cid)) {
+            const saved = sent.get(cid)!;
+            return ids.has(saved.id) ? [] : [{ ...saved, reply_to: saved.reply_to ?? m.reply_to }];
+          }
+          if (m.id.startsWith('temp-') && refused.has(cid)) {
+            return [{ ...m, failed: true, queued: false, fail_reason: refused.get(cid) || undefined }];
+          }
+          return [m];
+        });
+      });
+    };
+    window.addEventListener('online', onOnline);
+    window.addEventListener(CHAT_OUTBOX_EVENT, onResult);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener(CHAT_OUTBOX_EVENT, onResult);
+    };
+  }, [user?.id]);
+
   const handleSend = async () => {
     if (!canText) return;
     if (!newMessage.trim() || sending) return;
     if (!chat.id || chat.id === 'undefined' || chat.id === 'null') return;
-    
-    setSending(true);
-    setSendError('');
-    const sentFrom = chat.id;
+
     const messageText = newMessage.trim();
     const replyToMessage = replyingTo;
     setNewMessage('');
     setReplyingTo(null);
-    
+    draftRef.current = '';
+    replyingToRef.current = null;
+
+    const back = returnedRef.current;
+    returnedRef.current = null;
+    const clientId = back && back.chatId === chat.id && back.content === messageText && back.replyToId === replyToMessage?.id
+      ? back.clientId
+      : newClientId();
     const optimisticMessage: Message = {
-      id: `temp-${Date.now()}`,
+      // Unique per bubble (two sends in one millisecond), and the same id the
+      // bubble gets back from the outbox when the chat is opened again.
+      id: `temp-${clientId}`,
+      client_id: clientId,
       chat_id: chat.id,
       sender_id: user?.id || '',
       content: messageText,
@@ -603,26 +974,20 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
       sender: { id: user?.id || '', full_name: t('You') }
     };
     setMessages(prev => [...prev, optimisticMessage]);
-    
-    const { data, error } = await sendMessage(chat.id, messageText, 'text', replyToMessage?.id);
-    // Another chat is on screen now: its composer is not this one.
-    if (chatIdRef.current !== sentFrom) {
-      setSending(false);
-      return;
-    }
-    
-    if (error) {
-      setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id));
-      setNewMessage(messageText);
-      setReplyingTo(replyToMessage);
-      const offline = (typeof navigator !== 'undefined' && !navigator.onLine) || isOfflineError(error);
-      setSendError(offline ? t('Message not sent. Check your connection and try again.') : chatErrorMessage(error, t('Message not sent. Try again.')));
-    } else if (data) {
-      setMessages(prev => prev.map(m => m.id === optimisticMessage.id ? data : m));
-    }
-    
-    setSending(false);
-    inputRef.current?.focus();
+    await deliver(optimisticMessage);
+  };
+
+  const retrySend = (message: Message) => {
+    if (sending || !canText) return;
+    const again = { ...message, failed: false, queued: false, fail_reason: undefined };
+    setMessages(prev => prev.map(m => m.id === message.id ? again : m));
+    void deliver(again, { fromQueue: true });
+  };
+
+  const discardFailed = (message: Message) => {
+    void dropChatOutbox(user?.id, message.client_id);
+    setMessages(prev => prev.filter(m => m.id !== message.id));
+    setSendError('');
   };
 
   const formatTime = (dateString: string) => {
@@ -884,7 +1249,7 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
                   const isMe = message.sender_id === user?.id;
                   const replyTo = message.reply_to;
 
-                  const replyButton = (
+                  const replyButton = canReplyTo(message) && (
                     <button
                       type="button"
                       onClick={() => handleReply(message)}
@@ -901,7 +1266,7 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.15 }}
-                      drag={touchReply ? 'x' : false}
+                      drag={touchReply && canReplyTo(message) ? 'x' : false}
                       dragDirectionLock
                       dragConstraints={{ left: 0, right: 0 }}
                       dragElastic={{ left: 0, right: 0.5 }}
@@ -938,7 +1303,7 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
                               <p className="bw-label-xs text-accent truncate">
                                 {personName(replyTo.sender, t('Unknown'))}
                               </p>
-                              <p className="bw-body-sm text-white line-clamp-1">
+                              <p className={cn("bw-body-sm text-white line-clamp-1", replyTo.deleted && "italic opacity-70")}>
                                 {replyTo.content}
                               </p>
                             </div>
@@ -949,10 +1314,39 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
                           </p>
                         </div>
 
-                        <div className="flex items-center gap-1 text-muted-foreground">
-                          <span className="bw-label-xs">{formatTime(message.created_at)}</span>
-                          {isMe && <ReceiptTicks status={statusFor(message)} className="w-3.5 h-3.5" />}
-                        </div>
+                        {/* Not sent: Try again / Delete are 44 px touch targets (Claude review #291 r4). */}
+                        {message.failed ? (
+                          <div className="flex flex-wrap items-center justify-end gap-x-1 gap-y-1">
+                            <span role="status" aria-live="polite" className={cn("bw-label-xs", message.queued ? "text-muted-foreground" : "text-destructive")}>
+                              {message.queued ? t('Waiting for connection') : t('Not sent')}
+                            </span>
+                            {message.fail_reason && (
+                              <span className="basis-full text-right bw-label-xs text-muted-foreground">{message.fail_reason}</span>
+                            )}
+                            <button
+                              type="button"
+                              aria-label={t('Try again: {text}', { text: firstWords(message.content) })}
+                              onClick={() => retrySend(message)}
+                              disabled={sending}
+                              className="inline-flex items-center justify-center min-h-11 min-w-11 px-2 bw-label-xs text-foreground underline underline-offset-2 disabled:opacity-50 cursor-pointer"
+                            >
+                              {t('Try again')}
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={t('Delete unsent message: {text}', { text: firstWords(message.content) })}
+                              onClick={() => discardFailed(message)}
+                              className="inline-flex items-center justify-center min-h-11 min-w-11 px-2 bw-label-xs text-muted-foreground underline underline-offset-2 cursor-pointer"
+                            >
+                              {t('Delete')}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <span className="bw-label-xs">{formatTime(message.created_at)}</span>
+                            {isMe && <ReceiptTicks status={statusFor(message)} className="w-3.5 h-3.5" />}
+                          </div>
+                        )}
                       </div>
 
                       {/* Reply button for received messages */}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft,
@@ -306,9 +306,17 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
   const inviteLineup = useLineupSoFar(inviteEventId, detailNotif ? notificationBandId(detailNotif) : null, authUser?.id);
 
   // Auto-mark notification as read when viewed in detail (not the one the
-  // open display shows by itself next to the list).
+  // open display shows by itself next to the list). Once per notification
+  // while the inbox is open: the item on screen is a snapshot that stays
+  // "unread", and the parent passes a new callback on every render, so this
+  // used to write and refetch in a loop (audit 07 #9).
+  const markedReadRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (isOpen && autoIndex === null && detailNotif && !detailNotif.read && onMarkAsRead) {
+    if (!isOpen) markedReadRef.current.clear();
+  }, [isOpen]);
+  useEffect(() => {
+    if (isOpen && autoIndex === null && detailNotif && !detailNotif.read && onMarkAsRead && !markedReadRef.current.has(detailNotif.id)) {
+      markedReadRef.current.add(detailNotif.id);
       onMarkAsRead(detailNotif.id);
     }
   }, [isOpen, autoIndex, detailNotif?.id, detailNotif?.read, onMarkAsRead]);

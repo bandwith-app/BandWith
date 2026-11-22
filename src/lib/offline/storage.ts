@@ -198,8 +198,100 @@ export const listOfflineKeys = async (prefix: string): Promise<string[]> => {
   return [...keys];
 };
 
-/** Removes every cached key `drop` says yes to (IndexedDB and the localStorage fallback). */
-const removeOfflineItemsWhere = async (drop: (key: string) => boolean): Promise<void> => {
+/**
+ * Chat messages written on this phone and not sent yet (#291), one list per
+ * account: `bw:chat_outbox:<uid>` = [{ chatId, clientId, body, createdAt,
+ * replyToId?, refused? }] in localStorage. `refused` (the server's reason,
+ * maybe ''): turned down, kept until Try again or Delete; still not sent.
+ * #291 reads and writes it only through readChatOutbox / writeChatOutbox.
+ */
+export const CHAT_OUTBOX_PREFIX = 'bw:chat_outbox:';
+export const chatOutboxKey = (userId: string): string => `${CHAT_OUTBOX_PREFIX}${userId}`;
+
+export interface ChatOutboxEntry {
+  chatId: string;
+  clientId: string;
+  body: string;
+  createdAt: string;
+  replyToId?: string | null;
+  refused?: string;
+}
+
+const isChatOutboxEntry = (x: unknown): x is ChatOutboxEntry => {
+  const o = x as Partial<ChatOutboxEntry> | null;
+  return !!o && typeof o === 'object' && typeof o.chatId === 'string' && typeof o.clientId === 'string' && typeof o.body === 'string' && typeof o.createdAt === 'string';
+};
+const chatOutboxEntries = (v: unknown): ChatOutboxEntry[] => (Array.isArray(v) ? v.filter(isChatOutboxEntry) : []);
+
+/** The account's chat outbox (extra fields kept, malformed entries skipped). Never throws. */
+export function readChatOutbox(userId: string | null | undefined): ChatOutboxEntry[] {
+  if (!userId) return [];
+  try {
+    return chatOutboxEntries(JSON.parse(localStorage.getItem(chatOutboxKey(userId)) || '[]'));
+  } catch {
+    return [];
+  }
+}
+
+/** Replaces the account's chat outbox; empty removes the key. Storage full or blocked: nothing written. */
+export function writeChatOutbox(userId: string | null | undefined, entries: ChatOutboxEntry[]): void {
+  if (!userId) return;
+  try {
+    if (entries.length) localStorage.setItem(chatOutboxKey(userId), JSON.stringify(entries));
+    else localStorage.removeItem(chatOutboxKey(userId));
+  } catch {
+    // Ignore
+  }
+}
+
+/**
+ * The account's chat outbox in both stores (localStorage, then an IndexedDB
+ * copy), one entry per client id. Never throws.
+ */
+export const readChatOutboxAll = async (userId: string | null | undefined): Promise<ChatOutboxEntry[]> => {
+  const all = readChatOutbox(userId);
+  if (!userId) return all;
+  try {
+    const ids = new Set(all.map((e) => e.clientId));
+    for (const e of chatOutboxEntries(await getOfflineItem<unknown>(chatOutboxKey(userId)))) {
+      if (!ids.has(e.clientId)) all.push(e);
+      ids.add(e.clientId);
+    }
+  } catch {
+    // Ignore
+  }
+  return all;
+};
+
+/** How many chat messages are not sent for `userId`, refused ones included (both stores). */
+export const readChatOutboxCount = async (userId: string | null | undefined): Promise<number> =>
+  (await readChatOutboxAll(userId)).length;
+
+/** Deletes one message (by client id) from the account's chat outbox, in both stores. */
+export const deleteChatOutboxEntry = async (userId: string | null | undefined, clientId: string): Promise<void> => {
+  if (!userId) return;
+  const local = readChatOutbox(userId).filter((e) => e.clientId !== clientId);
+  try {
+    const copy = await getOfflineItem<unknown>(chatOutboxKey(userId));
+    if (chatOutboxEntries(copy).some((e) => e.clientId === clientId)) {
+      const rest = chatOutboxEntries(copy).filter((e) => e.clientId !== clientId);
+      // Without IndexedDB these write localStorage: rewritten just below.
+      if (rest.length) await setOfflineItem(chatOutboxKey(userId), rest);
+      else await removeOfflineItem(chatOutboxKey(userId));
+    }
+  } catch {
+    // Ignore
+  }
+  writeChatOutbox(userId, local);
+};
+
+/**
+ * Removes every cached key `drop` says yes to (IndexedDB and the localStorage
+ * fallback), never the chat outbox: sign-out keeps unsent chat messages for
+ * their account (Codex #291 r7 B5; #292's KEEP_ON_SIGN_OUT_PREFIXES has it).
+ */
+const removeOfflineItemsWhere = async (dropAny: (key: string) => boolean): Promise<void> => {
+  const drop = (key: string) => !key.startsWith(CHAT_OUTBOX_PREFIX) && dropAny(key);
   if (isIndexedDBAvailable()) {
     try {
       const db = await getDB();
