@@ -763,6 +763,8 @@ export const StageMode: React.FC<StageModeProps> = ({
             )}
             {live && songs.length > 0 && (
               <span className="flex items-center gap-2 min-w-0 shrink-0 max-w-[70%]">
+                {/* Count-in options (this phone's vibration and sound; the band's direction; Count in anyway). */}
+                {live.countIn && <CountInSheetButton onPress={() => setCountSheet(true)} />}
                 {live.isLeader ? (
                   <LiveStatus
                     on={live.connected || live.bluetooth === 'leading'}
@@ -822,7 +824,6 @@ export const StageMode: React.FC<StageModeProps> = ({
                 <span className="flex-1 min-w-0 bw-h2 normal-case leading-[1.15] truncate" style={{ color: accentColor }} aria-live="polite">
                   {lyricsSong.title}
                 </span>
-                {live?.countIn && <CountInSheetButton onPress={() => setCountSheet(true)} />}
                 <button
                   type="button"
                   disabled={lyricsSize.min}

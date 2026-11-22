@@ -48,9 +48,7 @@ vi.mock('@/lib/services/songs', () => ({ saveSetlistOrder: async () => ({ error:
 vi.mock('@/lib/services/setlistNotify', () => ({ notifySetlistSaved: async () => {} }));
 
 import { useStageLive } from '../useStageLive';
-import { startPlayhead, holdSection, buildTimeline } from '@/lib/playhead';
 
-import { useStageLive } from '../useStageLive';
 import { COUNTIN_EVENT, startCountIn, stopCountIn } from '@/lib/countIn';
 import { PING_EVENT } from '@/lib/stageClick';
 import { meterOf } from '@/lib/meter';

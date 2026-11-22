@@ -68,10 +68,12 @@ describe('Stage mode count-in (plan §6)', () => {
     stage(controls);
     const before = performance.timeOrigin + performance.now();
     fireEvent.click(screen.getByRole('button', { name: 'Count in the band' }));
+    const after = performance.timeOrigin + performance.now();
     const sent = countIn.set.mock.calls[0][0] as CountInState;
     expect(sent).toMatchObject({ on: true, songId: 'r1', bpm: 120, time: '6/8', bars: 2, pickup: 1, style: 'down' });
-    expect(sent.startAt - before).toBeGreaterThanOrEqual(COUNTIN_LEAD_MS - 5);
-    expect(sent.startAt - before).toBeLessThan(COUNTIN_LEAD_MS + 200);
+    // 1.5 s after the tap.
+    expect(sent.startAt).toBeGreaterThanOrEqual(before + COUNTIN_LEAD_MS - 1);
+    expect(sent.startAt).toBeLessThanOrEqual(after + COUNTIN_LEAD_MS + 1);
     const head = playhead.set.mock.calls[0][0];
     expect(head).toMatchObject({ on: true, songId: 'r1', bpm: 120 });
     expect(head.startAt).toBe(sent.startAt + countInPlan(sent).endAt);
@@ -88,7 +90,7 @@ describe('Stage mode count-in (plan §6)', () => {
     expect(screen.queryByRole('button', { name: 'Count in the band' })).toBeNull();
     cleanup();
     // Forced from the song's count-in sheet.
-    stage(controls, { songOpen: true });
+    stage(controls);
     fireEvent.click(screen.getByRole('button', { name: 'Count-in options' }));
     expect(screen.getByText('This song is played with a backing track: the track starts the band.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Count in anyway' }));
@@ -104,11 +106,19 @@ describe('Stage mode count-in (plan §6)', () => {
   });
 
   it('the leader sets the band’s direction in the sheet', () => {
-    stage(live().controls, { songOpen: true });
+    stage(live().controls);
     fireEvent.click(screen.getByRole('button', { name: 'Count-in options' }));
     fireEvent.click(screen.getByRole('button', { name: 'Count up: 1 2 3 4' }));
     expect(setCountInStyle).toHaveBeenCalledWith('band-1', 'up');
     expect(screen.getByRole('button', { name: 'Count up: 1 2 3 4' }).getAttribute('aria-pressed')).toBe('true');
+    // This phone: vibration on; the speaker only once a sound is chosen.
+    const vibrate = screen.getByRole('switch', { name: /Vibrate on every beat/ });
+    fireEvent.click(vibrate);
+    expect(vibrate.getAttribute('aria-checked')).toBe('true');
+    expect((screen.getByRole('switch', { name: /phone’s speaker/ }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Click' }));
+    expect((screen.getByRole('switch', { name: /phone’s speaker/ }) as HTMLButtonElement).disabled).toBe(false);
+    localStorage.clear();
   });
 
   it('every phone shows the countdown full screen on the shared clock; a member can hide it, the leader stops it', () => {
@@ -118,6 +128,9 @@ describe('Stage mode count-in (plan §6)', () => {
     const member = live({ isLeader: false }, state);
     stage(member.controls);
     const dialog = screen.getByRole('dialog', { name: 'Count-in · Harbor Lights' });
+    // Sized to the pane it sits on (a Duo pane), never to the whole screen.
+    const ring = dialog.querySelector('svg')!.parentElement as HTMLElement;
+    expect(ring.style.getPropertyValue('--bw-countin-ring')).toMatch(/^min\(\d+cqmin, \d+px\)$/);
     act(() => void vi.advanceTimersByTime(COUNTIN_LEAD_MS + 20));
     expect(screen.getByTestId('countin-number').textContent).toBe('4');
     act(() => void vi.advanceTimersByTime(1000));
@@ -125,6 +138,10 @@ describe('Stage mode count-in (plan §6)', () => {
     act(() => void vi.advanceTimersByTime(1000));
     expect(screen.getByTestId('countin-number').textContent).toBe('GO');
     expect(dialog.getAttribute('data-stage')).toBe('go');
+    // The band is playing: the stage is visible and usable under GO.
+    expect(dialog.className).toContain('pointer-events-none');
+    expect(dialog.className).not.toContain('bg-black');
+    expect(screen.queryByRole('button', { name: 'Hide on this phone' })).toBeNull();
     act(() => void vi.advanceTimersByTime(800));
     expect(screen.queryByRole('dialog', { name: /Count-in/ })).toBeNull();
     cleanup();
@@ -140,6 +157,8 @@ describe('Stage mode count-in (plan §6)', () => {
     // On the countdown and in place of Count in, by the click.
     expect(screen.getAllByRole('button', { name: 'Stop the count-in' })).toHaveLength(2);
     fireEvent.click(within(screen.getByRole('dialog', { name: /Count-in/ })).getByRole('button', { name: 'Stop the count-in' }));
-    expect(leader.countIn.set).toHaveBeenCalledWith(expect.objectContaining({ on: false, seq: mine.seq + 1 }));
+    const stopped = leader.countIn.set.mock.calls[0][0] as CountInState;
+    expect(stopped).toMatchObject({ on: false, songId: 'r1' });
+    expect(stopped.seq).toBeGreaterThan(mine.seq);
   });
 });

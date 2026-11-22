@@ -53,8 +53,8 @@
 
 /* Count-in (StageCountIn): the eighths inside a 6/8 or 7/8 count. */
 .bw-countin-dot {
-  width: 2.2vmin;
-  height: 2.2vmin;
+  width: 2.2cqmin;
+  height: 2.2cqmin;
   min-width: 8px;
   min-height: 8px;
   border-radius: 9999px;
@@ -67,20 +67,35 @@
 /* The countdown covers everything but the Duo rail (z 190), which stays
    usable: clear of it on its edge, and of the rail laid along the Deck's
    bottom in Laptop pose; with the side bar hidden there is no rail. */
+/* Sized to the pane it sits on (cqmin), not the whole screen: on a Duo
+   the countdown is one pane wide. */
 .bw-countin {
+  container-type: size;
+}
+.bw-countin,
+.bw-countin-sheet {
   padding-top: calc(var(--safe-top, 0px) + 12px);
   padding-bottom: calc(var(--safe-bottom, 0px) + 16px);
   padding-left: max(var(--safe-left, 0px), var(--bw-status-clear-left, 0px));
   padding-right: max(var(--safe-right, 0px), var(--bw-status-clear-x, 0px));
 }
-:root[data-bw-rail][data-bw-rail-edge="right"]:not([data-bw-stage-full]) .bw-countin {
+:root[data-bw-rail][data-bw-rail-edge="right"]:not([data-bw-stage-full]) :is(.bw-countin, .bw-countin-sheet) {
   padding-left: 0;
   padding-right: var(--bw-rail-w);
 }
-:root[data-bw-rail][data-bw-rail-edge="left"]:not([data-bw-stage-full]) .bw-countin {
+:root[data-bw-rail][data-bw-rail-edge="left"]:not([data-bw-stage-full]) :is(.bw-countin, .bw-countin-sheet) {
   padding-left: var(--bw-rail-w);
   padding-right: 0;
 }
-:root[data-bw-rail-host]:not([data-bw-stage-full]) .bw-countin {
+:root[data-bw-rail-host]:not([data-bw-stage-full]) :is(.bw-countin, .bw-countin-sheet) {
   padding-bottom: var(--content-bottom-clearance, calc(var(--safe-bottom, 0px) + 100px));
+}
+/* iPhone Duo open or in book posture: never across the fold. The countdown
+   and its sheet sit on the trailing pane, where Stage mode is (with the side
+   bar hidden Stage covers both: the leading pane stays black). */
+:root[data-bw-rail][data-bw-two-pane]:not([data-bw-stage-full]) :is(.bw-countin, .bw-countin-sheet) {
+  left: var(--bw-pane-trailing-x, 0px);
+}
+:root[data-bw-two-pane][data-bw-stage-full] .bw-countin {
+  padding-left: var(--bw-pane-trailing-x, 0px);
 }

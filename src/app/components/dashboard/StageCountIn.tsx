@@ -1,7 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { Timer, X } from '@/app/components/icons';
-import { Toggle } from '@/app/components/bw';
 import { cn } from '@/app/components/ui/utils';
 import { useT } from '@/lib/i18n';
 import { haptic } from '@/lib/haptics';
@@ -229,6 +228,8 @@ export const StageCountInOverlay: React.FC<{
         const s = 1 + 0.14 * Math.exp(-pos.phase * 6);
         numRef.current.style.transform = `scale(${s.toFixed(3)})`;
       }
+      // GO: the song has started, the screen is back; the word only fades away over it.
+      if (numRef.current) numRef.current.style.opacity = pos.stage === 'go' ? (1 - pos.phase).toFixed(3) : '1';
       if (e && dotsRef.current && e.dots > 1) {
         const lit = Math.min(e.dots - 1, Math.floor(pos.phase * e.dots));
         Array.from(dotsRef.current.children).forEach((d, i) => ((d as HTMLElement).dataset.on = i <= lit ? '1' : '0'));
@@ -251,45 +252,56 @@ export const StageCountInOverlay: React.FC<{
 
   if (!state.on || phase === 'done' || hiddenSeq === state.seq || typeof document === 'undefined') return null;
   const go = phase === 'go';
-  const size = big ? 'min(86vmin, 720px)' : 'min(72vmin, 520px)';
+  const size = big ? 'min(86cqmin, 720px)' : 'min(72cqmin, 520px)';
   return createPortal(
     <div
-      className="bw-countin fixed inset-0 z-[150] flex flex-col items-center justify-center bg-black/95 text-white select-none"
+      // At GO the band is playing: the black layer goes at once and lets every
+      // touch through, so the song, the chords and the click are there from
+      // the first beat; GO just fades away on top.
+      className={cn('bw-countin fixed inset-0 z-[150] flex flex-col items-center justify-center text-white select-none', go ? 'pointer-events-none bg-transparent' : 'bg-black')}
       role="dialog"
-      aria-modal="true"
+      aria-modal={!go}
       aria-label={title ? t('Count-in · {title}', { title }) : t('Count-in')}
       data-stage={phase}
     >
-      {title && <p className="bw-label text-white/70 truncate max-w-[90vw] px-4 shrink-0">{title}</p>}
-      <div className="relative flex items-center justify-center my-auto" style={{ width: size, height: size }}>
-        <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full -rotate-90" aria-hidden>
+      {title && <p className={cn('bw-label text-white/70 truncate max-w-[90cqw] px-4 shrink-0', go && 'invisible')}>{title}</p>}
+      <div className="relative flex items-center justify-center my-auto" style={{ '--bw-countin-ring': size, width: 'var(--bw-countin-ring)', height: 'var(--bw-countin-ring)' } as React.CSSProperties}>
+        <svg viewBox="0 0 100 100" className={cn('absolute inset-0 w-full h-full -rotate-90', go && 'invisible')} aria-hidden>
           <circle cx="50" cy="50" r="47" fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="3" />
           <circle ref={ringRef} cx="50" cy="50" r="47" fill="none" stroke={accent} strokeWidth="3" strokeLinecap="round" pathLength={1} strokeDasharray="1" style={{ strokeDashoffset: 1 }} />
         </svg>
-        <div className="flex flex-col items-center justify-center gap-[2vmin]">
+        <div className="flex flex-col items-center justify-center gap-[2cqmin]">
           <span
             ref={numRef}
             data-testid="countin-number"
             className="bw-num font-semibold leading-none tabular-nums"
-            style={{ fontSize: big ? 'min(52vmin, 440px)' : go ? 'min(30vmin, 220px)' : 'min(42vmin, 320px)', color: go ? accent : undefined, willChange: 'transform' }}
+            style={{
+              fontSize: big ? 'min(52cqmin, 440px)' : go ? 'min(30cqmin, 220px)' : 'min(42cqmin, 320px)',
+              color: go ? accent : undefined,
+              textShadow: go ? '0 0 24px rgba(0,0,0,0.85), 0 0 4px rgba(0,0,0,0.9)' : undefined,
+              willChange: 'transform, opacity',
+            }}
           />
-          <div ref={dotsRef} className="flex gap-[2.4vmin] h-[3vmin] items-center" aria-hidden />
+          <div ref={dotsRef} className="flex gap-[2.4cqmin] h-[3cqmin] items-center" aria-hidden />
         </div>
       </div>
-      <span ref={subRef} className="bw-label-xs text-white/60 h-5 shrink-0" aria-hidden />
-      <button
-        type="button"
-        onClick={() => {
-          if (canStop) onStop();
-          else {
-            haptic.tap();
-            setHiddenSeq(state.seq);
-          }
-        }}
-        className={cn('mt-4 min-h-14 px-8 rounded-[20px] bw-button-sm shrink-0', canStop ? 'bg-white text-black' : 'bg-white/10 text-white')}
-      >
-        {canStop ? t('Stop the count-in') : t('Hide on this phone')}
-      </button>
+      <span ref={subRef} className={cn('bw-label-xs text-white/60 h-5 shrink-0', go && 'invisible')} aria-hidden />
+      {/* Gone at GO: the band is playing, nothing left to stop or hide. */}
+      {!go && (
+        <button
+          type="button"
+          onClick={() => {
+            if (canStop) onStop();
+            else {
+              haptic.tap();
+              setHiddenSeq(state.seq);
+            }
+          }}
+          className={cn('mt-4 min-h-14 px-8 rounded-[20px] bw-button-sm shrink-0', canStop ? 'bg-white text-black' : 'bg-white/10 text-white')}
+        >
+          {canStop ? t('Stop the count-in') : t('Hide on this phone')}
+        </button>
+      )}
     </div>,
     document.body,
   );
@@ -352,7 +364,21 @@ const Row: React.FC<{ label: string; hint?: string; checked: boolean; disabled?:
         <span className="block bw-body text-white">{label}</span>
         {hint && <span className="block bw-body-sm text-white/60 mt-0.5">{hint}</span>}
       </label>
-      <Toggle id={id} checked={checked} disabled={disabled} onCheckedChange={onChange} />
+      {/* Stage is always black: a switch drawn for it (the app's follows the light theme). */}
+      <button
+        id={id}
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        disabled={disabled}
+        onClick={() => {
+          haptic.selection();
+          onChange(!checked);
+        }}
+        className={cn('inline-flex h-8 w-[52px] shrink-0 items-center rounded-full p-1 transition-colors disabled:opacity-40', checked ? 'bg-white' : 'bg-white/25')}
+      >
+        <span className={cn('block size-6 rounded-full transition-transform', checked ? 'translate-x-5 bg-black' : 'translate-x-0 bg-white')} />
+      </button>
     </div>
   );
 };
@@ -376,11 +402,10 @@ export const CountInSheet: React.FC<{
   if (!open || typeof document === 'undefined') return null;
   return createPortal(
     <div
-      className="fixed inset-0 z-[140] flex flex-col bg-black text-white"
+      className="bw-countin-sheet fixed inset-0 z-[140] flex flex-col bg-black text-white"
       role="dialog"
       aria-modal="true"
       aria-label={t('Count-in')}
-      style={{ paddingTop: 'calc(var(--safe-top) + 12px)', paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}
     >
       <div className="flex flex-col flex-1 min-h-0 w-full max-w-[560px] mx-auto px-4 gap-4 overflow-y-auto overscroll-contain">
         <div className="flex items-center justify-between gap-3 shrink-0">
