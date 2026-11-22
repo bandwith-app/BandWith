@@ -109,7 +109,7 @@ test('@smoke an urgent item that arrives while a sheet is open never flashes ove
   // the push opened it first). The page counts every pop-up card
   // added while it is open: not one may show, even for a frame.
   await app.page.addInitScript(() => {
-    const w = window as unknown as { __urgentOverSheet: number };
+    const w = window as unknown as { __urgentOverSheet: number; __urgentAt?: number };
     w.__urgentOverSheet = 0;
     // Opened once the app is on screen (its Home button), before the urgent
     // item has loaded.
@@ -135,19 +135,34 @@ test('@smoke an urgent item that arrives while a sheet is open never flashes ove
           }
         }
       }).observe(document.body, { childList: true, subtree: true });
+      // When the pop-up card shows up at all (to tell "it waited" from "it came late").
+      new MutationObserver(() => {
+        if (!w.__urgentAt && document.querySelector('[role="alert"] [aria-label="Dismiss alert"]')) w.__urgentAt = performance.now();
+      }).observe(document.body, { childList: true, subtree: true });
     };
     document.addEventListener('DOMContentLoaded', put);
   });
   await app.page.reload();
   await expect(app.page.getByRole('button', { name: app.t('Home'), exact: true }).first()).toBeVisible();
   await expect(app.page.getByRole('dialog', { name: 'Sheet open first' })).toBeAttached();
-  // Time for the urgent item to load behind the sheet.
-  await app.page.waitForTimeout(3_000);
+  // The inbox has loaded (the bell counts it): the urgent item is known and
+  // waits behind the sheet; a moment more for its own check.
+  await expect(
+    app.page.getByRole('button', { name: new RegExp(`^${escapeRe(app.t('Notifications'))}, `) }).first(),
+  ).toBeAttached({ timeout: 20_000 });
+  await app.page.waitForTimeout(1_500);
   expect(await app.page.evaluate(() => (window as unknown as { __urgentOverSheet: number }).__urgentOverSheet)).toBe(0);
   await expect(urgent(app)).toHaveCount(0);
-  // The sheet closes: now it shows.
-  await app.page.evaluate(() => document.getElementById('e2e-sheet')?.remove());
+  // The sheet closes: now it shows, at once. It was waiting, not arriving late
+  // (a late one would leave this test proving nothing).
+  const closedAt = await app.page.evaluate(() => {
+    document.getElementById('e2e-sheet')?.remove();
+    return performance.now();
+  });
   await expect(urgent(app)).toBeVisible({ timeout: 10_000 });
+  const shownAt = await app.page.evaluate(() => (window as unknown as { __urgentAt?: number }).__urgentAt ?? -1);
+  expect(shownAt).toBeGreaterThanOrEqual(closedAt);
+  expect(shownAt - closedAt).toBeLessThan(500);
 });
 
 test('Stage mode keeps the stage: the urgent pop-up waits until Stage closes', async ({ app }) => {
