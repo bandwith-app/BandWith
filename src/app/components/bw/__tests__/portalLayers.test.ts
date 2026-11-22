@@ -84,6 +84,8 @@ const IN_PLACE: Record<string, InPlace> = {
   '/src/app/components/onboarding/OnboardingChrome.tsx': 'modal',
   '/src/app/views/SettingsView.tsx': 'modal',
   '/src/app/components/profile/CreateBandModal.tsx': 'modal',
+  '/src/app/components/notifications/NotificationDetailModal.tsx': 'modal',
+  '/src/app/components/gear/KitDetail.tsx': 'modal',
   '/src/app/components/notifications/PendingInvitesPrompt.tsx': { nonModal: 'band invite card: can arrive while a sheet is open' },
   '/src/app/components/notifications/InviteLinkNotice.tsx': { nonModal: 'invite link card: can arrive while a sheet is open' },
   '/src/app/components/quotes/QuoteClientLink.tsx': { inline: 'confirm card inside the quote detail' },
@@ -122,12 +124,11 @@ const NOT_A_LAYER_ABOVE_A_SHEET: Record<string, string> = {
   '/src/app/auth/callback.tsx': 'sign-in callback page, before the app',
   '/src/app/components/ui/ErrorBoundary.tsx': 'error page in place of the app',
   '/src/app/components/dashboard/StageClick.tsx': 'aria-hidden click flash of Stage mode, no controls',
-  '/src/app/components/notifications/UrgentNotificationPopup.tsx': 'role="alert" card that waits until no layer is open (#271)',
+  '/src/app/components/notifications/UrgentNotificationPopup.tsx':
+    'role="alert" card that waits until no layer is open (#271); a dialog role would make it wait for itself',
   '/src/app/components/chat/ChatDetailModal.tsx': 'chat page, opened from the chat list page',
-  '/src/app/components/notifications/NotificationDetailModal.tsx': 'inbox page, opened from the bell',
   '/src/app/components/quotes/QuoteDetailModal.tsx': 'quote page, opened from the Quotes hub',
   '/src/app/components/profile/EditProfileModal.tsx': 'profile page, opened from the identity hub',
-  '/src/app/components/gear/KitDetail.tsx': 'kit page, opened from the gear hub',
   '/src/app/components/layout/IdentityHub.tsx': 'identity hub page',
   '/src/app/components/dashboard/expanded/ExpandedCardWrapper.tsx': 'hub page of a Home card',
   '/src/app/views/AnalyticsView.tsx': 'Analytics hub page',
@@ -152,6 +153,17 @@ describe('every layer says what it is to the focus trap', () => {
   it('the list holds no file that already says what it is, or is gone', () => {
     const stale = Object.keys(NOT_A_LAYER_ABOVE_A_SHEET).filter((f) => !SOURCES[f] || SAYS_WHAT_IT_IS.test(SOURCES[f]));
     expect(stale).toEqual([]);
+  });
+
+  it('the inbox (every layout) and a kit page are modal dialogs: the bell can open them over a sheet', () => {
+    const modal = /role="dialog"\s+aria-modal="true"/g;
+    expect(SOURCES['/src/app/components/notifications/NotificationDetailModal.tsx'].match(modal)).toHaveLength(3);
+    expect(SOURCES['/src/app/components/gear/KitDetail.tsx'].match(modal)).toHaveLength(1);
+  });
+
+  it('the urgent pop-up stays out of the layers #271 waits for (else it would wait for itself)', () => {
+    // useLayerOpen (#271) watches [role="dialog"], [role="alertdialog"], [aria-modal="true"].
+    expect(SOURCES['/src/app/components/notifications/UrgentNotificationPopup.tsx']).not.toMatch(/role="(?:alert)?dialog"|aria-modal="true"/);
   });
 
   it('Create band is a modal dialog (it opens beside the docked band switcher on the Duo)', () => {

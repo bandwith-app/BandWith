@@ -53,7 +53,9 @@ export const KitDetail: React.FC<{
       exit={{ x: '100%' }}
       transition={{ type: 'tween', duration: 0.28, ease: 'easeOut' }}
       className="bw-pane-detail fixed inset-0 z-[100] bg-background text-foreground flex flex-col"
-      role="region"
+      // A modal dialog over the gear hub (its focus trap, if any, hands over).
+      role="dialog"
+      aria-modal="true"
       aria-label={kit.name}
     >
       <div className="flex-1 overflow-y-auto">
