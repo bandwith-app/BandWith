@@ -677,7 +677,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
 
   // The click leader's clock: Realtime or Bluetooth, whichever measured it with the shorter round trip.
   const clickLeader = click && click.from !== clientId ? click.from : null;
-  const bestClock = pickClock(clickLeader, [rtClock, ble.clock]);
+  const bestClock = pickClock(clickLeader, rtClock, ble.clock);
   const clickOffset = bestClock?.offset ?? 0;
 
   return {

@@ -10,7 +10,7 @@ import {
   encodeClock,
 } from '../stageBleSync';
 import { STAGE_BLE_CHARACTERISTIC, STAGE_BLE_VERSION } from '../stageBle';
-import { bestSample, clockSample, pickClock } from '../stageClick';
+import { BLE_CLOCK_AGREE_MS, bestSample, clockSample, pickClock } from '../stageClick';
 import { generateSigner } from '../stageSign';
 
 // jsdom has no WebCrypto; the app runs where it does (WKWebView, Android WebView).
@@ -127,17 +127,29 @@ describe('BleClockBook', () => {
 });
 
 describe('pickClock', () => {
-  it('uses the path with the fastest round trip for the same leader', () => {
+  it('uses the path with the fastest round trip for the same leader, when the two agree', () => {
     const realtime = { from: 'lead', sample: { offset: 480, rtt: 120 } };
     const ble = { from: 'lead', sample: { offset: 505, rtt: 30 } };
-    expect(pickClock('lead', [realtime, ble])).toEqual({ offset: 505, rtt: 30 });
-    expect(pickClock('lead', [realtime, null])).toEqual({ offset: 480, rtt: 120 });
+    expect(pickClock('lead', realtime, ble)).toEqual({ offset: 505, rtt: 30 });
+    expect(pickClock('lead', realtime, null)).toEqual({ offset: 480, rtt: 120 });
+    expect(pickClock('lead', null, ble)).toEqual({ offset: 505, rtt: 30 });
+  });
+
+  it(`online, a Bluetooth clock more than ${BLE_CLOCK_AGREE_MS} ms off the Realtime one is dropped: Realtime wins (a delayed replay can't shift the click, Claude on #288)`, () => {
+    expect(BLE_CLOCK_AGREE_MS).toBe(30);
+    const realtime = { from: 'lead', sample: { offset: 480, rtt: 120 } };
+    const delayed = { from: 'lead', sample: { offset: 480 + 400, rtt: 8 } };
+    expect(pickClock('lead', realtime, delayed)).toEqual({ offset: 480, rtt: 120 });
+    const justOff = { from: 'lead', sample: { offset: 480 + BLE_CLOCK_AGREE_MS + 1, rtt: 8 } };
+    expect(pickClock('lead', realtime, justOff)).toEqual({ offset: 480, rtt: 120 });
   });
 
   it('never uses a clock measured against someone else', () => {
     const ble = { from: 'old-leader', sample: { offset: 505, rtt: 30 } };
-    expect(pickClock('lead', [ble])).toBeNull();
-    expect(pickClock(null, [ble])).toBeNull();
+    expect(pickClock('lead', null, ble)).toBeNull();
+    expect(pickClock(null, null, ble)).toBeNull();
+    // Realtime against someone else doesn't hold back this leader's Bluetooth clock.
+    expect(pickClock('lead', { from: 'other', sample: { offset: 0, rtt: 50 } }, { from: 'lead', sample: { offset: 900, rtt: 9 } })).toEqual({ offset: 900, rtt: 9 });
   });
 });
 

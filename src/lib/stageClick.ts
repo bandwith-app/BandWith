@@ -82,11 +82,26 @@ export interface PeerClock {
 }
 
 /**
- * The offset to use for `leader`'s click: of the clocks measured against that
- * same leader, over any path, the one with the shortest round trip.
+ * Online, a Bluetooth clock further than this from the Realtime one for the
+ * same leader is dropped. A nearby phone can delay a recorded clock answer
+ * (there is no member nonce yet, stageBleSync.ts); Realtime can't be
+ * replayed that way, so it wins. Within it, the faster round trip is used.
  */
-export const pickClock = (leader: string | null, clocks: Array<PeerClock | null | undefined>): ClockSample | null =>
-  leader ? bestSample(clocks.flatMap((c) => (c && c.from === leader && c.sample ? [c.sample] : []))) : null;
+export const BLE_CLOCK_AGREE_MS = 30;
+
+/**
+ * The offset to use for `leader`'s click: the clock measured against that
+ * same leader over Realtime or Bluetooth with the shortest round trip, but
+ * Realtime's whenever the Bluetooth one disagrees with it by more than
+ * BLE_CLOCK_AGREE_MS.
+ */
+export const pickClock = (leader: string | null, realtime: PeerClock | null | undefined, bluetooth: PeerClock | null | undefined): ClockSample | null => {
+  if (!leader) return null;
+  const rt = realtime?.from === leader ? realtime.sample : null;
+  const bt = bluetooth?.from === leader ? bluetooth.sample : null;
+  if (rt && bt) return Math.abs(bt.offset - rt.offset) > BLE_CLOCK_AGREE_MS || rt.rtt <= bt.rtt ? rt : bt;
+  return rt ?? bt;
+};
 
 export interface BeatPosition {
   /** Beat number from 0, or -1 before the start. */

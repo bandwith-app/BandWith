@@ -24,17 +24,13 @@
  * answer among real ones is far from the others and is filtered out.
  *
  * Residual risk, left for a later release (review of #288): the answer has
- * no member nonce, since a nonce means a member write, the crash above. A
- * phone posing as the leader, out of the real leader's range, can replay
- * clock frames it recorded earlier, so members following it get a click
- * shifted by the replay's delay. (Signed states carry when they were signed
- * and the leader signs again every minute, stageBle.ts: a recorded one is
- * followed for at most SIGNED_FRESH_MS, 10 minutes, after it was signed.
- * Seq plus that time stands in for a leader session id. The bound assumes
- * the two phones' clocks within 10 minutes, as phones set by the network are.)
- * A real-time relay shifts it by at most half the round trip, and round
- * trips over 500 ms are dropped (#283): 250 ms at worst. Fix once a write
- * is safe: the member writes 8 random bytes, the leader signs t1 with them.
+ * no member nonce, since a nonce means a member write, the crash above.
+ * Offline, a nearby phone running a modified app can delay the click without
+ * limit: it plays back signed clock answers it recorded, as late as it likes
+ * (it can't make new ones). Online it is cancelled by Realtime: a Bluetooth
+ * clock more than BLE_CLOCK_AGREE_MS (30 ms) off the Realtime one for the
+ * same leader is dropped (pickClock, stageClick.ts). Fix once a write is
+ * safe: the member writes 8 random bytes, the leader signs t1 with them.
  *
  * Then the NTP-style maths of the Realtime click (clockSample / bestSample).
  */
