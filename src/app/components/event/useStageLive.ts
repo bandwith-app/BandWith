@@ -147,6 +147,13 @@ const SAVE_DELAY_MS = 700;
  */
 /** The highest seq this phone sent per gig (kept across closing Stage): its next ones never go below it (Claude on #280). */
 const ownSeqs = new Map<string, number>();
+/**
+ * The last state, unless its seq is far ahead of now (a clock that ran fast,
+ * since fixed): then it counts as none, so the next state (ours, or that
+ * leader's) applies at once instead of waiting for the clock to catch up
+ * (Claude on #280).
+ */
+const recent = (s: StageLiveState | null): StageLiveState | null => (s && seqPlausible(s.seq) ? s : null);
 
 export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs, open, isLeader, session, regia }: Options<T>) {
   const sessionRef = useRef(session);
@@ -288,8 +295,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       }
       // Clock moves on even for states we don't show (Lamport).
       // Trusted (Realtime, or signed over Bluetooth) over a band-key state: applies whatever that one's seq.
-      const overBluetooth = !bluetooth && lastFromBluetoothRef.current && isNewer(state, trustedRef.current);
-      if (!isNewer(state, lastRef.current) && !overBluetooth && !newLeader) {
+      const overBluetooth = !bluetooth && lastFromBluetoothRef.current && isNewer(state, recent(trustedRef.current));
+      if (!isNewer(state, recent(lastRef.current)) && !overBluetooth && !newLeader) {
         if (realtime) {
           const kept = refusedRef.current.get(state.from);
           if (!kept || isNewer(state, kept.state)) refusedRef.current.set(state.from, { state, at });
@@ -396,7 +403,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       // A seq kept from a clock far ahead (since fixed) is dropped: a new start from now (Codex + Claude on #280).
       const kept = (eventId && ownSeqs.get(eventId)) || 0;
       const own = seqPlausible(kept) ? kept : 0;
-      const seq = nextSeq(Math.max(lastRef.current?.seq ?? 0, own));
+      const seq = nextSeq(Math.max(recent(lastRef.current)?.seq ?? 0, own));
       const state: StageLiveState = { seq, from: clientId, ...next, skipped: skippedRef.current };
       if (eventId) ownSeqs.set(eventId, seq);
       lastRef.current = state;
@@ -500,7 +507,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         // missed is that leader's latest, and applies (Codex on #280).
         const seq = msg?.payload?.seq;
         const held = heldBleRef.current;
-        if (typeof seq === 'number' && held && held.from === from && held.seq === seq && isNewer(held, lastRef.current)) {
+        if (typeof seq === 'number' && held && held.from === from && held.seq === seq && isNewer(held, recent(lastRef.current))) {
           heldBleRef.current = null;
           receiveRef.current(held, 'realtime');
         }
