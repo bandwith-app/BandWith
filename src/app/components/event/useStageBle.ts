@@ -14,7 +14,7 @@ import {
   decodeClock,
 } from '@/lib/stageBleSync';
 import { bestSample, clockSample, nowMs, type ClockSample, type PeerClock } from '@/lib/stageClick';
-import { isNewer, seqPlausible, type StageLiveState } from '@/lib/stageLive';
+import { isNewer, seqPlausible, usableOffset, type StageLiveState } from '@/lib/stageLive';
 import { bleProblem, type StageBleStatus } from '@/lib/stageBleNotice';
 
 export type { StageBleStatus };
@@ -108,7 +108,13 @@ async function calibrateClock(): Promise<number | null> {
  */
 export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Options) {
   const [status, setStatus] = useState<StageBleStatus>('off');
-  const [clock, setClock] = useState<PeerClock | null>(null);
+  const [clock, setClockState] = useState<PeerClock | null>(null);
+  /** The same clock, set at once: a state read right after a clock sample is judged with it (no render in between). */
+  const clockRef = useRef<PeerClock | null>(null);
+  const setClock = useCallback((c: PeerClock | null) => {
+    clockRef.current = c;
+    setClockState(c);
+  }, []);
   /** Leader: phones linked to it. */
   const [followers, setFollowers] = useState(0);
   /** Bumped to start Bluetooth again (permission granted, Bluetooth turned on). */
@@ -268,8 +274,10 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
      * still followed), with none for any other phone.
      */
     const plausibleFrom = (seq: number, id: string | null) => {
-      const offset = id && bookDevice === id ? (book.best(nowMs())?.offset ?? 0) : 0;
-      return seqPlausible(seq, Date.now() + offset);
+      const measured = id && bookDevice === id ? (book.best(nowMs())?.offset ?? 0) : 0;
+      // A clock more than 5 minutes off never counts (MAX_CLOCK_OFFSET_MS).
+      const offset = usableOffset(measured);
+      return offset !== null && seqPlausible(seq, Date.now() + offset);
     };
     const radioBusy = () => reads > 0 || nowMs() < burstUntil;
     /** The linked phone; leaderLinks follows it. */
@@ -293,7 +301,14 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
 
     const emitClock = () => {
       const sample = book.best(nowMs());
-      if (sample) setClock({ from: leaderFrom, sample });
+      if (!sample) return;
+      // More than 5 minutes off: not used for the click either, and the member is told.
+      if (usableOffset(sample.offset) === null) {
+        setClock(null);
+        setStatus('clock-off');
+        return;
+      }
+      setClock({ from: leaderFrom, sample });
     };
 
     const stopSync = () => {
@@ -759,5 +774,5 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     setAttempt((n) => n + 1);
   }, []);
 
-  return { status, publish, clock, burst, followers, fix };
+  return { status, publish, clock, clockRef, burst, followers, fix };
 }

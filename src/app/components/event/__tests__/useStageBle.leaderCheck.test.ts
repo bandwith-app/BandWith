@@ -495,13 +495,37 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     m.unmount();
   });
 
-  it("a leader whose clock runs 20 minutes ahead is followed once its clock is measured over the link (Codex on #280, rule B)", async () => {
-    const ahead = 20 * 60_000;
+  it('a leader whose clock runs 4 minutes ahead is followed (rule B, within the 5-minute limit)', async () => {
+    const ahead = 4 * 60_000;
     appear('admin-b', lead('b', nextSeq(null, Date.now() + ahead), 'a1'), { clockAhead: ahead });
     const onState = vi.fn();
     const m = member(onState);
     await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'b' })), { timeout: 3000 });
     expect(m.result.current.status).toBe('connected');
+    m.unmount();
+  });
+
+  it('linked to an admin leading nothing, a leader found with its clock ahead (within the limit) is moved to (Codex on #280)', async () => {
+    appear('admin-idle', null);
+    const onState = vi.fn();
+    const m = member(onState);
+    await waitFor(() => expect(air.connected).toEqual(new Set(['admin-idle'])));
+    const ahead = 4 * 60_000;
+    appear('admin-a', lead('a', nextSeq(null, Date.now() + ahead), 'b2'), { clockAhead: ahead });
+    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 5000);
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a' })), { timeout: 4000 });
+    m.unmount();
+  });
+
+  it("a leader whose clock runs 20 minutes ahead, measured over the link, isn't followed: more than 5 minutes off, the member is told to check the time (main session's rule)", async () => {
+    const ahead = 20 * 60_000;
+    appear('admin-b', lead('b', nextSeq(null, Date.now() + ahead), 'a1'), { clockAhead: ahead });
+    const onState = vi.fn();
+    const m = member(onState);
+    await waitFor(() => expect(m.result.current.status).toBe('clock-off'), { timeout: 3000 });
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(onState).not.toHaveBeenCalled();
+    expect(m.result.current.clock).toBeNull();
     m.unmount();
   });
 
