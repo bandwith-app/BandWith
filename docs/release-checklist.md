@@ -30,13 +30,18 @@ The web app and the database reach everyone at once. That is why they get the mo
   ```
   - The `--duo-ok` run is the sign-off after checking every Duo posture.
   - `deploy-web.sh` and `release-android.sh --publish` refuse a commit without it.
-- [ ] **170 is not applied anywhere yet**. 170 was edited in place on 11-22, so a copy applied before that is the old version (no `live_pack_status.partial`). Check **every** database it will go to, prod and any dev, local or branch database too:
-  ```sql
-  SELECT version FROM supabase_migrations.schema_migrations WHERE version = '170';  -- no row
-  SELECT to_regclass('public.live_pack_status');                                   -- NULL
+- [ ] **What is in, from the objects, never from `schema_migrations`.** On prod `supabase_migrations.schema_migrations` stops at 038: everything since was applied by hand without a row, so that table can't tell what is applied or pending. `supabase/checks/release_migrations.sql` decides each migration by an object it creates (table, column, function, policy, index, or a marker in a function body for 186 and 187). Read only, as the database owner:
+  ```sh
+  npx supabase db query --remote --yes -f supabase/checks/release_migrations.sql
   ```
-  A dev or local database that has it: reset it (`supabase db reset`) before testing this release there.
-- [ ] **172 is already live in prod** (applied before this release): `supabase_migrations.schema_migrations` has a `172` row, and a quick `SELECT` on what it added works. It is not applied again.
+  Write down the answer: a row already `true` is skipped on release day.
+- [ ] **Never `supabase db push`, `supabase migration list` or `supabase migration repair` against prod.** They read `schema_migrations` and would try to apply 039 onwards again.
+- [ ] **170 is not applied anywhere yet**: its row is `false`. 170 was edited in place on 11-22, so a copy applied before that is the old version (`live_pack_status` without `partial`). Check **every** database it will go to, prod and any dev, local or branch database too, with the same file, and:
+  ```sql
+  SELECT to_regclass('public.live_pack_status');  -- NULL: no copy of any version
+  ```
+  A dev or local database that has it: reset it (`supabase db reset`, local only) before testing this release there.
+- [ ] **172 is already live in prod** (applied before this release): its row is `true` (`songs.vocal_parts` and `setlist_songs.vocal_parts`). It is not applied again.
 - [ ] Each new migration was dry-run against prod and rolled back:
   - first strip the migration's own `BEGIN;` / `COMMIT;`, or it commits for real;
   - afterwards, check that its objects are **absent**.
@@ -88,17 +93,12 @@ Do it in this order, so every build in use keeps working at every step:
         UPDATE public.app_flags SET enabled = false, updated_at = now() WHERE key = 'live_pack';
         ```
      3. `170_live_pack`;
-     4. `171`, `174_client_errors`, 175, 176, 178–189, then 190 and 191, in number order. All of them are additive.
+     4. `171`, `174_client_errors`, 175, 176, 178–189 (there is no 179), then 190 and 191, in number order. All of them are additive.
      - **Not 172**: already live (section 1).
      - **Not 177** (quotes bucket private): it goes in **stage 3, after the web deploy**. Before it, the new quote page and the quote functions must be live, or people who got a quote can't download its PDF.
    - 170 reads the switch itself (no table or no row means on), so the wrong order fails safe; it just leaves no way to stop its invites until 173 is in.
    - After each, run its test from `supabase/tests/` (they roll back), or a quick `SELECT` on what it added.
-   - **Record each one** in `supabase_migrations.schema_migrations`: applied by hand, it isn't there, and the next `supabase db push` would try it again. Match the format of the rows already there (look first), then add it and check:
-     ```sql
-     SELECT version, name FROM supabase_migrations.schema_migrations ORDER BY version DESC LIMIT 5;
-     INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES ('170', 'live_pack') ON CONFLICT (version) DO NOTHING;
-     SELECT version, name FROM supabase_migrations.schema_migrations WHERE version = '170';  -- one row
-     ```
+   - **Before each**, its row in `supabase/checks/release_migrations.sql` is `false`; **after it**, `true`. Run the file again after every one: that is the record of what is in (no `schema_migrations` row is added: the table is incomplete before 039 and nothing reads it).
    - 174 schedules one pg_cron job, `bw-prune-client-errors` (hourly, minute 7). Check it shows in `cron.job`.
    - **live_pack stays off until stage 3**, when the new builds reach everyone (see there). While it is off, nobody gets invites or new packs. The trade-off for stages 1 and 2: `app_flags` is global, there is no per-band switch for it. To try the live pack on two phones, the owner turns it on for a short test window and off again after; every band with automatic packs gets invites during that window. A per-band switch would need a follow-up change.
 3. **Builds for stage 1**
@@ -148,7 +148,7 @@ Do it in this order, so every build in use keeps working at every step:
      scripts/deploy-web.sh
      ```
    - Note the deployment URL it prints: you need it to roll back.
-4. **177, quotes bucket private**, now that the new quote page (web, just deployed) and the quote functions (release day, step 1) are live. Check first that a quote link made by the new web app opens and downloads its PDF; then apply 177 as the database owner, record it (step 2 above), and check the same link again.
+4. **177, quotes bucket private**, now that the new quote page (web, just deployed) and the quote functions (release day, step 1) are live. Check first that a quote link made by the new web app opens and downloads its PDF; then apply 177 as the database owner, check its row in `supabase/checks/release_migrations.sql` is now `true`, and check the same link again.
    - **Trade-off: admins on the previous native build.** Their app still shares the PDF's public storage URL, which stops opening once the bucket is private. The client gets a link that doesn't work. It lasts until they update (Android in up to 6 hours after the promote, iOS when TestFlight updates). Raise `min_version` first (section 4) to cut it short. Release notes line: "Update the app to share quote PDFs."
 5. **Product site** (only if `site/` changed):
    ```sh
