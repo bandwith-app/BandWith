@@ -53,11 +53,10 @@ The server cuts everything to size again.
 - Device: each error once per session, at most 10 per session.
 - Server, per person: 10 per clock hour (the device sends at most 10 a session).
 - Server, everyone together: 300 an hour, 1000 a day, and at most 15,000 reports kept. In the worst case that is about 65 MB, far below the Free plan's 500 MB. The counters are one row each, bumped atomically, so two reports at the limit can't both pass. The hourly prune locks the row counter before it counts, so a report committing meanwhile is never lost from the count.
-- The per-person counter never holds the user id: its key is `sha256(this hour's random secret || user id)`, it holds only the clock hour, and the counter and the secret are both deleted at the next hourly prune. After that, a key leads to no one.
-- Every minute (pg_cron `bw-seal-client-errors`) the new reports and every counter row are rewritten in one transaction of their own, the counters in random order. Report times are kept to the minute only.
+- The per-person counter never holds the user id: its key is `sha256(user id || this hour's random secret)`, and it holds only the clock hour. The counter and the secret are both deleted at the next hourly prune. Report times are kept to the minute only.
 - **What a reader with the service role can still link**, said plainly:
-  - for up to a minute, until the seal, a report and its counter row share a transaction id (`xmin`);
-  - while the hour is live the secret is readable, so they can tell **which** users reported in that hour (not which reports are whose). If only one person reported in an hour, those reports are theirs;
+  - **during the live hour**, the counter row can be linked to that hour's reports (they are written in one transaction, so they share a transaction id, `xmin`), and with the hour's secret to the user;
+  - **once the hourly prune has deleted the counter and the secret, nothing stored links a report to a user**;
   - the Supabase API logs see who called the function, as for any request.
   No one else can read any of these tables.
 - Pruned every hour (pg_cron `bw-prune-client-errors`, at minute 7): reports older than 14 days, and the counters and secrets of past hours and days.

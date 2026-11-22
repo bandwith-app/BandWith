@@ -10,25 +10,20 @@
 -- Written only through bw_report_client_error (signed-in users):
 -- - per person: 10 per clock hour (the app sends at most 10 a session).
 --   The counter (client_error_quota) never holds the user id: its key is
---   sha256(this hour's random secret || user id). Secrets and counters of
---   past hours go at the hourly prune, so afterwards a key leads to no one.
+--   sha256(user id || this hour's random secret). The secret and the
+--   counters of past hours go at the hourly prune.
 -- - everyone together: 300 an hour, 1000 a day, and never more than 15000
 --   rows kept (client_error_counters, one row per bucket, bumped atomically:
 --   two reports at the limit can't both pass). Worst case ~15000 x 4.4 kB
 --   = ~65 MB, far below the Free plan's 500 MB.
 --
 -- What a reader with the service role can still link (said plainly):
--- - A report and its counter row are written in one transaction, so for up
---   to a minute they share a transaction id (xmin). Every minute
---   bw_seal_client_errors() rewrites the new reports and every counter row
---   (the counters in random order) in one transaction of its own: after it,
---   no stored row ties a report to a counter.
--- - While the hour is live the secret is readable, so the service role can
---   tell WHICH users reported in this hour (not which reports are theirs);
---   if only one person reported in an hour, those reports are theirs.
--- - Report times are kept to the minute only.
--- Kept 14 days. Pruned every hour (pg_cron bw-prune-client-errors), sealed
--- every minute (bw-seal-client-errors).
+-- - During the live hour, the counter row can be linked to that hour's
+--   reports (they are written in one transaction, so they share a
+--   transaction id, xmin), and with the hour's secret to the user.
+-- - Once the hourly prune has deleted the counter and the secret, nothing
+--   stored links a report to a user. Report times are kept to the minute.
+-- Kept 14 days. Pruned every hour (pg_cron bw-prune-client-errors).
 --
 -- Read (service role): SELECT created_at, platform, app_version, route, message
 --   FROM public.client_errors ORDER BY created_at DESC LIMIT 50;
@@ -52,10 +47,7 @@ CREATE TABLE IF NOT EXISTS public.client_errors (
 );
 CREATE INDEX IF NOT EXISTS client_errors_created_at_idx ON public.client_errors (created_at DESC);
 
-ALTER TABLE public.client_errors ADD COLUMN IF NOT EXISTS sealed boolean NOT NULL DEFAULT false;
-CREATE INDEX IF NOT EXISTS client_errors_unsealed_idx ON public.client_errors (id) WHERE NOT sealed;
-
--- Per person, per clock hour. key = sha256(the hour's secret || user id):
+-- Per person, per clock hour. key = sha256(user id || the hour's secret):
 -- no user id here, and once the hour's secret is gone no way back to one.
 CREATE TABLE IF NOT EXISTS public.client_error_quota (
   key          text PRIMARY KEY,
@@ -126,13 +118,13 @@ BEGIN
   END IF;
 
   -- Per person: at most 10 in a clock hour, counted under a key that is not
-  -- the user id (sha256 of this hour's secret and the id).
+  -- the user id (sha256 of the id and this hour's secret).
   INSERT INTO public.client_error_keys (hour, secret)
   VALUES (v_hour, uuid_send(gen_random_uuid()) || uuid_send(gen_random_uuid()))
   ON CONFLICT (hour) DO NOTHING;
   SELECT secret INTO v_secret FROM public.client_error_keys WHERE hour = v_hour;
   INSERT INTO public.client_error_quota AS q (key, window_start, n)
-  VALUES (encode(sha256(v_secret || convert_to(v_uid::text, 'UTF8')), 'hex'), v_hour, 1)
+  VALUES (encode(sha256(convert_to(v_uid::text, 'UTF8') || v_secret), 'hex'), v_hour, 1)
   ON CONFLICT (key) DO UPDATE SET n = q.n + 1
   RETURNING n INTO v_n;
   IF v_n > 10 THEN
@@ -165,32 +157,6 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_report_client_error(text, text, text, text, text, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.bw_report_client_error(text, text, text, text, text, text) TO authenticated;
-
--- Every minute: the new reports and every counter row are rewritten in one
--- transaction of this job's own (new xmin), the counters in random order (no
--- physical order either). After it no stored row ties a report to a counter.
-CREATE OR REPLACE FUNCTION public.bw_seal_client_errors()
-RETURNS integer
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-DECLARE
-  v_n integer;
-BEGIN
-  -- Same lock order as a report (quota row, then counters): no deadlock.
-  LOCK TABLE public.client_error_quota IN SHARE ROW EXCLUSIVE MODE;
-  UPDATE public.client_errors SET sealed = true WHERE NOT sealed;
-  GET DIAGNOSTICS v_n = ROW_COUNT;
-  IF v_n > 0 THEN
-    WITH gone AS (DELETE FROM public.client_error_quota RETURNING key, window_start, n)
-    INSERT INTO public.client_error_quota (key, window_start, n)
-    SELECT key, window_start, n FROM gone ORDER BY random();
-  END IF;
-  RETURN v_n;
-END;
-$$;
-REVOKE ALL ON FUNCTION public.bw_seal_client_errors() FROM PUBLIC, anon, authenticated;
 
 -- Every hour: reports older than 14 days, the per-person counters and the
 -- secrets of past hours, the global counters of past hours and days; 'rows'
@@ -229,9 +195,6 @@ BEGIN
   PERFORM cron.unschedule('bw-prune-client-errors')
   WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'bw-prune-client-errors');
   PERFORM cron.schedule('bw-prune-client-errors', '7 * * * *', 'SELECT public.bw_prune_client_errors()');
-  PERFORM cron.unschedule('bw-seal-client-errors')
-  WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'bw-seal-client-errors');
-  PERFORM cron.schedule('bw-seal-client-errors', '* * * * *', 'SELECT public.bw_seal_client_errors()');
 END;
 $$;
 

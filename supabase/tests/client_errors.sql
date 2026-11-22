@@ -14,8 +14,6 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'bw-prune-client-errors' AND schedule = '7 * * * *') THEN RAISE EXCEPTION 'no hourly cron job'; END IF;
   IF has_table_privilege('authenticated', 'public.client_error_counters', 'SELECT') THEN RAISE EXCEPTION 'counters readable'; END IF;
   IF has_table_privilege('authenticated', 'public.client_error_keys', 'SELECT') THEN RAISE EXCEPTION 'hour secrets readable'; END IF;
-  IF has_function_privilege('authenticated', 'public.bw_seal_client_errors()', 'EXECUTE') THEN RAISE EXCEPTION 'authenticated can seal'; END IF;
-  IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'bw-seal-client-errors' AND schedule = '* * * * *') THEN RAISE EXCEPTION 'no seal cron job'; END IF;
 END;
 $$;
 
@@ -55,9 +53,9 @@ END;
 $$;
 
 -- The per-person counter: no user id, a key made with this hour's secret,
--- the clock hour only; report times to the minute. (Whether a stored row can
--- join a report to a counter afterwards, xmin included, is checked in
--- client_errors.pglite.mjs: here everything is one transaction.)
+-- the clock hour only; report times to the minute. Linkable during the live
+-- hour, not after the prune: checked across real transactions in
+-- client_errors.pglite.mjs (here everything is one transaction).
 DO $$
 DECLARE q record;
 BEGIN
@@ -65,15 +63,13 @@ BEGIN
     RAISE EXCEPTION 'client_error_quota has a user column';
   END IF;
   SELECT * INTO q FROM public.client_error_quota
-   WHERE key = encode(sha256((SELECT secret FROM public.client_error_keys WHERE hour = date_trunc('hour', now()))
-                             || convert_to('11111111-1111-4111-8111-111111111111', 'UTF8')), 'hex');
+   WHERE key = encode(sha256(convert_to('11111111-1111-4111-8111-111111111111', 'UTF8')
+                             || (SELECT secret FROM public.client_error_keys WHERE hour = date_trunc('hour', now()))), 'hex');
   IF q.n <> 21 THEN RAISE EXCEPTION 'counter not found under the hour key (n = %)', q.n; END IF;
   IF q.window_start <> date_trunc('hour', now()) THEN RAISE EXCEPTION 'window_start is not the hour: %', q.window_start; END IF;
   IF EXISTS (SELECT 1 FROM public.client_errors WHERE created_at <> date_trunc('minute', created_at)) THEN
     RAISE EXCEPTION 'a report time finer than the minute';
   END IF;
-  IF public.bw_seal_client_errors() < 1 THEN RAISE EXCEPTION 'seal found nothing to seal'; END IF;
-  IF EXISTS (SELECT 1 FROM public.client_errors WHERE NOT sealed) THEN RAISE EXCEPTION 'seal left reports unsealed'; END IF;
 END;
 $$;
 

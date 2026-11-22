@@ -1,7 +1,7 @@
 // Local check of migration 174 (crash reports) without Docker: PGlite with
 // stand-ins for auth and cron. Every statement is its own transaction here
 // (unlike supabase/tests/client_errors.sql), so it can check what a reader
-// with the service role could join afterwards: xmin, physical order, keys.
+// with the service role could join: xmin and keys, during and after the hour.
 //
 //   mkdir -p /tmp/pg174 && cd /tmp/pg174 && npm init -y >/dev/null && npm i @electric-sql/pglite@0.5.15
 //   cp <repo>/supabase/tests/client_errors.pglite.mjs . && node client_errors.pglite.mjs <repo>/supabase/migrations/174_client_errors.sql
@@ -45,20 +45,16 @@ ok(!cols.some((c) => /user/.test(c)), `quota has no user column: ${cols.join(', 
 const keys = (await q(`SELECT key FROM public.client_error_quota`)).rows.map((r) => String(r.key));
 ok(keys.length === 3 && keys.every((k) => ![U(1), U(2), U(3)].some((u) => k.includes(u) || k.includes(u.replace(/-/g, '')))), 'quota keys are not the user ids');
 
-// ---- before the seal the report and its quota row share a transaction id;
-// after it, no stored row joins a report to a person
+// ---- during the live hour the counter row can be linked to that hour's
+// reports (one transaction: same xmin); once pruned, nothing stored links them
 const joinable = async () => (await q(`SELECT count(*)::int n FROM public.client_errors e JOIN public.client_error_quota k ON e.xmin = k.xmin`)).rows[0].n;
-ok((await joinable()) > 0, 'before the seal: joinable by xmin (the residual minute)');
-await q(`SELECT public.bw_seal_client_errors()`);
-const sealX = (await q(`SELECT count(DISTINCT x)::int n FROM (SELECT xmin::text x FROM public.client_errors UNION ALL SELECT xmin::text FROM public.client_error_quota) t`)).rows[0].n;
-ok(sealX === 1, `after the seal: every report and every quota row carry the seal's one xmin (a join says nothing), got ${sealX}`);
-const qx = (await q(`SELECT DISTINCT xmin::text x FROM public.client_error_quota`)).rows;
-ok(qx.length === 1, `after the seal: every quota row has the same xmin (no order), got ${qx.length}`);
-ok((await q(`SELECT count(*)::int n FROM public.client_errors WHERE NOT sealed`)).rows[0].n === 0, 'every report sealed');
+ok((await joinable()) > 0, 'live hour: the counter row can be linked to its reports (the documented residual)');
 ok((await q(`SELECT count(*)::int n FROM public.client_errors WHERE created_at <> date_trunc('minute', created_at)`)).rows[0].n === 0, 'report times kept to the minute');
-ok((await q(`SELECT n FROM public.client_error_quota ORDER BY n DESC LIMIT 1`)).rows[0].n === 14, 'the seal keeps the counts');
-await report(U(3), 'after the seal');
+ok((await q(`SELECT n FROM public.client_error_quota ORDER BY n DESC LIMIT 1`)).rows[0].n === 14, 'rejected reports still count');
+await report(U(3), 'later the same hour');
 ok((await q(`SELECT n FROM public.client_error_quota ORDER BY n LIMIT 1`)).rows[0].n === 2, 'the same person keeps the same key within the hour');
+const k1 = (await q(`SELECT encode(sha256(convert_to($1, 'UTF8') || secret), 'hex') k FROM public.client_error_keys`, [U(1)])).rows[0].k;
+ok(keys.includes(k1), 'key = sha256(user id || hour secret)');
 
 // ---- the next hour: a new secret, the old rows and secret gone at the prune
 await db.exec(`UPDATE public.client_error_keys SET hour = hour - interval '1 hour'; UPDATE public.client_error_quota SET window_start = window_start - interval '1 hour';`);
@@ -66,10 +62,11 @@ await q(`SELECT public.bw_prune_client_errors()`);
 ok((await q(`SELECT count(*)::int n FROM public.client_error_keys`)).rows[0].n === 0, 'past hour secrets deleted');
 ok((await q(`SELECT count(*)::int n FROM public.client_error_quota`)).rows[0].n === 0, 'past hour quota rows deleted');
 ok((await q(`SELECT n FROM public.client_error_counters WHERE bucket = 'rows'`)).rows[0].n === (await q(`SELECT count(*)::int n FROM public.client_errors`)).rows[0].n, 'row counter set to the truth');
+ok((await joinable()) === 0 && (await q(`SELECT count(*)::int n FROM public.client_errors`)).rows[0].n > 0, 'after the prune: reports kept, nothing stored links them to a person');
 
 // ---- cron
 const jobs = (await q(`SELECT jobname, schedule FROM cron.job ORDER BY jobname`)).rows.map((r) => `${r.jobname} ${r.schedule}`);
-ok(jobs.includes('bw-prune-client-errors 7 * * * *') && jobs.includes('bw-seal-client-errors * * * * *'), `cron jobs: ${jobs.join('; ')}`);
+ok(jobs.join() === 'bw-prune-client-errors 7 * * * *', `one cron job, hourly prune: ${jobs.join('; ')}`);
 
 console.log(fails ? `\n${fails} FAILED` : '\nALL OK');
 process.exit(fails ? 1 : 0);

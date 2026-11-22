@@ -28,19 +28,20 @@ describe('174 client errors', () => {
   it('10 an hour per person, counted under a key that is not the user id', () => {
     const report = fnBody('bw_report_client_error');
     expect(report).toMatch(/IF v_n > 10 THEN/);
-    expect(report).toMatch(/sha256\(v_secret \|\| convert_to\(v_uid::text, 'UTF8'\)\)/);
+    expect(report).toMatch(/sha256\(convert_to\(v_uid::text, 'UTF8'\) \|\| v_secret\)/);
     expect(sql).not.toMatch(/client_error_quota[^;]*user_id/);
   });
 
-  it('every minute a seal rewrites new reports and the counters, in a job of its own', () => {
-    const seal = fnBody('bw_seal_client_errors');
-    expect(seal).toMatch(/UPDATE public\.client_errors SET sealed = true WHERE NOT sealed/);
-    expect(seal).toMatch(/DELETE FROM public\.client_error_quota[\s\S]*ORDER BY random\(\)/);
-    expect(sql).toMatch(/cron\.schedule\('bw-seal-client-errors', '\* \* \* \* \*'/);
+  it('no seal job: one hourly prune deletes the counters and the hour secrets', () => {
+    expect([...sql.matchAll(/cron\.schedule\('([\w-]+)'/g)].map((m) => m[1])).toEqual(['bw-prune-client-errors']);
+    const prune = fnBody('bw_prune_client_errors');
+    expect(prune).toMatch(/DELETE FROM public\.client_error_quota WHERE window_start < date_trunc\('hour', now\(\)\)/);
+    expect(prune).toMatch(/DELETE FROM public\.client_error_keys WHERE hour < date_trunc\('hour', now\(\)\)/);
   });
 
-  it('never calls the counter "unlinkable" (the live hour and the minute before a seal are not)', () => {
+  it('says plainly: linkable during the live hour, nothing stored links a report to a user once pruned', () => {
     expect(raw174).not.toMatch(/unlinkable/i);
-    expect(raw174).toMatch(/What a reader with the service role can still link/);
+    expect(raw174).toMatch(/During the live hour, the counter row can be linked to that hour's/);
+    expect(raw174).toMatch(/nothing\s*\n?--\s*stored links a report to a user/);
   });
 });
