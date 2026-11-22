@@ -12,8 +12,9 @@ describe('send-push wiring', () => {
   });
 
   it('writes the alert text from the stored message, not the request', () => {
-    expect(sendPush).toMatch(/sendToAPNs\(deviceToken, titleFor\(uid\), userSubtitle, pushBody, pushDataFor\(uid\),/);
-    expect(sendPush).toMatch(/sendToFCM\(deviceToken, titleFor\(uid\), userSubtitle, pushBody, pushDataFor\(uid\),/);
+    // Round 8: per reader (pushBodyFor), from the stored message.
+    expect(sendPush).toMatch(/sendToAPNs\(deviceToken, titleFor\(uid\), userSubtitle, pushBodyFor\(uid\), pushDataFor\(uid\),/);
+    expect(sendPush).toMatch(/sendToFCM\(deviceToken, titleFor\(uid\), userSubtitle, pushBodyFor\(uid\), pushDataFor\(uid\),/);
     expect(sendPush).toMatch(/title: titleFor\(userId\),\s*body: pushBody,/);
     expect(sendPush).not.toMatch(/sendToAPNs\(deviceToken, title,/);
   });
@@ -175,3 +176,25 @@ describe('send-push wiring, round 5 (Codex)', () => {
     expect(mark).toMatch(/await settlePushOnly\(userIds, \[\]\);/);
   });
 });
+
+// Claude review of #284 00d5ce6f (round 8, finding 1): an edit between
+// verifyChatPush and the write. What rings is what the database read under
+// the message's lock, and @mentions are found in it.
+describe('send-push wiring, round 8', () => {
+  it('after the write, the stored content is announced and each reader gets their inbox preview', () => {
+    const after = sendPush.slice(sendPush.indexOf('claimed = (got || [])'));
+    expect(after).toMatch(/const stored = storedAnnouncement\(got\);\s*if \(stored\) \{\s*announce\(\{ id: current\.id, content: stored\.content \}, targetUserIds\);\s*pushBodyByUser = stored\.previewByUser;/);
+  });
+
+  it('every device gets its reader\'s text, never the shared body', () => {
+    expect(sendPush).toMatch(/sendToAPNs\(deviceToken, titleFor\(uid\), userSubtitle, pushBodyFor\(uid\),/);
+    expect(sendPush).toMatch(/sendToFCM\(deviceToken, titleFor\(uid\), userSubtitle, pushBodyFor\(uid\),/);
+    expect(sendPush).toMatch(/body: pushBodyFor\(uid\),\s*messageId: announced\.id/);
+    expect(sendPush).not.toMatch(/sendTo(APNs|FCM)\([^)]*, pushBody,/);
+  });
+
+  it('with nothing from the database, "New message" is still in the reader\'s language', () => {
+    expect(sendPush).toMatch(/pushBodyByUser\.get\(uid\) \?\? chatPreviewIn\(/);
+  });
+});
+

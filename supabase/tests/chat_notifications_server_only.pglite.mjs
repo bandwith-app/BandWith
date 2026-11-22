@@ -18,7 +18,7 @@ const BAND = id(100);
 
 const lines = (file, from, to) => readFileSync(`${REPO}/supabase/migrations/${file}`, 'utf8').split('\n').slice(from - 1, to).join('\n');
 
-await db.exec(`
+const SETUP = `
 CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
 CREATE SCHEMA auth;
 CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
@@ -35,12 +35,21 @@ CREATE FUNCTION public.bw_shares_chat(a uuid, b uuid) RETURNS boolean LANGUAGE s
 CREATE TABLE public.notifications (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, band_id uuid, type text,
   title text, body text, data jsonb, read boolean DEFAULT false, action_url text, created_at timestamptz DEFAULT now());
 CREATE TABLE public.messages (id uuid PRIMARY KEY, chat_id uuid, sender_id uuid, content text, deleted boolean DEFAULT false);
-CREATE TABLE public.profiles (id uuid PRIMARY KEY);
+CREATE TABLE public.profiles (id uuid PRIMARY KEY, preferred_language text);
 INSERT INTO profiles SELECT ('00000000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid FROM unnest(ARRAY[1, 2, 3, 4, 10, 11]) n;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 GRANT INSERT ON public.notifications TO authenticated, service_role;
-`);
+`;
+await db.exec(SETUP);
 await db.exec(lines('073_baseline_live_policies.sql', 87, 129));
+// Round 8: on a database that never had 194, the new file runs too (no
+// earlier shape to drop).
+{
+  const fresh = new PGlite();
+  const e = await fresh.exec(SETUP + lines('073_baseline_live_policies.sql', 87, 129) + readFileSync(MIG, 'utf8'))
+    .then(() => fresh.query(`SELECT to_regprocedure('public.bw_write_chat_notices(uuid, jsonb)') IS NOT NULL AS f`).then((r) => (r.rows[0].f ? 'ok' : 'missing')), (x) => x.message);
+  ok(e === 'ok', `194 runs on a database that never had it (${e})`);
+}
 await db.exec(`CREATE POLICY notifications_insert ON public.notifications FOR INSERT TO authenticated
   WITH CHECK (public.bw_can_notify(user_id, band_id, type));`);
 // Round 4 (Codex #284 B2): duplicates from before (send-push deployed ahead
@@ -53,6 +62,10 @@ await db.exec(`INSERT INTO notifications (user_id, type, title, body, data, crea
   ('${MEM2}', 'chat_mention', 'Mia', 'dup', '{"message_id":"${DUPMSG}","tag":"newest"}', now() - interval '1 minute'),
   ('${ADMIN}', 'chat_message', 'Mia', 'dup', '{"message_id":"${DUPMSG}","tag":"admin"}', now() - interval '1 minute'),
   ('${MEM2}', 'event_update', 'Gig', 'x', '{"message_id":"${DUPMSG}","tag":"other-type"}', now())`);
+// Round 8: an earlier 194 (two result columns) is already there: the new
+// one replaces it (CREATE OR REPLACE alone can't change the result).
+await db.exec(`CREATE FUNCTION public.bw_write_chat_notices(p_message_id uuid, p_rows jsonb) RETURNS TABLE (id uuid, user_id uuid)
+  LANGUAGE sql AS $$ SELECT NULL::uuid, NULL::uuid WHERE false $$;`);
 let migErr = null;
 try {
   await db.exec(readFileSync(MIG, 'utf8'));
@@ -174,6 +187,42 @@ ok(n8.length === 1 && n8[0].body === 'meet at 9' && n8[0].c === 'meet at 9', `th
 await write(MSG9, ALICE);
 const n9 = await db.query(`SELECT body, data->>'content' AS c FROM notifications WHERE data->>'message_id' = '${MSG9}'`).then((r) => r.rows, () => []);
 ok(n9.length === 1 && n9[0].body === 'y'.repeat(119) && n9[0].c === 'y'.repeat(119), `cut like chatPreview, no half emoji (${n9[0]?.body?.length})`);
+
+// Round 8 (Claude review, finding 1): an edit lands between send-push's
+// check and the write. The push must say what the inbox says: the function
+// returns, per recipient, the preview it wrote and the content it read
+// under the lock (send-push pushes that, and finds @mentions in it).
+const MSG10 = id(610);
+await db.exec(`INSERT INTO messages (id, chat_id, sender_id, content) VALUES ('${MSG10}', '${id(900)}', '${MEM}', 'door code 4412')`);
+// send-push read "door code 4412" here; then the sender edits it.
+await db.exec(`UPDATE messages SET content = 'see you' WHERE id = '${MSG10}'`);
+const w10 = await db.query(`SELECT user_id, preview, content FROM public.bw_write_chat_notices($1, $2::jsonb)`, [MSG10, rowsFor(ALICE)])
+  .then((r) => r.rows, (e) => 'ERROR ' + e.message);
+ok(Array.isArray(w10) && w10.length === 1 && w10[0].preview === 'see you' && w10[0].content === 'see you',
+  `an edit between check and write: the push gets the stored text, not the old one (${JSON.stringify(w10)})`);
+const n10 = await db.query(`SELECT body FROM notifications WHERE data->>'message_id' = '${MSG10}'`).then((r) => r.rows[0]?.body, () => null);
+ok(n10 === 'see you', `and the inbox says the same (${n10})`);
+// Older send-push builds read only id and user_id: still there, same names.
+const w10b = await db.query(`SELECT id, user_id FROM public.bw_write_chat_notices($1, $2::jsonb)`, [MSG10, rowsFor(CAROL)]).then((r) => r.rows, (e) => 'ERROR ' + e.message);
+ok(Array.isArray(w10b) && w10b.length === 1 && w10b[0].user_id === CAROL && !!w10b[0].id, `older callers still read id and user_id (${JSON.stringify(w10b)})`);
+
+// Round 8 (Claude NIT 7): an empty message reads "New message" in each
+// recipient's language (089's rule); bw_chat_preview itself is unchanged.
+const MSG11 = id(611);
+await db.exec(`UPDATE profiles SET preferred_language = 'it-IT' WHERE id = '${CAROL}'`);
+await db.exec(`UPDATE profiles SET preferred_language = 'pt' WHERE id = '${MEM2}'`);
+await db.exec(`INSERT INTO messages (id, chat_id, sender_id, content) VALUES ('${MSG11}', '${id(900)}', '${MEM}', '')`);
+const w11 = await db.query(`SELECT user_id, preview FROM public.bw_write_chat_notices($1, $2::jsonb) ORDER BY user_id`, [MSG11, rowsFor(ALICE, CAROL, MEM2)])
+  .then((r) => Object.fromEntries(r.rows.map((x) => [x.user_id, x.preview])), (e) => ({ error: e.message }));
+ok(w11[ALICE] === 'New message' && w11[CAROL] === 'Nuovo messaggio' && w11[MEM2] === 'Nova mensagem',
+  `"New message" in each reader's language (${JSON.stringify(w11)})`);
+const n11 = await db.query(`SELECT user_id, body, data->>'content' AS c FROM notifications WHERE data->>'message_id' = '${MSG11}'`)
+  .then((r) => Object.fromEntries(r.rows.map((x) => [x.user_id, `${x.body}|${x.c}`])), () => ({}));
+ok(n11[CAROL] === 'Nuovo messaggio|Nuovo messaggio' && n11[ALICE] === 'New message|New message', `the inbox rows too (${JSON.stringify(n11)})`);
+const words = await db.query(`SELECT public.bw_chat_preview('') AS e, public.bw_chat_preview_in('Ciao', 'it') AS t, public.bw_chat_preview_in('', 'de') AS d, public.bw_chat_preview_in(NULL, 'xx') AS x`)
+  .then((r) => r.rows[0], () => ({}));
+ok(words.e === 'New message' && words.t === 'Ciao' && words.d === 'Neue Nachricht' && words.x === 'New message',
+  `bw_chat_preview unchanged; text is never translated (${JSON.stringify(words)})`);
 
 // Round 4 (Codex #284): the token lookup failed after the claim: the claim
 // is released so a retry right away delivers.

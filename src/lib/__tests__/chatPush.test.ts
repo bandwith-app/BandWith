@@ -7,6 +7,9 @@ import {
   noticeSettled,
   PUSH_CLAIM_MS,
   chatPreview,
+  chatPreviewIn,
+  NEW_MESSAGE,
+  storedAnnouncement,
   chooseUnannounced,
   findAnnouncedCandidates,
   isUuid,
@@ -22,6 +25,7 @@ import {
   senderDisplayName,
   type ChatMessageRow,
 } from '../../../supabase/functions/_shared/chat-push';
+import migration194 from '../../../supabase/migrations/194_chat_notifications_server_only.sql?raw';
 
 const NOW = Date.parse('2026-11-22T20:00:00Z');
 const ago = (s: number) => new Date(NOW - s * 1000).toISOString();
@@ -281,3 +285,40 @@ describe('message id case', () => {
     expect(findAnnouncedCandidates(rows, { callerId: BOB, chatId: CHAT, messageId: uid.toUpperCase(), now: NOW }).map((r) => r.id)).toEqual([uid]);
   });
 });
+
+// Claude review of #284 00d5ce6f, round 8.
+describe('round 8: the push says what the inbox says', () => {
+  it('finding 1: the stored content and each reader\'s preview come from bw_write_chat_notices', () => {
+    const stored = storedAnnouncement([
+      { id: 'n1', user_id: 'u1', preview: 'see you', content: 'see you' },
+      { id: 'n2', user_id: 'u2', preview: 'see you', content: 'see you' },
+    ]);
+    expect(stored?.content).toBe('see you');
+    expect(stored?.previewByUser.get('u2')).toBe('see you');
+    // 194 before round 8 (id, user_id only): nothing to go by, keep our read.
+    expect(storedAnnouncement([{ id: 'n1', user_id: 'u1' }])).toBeNull();
+    expect(storedAnnouncement([])).toBeNull();
+    // An empty stored message.
+    expect(storedAnnouncement([{ id: 'n1', user_id: 'u1', preview: 'Nuovo messaggio', content: null }])?.content).toBe('');
+  });
+
+  it('NIT 7: an empty message reads "New message" in the reader\'s language; text is never translated', () => {
+    expect(chatPreviewIn('', 'it')).toBe('Nuovo messaggio');
+    expect(chatPreviewIn(null, 'pt-BR')).toBe('Nova mensagem');
+    expect(chatPreviewIn('', 'DE')).toBe('Neue Nachricht');
+    expect(chatPreviewIn('', 'en')).toBe('New message');
+    expect(chatPreviewIn('', null)).toBe('New message');
+    expect(chatPreviewIn('Ciao', 'it')).toBe('Ciao');
+    expect(chatPreviewIn('x'.repeat(200), 'fr')).toBe(chatPreview('x'.repeat(200)));
+    // chatPreview itself is unchanged (older builds' lookup by preview).
+    expect(chatPreview('')).toBe('New message');
+    expect(Object.keys(NEW_MESSAGE).sort()).toEqual(['de', 'es', 'fr', 'it', 'pt']);
+  });
+
+  it('NIT 7: the same words as 194\'s bw_chat_preview_in', () => {
+    const sql = migration194;
+    const map = JSON.parse(sql.match(/THEN coalesce\('(\{[^']+\})'::jsonb/)![1]);
+    expect(map).toEqual(NEW_MESSAGE);
+  });
+});
+

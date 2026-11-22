@@ -8,6 +8,7 @@ import {
   LEGACY_CANDIDATES,
   noticeSettled,
   chatPreview,
+  chatPreviewIn,
   chatPushData,
   chatPushSubtitle,
   chatPushTitle,
@@ -20,6 +21,7 @@ import {
   pushAllowed,
   resolveChatId,
   senderDisplayName,
+  storedAnnouncement,
 } from '../_shared/chat-push.ts';
 
 const APNS_KEY_ID = Deno.env.get('APNS_KEY_ID');
@@ -659,6 +661,9 @@ Deno.serve(async (req: Request) => {
     let targetUserIds = allowedIds;
     let mentioned = new Set<string>();
     let pushBody = notificationBody;
+    // Per recipient, what their inbox row says (194 round 8): the preview in
+    // their language of the message as the database read it under its lock.
+    let pushBodyByUser = new Map<string, string>();
     const announce = (message: { id: string; content: string | null }, recipients: string[]) => {
       const now = { id: String(message.id), content: message.content ?? '' };
       announced = now;
@@ -671,9 +676,17 @@ Deno.serve(async (req: Request) => {
           : [],
       );
       pushBody = chatPreview(now.content);
+      pushBodyByUser = new Map();
       return now;
     };
 
+    // A chat push's text for one reader: what the database wrote for them, or
+    // (push-only call, 194 before round 8) this call's read, "New message" in
+    // their language. Any other push: the body as sent.
+    const pushBodyFor = (uid: string) =>
+      chatPush && announced
+        ? pushBodyByUser.get(uid) ?? chatPreviewIn((announced as { content: string | null }).content, prefLangByUser.get(uid))
+        : pushBody;
     const typeFor = (uid: string): 'chat_message' | 'chat_mention' =>
       userType === 'chat_mention' && mentioned.has(uid) ? 'chat_mention' : 'chat_message';
     const titleFor = (uid: string) =>
@@ -684,7 +697,7 @@ Deno.serve(async (req: Request) => {
             chatId: requestChat.chatId,
             type: typeFor(uid),
             senderName: chatPush.senderName,
-            body: pushBody,
+            body: pushBodyFor(uid),
             messageId: announced.id,
             bandId: chatPush.bandId,
             bandName: chatPush.bandName,
@@ -824,6 +837,14 @@ Deno.serve(async (req: Request) => {
           if (writeError) throw writeError;
           claimed = (got || []) as { id: string; user_id: string }[];
           if (claimed.length > 0) {
+            // The message as the database read it under its lock (194 round
+            // 8): an edit after verifyChatPush is what rings, and @mentions
+            // are found in it (Claude review, finding 1).
+            const stored = storedAnnouncement(got);
+            if (stored) {
+              announce({ id: current.id, content: stored.content }, targetUserIds);
+              pushBodyByUser = stored.previewByUser;
+            }
             const toPush = new Set(claimed.map((r) => String(r.user_id)));
             ringIds = targetUserIds.filter((id) => toPush.has(id));
             done = true;
@@ -901,13 +922,13 @@ Deno.serve(async (req: Request) => {
         const userSubtitle = localizePushLabel(effectiveSubtitle, langByUser.get(uid) ?? null);
 
         if (platform === 'ios') {
-          const result = await sendToAPNs(deviceToken, titleFor(uid), userSubtitle, pushBody, pushDataFor(uid), userBadge, sound, collapseId, silent);
+          const result = await sendToAPNs(deviceToken, titleFor(uid), userSubtitle, pushBodyFor(uid), pushDataFor(uid), userBadge, sound, collapseId, silent);
           if (!result.success && result.error === 'invalid_token') {
             await supabase.from('push_tokens').update({ is_active: false }).eq('id', tokenRecord.id);
           }
           return { token_id: tokenRecord.id, platform, ...result };
         } else if (platform === 'android') {
-          const result = await sendToFCM(deviceToken, titleFor(uid), userSubtitle, pushBody, pushDataFor(uid), effectiveChannel, effectiveTag, collapseId, silent);
+          const result = await sendToFCM(deviceToken, titleFor(uid), userSubtitle, pushBodyFor(uid), pushDataFor(uid), effectiveChannel, effectiveTag, collapseId, silent);
           if (!result.success && result.error === 'invalid_token') {
             await supabase.from('push_tokens').update({ is_active: false }).eq('id', tokenRecord.id);
           }

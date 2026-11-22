@@ -56,6 +56,13 @@
 -- of the message as stored, read under its FOR SHARE lock (bw_chat_preview,
 -- the same function 192 defines), not the text send-push passed in.
 --
+-- Round 8 (Claude #284/#291 review): bw_write_chat_notices also returns,
+-- per recipient, the preview it wrote and the message as it read it under
+-- the lock (columns added, none renamed: older send-push builds read id and
+-- user_id as before), so the push says what the inbox says. An empty
+-- message reads "New message" in the recipient's language
+-- (bw_chat_preview_in; bw_chat_preview is unchanged).
+--
 -- Deploy order: apply 194 before deploying send-push (send-push falls back
 -- to a plain insert while the function is missing).
 --
@@ -217,25 +224,63 @@ $$;
 REVOKE ALL ON FUNCTION public.bw_chat_preview(text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_chat_preview(text) TO authenticated, service_role;
 
+-- The preview one reader sees (round 8, Claude NIT): an empty message says
+-- "New message" in their profiles.preferred_language (it, es, fr, de, pt;
+-- 089's rule), English otherwise. Anything else is bw_chat_preview's text.
+-- Same words as chat-push.ts NEW_MESSAGE.
+CREATE OR REPLACE FUNCTION public.bw_chat_preview_in(p_content text, p_lang text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+SET search_path TO 'public'
+AS $$
+  SELECT CASE
+    WHEN nullif(public.bw_js_left(coalesce(p_content, ''), 120), '') IS NULL
+      THEN coalesce('{"it":"Nuovo messaggio","es":"Nuevo mensaje","fr":"Nouveau message","de":"Neue Nachricht","pt":"Nova mensagem"}'::jsonb
+                      ->> lower(left(btrim(coalesce(p_lang, '')), 2)), 'New message')
+    ELSE public.bw_chat_preview(p_content)
+  END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_chat_preview_in(text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_chat_preview_in(text, text) TO authenticated, service_role;
+
 -- Writes the chat notices of one message and claims those to push now.
 -- p_rows: [{user_id, type, title, body, data, band_id, action_url}].
 -- body and data.content are the preview of the message as it reads now,
 -- under its FOR SHARE lock, never p_rows' text (Codex #284 r7 B4: an edit
 -- between send-push's check and this insert left the old text). An edit
 -- after it waits for this transaction; 192 then rewrites the notices.
+-- Returns, per recipient to push now: the notice, the preview in their
+-- language and the message's content as read under the lock (round 8:
+-- send-push pushes that text and finds the @mentions in it, not in its own
+-- earlier read). 192 redefines this function (who may still read the chat);
+-- keep the two in step.
+-- The result gained columns in round 8: CREATE OR REPLACE can't change it,
+-- so an older shape is dropped first (only then; GRANTs are set below).
+DO $$
+BEGIN
+  IF to_regprocedure('public.bw_write_chat_notices(uuid, jsonb)') IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM pg_proc
+                      WHERE oid = to_regprocedure('public.bw_write_chat_notices(uuid, jsonb)')
+                        AND 'preview' = ANY (proargnames)) THEN
+    DROP FUNCTION public.bw_write_chat_notices(uuid, jsonb);
+  END IF;
+END
+$$;
 CREATE OR REPLACE FUNCTION public.bw_write_chat_notices(p_message_id uuid, p_rows jsonb)
-RETURNS TABLE (id uuid, user_id uuid)
+RETURNS TABLE (id uuid, user_id uuid, preview text, content text)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path TO 'public'
 AS $function$
 #variable_conflict use_column
 DECLARE
-  v_preview text;
+  v_content text;
+  v_chat uuid;
 BEGIN
   -- The message must still be there, and not marked deleted (read through
   -- to_jsonb: works with or without messages.deleted).
-  SELECT public.bw_chat_preview(m.content) INTO v_preview FROM messages m
+  SELECT m.content, m.chat_id INTO v_content, v_chat FROM messages m
    WHERE m.id = p_message_id
      AND NOT coalesce((to_jsonb(m) ->> 'deleted')::boolean, false)
      FOR SHARE;
@@ -244,12 +289,15 @@ BEGIN
   END IF;
 
   INSERT INTO notifications AS n (user_id, type, title, body, data, read, band_id, action_url)
-  SELECT r.user_id, r.type, r.title, v_preview,
+  SELECT r.user_id, r.type, r.title, w.preview,
          coalesce(r.data, '{}'::jsonb)
-           || jsonb_build_object('message_id', p_message_id::text, 'content', v_preview),
+           || jsonb_build_object('message_id', p_message_id::text, 'content', w.preview),
          false, r.band_id, r.action_url
     FROM jsonb_to_recordset(coalesce(p_rows, '[]'::jsonb))
          AS r(user_id uuid, type text, title text, body text, data jsonb, band_id uuid, action_url text)
+         CROSS JOIN LATERAL (
+           SELECT public.bw_chat_preview_in(v_content, (SELECT p.preferred_language FROM profiles p WHERE p.id = r.user_id)) AS preview
+         ) w
    WHERE r.user_id IS NOT NULL AND r.type IN ('chat_message', 'chat_mention')
    -- One lock order for overlapping calls (no deadlock on the index).
    ORDER BY r.user_id
@@ -276,7 +324,9 @@ BEGIN
      -- (send-push CHAT_PUSH_WINDOW_MS; Claude #284 r5). A claim more than a
      -- minute in the future is bogus (hand-edited data, clock jump): unclaimed.
      AND public.bw_chat_push_claim_free(public.bw_try_timestamptz(n.data ->> 'push_claimed_at'))
-  RETURNING n.id, n.user_id;
+  RETURNING n.id, n.user_id,
+            public.bw_chat_preview_in(v_content, (SELECT p.preferred_language FROM profiles p WHERE p.id = n.user_id)),
+            v_content;
 END;
 $function$;
 REVOKE ALL ON FUNCTION public.bw_write_chat_notices(uuid, jsonb) FROM PUBLIC, anon, authenticated;

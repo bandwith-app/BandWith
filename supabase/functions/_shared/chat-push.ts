@@ -35,6 +35,45 @@ const wholeEnd = (s: string): string => (/[\uD800-\uDBFF]$/.test(s) ? s.slice(0,
 export const chatPreview = (content: string | null | undefined): string =>
   wholeEnd((content ?? '').substring(0, 120)) || 'New message';
 
+/** "New message" in the reader's language (Claude NIT 7): the same words as 194's bw_chat_preview_in. */
+export const NEW_MESSAGE: Readonly<Record<'it' | 'es' | 'fr' | 'de' | 'pt', string>> = {
+  it: 'Nuovo messaggio',
+  es: 'Nuevo mensaje',
+  fr: 'Nouveau message',
+  de: 'Neue Nachricht',
+  pt: 'Nova mensagem',
+};
+
+/**
+ * The preview one reader sees: `chatPreview`, but an empty message reads
+ * "New message" in their language (profiles.preferred_language: it, es, fr,
+ * de, pt; English otherwise). A message's own text is never translated.
+ */
+export const chatPreviewIn = (content: string | null | undefined, lang: string | null | undefined): string => {
+  const cut = wholeEnd((content ?? '').substring(0, 120));
+  if (cut) return cut;
+  const l = String(lang || '').trim().slice(0, 2).toLowerCase() as keyof typeof NEW_MESSAGE;
+  return NEW_MESSAGE[l] ?? 'New message';
+};
+
+/**
+ * What bw_write_chat_notices (194, round 8) read under the message's lock:
+ * its content, and per recipient the preview the inbox got. Null when the
+ * rows don't say (194 before round 8): the caller keeps its own read.
+ */
+export function storedAnnouncement(
+  rows: unknown,
+): { content: string; previewByUser: Map<string, string> } | null {
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  const first = rows[0] as Record<string, unknown> | null;
+  if (!first || typeof first !== 'object' || !('content' in first)) return null;
+  const previewByUser = new Map<string, string>();
+  for (const r of rows as Record<string, unknown>[]) {
+    if (r && typeof r.preview === 'string' && r.user_id != null) previewByUser.set(String(r.user_id), r.preview);
+  }
+  return { content: typeof first.content === 'string' ? first.content : '', previewByUser };
+}
+
 /**
  * A message older than this can't be announced any more. Well past a lapsed
  * claim (PUSH_CLAIM_MS): a call that took the claim and crashed is retried
