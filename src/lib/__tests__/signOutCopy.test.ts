@@ -30,7 +30,8 @@ const clear287: Clear = async (prefix = 'bw:', opts) => {
 };
 
 const STATES: [string, Clear, boolean][] = [
-  ['this branch (queues erased at sign-out)', clearOfflineCache as Clear, false],
+  // #287 is in the tree: the real clearOfflineCache keeps an account's queues when asked (keepPendingWrites).
+  ['this tree (#287 in: queues kept at sign-out)', clearOfflineCache as Clear, true],
   ['with #287 (keepPendingWrites)', clear287, true],
 ];
 

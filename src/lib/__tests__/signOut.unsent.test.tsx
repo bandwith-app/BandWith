@@ -27,7 +27,8 @@ vi.mock('../supabase', () => ({
   signInWithOAuth: vi.fn(), updatePassword: vi.fn(), RECOVERY_FLAG: 'recovery',
 }));
 vi.mock('../services/presence', () => ({ cleanupPresence: vi.fn() }));
-vi.mock('../services/pushNotifications', () => ({ unregisterPushToken: vi.fn(async () => {}) }));
+// (#287: the sign-out also sends the push revocations still queued.)
+vi.mock('../services/pushNotifications', () => ({ unregisterPushToken: vi.fn(async () => {}), flushQueuedPushRevocations: vi.fn(async () => 0) }));
 vi.mock('../services/appBadge', () => ({ syncAppBadge: vi.fn() }));
 vi.mock('../stageBleNative', () => ({ clearStageCache: vi.fn() }));
 // #296's sign-out steps (audio on this device): no-ops here.

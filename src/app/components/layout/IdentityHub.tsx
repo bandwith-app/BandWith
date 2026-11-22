@@ -42,6 +42,7 @@ import { updateBand } from '@/lib/services/bands';
 import { uploadBandBrandingAsset, getBandPricing, saveBandPricing } from '@/lib/services/pricing';
 import { personName, personInitials, hasRealName } from '@/lib/personName';
 import { wipeAfterFailedSignOut } from '@/lib/signOutWipe';
+import { markSignOutFailed } from '@/lib/signOutNotice';
 import { useT } from '@/lib/i18n';
 import { useAppVersion } from '@/lib/appVersion';
 import { uuidToNumericId } from '@/lib/numericId';
@@ -326,10 +327,13 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
   };
   // The wipe itself can fail (#296's async wipe, Claude delta review #287
   // r10): the held push state still comes back, then the page reloads.
+  // If the session survived it, the reload brings the person back signed
+  // in: the app then says so once (signOutNotice.ts), instead of nothing.
   const handleLogout = () =>
     logOutOrWipe().catch((e) => {
       console.error('Logout wipe failed:', e);
       restorePushStateAfterWipe();
+      markSignOutFailed();
       window.location.href = '/';
     });
 

@@ -2,6 +2,7 @@ import { handleBackFromStack, setAppBack, type BackMode } from '@/lib/backStack'
 import { allowAndroidInstalls, androidInstallMessage, openAndroidUpdate, useAndroidInstallState, useAndroidUpdate } from '@/lib/androidUpdate';
 import { runGuarded } from '@/lib/unsavedGuard';
 import { APP_TOAST_EVENT, type AppToast } from '@/lib/appToast';
+import { useSignOutFailedNotice } from '@/app/hooks/useSignOutFailedNotice';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { uuidToNumericId } from '@/lib/numericId';
 import { useCurrentKey } from '@/lib/useCurrentKey';
@@ -493,6 +494,7 @@ export default function AuthenticatedApp() {
     window.addEventListener(APP_TOAST_EVENT, onToast);
     return () => window.removeEventListener(APP_TOAST_EVENT, onToast);
   }, []);
+  useSignOutFailedNotice(); // after the listener above: a sign-out whose wipe threw left this account signed in
 
   // Android test builds come from GitHub releases: offer a newer one
   // (src/lib/androidUpdate.ts), at most once a day per version.

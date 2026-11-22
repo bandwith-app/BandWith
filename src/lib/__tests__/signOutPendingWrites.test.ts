@@ -40,7 +40,11 @@ import { AuthProvider, useAuth } from '../AuthContext';
 
 const A = '00000000-0000-0000-0000-00000000000a';
 const B = '00000000-0000-0000-0000-00000000000b';
-const keys = () => Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i) as string).sort();
+// The app's cache and queues only (`bw:`): #296's sign-out also leaves its cross-tab mark `bw-regia-audio:cleared`.
+const keys = () =>
+  Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i) as string)
+    .filter((k) => k.startsWith('bw:'))
+    .sort();
 
 describe('sign-out and unsent changes', () => {
   beforeEach(() => {

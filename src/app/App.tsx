@@ -3,6 +3,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useBand } from "@/lib/BandContext";
 import AuthCallback from "./auth/callback";
 import { SigningOutScreen, useSigningOut } from "./components/layout/SigningOutScreen";
+import { useForgetSignOutFailed } from "./hooks/useSignOutFailedNotice";
 import { Capacitor } from "@capacitor/core";
 import { App as CapacitorApp } from "@capacitor/app";
 import { isOpenedFileUrl, receiveChartFile } from '@/lib/chartInbox';
@@ -267,6 +268,7 @@ export default function App() {
   // "Signing out…" shows. No sign-in form and no auth callback, so nobody signs in while a sync
   // pass for the account that left may still be running (it would go on as the new account).
   const signingOut = useSigningOut();
+  useForgetSignOutFailed(!authLoading && !isAuthenticated); // signed out after a wipe that threw: nothing to say (signOutNotice.ts)
   if (signingOut) {
     return <SigningOutScreen />;
   }
