@@ -19,6 +19,11 @@
 -- key, and the leader's messages carry the version, so a member's app knows
 -- when its key is out of date. Apps fetch the keys from here first and use
 -- their copy only offline, and drop it when the server says no.
+--
+-- Until that new pair is made the gig is "pending": members are told the
+-- version with no public key, and refuse band-key states (anyone with the
+-- band key can make one) until the new key arrives, instead of taking the
+-- gig for one that never had a pair.
 
 ALTER TABLE public.stage_keys
   ADD COLUMN IF NOT EXISTS sign_public text,
@@ -49,8 +54,9 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.bw_stage_admin_band(uuid) FROM PUBLIC, anon, authenticated;
 
 -- Members: the gig's public key (base64, 65 raw bytes) and its version, as
--- {public, version}, or NULL before an admin made the pair (or for a gig the
--- caller can't see).
+-- {public, version}; {public: null, version} after a rotation, until an
+-- admin makes the new pair ("pending"); NULL before any pair was made at
+-- all (or for a gig the caller can't see).
 DROP FUNCTION IF EXISTS public.bw_stage_verify_key(uuid);
 CREATE FUNCTION public.bw_stage_verify_key(p_event_id uuid)
 RETURNS jsonb
@@ -71,9 +77,10 @@ BEGIN
     RETURN NULL;
   END IF;
   SELECT s.sign_public, s.sign_version INTO k, ver FROM public.stage_keys s WHERE s.event_id = p_event_id;
-  IF k IS NULL THEN
+  IF ver IS NULL OR (k IS NULL AND ver <= 1) THEN
     RETURN NULL;
   END IF;
+  -- k NULL past version 1: rotated, the new pair not made yet ("pending").
   RETURN jsonb_build_object('public', k, 'version', ver);
 END;
 $$;
@@ -110,7 +117,11 @@ GRANT EXECUTE ON FUNCTION public.bw_stage_signer(uuid) TO authenticated;
 
 -- Admins: store a new key pair for the gig; the first stored pair wins, and
 -- the stored one is returned (so two admins starting together agree).
-CREATE OR REPLACE FUNCTION public.bw_stage_set_signer(p_event_id uuid, p_public text, p_private text)
+-- p_replace_public: an admin app whose stored pair doesn't work (its private
+-- key doesn't sign for its public one) replaces it by naming that public
+-- key; the version goes up, so members drop the broken one.
+DROP FUNCTION IF EXISTS public.bw_stage_set_signer(uuid, text, text);
+CREATE OR REPLACE FUNCTION public.bw_stage_set_signer(p_event_id uuid, p_public text, p_private text, p_replace_public text DEFAULT NULL)
 RETURNS jsonb
 LANGUAGE plpgsql
 VOLATILE SECURITY DEFINER
@@ -158,20 +169,24 @@ BEGIN
   -- The row (and the band key) are made on first use.
   PERFORM public.bw_stage_key(p_event_id);
   UPDATE public.stage_keys
-     SET sign_public = p_public, sign_private = p_private
-   WHERE event_id = p_event_id AND sign_public IS NULL;
+     SET sign_public = p_public, sign_private = p_private,
+         sign_version = sign_version + CASE WHEN sign_public IS NULL THEN 0 ELSE 1 END
+   WHERE event_id = p_event_id
+     AND (sign_public IS NULL OR (p_replace_public IS NOT NULL AND sign_public = p_replace_public));
   SELECT s.sign_public, s.sign_private, s.sign_version INTO pub, priv, ver FROM public.stage_keys s WHERE s.event_id = p_event_id;
   RETURN jsonb_build_object('public', pub, 'private', priv, 'version', ver);
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.bw_stage_set_signer(uuid, text, text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.bw_stage_set_signer(uuid, text, text) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.bw_stage_set_signer(uuid, text, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_stage_set_signer(uuid, text, text, text) TO authenticated;
 
 -- An admin stops being one (demoted, inactive, removed, moved): the band's
--- gig pairs are cleared and their version goes up. Their phone may keep the
--- old private key, but members with the new public key (and the new
--- version) refuse what it signs.
+-- gig pairs are cleared and their version goes up, also where the pair is
+-- still empty (a pair being made meanwhile is then made for the new version,
+-- see the lock in bw_stage_set_signer). Their phone may keep the old private
+-- key, but members with the new public key (and the new version) refuse
+-- what it signs, and until then refuse band-key states ("pending").
 CREATE OR REPLACE FUNCTION public.bw_stage_rotate_signer()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -188,7 +203,7 @@ BEGIN
     UPDATE public.stage_keys s
        SET sign_public = NULL, sign_private = NULL, sign_version = s.sign_version + 1
       FROM public.events e
-     WHERE e.id = s.event_id AND e.band_id = OLD.band_id AND s.sign_public IS NOT NULL;
+     WHERE e.id = s.event_id AND e.band_id = OLD.band_id;
   END IF;
   RETURN NULL;
 END;
@@ -200,3 +215,24 @@ DROP TRIGGER IF EXISTS bw_stage_rotate_signer ON public.band_members;
 CREATE TRIGGER bw_stage_rotate_signer
   AFTER UPDATE OF role, is_active, band_id, user_id OR DELETE ON public.band_members
   FOR EACH ROW EXECUTE FUNCTION public.bw_stage_rotate_signer();
+
+-- 178 (date on hold) hides a tentative quote from every member, lineup
+-- included, through bw_can_view_event; spelled out here too, as in the stage
+-- key and topic (191), when 178 is in (it comes first in the release order).
+DO $$
+DECLARE
+  def text;
+BEGIN
+  IF to_regprocedure('public.bw_event_quote_hidden(uuid, uuid)') IS NULL THEN
+    RETURN;
+  END IF;
+  def := pg_get_functiondef('public.bw_stage_verify_key(uuid)'::regprocedure);
+  IF position('bw_event_quote_hidden' IN def) > 0 THEN
+    RETURN;
+  END IF;
+  IF position('OR NOT public.bw_can_view_event(p_event_id) THEN' IN def) = 0 THEN
+    RAISE EXCEPTION 'bw_stage_verify_key is not the expected body';
+  END IF;
+  EXECUTE replace(def, 'OR NOT public.bw_can_view_event(p_event_id) THEN',
+    'OR NOT public.bw_can_view_event(p_event_id) OR public.bw_event_quote_hidden(p_event_id) THEN');
+END $$;

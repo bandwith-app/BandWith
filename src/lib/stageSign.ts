@@ -53,6 +53,12 @@ export interface StageVerifyKey {
   version: number;
 }
 
+/**
+ * The server's answer for a gig's public key: the key, or "pending" (rotated,
+ * the new pair not made yet: the version with no key, migration 190).
+ */
+export type StageVerifyAnswer = StageVerifyKey | { public: null; version: number };
+
 /** A new key pair for a gig (the first admin who needs one makes it; the server keeps the first). */
 export async function generateSigner(): Promise<StageKeyPair> {
   const pair = await crypto.subtle.generateKey(ALG, true, ['sign', 'verify']);

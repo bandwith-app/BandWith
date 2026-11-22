@@ -10,7 +10,7 @@
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 import { supabase, isDemoMode } from './supabase';
 import { removeAllPackFiles } from './livePackFiles';
-import { generateSigner, isPublicKey, type StageSigner, type StageVerifyKey } from './stageSign';
+import { generateSigner, isPublicKey, pairMatches, type StageSigner, type StageVerifyAnswer } from './stageSign';
 
 export type StageBleState = 'on' | 'off' | 'unauthorized' | 'unsupported' | 'unknown';
 
@@ -127,10 +127,13 @@ const asSigner = (v: unknown): StageSigner | null => {
     ? { public: o.public, private: o.private, version }
     : null;
 };
-const asVerify = (v: unknown): StageVerifyKey | null => {
+const asVerify = (v: unknown): StageVerifyAnswer | null => {
   const o = v as { public?: unknown; version?: unknown } | null;
   const version = asVersion(o?.version);
-  return o && isPublicKey(o.public) && version ? { public: o.public, version } : null;
+  if (!o || !version) return null;
+  if (isPublicKey(o.public)) return { public: o.public, version };
+  // Rotated, no new pair yet ("pending"): only past the first version.
+  return o.public === null && version > 1 ? { public: null, version } : null;
 };
 const kept = <T>(k: string, as: (v: unknown) => T | null): T | null => {
   try {
@@ -185,12 +188,22 @@ export async function stageSigner(eventId: string): Promise<StageSigner | null> 
   if (!stillOurs(tag)) return null;
   if (data === OFFLINE) return kept(key, asSigner);
   let signer = asSigner(data);
-  if (!signer) {
+  // None yet, or a stored one that doesn't work (its private key doesn't sign
+  // for its public one): make one; a broken one is replaced by naming it.
+  const broken = signer && !(await pairMatches(signer)) ? signer.public : null;
+  if (!signer || broken) {
     const fresh = await generateSigner();
-    data = await ask('bw_stage_set_signer', { p_event_id: eventId, p_public: fresh.public, p_private: fresh.private });
+    data = await ask('bw_stage_set_signer', {
+      p_event_id: eventId,
+      p_public: fresh.public,
+      p_private: fresh.private,
+      ...(broken ? { p_replace_public: broken } : {}),
+    });
     if (!stillOurs(tag)) return null;
-    if (data === OFFLINE) return kept(key, asSigner);
+    if (data === OFFLINE) return broken ? null : kept(key, asSigner);
     signer = asSigner(data);
+    // Still the broken one (someone else's call won meanwhile with it): not used.
+    if (signer && broken && signer.public === broken) signer = null;
   }
   if (!signer) {
     // Not an admin of the gig's band (any more): no private key stays on the phone.
@@ -207,7 +220,7 @@ export async function stageSigner(eventId: string): Promise<StageSigner | null> 
  * signature: fetched first, the kept copy offline. Null before any admin
  * made the pair (or for a gig the server no longer shows this account).
  */
-export async function stageVerifyKey(eventId: string): Promise<StageVerifyKey | null> {
+export async function stageVerifyKey(eventId: string): Promise<StageVerifyAnswer | null> {
   const key = VERIFY_PREFIX + eventId;
   const tag = tagFetch();
   const data = await ask('bw_stage_verify_key', { p_event_id: eventId });

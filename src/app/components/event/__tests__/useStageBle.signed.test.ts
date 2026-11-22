@@ -52,9 +52,9 @@ const air = vi.hoisted(() => ({
   connected: new Set<string>(),
   reads: [] as string[],
   /** The server's answer for the public key (what stageVerifyKey returns: the kept copy when offline). */
-  verify: null as { public: string; version: number } | null,
+  verify: null as { public: string | null; version: number } | null,
   /** The copy kept on the phone (what Stage starts with). */
-  kept: null as { public: string; version: number } | null,
+  kept: null as { public: string | null; version: number } | null,
   signer: null as { private: string; public: string; version: number } | null,
   started: [] as Record<string, unknown>[],
   updates: [] as { value: string; notify: string }[],
@@ -486,6 +486,63 @@ describe('useStageBle: the pair rotated after an admin stopped being one (Codex 
 describe('useStageBle: keys that change while Stage is open (Codex + Claude on #288)', () => {
   const leader = () => renderHook(() => useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: true, onState: () => {} }));
   const online = () => window.dispatchEvent(new Event('online'));
+
+  it('rotated, no new pair yet ("pending"): a band-key phone is refused, and the line says the band changed who can lead (Codex on #288, rule C)', async () => {
+    air.verify = { public: null, version: 2 };
+    air.kept = air.verify;
+    put('old-admin', 'old', lead('x', 9, 'c3'));
+    const { onState, hook } = member();
+    await waitFor(() => expect(air.connects).toContain('old-admin'));
+    await waitFor(() => expect(hook.result.current.status).toBe('stale-key'));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(onState).not.toHaveBeenCalled();
+    hook.unmount();
+  });
+
+  it('pending, then the new key arrives (online): the member follows the signed leader right away (Codex on #288, rule C)', async () => {
+    const next = await generateSigner();
+    air.verify = { public: null, version: 2 };
+    air.kept = air.verify;
+    put('admin', 'new', lead('a', 9, 'c3'), next, 2);
+    const { onState, hook } = member();
+    await waitFor(() => expect(hook.result.current.status).toBe('stale-key'));
+    expect(onState).not.toHaveBeenCalled();
+    air.verify = { public: next.public, version: 2 };
+    online();
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a', seq: 9 }), true), { timeout: 8000 });
+    hook.unmount();
+  }, 20_000);
+
+  it('a refresh that comes back with nothing keeps the key this phone checked with: still following signed, a band-key phone still refused (Codex on #288, rule C)', async () => {
+    put('admin', 'new', lead('a', 9, 'c3'), admins);
+    const { onState, hook } = member();
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a' }), true));
+    air.verify = null;
+    online();
+    await vi.advanceTimersByTimeAsync(6000);
+    // Not relinked to read the band-key state ("not verified"): the key it had still checks.
+    expect(air.reads.filter((r) => r.endsWith(':b7d50001'))).toHaveLength(0);
+    expect(hook.result.current.status).toBe('connected');
+    put('member-x', 'old', lead('x', 99, 'b2'));
+    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 5000);
+    expect(onState).not.toHaveBeenCalledWith(expect.objectContaining({ from: 'x' }));
+    expect(onState).not.toHaveBeenCalledWith(expect.anything(), false);
+    hook.unmount();
+  }, 20_000);
+
+  it('a refused band-key phone is tried again less and less often, at most once a minute (Claude on #288)', async () => {
+    air.verify = { public: null, version: 2 };
+    air.kept = air.verify;
+    put('old-admin', 'old', lead('x', 9, 'c3'));
+    const { hook } = member();
+    await waitFor(() => expect(air.connects).toContain('old-admin'));
+    for (let i = 0; i < 10; i++) await vi.advanceTimersByTimeAsync(30_000);
+    // 5 minutes: 30 s each time would be 10 tries; doubling to a minute, about 6.
+    const tries = air.connects.filter((c) => c === 'old-admin').length;
+    expect(tries).toBeLessThanOrEqual(7);
+    expect(tries).toBeGreaterThanOrEqual(3);
+    hook.unmount();
+  }, 30_000);
 
   it('linked offline with no public key: once the key arrives (online), the member moves to the signed state', async () => {
     air.verify = null;

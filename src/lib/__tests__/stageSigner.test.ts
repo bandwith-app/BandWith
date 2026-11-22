@@ -16,6 +16,10 @@ const db = vi.hoisted(() => ({
   /** The network hangs (a venue with one bar): calls never answer. */
   hang: false,
   version: 1,
+  /** Rotated, the new pair not made yet: members are told the version with no key (rule C). */
+  pending: false,
+  /** What bw_stage_set_signer was asked to replace. */
+  replaced: [] as Array<string | undefined>,
   /** Calls wait for this (an answer still on its way). */
   gate: null as Promise<void> | null,
 }));
@@ -29,10 +33,18 @@ vi.mock('../supabase', () => ({
       if (db.hang) return new Promise(() => {});
       if (db.gate) await db.gate;
       const withVersion = (p: object | null) => (p ? { ...p, version: db.version } : null);
-      if (fn === 'bw_stage_verify_key') return { data: db.pair ? { public: db.pair.public, version: db.version } : null, error: null };
+      if (fn === 'bw_stage_verify_key') {
+        if (db.pending) return { data: { public: null, version: db.version }, error: null };
+        return { data: db.pair ? { public: db.pair.public, version: db.version } : null, error: null };
+      }
       if (fn === 'bw_stage_signer') return { data: db.admin ? withVersion(db.pair) : null, error: null };
       if (fn === 'bw_stage_set_signer') {
         if (!db.admin) return { data: null, error: null };
+        db.replaced.push(args.p_replace_public);
+        if (db.pair && args.p_replace_public === db.pair.public) {
+          db.pair = { public: args.p_public, private: args.p_private };
+          db.version++;
+        }
         db.pair ??= { public: args.p_public, private: args.p_private };
         return { data: withVersion(db.pair), error: null };
       }
@@ -56,6 +68,8 @@ beforeEach(() => {
   db.offline = false;
   db.hang = false;
   db.version = 1;
+  db.pending = false;
+  db.replaced = [];
   db.gate = null;
   native.setStageCacheUser('u1');
 });
@@ -164,5 +178,25 @@ describe('stageSigner / stageVerifyKey (migration 190)', () => {
       db.gate = null;
       native.setStageCacheUser('u1');
     }
+  });
+  it("a stored pair whose private key doesn't sign for its public one is replaced by naming it, and the new pair (new version) is used (Claude on #288)", async () => {
+    const a = await generateSigner();
+    const b = await generateSigner();
+    db.pair = { public: a.public, private: b.private };
+    const signer = await stageSigner('gig-1');
+    expect(db.replaced).toContain(a.public);
+    expect(signer?.public).not.toBe(a.public);
+    expect(signer?.version).toBe(2);
+    const probe = new TextEncoder().encode('x');
+    expect(await verifyBytes(signer!.public, probe, await signBytes(signer!.private, probe))).toBe(true);
+  });
+
+  it('after a rotation with no new pair yet, members are told "pending" (the version, no key), and it is kept for offline (rule C)', async () => {
+    db.pending = true;
+    db.version = 3;
+    expect(await stageVerifyKey('gig-1')).toEqual({ public: null, version: 3 });
+    db.offline = true;
+    expect(await stageVerifyKey('gig-1')).toEqual({ public: null, version: 3 });
+    expect(native.keptVerifyKey('gig-1')).toEqual({ public: null, version: 3 });
   });
 });

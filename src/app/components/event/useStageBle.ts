@@ -25,7 +25,7 @@ import {
 } from '@/lib/stageBleSync';
 import { bestSample, clockSample, nowMs, type ClockSample, type PeerClock } from '@/lib/stageClick';
 import { isNewer, seqPlausible, type StageLiveState } from '@/lib/stageLive';
-import { pairMatches, type StageSigner, type StageVerifyKey } from '@/lib/stageSign';
+import { pairMatches, type StageSigner, type StageVerifyAnswer, type StageVerifyKey } from '@/lib/stageSign';
 import { bleProblem, type StageBleStatus } from '@/lib/stageBleNotice';
 
 export type { StageBleStatus };
@@ -87,6 +87,9 @@ const AUTH_FAILS_MAX = 3;
 const AUTH_FAIL_WINDOW_MS = 10_000;
 /** A band-key phone refused once the admins signed is skipped this long. */
 const REFUSED_SKIP_MS = 30_000;
+/** Skips double for each refusal in a row (REFUSED_SKIP_MS, STALE_RETRY_MS), up to this. */
+const SKIP_MAX_MS = 60_000;
+const backoff = (base: number, streak: number) => Math.min(base * 2 ** streak, SKIP_MAX_MS);
 /** A leader signing with a newer pair than this phone's: tried again this often (the key is asked for each time). */
 const STALE_RETRY_MS = 5_000;
 /** The public key is asked for again at most this often (a newer pair seen on a phone in range). */
@@ -382,13 +385,44 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     let key = '';
     /** The gig's public key and its version (null: none made yet when this phone was online). */
     let verify: StageVerifyKey | null = null;
+    /**
+     * Rotated, the new pair not made yet (migration 190): its version, until
+     * the new key arrives. Band-key states are refused meanwhile, and signed
+     * ones can't be checked (rule C): never taken for a gig with no pair.
+     */
+    let pending: number | null = null;
+    /** Phones skipped for a key reason (refused band-key, a newer pair): tried again at once when the key changes. */
+    const keySkips = new Set<string>();
+    let refusedStreak = 0;
+    let staleStreak = 0;
+    /** An answer for the key: a key, "pending", or nothing (offline with no copy, or a no): nothing keeps what this phone had. */
+    const take = (answer: StageVerifyAnswer | null) => {
+      if (!answer) return;
+      const before = `${verify?.public ?? ''}|${verify?.version ?? ''}|${pending ?? ''}`;
+      if (answer.public === null) {
+        // Older than the key this phone checks with: nothing new.
+        if (!verify || verify.version < answer.version) {
+          verify = null;
+          pending = answer.version;
+        }
+      } else if (!verify || answer.version >= verify.version) {
+        verify = answer;
+        if (pending !== null && answer.version >= pending) pending = null;
+      }
+      if (before === `${verify?.public ?? ''}|${verify?.version ?? ''}|${pending ?? ''}`) return;
+      // Another key: the phones skipped for the old one are tried again now.
+      for (const id of keySkips) distrusted.delete(id);
+      keySkips.clear();
+      refusedStreak = 0;
+      staleStreak = 0;
+    };
     let verifyAskedAt = -Infinity;
     /** The server's public key (online), or the kept copy (offline); `force`: even if asked lately. */
     const refreshVerify = async (force = false) => {
       if (!force && nowMs() - verifyAskedAt < VERIFY_REFRESH_MS) return;
       verifyAskedAt = nowMs();
       const fresh = await stageVerifyKey(gig);
-      if (!cancelled) verify = fresh;
+      if (!cancelled) take(fresh);
     };
     /** The leader signs with a newer pair than this phone has: it needs one trip online. */
     let staleKey = false;
@@ -558,8 +592,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       return result;
     };
 
-    /** Band-key states are refused: this phone can check signatures and saw the admins sign lately. */
-    const legacyRefused = () => !!verify && Date.now() - (signedSeen.get(gig) ?? -Infinity) < SIGNED_TRUST_MS;
+    /** Band-key states are refused: a rotation's key is pending, or this phone can check signatures and saw the admins sign lately. */
+    const legacyRefused = () => pending !== null || (!!verify && Date.now() - (signedSeen.get(gig) ?? -Infinity) < SIGNED_TRUST_MS);
 
     /** Leave the linked phone (its goodbye is ignored), skip it for `skipMs`, and search again. */
     const dropLink = (id: string, skipMs: number) => {
@@ -571,8 +605,18 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       clearTimeout(checkTimer);
       stopSync();
       void BleClient.disconnect(id).catch(() => {});
-      setStatus('searching');
+      setStatus(staleKey ? 'stale-key' : 'searching');
       later();
+    };
+
+    /** A band-key phone refused: skipped longer each time in a row; pending, the line asks for one trip online and the key is asked for. */
+    const refuse = (id: string) => {
+      if (pending !== null) {
+        staleKey = true;
+        void refreshVerify();
+      }
+      keySkips.add(id);
+      dropLink(id, backoff(REFUSED_SKIP_MS, refusedStreak++));
     };
 
     /**
@@ -619,8 +663,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           }
           // Offline: say so plainly, and try this phone again shortly.
           staleKey = true;
-          dropLink(id, STALE_RETRY_MS);
-          setStatus('stale-key');
+          keySkips.add(id);
+          dropLink(id, backoff(STALE_RETRY_MS, staleStreak++));
           return;
         }
         if (!result.ok && result.reason === 'auth') {
@@ -643,7 +687,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         }
         // A band-key state once the admins signed: not followed (see SIGNED_TRUST_MS).
         if (!signedLink && legacyRefused()) {
-          dropLink(id, REFUSED_SKIP_MS);
+          refuse(id);
           return;
         }
         // "Here, leading nothing": the link is fine, there's nothing to follow (nor a setlist to ask for).
@@ -668,6 +712,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         if (result.ok) {
           authFails = [];
           staleKey = false;
+          refusedStreak = 0;
+          staleStreak = 0;
           if (!linkState || isNewer(result.state, linkState)) linkState = result.state;
           setStatus(linkedStatus());
           if (result.state.from !== leaderFrom) {
@@ -796,7 +842,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       const next = best && (bestRank > ours || (bestRank === ours && isNewer(best.heard, linkHeard))) ? best.id : null;
       if (!next && ours < 0) {
         // Linked to a band-key phone once the admins signed, and no one better: leave it.
-        dropLink(current, REFUSED_SKIP_MS);
+        refuse(current);
         return;
       }
       if (next) {
@@ -919,7 +965,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
               : 'old';
           // Once the admins signed, a band-key phone isn't followed (see SIGNED_TRUST_MS).
           if (!signedLink && legacyRefused()) {
-            dropLink(id, REFUSED_SKIP_MS);
+            refuse(id);
             return;
           }
           // Only a change notice (the 4-byte seq) reads: on iOS the plugin also
@@ -955,7 +1001,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       key = k;
       if (!verify) {
         // The kept copy at once (offline on stage), the server's meanwhile (a rotated pair).
-        verify = keptVerifyKey(gig);
+        take(keptVerifyKey(gig));
         if (verify) void refreshVerify(true);
         else await refreshVerify(true);
       }
@@ -1024,8 +1070,13 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       const before = verify;
       await refreshVerify(true);
       const id = deviceId;
-      if (cancelled || !id || !key) return;
+      if (cancelled || !key) return;
       if ((before?.public ?? null) === (verify?.public ?? null) && (before?.version ?? null) === (verify?.version ?? null)) return;
+      // Not linked (a phone skipped for the old key): the search tries it again now (take cleared the skip).
+      if (!id) {
+        later();
+        return;
+      }
       link++;
       setDevice(null);
       linkState = null;
