@@ -4459,7 +4459,8 @@ export default function AuthenticatedApp() {
                 setShowRehearsalPollModal(false);
                 setPollModalInitialProposal(null);
               }}
-              bandId={realBand.id}
+              // A proposal opened from a notification may be another band's (audit 05 #1).
+              bandId={pollModalInitialProposal?.band_id || realBand.id}
               adminId={user.id}
               initialProposal={pollModalInitialProposal}
               onSuccess={() => {

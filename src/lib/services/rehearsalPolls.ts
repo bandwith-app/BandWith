@@ -68,6 +68,12 @@ export interface RehearsalPoll {
   /** 098: members asked to vote (empty = everyone) and the vote-by time. */
   invited_user_ids?: string[] | null;
   vote_by_time?: string | null;
+  /**
+   * When voting closes, as the database enforces it (creator's time zone,
+   * bw_poll_vote_deadlines, 195): an absolute ISO time, null without a
+   * deadline, undefined when not loaded (older database).
+   */
+  vote_deadline?: string | null;
   /** 102: members who answered "None of these work", with their profile. */
   unavailable?: { user_id: string; profile?: RehearsalPollVote['profile'] }[];
   /** The viewer answered "None of these work" (102). */
@@ -147,10 +153,19 @@ export async function getPollCosts(
 }
 
 /**
- * When voting closes (117): vote_by at vote_by_time (end of that day without
- * a time), in this device's time zone. Null when the poll has no deadline.
+ * When voting closes (117): the database's own deadline when loaded
+ * (vote_deadline, 195: vote_by at vote_by_time in the creator's time zone,
+ * audit 05 #11), else vote_by at vote_by_time (end of that day without a
+ * time) in this device's time zone. Null when the poll has no deadline.
  */
-export const pollVoteDeadline = (poll: { vote_by?: string | null; vote_by_time?: string | null } | null | undefined): Date | null => {
+export const pollVoteDeadline = (
+  poll: { vote_by?: string | null; vote_by_time?: string | null; vote_deadline?: string | null } | null | undefined,
+): Date | null => {
+  if (poll && poll.vote_deadline !== undefined) {
+    if (poll.vote_deadline === null) return null;
+    const at = new Date(poll.vote_deadline);
+    if (!isNaN(at.getTime())) return at;
+  }
   const day = String(poll?.vote_by || '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
   const time = String(poll?.vote_by_time || '').slice(0, 5);
@@ -160,12 +175,37 @@ export const pollVoteDeadline = (poll: { vote_by?: string | null; vote_by_time?:
 
 /** The vote-by deadline has passed: votes can no longer change (117). */
 export const isPollVotingClosed = (
-  poll: { vote_by?: string | null; vote_by_time?: string | null } | null | undefined,
+  poll: { vote_by?: string | null; vote_by_time?: string | null; vote_deadline?: string | null } | null | undefined,
   now: Date = new Date(),
 ): boolean => {
   const deadline = pollVoteDeadline(poll);
   return !!deadline && now.getTime() > deadline.getTime();
 };
+
+/**
+ * The deadline each poll's votes are checked against on the server (195).
+ * Empty map on an older database or a failed request: the app then reads
+ * vote_by / vote_by_time itself, as before.
+ */
+export async function getPollVoteDeadlines(pollIds: string[]): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  const ids = [...new Set(pollIds.filter(Boolean))];
+  if (ids.length === 0) return out;
+  try {
+    const res = await supabase.rpc('bw_poll_vote_deadlines', { p_poll_ids: ids });
+    const { data, error } = res ?? { data: null, error: null };
+    if (error) {
+      if (!isMissingRpc(error)) console.warn('Failed to load the poll deadlines:', error);
+      return out;
+    }
+    for (const r of (Array.isArray(data) ? data : []) as { poll_id: string; vote_deadline: string | null }[]) {
+      out.set(r.poll_id, r.vote_deadline ?? null);
+    }
+  } catch (err) {
+    console.warn('Failed to load the poll deadlines:', err);
+  }
+  return out;
+}
 
 /** Table for "None of these work" answers (migration 102). */
 const UNAVAILABLE_TABLE = 'rehearsal_poll_unavailable';
@@ -363,6 +403,13 @@ export const createMemberRehearsalProposal = async ({
   }
 };
 
+/** Another admin published (or declined) this proposal while the form was open. */
+export const POLL_ALREADY_PUBLISHED = 'poll_already_published';
+const alreadyPublishedError = () =>
+  Object.assign(new Error(t('Another admin already turned this proposal into a poll. Close and reopen it to see the votes.')), {
+    code: POLL_ALREADY_PUBLISHED,
+  });
+
 /**
  * 3. Admin creates a new poll or converts an existing member proposal into a poll.
  * Bulk-inserts candidate time slots into `rehearsal_poll_options`.
@@ -414,27 +461,53 @@ export const createOrPublishAdminPoll = async ({
       ...(voteByTime !== undefined ? { vote_by_time: voteBy && voteByTime ? voteByTime : null } : {}),
     };
 
+    /** The band whose members are told: a proposal's own band, never the selected one (audit 05 #1). */
+    let notifyBandId = bandId;
+    /** Options already saved with the poll (one-step publish). */
+    let optionsSaved = false;
+
     if (pollId) {
-      // Converting an existing proposal: update status to polling
-      const { data: updated, error: updateError } = await supabase
-        .from('rehearsal_polls')
-        .update({
-          title: title.trim() || 'Rehearsal Availability Poll',
-          notes: notes?.trim() || null,
-          status: 'polling',
-          updated_at: new Date().toISOString(),
-          ...(voteBy !== undefined ? { vote_by: voteBy || null } : {}),
-          ...details,
-        })
-        .eq('id', pollId)
-        .select('id')
-        .single();
+      // Converting a member's proposal: one transaction, only while it is
+      // still a proposal, so a second admin's stale form never deletes the
+      // options members voted on (195, audit 05 #8).
+      const fields = {
+        title: title.trim() || 'Rehearsal Availability Poll',
+        notes: notes?.trim() || null,
+        ...(voteBy !== undefined ? { vote_by: voteBy || null } : {}),
+        ...details,
+      };
+      const res = await supabase.rpc('bw_publish_rehearsal_proposal', {
+        p_poll_id: pollId,
+        p_fields: fields,
+        p_options: timeSlots.map((slot) => ({
+          proposed_date: slot.proposed_date,
+          start_time: slot.start_time,
+          end_time: slot.end_time || null,
+        })),
+      });
+      if (res?.error && !isMissingRpc(res.error)) throw res.error;
+      if (!res?.error) {
+        const out = (res?.data ?? {}) as { published?: boolean; band_id?: string };
+        if (out.published === false) throw alreadyPublishedError();
+        if (out.band_id) notifyBandId = out.band_id;
+        optionsSaved = true;
+      } else {
+        // Database before 195: the step-by-step publish, still only while it is a proposal.
+        const { data: updated, error: updateError } = await supabase
+          .from('rehearsal_polls')
+          .update({ ...fields, status: 'polling', updated_at: new Date().toISOString() })
+          .eq('id', pollId)
+          .eq('status', 'proposed')
+          .select('id, band_id');
+        if (updateError) throw updateError;
+        const row = (Array.isArray(updated) ? updated[0] : updated) as { id: string; band_id?: string } | undefined;
+        if (!row) throw alreadyPublishedError();
+        if (row.band_id) notifyBandId = row.band_id;
 
-      if (updateError) throw updateError;
-      activePollId = updated.id;
-
-      // Clean up previous options if any
-      await supabase.from('rehearsal_poll_options').delete().eq('poll_id', pollId);
+        // Clean up the proposal's own suggestions (nobody votes on a proposal).
+        await supabase.from('rehearsal_poll_options').delete().eq('poll_id', pollId);
+      }
+      activePollId = pollId;
     } else {
       // Brand new poll from admin
       const { data: created, error: createError } = await supabase
@@ -458,27 +531,29 @@ export const createOrPublishAdminPoll = async ({
 
     if (!activePollId) throw new Error('Failed to resolve poll ID');
 
-    // Bulk insert options
-    const optionsPayload = timeSlots.map((slot) => ({
-      poll_id: activePollId,
-      proposed_date: slot.proposed_date,
-      start_time: slot.start_time,
-      end_time: slot.end_time || null,
-    }));
+    if (!optionsSaved) {
+      // Bulk insert options
+      const optionsPayload = timeSlots.map((slot) => ({
+        poll_id: activePollId,
+        proposed_date: slot.proposed_date,
+        start_time: slot.start_time,
+        end_time: slot.end_time || null,
+      }));
 
-    const { data: insertedOptions, error: optionsError } = await supabase
-      .from('rehearsal_poll_options')
-      .insert(optionsPayload)
-      .select();
+      const { error: optionsError } = await supabase
+        .from('rehearsal_poll_options')
+        .insert(optionsPayload)
+        .select();
 
-    if (optionsError) throw optionsError;
+      if (optionsError) throw optionsError;
+    }
 
     // Notify all active band members
     try {
       const { data: members } = await supabase
         .from('band_members')
         .select('user_id')
-        .eq('band_id', bandId)
+        .eq('band_id', notifyBandId)
         .eq('is_active', true);
 
       if (members && members.length > 0) {
@@ -492,13 +567,13 @@ export const createOrPublishAdminPoll = async ({
 
         const notifPayload = uniqueMemberIds.map((memberId: string) => ({
           user_id: memberId,
-          band_id: bandId,
+          band_id: notifyBandId,
           type: 'rehearsal_poll' as const,
           title: 'Vote on Rehearsal Times',
           body: `New availability poll: "${title}". Tap to select your available dates!`,
           data: {
             poll_id: activePollId,
-            band_id: bandId,
+            band_id: notifyBandId,
             type: 'rehearsal_poll',
           },
         }));
@@ -1042,8 +1117,9 @@ export const getRehearsalPolls = async (
 
     const totalMembers = memberCount || 1;
 
-    // 5b. Room cost: the share for everyone, the total for admins (114).
-    const costs = await getPollCosts(polls, totalMembers);
+    // 5b. Room cost: the share for everyone, the total for admins (114),
+    // and when voting closes as the server enforces it (195).
+    const [costs, deadlines] = await Promise.all([getPollCosts(polls, totalMembers), getPollVoteDeadlines(pollIds)]);
 
     // 6. Map options and votes into polls
     const enrichedPolls: RehearsalPoll[] = polls.map((poll) => {
@@ -1076,6 +1152,7 @@ export const getRehearsalPolls = async (
         ...poll,
         room_cost: cost?.room_cost ?? null,
         room_cost_share: cost?.cost_share ?? null,
+        ...(deadlines.has(poll.id) ? { vote_deadline: deadlines.get(poll.id) ?? null } : {}),
         options: enrichedOptions,
         unavailable: pollUnavailable,
         declined_all: !!userId && pollUnavailable.some((u) => u.user_id === userId),

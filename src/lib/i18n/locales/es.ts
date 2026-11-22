@@ -3827,6 +3827,7 @@ const dict: Dictionary = {
   "{title} setlist": "Setlist {title}",
   "Event setlist": "Setlist del evento",
   "This poll was already locked in or closed.": "Esta encuesta ya se confirmó o se cerró.",
+  "Another admin already turned this proposal into a poll. Close and reopen it to see the votes.": "Otro admin ya convirtió esta propuesta en una encuesta. Cierra y vuelve a abrir para ver los votos.",
   "{answered} of {total} answered": "{answered} de {total} han respondido",
   "Your votes were cleared.": "Se borraron tus votos.",
   "No date works for {names}": "Ninguna fecha le va bien a {names}",
