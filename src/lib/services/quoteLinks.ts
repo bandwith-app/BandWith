@@ -38,6 +38,8 @@ export type QuoteMessageKind = 'sent' | 'reminder' | 'updated';
 export type QuoteChannel = 'whatsapp' | 'sms' | 'email' | 'copy' | 'share';
 
 export interface QuoteLinkRow {
+  /** 183: a new recipient gets a new link (another id and token). */
+  id?: string;
   quote_id: string;
   token: string;
   lang: Locale;
@@ -88,6 +90,8 @@ export interface QuoteActivity {
   channel: QuoteChannel | null;
   version: number | null;
   created_at: string;
+  /** 183: the link the row belongs to (a conversation line stays on its client's link). */
+  link_id?: string | null;
 }
 
 type Result<T> = { data: T | null; error: Error | null };
@@ -336,6 +340,13 @@ export function clientLinkMessage(
 export const isLinkChangedError = (e: unknown): boolean =>
   /BW_LINK_CHANGED/.test(String((e as { message?: string } | null)?.message ?? ''));
 
+/** 183: another version was published after this one went out, so the send was not recorded. */
+export const isVersionChangedError = (e: unknown): boolean =>
+  /BW_VERSION_CHANGED/.test(String((e as { message?: string } | null)?.message ?? ''));
+
+/** A database before 183 has not the new optional parameter: call again without it. */
+const missingParam = (error: unknown) => (error as { code?: string } | null)?.code === 'PGRST202';
+
 /**
  * Publish what the client sees. `token`: the link the caller read; when it
  * has been replaced since, nothing is written and the error says so
@@ -352,7 +363,7 @@ export async function publishQuoteLink(
   const args = { p_quote_id: quoteId, p_snapshot: snapshot, p_lang: lang, p_pdf_url: pdfUrl || null };
   let { data, error } = await supabase.rpc('bw_quote_link_publish', token ? { ...args, p_token: token } : args);
   // A database before 183 has no p_token: publish as before.
-  if (error && token && (error as { code?: string }).code === 'PGRST202') {
+  if (error && token && missingParam(error)) {
     ({ data, error } = await supabase.rpc('bw_quote_link_publish', args));
   }
   if (error) return { data: null, error: asError(error) };
@@ -360,13 +371,37 @@ export async function publishQuoteLink(
   return row?.token ? { data: row, error: null } : { data: null, error: new Error('No link') };
 }
 
-export async function markQuoteLinkSent(quoteId: string, kind: 'sent' | 'reminded', channel: QuoteChannel): Promise<Result<QuoteLinkStatus>> {
-  const { data, error } = await supabase.rpc('bw_quote_link_mark_sent', { p_quote_id: quoteId, p_kind: kind, p_channel: channel });
+/**
+ * Record a send. `sent`: the link (token) and the version that went out
+ * (183): when the link was replaced since, or another version published,
+ * nothing is recorded and the error says so (isLinkChangedError,
+ * isVersionChangedError).
+ */
+export async function markQuoteLinkSent(
+  quoteId: string,
+  kind: 'sent' | 'reminded',
+  channel: QuoteChannel,
+  sent?: { token?: string | null; version?: number | null },
+): Promise<Result<QuoteLinkStatus>> {
+  const args = { p_quote_id: quoteId, p_kind: kind, p_channel: channel };
+  const extra = {
+    ...(sent?.token ? { p_token: sent.token } : {}),
+    ...(typeof sent?.version === 'number' ? { p_version: sent.version } : {}),
+  };
+  let { data, error } = await supabase.rpc('bw_quote_link_mark_sent', { ...args, ...extra });
+  if (error && Object.keys(extra).length && missingParam(error)) ({ data, error } = await supabase.rpc('bw_quote_link_mark_sent', args));
   return error ? { data: null, error: asError(error) } : { data: data as QuoteLinkStatus, error: null };
 }
 
-export async function replyToQuoteClient(quoteId: string, body: string): Promise<Result<string>> {
-  const { data, error } = await supabase.rpc('bw_quote_reply', { p_quote_id: quoteId, p_body: body });
+/**
+ * The band's reply, on the link of the conversation it was written in
+ * (`token`, 183): when that link was replaced since (the quote went to
+ * another client) nothing is written and the error says so (isLinkChangedError).
+ */
+export async function replyToQuoteClient(quoteId: string, body: string, token?: string | null): Promise<Result<string>> {
+  const args = { p_quote_id: quoteId, p_body: body };
+  let { data, error } = await supabase.rpc('bw_quote_reply', token ? { ...args, p_token: token } : args);
+  if (error && token && missingParam(error)) ({ data, error } = await supabase.rpc('bw_quote_reply', args));
   return error ? { data: null, error: asError(error) } : { data: String(data), error: null };
 }
 
@@ -381,20 +416,49 @@ export async function revokeQuoteLink(quoteId: string): Promise<Result<boolean>>
 }
 
 const LINK_COLUMNS =
-  'quote_id, token, lang, status, version, version_at, pdf_url, pdf_version, sent_at, first_viewed_at, responded_at, accepted_name, accepted_version, decline_reason, revoked_at';
+  'id, quote_id, token, lang, status, version, version_at, pdf_url, pdf_version, sent_at, first_viewed_at, responded_at, accepted_name, accepted_version, decline_reason, revoked_at';
 // 168: read separately, so the quote detail keeps working before 168 is applied.
 const BALANCE_COLUMNS = 'balance, balance_version, balance_at, balance_sent_at, balance_paid_at';
 
+export interface QuoteContact {
+  client_name: string | null;
+  client_email: string | null;
+  client_phone: string | null;
+}
+
+/** 183: who the quote is for, as saved now (the share sheet never sends from an older copy). */
+export async function getQuoteContact(quoteId: string): Promise<Result<QuoteContact | null>> {
+  const { data, error } = await supabase.from('quotes').select('client_name, client_email, client_phone').eq('id', quoteId).maybeSingle();
+  return error ? { data: null, error: asError(error) } : { data: (data as QuoteContact | null) ?? null, error: null };
+}
+
+const contactKey = (name?: string | null, email?: string | null, phone?: string | null) =>
+  [
+    (name || '').trim().replace(/\s+/g, ' ').toLowerCase(),
+    (email || '').trim().toLowerCase(),
+    (phone || '').replace(/[^0-9+]/g, ''),
+  ].join('|');
+
+/**
+ * 183: the quote a screen holds is for the client saved now. The wizard
+ * saves an empty name as "Client".
+ */
+export const sameQuoteContact = (saved: QuoteContact, quote: Partial<Pick<Quote, 'clientName' | 'clientEmail' | 'clientPhone'>>) =>
+  contactKey(saved.client_name === 'Client' && !quote.clientName ? '' : saved.client_name, saved.client_email, saved.client_phone) ===
+  contactKey(quote.clientName, quote.clientEmail, quote.clientPhone);
+
 /** The link (if any) and the timeline of a quote. Admins only (RLS). */
 export async function getQuoteLinkState(quoteId: string): Promise<Result<{ link: QuoteLinkRow | null; activity: QuoteActivity[] }>> {
-  const [first, activity] = await Promise.all([
+  const activityOf = (columns: string) =>
+    supabase.from('quote_activity').select(columns).eq('quote_id', quoteId).order('created_at', { ascending: true });
+  const [first, firstActivity] = await Promise.all([
     supabase.from('quote_links').select(`${LINK_COLUMNS}, ${BALANCE_COLUMNS}`).eq('quote_id', quoteId).maybeSingle(),
-    supabase
-      .from('quote_activity')
-      .select('id, kind, body, channel, version, created_at')
-      .eq('quote_id', quoteId)
-      .order('created_at', { ascending: true }),
+    activityOf('id, kind, body, channel, version, created_at, link_id'),
   ]);
+  // Before 183 the timeline has no link_id: read it without.
+  const activity = firstActivity.error && /link_id/.test(firstActivity.error.message || '')
+    ? await activityOf('id, kind, body, channel, version, created_at')
+    : firstActivity;
   // Before 168 the balance columns don't exist: read the link without them.
   const link = first.error && /balance/.test(first.error.message || '')
     ? await supabase.from('quote_links').select(LINK_COLUMNS).eq('quote_id', quoteId).maybeSingle()
@@ -405,7 +469,7 @@ export async function getQuoteLinkState(quoteId: string): Promise<Result<{ link:
   return {
     data: {
       link: row ? { ...row, lang: isLocale(row.lang) ? row.lang : 'en' } : null,
-      activity: (activity.data || []) as QuoteActivity[],
+      activity: (activity.data || []) as unknown as QuoteActivity[],
     },
     error: null,
   };

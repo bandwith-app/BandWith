@@ -4668,7 +4668,9 @@ const dict: Dictionary = {
   "New client, new link: the old one no longer works. Send the quote to the new client.": "Nuovo cliente, nuovo link: quello vecchio non funziona più. Invia il preventivo al nuovo cliente.",
   "New link for the new client": "Nuovo link per il nuovo cliente",
   "Previous client": "Cliente precedente",
-  "The quote link changed meanwhile. Close this and open the quote again.": "Nel frattempo il link del preventivo è cambiato. Chiudi e riapri il preventivo.",
+  "This quote changed meanwhile (another client, or another admin). Close this and open the quote again.": "Nel frattempo questo preventivo è cambiato (un altro cliente o un altro admin). Chiudi e riapri il preventivo.",
+  "The quote changed meanwhile, so this send was not recorded. Close this and open the quote again.": "Nel frattempo il preventivo è cambiato, quindi questo invio non è stato registrato. Chiudi e riapri il preventivo.",
+  "This conversation was with the previous client. Your reply was not sent: open the quote again to write to the current client.": "Questa conversazione era con il cliente precedente. La tua risposta non è stata inviata: riapri il preventivo per scrivere al cliente attuale.",
 };
 
 export default dict;

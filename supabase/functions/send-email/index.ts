@@ -454,6 +454,9 @@ async function sendQuoteClientEmail(
   if (!link) throw new HttpError(404, "This quote has no client link");
   await requireBandAdmin(admin, caller.id, link.band_id);
   if (link.revoked_at) throw new HttpError(410, "The client link is turned off");
+  // 183: a link made for a new client shows nothing until their version is
+  // published on it: no email with a link that opens nothing.
+  if (!link.snapshot) return jsonResponse({ success: false, code: "not_published", error: "Publish the quote first" }, 409);
   if (link.last_emailed_at && Date.now() - new Date(link.last_emailed_at).getTime() < QUOTE_EMAIL_INTERVAL_MS) {
     return jsonResponse({ success: false, code: "too_soon", error: "An email was just sent" }, 429);
   }
@@ -470,10 +473,13 @@ async function sendQuoteClientEmail(
 
   let reply = "";
   if (kind === "reply") {
+    // 183: the last reply on this link: one written in the previous
+    // client's conversation never goes to the current client.
     const { data: last } = await admin
       .from("quote_activity")
       .select("body")
       .eq("quote_id", quoteId)
+      .eq("link_id", link.id)
       .eq("kind", "band_reply")
       .order("created_at", { ascending: false })
       .limit(1)
