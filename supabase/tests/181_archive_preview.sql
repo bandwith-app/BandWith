@@ -1,11 +1,12 @@
 -- READ ONLY (no writes): the chat_participants rows the 175 + 181 cleanups
--- would archive and remove, by reason. Run on prod before apply day; it uses
+-- would archive, by reason (round 4: archived and kept, the rule refuses
+-- them; nothing is deleted). Run on prod before apply day; it uses
 -- only tables, so it works before 175 / 181 exist. (178's own cleanup of
 -- members' rows in quote chats is not counted here.)
 WITH p AS (
   SELECT cp.chat_id, cp.user_id, c.type::text AS chat_type, c.band_id AS chat_band,
          e.id AS gig, e.band_id AS gig_band, e.created_by,
-         em.event_id IS NOT NULL AS on_lineup, coalesce(em.status, '') AS lineup_status
+         em.event_id IS NOT NULL AS on_lineup, lower(coalesce(em.status::text, '')) AS lineup_status
     FROM public.chat_participants cp
     JOIN public.chats c ON c.id = cp.chat_id
     LEFT JOIN public.events e ON e.id = c.event_id

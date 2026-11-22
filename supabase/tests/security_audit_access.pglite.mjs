@@ -254,6 +254,22 @@ if (process.env.NO_GUCI) {
   const pub = (await db.query(`SELECT has_function_privilege('public', 'public.get_user_chat_ids(uuid)', 'EXECUTE') AS p`)).rows[0].p;
   ok(pub === false, 'get_user_chat_ids: PUBLIC has no EXECUTE');
 }
+// Round 4 (#289 181:40/43): 181 refuses to run without 193, and without
+// 175's final rule (marker bw:175-r4; round 2/3 rules also say dropped_out).
+let guard181 = null;
+try { await db.exec(readFileSync(MIG181, 'utf8')); } catch (e) { guard181 = e.message; await db.exec('ROLLBACK'); }
+ok(/apply 193/.test(guard181 ?? ''), `181 refuses to run without 193's bw_open_group_chat (${guard181 ?? 'ran'})`);
+// Stand-in for 193's bw_open_group_chat (the real one replaces it with M193).
+await db.exec(`CREATE FUNCTION public.bw_open_group_chat(p_type text, p_band_id uuid DEFAULT NULL, p_event_id uuid DEFAULT NULL, p_name text DEFAULT NULL)
+  RETURNS jsonb LANGUAGE sql AS $f$ SELECT NULL::jsonb $f$`);
+const def175r4 = (await db.query(`SELECT pg_get_functiondef('public.bw_chat_scope_ok(text,uuid,uuid,uuid)'::regprocedure) AS d`)).rows[0].d;
+await db.exec(`CREATE OR REPLACE FUNCTION public.bw_chat_scope_ok(p_type text, p_band_id uuid, p_event_id uuid, p_user_id uuid)
+  RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $f$
+  SELECT p_user_id IS NOT NULL AND public.bw_is_event_participant(p_event_id, p_user_id) AND 'dropped_out' IS NOT NULL $f$`);
+guard181 = null;
+try { await db.exec(readFileSync(MIG181, 'utf8')); } catch (e) { guard181 = e.message; await db.exec('ROLLBACK'); }
+ok(/bw:175-r4/.test(guard181 ?? ''), `181 refuses an earlier round's 175 rule (no marker) (${guard181 ?? 'ran'})`);
+await db.exec(def175r4);
 await db.exec(readFileSync(MIG181, 'utf8'));
 await db.exec(readFileSync(MIG181, 'utf8'));
 ok(true, 'migrations run twice');
@@ -355,12 +371,20 @@ await db.exec(`DELETE FROM event_members WHERE event_id = '${GIG}' AND user_id =
 r = await as(MEM2, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
 ok(r.rows.length === 0, `taken off the gig: no more gig chat messages (${r.rows.length})`);
 const part = (await db.query(`SELECT 1 FROM chat_participants WHERE chat_id = '${EVCHAT}' AND user_id = '${MEM2}'`)).rows;
-ok(part.length === 0, 'taken off the gig: out of the gig chat');
+ok(part.length === 1, 'taken off the gig: row kept (round 4), the rule closes it');
 let rcpt = (await db.query(`SELECT public.bw_chat_recipient_ids('${EVCHAT}', '${ADMIN}') AS r`)).rows[0].r;
 ok(!rcpt.includes(MEM2), `taken off the gig: no push of the next message (${rcpt.length})`);
-r = await as(MEM2, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${MEM2}')`);
+r = await as(MEM2, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${MEM2}') ON CONFLICT (chat_id, user_id) DO NOTHING`);
 r = await as(MEM2, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
 ok(r.rows.length === 0, `re-adding themselves does not open it again (${r.rows.length})`);
+r = await as(MEM2, `SELECT id FROM chats WHERE id = '${EVCHAT}'`);
+ok(r.rows.length === 0, `taken off the gig: the chat row is hidden too (${r.rows.length})`);
+await db.exec(`INSERT INTO event_members VALUES ('${GIG}','${MEM2}','confirmed')`);
+r = await as(MEM2, `SELECT id FROM chats WHERE type = 'event' AND event_id = '${GIG}'`);
+ok(r.rows.length === 1 && r.rows[0].id === EVCHAT, `round 4: back on the lineup, an old build's lookup finds the same gig chat (${r.rows.length})`);
+r = await as(MEM2, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
+ok(r.rows.length === 1, `and reads it again, no second chat (${r.rows.length})`);
+await db.exec(`DELETE FROM event_members WHERE event_id = '${GIG}' AND user_id = '${MEM2}'`);
 await db.exec(`DELETE FROM chat_participants WHERE chat_id = '${EVCHAT}' AND user_id = '${MEM2}'`);
 
 await db.exec(`UPDATE event_members SET status = 'declined' WHERE event_id = '${GIG}' AND user_id = '${LINE}'`);
@@ -369,7 +393,7 @@ ok(r.rows.length === 0, `declined the gig: gig chat closed (${r.rows.length})`);
 rcpt = (await db.query(`SELECT public.bw_chat_recipient_ids('${EVCHAT}', '${ADMIN}') AS r`)).rows[0].r;
 ok(!rcpt.includes(LINE), 'declined the gig: no push');
 await db.exec(`UPDATE event_members SET status = 'confirmed' WHERE event_id = '${GIG}' AND user_id = '${LINE}'`);
-r = await as(LINE, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${LINE}')`);
+r = await as(LINE, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${LINE}') ON CONFLICT (chat_id, user_id) DO NOTHING`);
 r = await as(LINE, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
 ok(r.rows.length === 1, 'back on the gig: reads its chat again');
 r = await as(ADMIN, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
@@ -378,7 +402,10 @@ const archivedGig = (await db.query(`SELECT count(*)::int AS n FROM chat_partici
 ok(archivedGig >= 2, `removed gig chat rows archived, not lost (${archivedGig})`);
 // Round 2 (Claude #289): dropped out or removed counts as off the gig too,
 // as for the server's notices (046).
-for (const st of ['dropped_out', 'removed']) {
+// Round 4: also in mixed case ('Declined' is declined, 181:57-58).
+const arch181 = async () => (await db.query(`SELECT count(*)::int AS n FROM chat_participants_removed_175 WHERE chat_id = '${EVCHAT}' AND user_id = '${MEM2}'`)).rows[0].n;
+for (const st of ['dropped_out', 'removed', 'Declined']) {
+  const archBefore = await arch181();
   await db.exec(`INSERT INTO event_members VALUES ('${GIG}','${MEM2}','confirmed');
     INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${MEM2}') ON CONFLICT DO NOTHING`);
   r = await as(MEM2, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
@@ -387,7 +414,7 @@ for (const st of ['dropped_out', 'removed']) {
   r = await as(MEM2, `SELECT id FROM messages WHERE chat_id = '${EVCHAT}' AND content = 'load-in at 6'`);
   ok(r.rows.length === 0, `${st}: gig chat closed (${r.rows.length})`);
   const still = (await db.query(`SELECT 1 FROM chat_participants WHERE chat_id = '${EVCHAT}' AND user_id = '${MEM2}'`)).rows.length;
-  ok(still === 0, `${st}: out of the gig chat`);
+  ok(still === 1 && (await arch181()) === archBefore + 1, `${st}: row kept and archived (round 4)`);
   rcpt = (await db.query(`SELECT public.bw_chat_recipient_ids('${EVCHAT}', '${ADMIN}') AS r`)).rows[0].r;
   ok(!rcpt.includes(MEM2), `${st}: no push`);
   r = await as(MEM2, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT}','${MEM2}')`);
@@ -954,9 +981,11 @@ await db.exec(`INSERT INTO auth.users VALUES ('${R2}','r2@example.invalid'), ('$
   INSERT INTO event_members VALUES ('${GIG3}','${R2}','confirmed');
   INSERT INTO chat_participants (chat_id, user_id, cleared_at, last_read_at) VALUES ('${EVCHAT3}','${R2}','2026-11-03T09:00:00Z','2026-11-03T09:30:00Z');`);
 await db.exec(`UPDATE event_members SET status = 'dropped_out' WHERE event_id = '${GIG3}' AND user_id = '${R2}'`);
-ok((await db.query(`SELECT 1 FROM chat_participants WHERE chat_id = '${EVCHAT3}' AND user_id = '${R2}'`)).rows.length === 0, 'dropped out: out of the gig chat');
+ok((await db.query(`SELECT 1 FROM chat_participants WHERE chat_id = '${EVCHAT3}' AND user_id = '${R2}'`)).rows.length === 1, 'dropped out: row kept (round 4)');
+r = await as(R2, `SELECT id FROM messages WHERE chat_id = '${EVCHAT3}'`);
+ok(r.rows.length === 0, `dropped out: reads nothing (${r.rows.length})`);
 await db.exec(`UPDATE event_members SET status = 'confirmed' WHERE event_id = '${GIG3}' AND user_id = '${R2}'`);
-r = await as(R2, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT3}','${R2}')`);
+r = await as(R2, `INSERT INTO chat_participants (chat_id, user_id) VALUES ('${EVCHAT3}','${R2}') ON CONFLICT (chat_id, user_id) DO NOTHING`);
 const r2row = (await db.query(`SELECT cleared_at, last_read_at FROM chat_participants WHERE chat_id = '${EVCHAT3}' AND user_id = '${R2}'`)).rows[0];
 ok(!r.error && r2row?.cleared_at?.toISOString() === '2026-11-03T09:00:00.000Z' && r2row?.last_read_at?.toISOString() === '2026-11-03T09:30:00.000Z',
   `back on the lineup: cleared_at and last read come back (${r.error ?? JSON.stringify(r2row)})`);
@@ -973,6 +1002,9 @@ for (const [u, label, want] of [[R2, 'its creator (a member)', 1], [ADMIN, 'a ba
 // The read-only preview for prod (PR body) counts exactly what the cleanups archive.
 await staleRow(EVCHAT6, R3);
 const preview = readFileSync(`${REPO}/supabase/tests/181_archive_preview.sql`, 'utf8');
+// (On prod nothing is archived yet; here earlier checks archived some rows,
+// which a re-run does not archive twice.)
+await db.exec(`DELETE FROM chat_participants_removed_175`);
 const predicted = (await db.query(preview)).rows;
 const before = (await db.query(`SELECT count(*)::int AS n FROM chat_participants_removed_175`)).rows[0].n;
 await db.exec(readFileSync(MIG, 'utf8'));
