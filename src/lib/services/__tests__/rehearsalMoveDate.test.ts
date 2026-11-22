@@ -20,9 +20,11 @@ vi.mock('@/lib/supabase', () => {
         if (prop === 'then') {
           return (res: (v: unknown) => void) => {
             if (table === 'event_members') return res({ data: [{ user_id: 'u1', role: 'Bass', status: 'confirmed' }, { user_id: 'u2', role: null, status: 'pending' }], error: null });
+            if (table === 'setlist_songs') return res({ data: [{ song_id: 's1', position: 0, set_number: 1, notes: null }, { song_id: 's2', position: 1, set_number: 1, notes: 'capo 2' }], error: null });
             return res({ data: [], error: null });
           };
         }
+        if (prop === 'maybeSingle' && table === 'setlists') return async () => ({ data: { name: 'Weekly setlist' }, error: null });
         if (prop === 'maybeSingle') return async () => ({
           data: { id: 'ev', band_id: 'b1', title: 'Weekly', event_type: 'rehearsal', status: 'confirmed', venue_name: 'Studio 4', venue_address: '12 Bond St', venue_city: 'Brooklyn', notes: 'Bring charts', setlist_id: 'sl-1', is_recurring: true, recurrence_rule: { frequency: 'weekly' } },
           error: null,
@@ -49,12 +51,21 @@ vi.mock('../events', () => ({
   },
 }));
 
+const setlists = vi.hoisted(() => ({ created: [] as { sl: any; songs: any }[] }));
+vi.mock('../songs', () => ({
+  createSetlist: async (sl: any, songs: any) => {
+    setlists.created.push({ sl, songs });
+    return { data: { id: 'sl-copy', ...sl }, error: null };
+  },
+}));
+
 import { moveRehearsalDateOnly } from '../rehearsalSkip';
 
 beforeEach(() => {
   db.rpc.length = 0;
   db.updates.length = 0;
   db.created.length = 0;
+  setlists.created.length = 0;
   db.moveRpc = { data: { event_id: 'req-1', series_id: 'ev', skip_dates: ['2099-12-08'] }, error: null };
 });
 
@@ -91,7 +102,7 @@ describe('Only this date (Codex #297 round 3 B2 B3)', () => {
     expect(db.created).toHaveLength(1);
     expect(db.created[0].ev).toMatchObject({
       band_id: 'b1', event_type: 'rehearsal', event_date: '2099-12-10', start_time: '19:00', end_time: '22:00',
-      venue_name: 'Studio 4', notes: 'Bring charts', setlist_id: 'sl-1', parent_event_id: 'ev', is_recurring: false, recurrence_rule: null,
+      venue_name: 'Studio 4', notes: 'Bring charts', setlist_id: 'sl-copy', parent_event_id: 'ev', is_recurring: false, recurrence_rule: null,
     });
     expect(db.created[0].members).toEqual([{ user_id: 'u1', role: 'Bass', status: 'confirmed' }, { user_id: 'u2', role: undefined, status: 'pending' }]);
     expect(db.rpc.map((r) => r.fn)).toEqual(['bw_move_rehearsal_date', 'bw_skip_rehearsal_date']);
@@ -114,5 +125,51 @@ describe('Only this date (Codex #297 round 3 B2 B3)', () => {
     expect(error).toBeTruthy();
     expect(db.created).toEqual([]);
     expect(db.rpc).toEqual([]);
+  });
+});
+
+describe('Only this date, Claude #297 r5', () => {
+  const series = { eventId: 'ev', band_id: 'b1', date: '2099-12-08', seriesDate: '2099-12-01' };
+  const wizard = {
+    title: 'Weekly', date: '2099-12-10', startTime: '15:00', endTime: '18:00', clientId: 'req-1',
+    fields: {
+      venue_name: 'Room 2, Queens', notes: 'New charts', fee: 90,
+      // Never taken from the form.
+      band_id: 'other', recurrence_rule: { frequency: 'daily' }, event_date: '2001-01-01', setlist_id: 'x', status: 'cancelled', _editing: true,
+    },
+  };
+
+  it('minor 2: the wizard\'s other edits go in the same server step', async () => {
+    await moveRehearsalDateOnly(series, wizard);
+    expect(db.rpc).toHaveLength(1);
+    expect(db.rpc[0].args.p_fields).toEqual({ venue_name: 'Room 2, Queens', notes: 'New charts', fee: 90, title: 'Weekly', start_time: '15:00', end_time: '18:00' });
+  });
+
+  it('minor 2 without 195: the copy carries the edits, the series is not written', async () => {
+    db.moveRpc = { data: null, error: { code: 'PGRST202', message: 'Could not find the function' } };
+    await moveRehearsalDateOnly(series, wizard);
+    expect(db.created[0].ev).toMatchObject({ venue_name: 'Room 2, Queens', notes: 'New charts', fee: 90, band_id: 'b1', event_date: '2099-12-10', is_recurring: false, recurrence_rule: null, start_time: '15:00' });
+    expect(db.updates).toEqual([]);
+  });
+
+  it('minor 1 without 195: the one-off gets its own copy of the setlist', async () => {
+    db.moveRpc = { data: null, error: { code: 'PGRST202', message: 'Could not find the function' } };
+    await moveRehearsalDateOnly(series, wizard);
+    expect(setlists.created).toEqual([{
+      sl: { band_id: 'b1', name: 'Weekly setlist' },
+      songs: [{ song_id: 's1', position: 0, set_number: 1 }, { song_id: 's2', position: 1, set_number: 1, notes: 'capo 2' }],
+    }]);
+    expect(db.created[0].ev.setlist_id).toBe('sl-copy');
+  });
+
+  it.each([
+    ['bw:not_a_date', /no longer part of the series/],
+    ['bw:date_deleted', /already deleted/],
+    ['bw:date_past', /in the past/],
+  ])('minor 4: the refusal %s says why', async (hint, text) => {
+    db.moveRpc = { data: null, error: { code: '22023', message: 'refused', hint } };
+    const { error } = await moveRehearsalDateOnly(series, wizard);
+    expect(error?.message).toMatch(text);
+    expect(db.created).toEqual([]);
   });
 });

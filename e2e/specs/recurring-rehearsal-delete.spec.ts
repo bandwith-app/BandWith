@@ -1,4 +1,4 @@
-import { test, expect } from '../fixtures';
+import { test, expect, type App } from '../fixtures';
 import { openEvent, eventDetail, SEED } from '../support/flows';
 
 /**
@@ -158,5 +158,55 @@ test.describe('a repeating rehearsal in New York @smoke', () => {
     const db = await app.readDb();
     const ev = (db.events as Record<string, any>[]).find((e) => e.title === SEED.rehearsalTomorrow);
     expect(ev?.recurrence_rule?.skip_dates).toEqual([tomorrow]);
+  });
+});
+
+/**
+ * Claude #297 r5 minor 5: a deleted date can come back. Right after
+ * "Delete this date" the toast offers Undo; later, an admin restores it from
+ * the series' "Deleted dates".
+ */
+test.describe('a deleted rehearsal date comes back @smoke', () => {
+  let tomorrow = '';
+  test.beforeEach(async ({ app }) => {
+    await app.editDb((db) => {
+      const ev = (db.events as Record<string, any>[]).find((e) => e.title === SEED.rehearsalTomorrow);
+      if (!ev) return;
+      tomorrow = String(ev.event_date).slice(0, 10);
+      ev.is_recurring = true;
+      ev.recurrence_rule = { frequency: 'weekly', interval: 1, skip_dates: [shift(tomorrow, 7)] };
+    });
+    await openEvent(app, SEED.rehearsalTomorrow);
+  });
+
+  const skipsNow = async (app: App) => {
+    const db = await app.readDb();
+    return (db.events as Record<string, any>[]).find((e) => e.title === SEED.rehearsalTomorrow)?.recurrence_rule?.skip_dates;
+  };
+
+  test('Undo right after deleting puts the date back', async ({ app }) => {
+    const detail = eventDetail(app);
+    await detail.getByRole('button', { name: app.t('DELETE THIS REHEARSAL') }).filter({ visible: true }).first().click();
+    await detail.getByRole('group', { name: app.t('Delete which dates?') }).getByRole('button', { name: app.t('Delete this date') }).click();
+    await app.settle();
+    expect(await skipsNow(app)).toEqual([tomorrow, shift(tomorrow, 7)].sort());
+    const undo = app.page.locator('.bw-toast').getByRole('button', { name: app.t('Undo') });
+    await expect(undo).toBeVisible();
+    await app.check('undo toast after deleting one date');
+    await undo.click();
+    await app.settle();
+    expect(await skipsNow(app), 'only the date just deleted came back').toEqual([shift(tomorrow, 7)]);
+  });
+
+  test('an admin restores a deleted date from the series', async ({ app }) => {
+    const detail = eventDetail(app);
+    const list = detail.getByTestId('ed-deleted-dates');
+    await list.scrollIntoViewIfNeeded();
+    await expect(list.getByRole('listitem')).toHaveCount(1);
+    await app.check('deleted dates with Restore');
+    await list.getByRole('button', { name: /^Restore / }).click();
+    await app.settle();
+    expect(await skipsNow(app)).toEqual([]);
+    await expect(detail.getByTestId('ed-deleted-dates')).toHaveCount(0);
   });
 });

@@ -13,6 +13,7 @@ const db = vi.hoisted(() => ({
   from: [] as string[],
   updates: [] as unknown[],
   deletes: 0,
+  rule: { frequency: 'weekly' } as Record<string, unknown>,
 }));
 
 vi.mock('@/lib/supabase', () => {
@@ -28,7 +29,7 @@ vi.mock('@/lib/supabase', () => {
             return res({ data: op === 'update' ? [{ id: 'ev' }] : null, error: null });
           };
         }
-        if (prop === 'maybeSingle') return async () => ({ data: { id: 'ev', is_recurring: true, recurrence_rule: { frequency: 'weekly' } }, error: null });
+        if (prop === 'maybeSingle') return async () => ({ data: { id: 'ev', is_recurring: true, recurrence_rule: db.rule }, error: null });
         return (arg?: unknown) => {
           if (prop === 'update') { op = 'update'; payload = arg; }
           if (prop === 'delete') { op = 'delete'; db.deletes++; }
@@ -45,13 +46,15 @@ vi.mock('@/lib/supabase', () => {
   return { supabase: { from, rpc } };
 });
 
-import { skipRehearsalDate, deleteRehearsalDate } from '../rehearsalSkip';
+import * as skip from '../rehearsalSkip';
+const { skipRehearsalDate, deleteRehearsalDate } = skip;
 
 beforeEach(() => {
   db.rpc.length = 0;
   db.from.length = 0;
   db.updates.length = 0;
   db.deletes = 0;
+  db.rule = { frequency: 'weekly' };
   db.rpcAnswer = { data: { skip_dates: ['2099-12-19'] }, error: null };
 });
 
@@ -114,5 +117,36 @@ describe('the app never falls through to deleting the series', () => {
     const start = appSrc.indexOf('const handleEventDelete = async');
     const body = appSrc.slice(start, start + 1200);
     expect(body).toMatch(/if \(scope === 'date'\) \{[\s\S]*?deleteRehearsalDate\(selectedEvent\)[\s\S]*?return;\s*\}/);
+  });
+});
+
+describe('a deleted date back in the series (Claude #297 r5 minor 5)', () => {
+  it('195: one server step, nothing written by the app', async () => {
+    db.rpcAnswer = { data: { event_id: 'ev', skip_dates: ['2099-12-26'] }, error: null };
+    const out = await skip.restoreRehearsalDate('ev', '2099-12-19T20:00:00');
+    expect(out).toEqual({ error: null, skipDates: ['2099-12-26'] });
+    expect(db.rpc).toEqual([{ fn: 'bw_restore_rehearsal_date', args: { p_event_id: 'ev', p_date: '2099-12-19' } }]);
+    expect(db.updates).toEqual([]);
+  });
+
+  it('before 195: the stored rule without that date, the other deleted dates kept', async () => {
+    db.rpcAnswer = { data: null, error: { code: 'PGRST202', message: 'Could not find the function' } };
+    db.rule = { frequency: 'weekly', until: '2100-01-01', skip_dates: ['2099-12-19', '2099-12-26'] };
+    const out = await skip.restoreRehearsalDate('ev', '2099-12-19');
+    expect(out.error).toBeNull();
+    expect(db.updates).toEqual([{ recurrence_rule: { frequency: 'weekly', until: '2100-01-01', skip_dates: ['2099-12-26'] } }]);
+  });
+
+  it('a member is told only admins can', async () => {
+    db.rpcAnswer = { data: null, error: { code: '42501', message: 'Only band admins' } };
+    const out = await skip.restoreRehearsalDate('ev', '2099-12-19');
+    expect(out.error?.message).toMatch(/admins/);
+    expect(db.updates).toEqual([]);
+  });
+
+  it('needs the event and a date', async () => {
+    const out = await skip.restoreRehearsalDate('ev', '');
+    expect(out.error).toBeTruthy();
+    expect(db.rpc).toEqual([]);
   });
 });

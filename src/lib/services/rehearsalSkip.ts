@@ -10,8 +10,9 @@
  */
 import { supabase } from '@/lib/supabase';
 import { t } from '@/lib/i18n';
-import { withSkippedDate } from '@/lib/recurrenceSkips';
+import { skippedDates, withSkippedDate } from '@/lib/recurrenceSkips';
 import { createEvent } from './events';
+import { createSetlist } from './songs';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const dayOf = (date: string | null | undefined) => {
@@ -25,6 +26,37 @@ const isMissingRpc = (err: RpcError): boolean =>
 
 const notRepeating = () => new Error(t('This rehearsal does not repeat any more. Reload and try again.'));
 const notAdmin = () => new Error(t('Only band admins can delete this event.'));
+
+/**
+ * The move's own refusals (195, HINT bw:…): the date on screen is not one of
+ * the series any more, was deleted already, or the new date is in the past
+ * (Claude #297 r5 minor 4).
+ */
+const moveRefusal = (err: RpcError & { hint?: string | null }): Error | null => {
+  switch (err?.hint) {
+    case 'bw:not_a_date': return new Error(t('This date is no longer part of the series. Reload and try again.'));
+    case 'bw:date_deleted': return new Error(t('This date was already deleted. Reload and try again.'));
+    case 'bw:date_past': return new Error(t('The new date is in the past. Pick today or a later date.'));
+    default: return null;
+  }
+};
+
+/**
+ * Columns the move never takes from the form: who and what the event is,
+ * the recurrence and the date, the links (195 drops the same ones).
+ */
+const NOT_EDITABLE = new Set([
+  'id', 'band_id', 'created_by', 'created_at', 'updated_at', 'is_recurring', 'recurrence_rule', 'event_date', 'date',
+  'parent_event_id', 'quote_id', 'setlist_id', 'status', 'event_type',
+]);
+const editedColumns = (fields: Record<string, unknown> | undefined): Record<string, unknown> => {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(fields || {})) {
+    if (NOT_EDITABLE.has(k) || k.startsWith('_') || v === undefined || typeof v === 'function') continue;
+    out[k] = v;
+  }
+  return out;
+};
 
 /**
  * The date on screen of a repeating rehearsal. Refused, with a message, when
@@ -78,6 +110,45 @@ export async function skipRehearsalDate(eventId: string, date: string): Promise<
   return { error: null };
 }
 
+/**
+ * A deleted date back in the series (Claude #297 r5 minor 5): the undo right
+ * after "Delete this date", and Restore in the series' "Deleted dates".
+ * With 195 only bw_restore_rehearsal_date can take a date out of skip_dates
+ * (the keep-skip trigger refuses any other write); before 195 the rule is
+ * written without it. Returns the dates still deleted.
+ */
+export async function restoreRehearsalDate(eventId: string | null | undefined, date: string | null | undefined): Promise<{ error: Error | null; skipDates?: string[] }> {
+  const day = dayOf(date);
+  if (!eventId || !DAY.test(day)) return { error: new Error(t("This date can't be restored. Reload and try again.")) };
+  const { data, error } = await supabase.rpc('bw_restore_rehearsal_date', { p_event_id: eventId, p_date: day });
+  if (error && !isMissingRpc(error as RpcError)) {
+    const code = (error as RpcError)?.code;
+    if (code === '42501') return { error: new Error(t('Only band admins can restore a date.')) };
+    if (code === '22023') return { error: notRepeating() };
+    return { error: error as unknown as Error };
+  }
+  const listed = (data as { skip_dates?: unknown } | null)?.skip_dates;
+  if (!error && Array.isArray(listed)) return { error: null, skipDates: listed.filter((d): d is string => typeof d === 'string') };
+
+  const { data: ev, error: readErr } = await supabase
+    .from('events')
+    .select('id, is_recurring, recurrence_rule')
+    .eq('id', eventId)
+    .maybeSingle();
+  if (readErr) return { error: readErr as unknown as Error };
+  const rule = (ev as { recurrence_rule?: Record<string, unknown> | null } | null)?.recurrence_rule;
+  if (!ev || !rule || typeof rule !== 'object') return { error: notRepeating() };
+  const rest = Array.from(skippedDates(rule)).filter((d) => d !== day).sort();
+  const { data: saved, error: saveErr } = await supabase
+    .from('events')
+    .update({ recurrence_rule: { ...rule, skip_dates: rest } })
+    .eq('id', eventId)
+    .select('id');
+  if (saveErr) return { error: saveErr as unknown as Error };
+  if (!saved?.length) return { error: new Error(t('Only band admins can restore a date.')) };
+  return { error: null, skipDates: rest };
+}
+
 const newRequestId = (): string =>
   typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
@@ -94,28 +165,34 @@ const newRequestId = (): string =>
  * lineup; rider & stage) and skips the old date, in one transaction. The
  * request id (`clientId`, kept by the sheet while it is open) is the new
  * event's id: a retry creates nothing more.
+ * `fields` are the other columns edited in the wizard (venue, notes, fee…):
+ * written with the copy, so there is one write and one notice listing what
+ * changed, and no second update (Claude #297 r5 minor 2). The setlist is a
+ * copy of the series' one, so editing it here leaves the series' alone
+ * (minor 1).
  * Without 195 (or in the demo): the step-by-step copy below.
  */
 export async function moveRehearsalDateOnly(
   event: { eventId?: string | null; band_id?: string | null; date?: string | null; seriesDate?: string | null },
-  values: { title: string; date: string; startTime: string; endTime: string; clientId?: string },
+  values: { title: string; date: string; startTime: string; endTime: string; clientId?: string; fields?: Record<string, unknown> },
 ): Promise<{ error: Error | null; eventId?: string }> {
   const from = dayOf(event.date);
   const to = dayOf(values.date);
   if (!event.eventId || !event.band_id || !DAY.test(from) || !DAY.test(to)) {
     return { error: new Error(t("This date can't be deleted on its own. Reload and try again.")) };
   }
+  const edited = editedColumns(values.fields);
   const { data, error } = await supabase.rpc('bw_move_rehearsal_date', {
     p_event_id: event.eventId,
     p_date: from,
     p_new_date: to,
-    p_fields: { title: values.title.trim(), start_time: values.startTime || null, end_time: values.endTime || null },
+    p_fields: { ...edited, title: values.title.trim(), start_time: values.startTime || null, end_time: values.endTime || null },
     p_client_id: values.clientId || newRequestId(),
   });
   if (error && !isMissingRpc(error as RpcError)) {
     const code = (error as RpcError)?.code;
     if (code === '42501') return { error: notAdmin() };
-    if (code === '22023') return { error: notRepeating() };
+    if (code === '22023') return { error: moveRefusal(error as RpcError & { hint?: string }) ?? notRepeating() };
     return { error: error as unknown as Error };
   }
   if (!error && data && typeof data === 'object' && typeof (data as { event_id?: unknown }).event_id === 'string') {
@@ -137,16 +214,30 @@ export async function moveRehearsalDateOnly(
     .eq('event_id', event.eventId);
   if (peopleErr) return { error: peopleErr as unknown as Error };
 
+  // Its own copy of the setlist: the wizard may edit it next (minor 1).
+  let setlistId: string | null = null;
+  if (row.setlist_id) {
+    const [{ data: sl }, { data: songs, error: songsErr }] = await Promise.all([
+      supabase.from('setlists').select('name').eq('id', row.setlist_id).maybeSingle(),
+      supabase.from('setlist_songs').select('song_id, position, set_number, notes').eq('setlist_id', row.setlist_id),
+    ]);
+    if (songsErr) return { error: songsErr as unknown as Error };
+    const { data: copy, error: copyErr } = await createSetlist(
+      { band_id: row.band_id, name: (sl as { name?: string } | null)?.name || t('Rehearsal setlist') },
+      ((songs || []) as { song_id: string; position: number; set_number?: number | null; notes?: string | null }[])
+        .map((x) => ({ song_id: x.song_id, position: x.position, set_number: x.set_number ?? 1, ...(x.notes ? { notes: x.notes } : {}) })),
+    );
+    if (copyErr || !copy?.id) return { error: copyErr || new Error(t('Save failed: {error}', { error: 'setlist' })) };
+    setlistId = copy.id;
+  }
+
   const { data: created, error: createErr } = await createEvent(
     {
       ...(values.clientId ? { id: values.clientId } : {}),
       band_id: row.band_id,
-      title: values.title.trim() || row.title,
       event_type: row.event_type || 'rehearsal',
       status: row.status || 'confirmed',
       event_date: to,
-      start_time: values.startTime || null,
-      end_time: values.endTime || null,
       venue: row.venue ?? row.venue_name ?? null,
       venue_name: row.venue_name ?? row.venue ?? null,
       venue_address: row.venue_address ?? null,
@@ -155,9 +246,13 @@ export async function moveRehearsalDateOnly(
       notes: row.notes ?? null,
       indoor_outdoor: row.indoor_outdoor ?? null,
       dress_code: row.dress_code ?? null,
-      setlist_id: row.setlist_id ?? null,
+      setlist_id: setlistId,
       load_in_time: row.load_in_time ?? null,
       soundcheck_time: row.soundcheck_time ?? null,
+      ...edited,
+      title: values.title.trim() || row.title,
+      start_time: values.startTime || null,
+      end_time: values.endTime || null,
       parent_event_id: event.eventId,
       is_recurring: false,
       recurrence_rule: null,

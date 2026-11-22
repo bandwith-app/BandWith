@@ -64,6 +64,7 @@ import { FromLastTimeSection, type EarlierNotes } from './FromLastTime';
 import { fromLastTime } from '@/lib/toPractise';
 import { useBandFlag } from '@/lib/flags';
 import { elapsedSeconds, occurrenceDate } from '@/lib/rehearsalSession';
+import { isSkippedOccurrence, skippedDates } from '@/lib/recurrenceSkips';
 import { prefetchStageKey } from '@/lib/stageBleNative';
 import { packRowFromItem, songFromRow, type LiveSong } from '@/lib/livePack';
 import { fetchSetlistRows, readPack, readPackBySetlist, refreshPack, savePackSongs } from '@/lib/livePackStore';
@@ -133,6 +134,11 @@ interface EventDetailProps {
    * date out of the series, 'series' deletes every date (audit 05 #4).
    */
   onDelete?: (scope?: 'date' | 'series') => void;
+  /**
+   * Admins: put a date deleted on its own back in the series (the cancelled
+   * date's banner and the series' "Deleted dates", Claude #297 r5 minor 5).
+   */
+  onRestoreDate?: (date: string) => Promise<void> | void;
   onChat?: () => void;
   onConfirmQuote?: (event: EventData) => Promise<void> | void;
   onRevertQuote?: (event: EventData) => Promise<void> | void;
@@ -342,6 +348,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   canRespond,
   onEdit: onEditProp,
   onDelete,
+  onRestoreDate,
   onChat,
   onConfirmQuote,
   onRevertQuote,
@@ -1043,9 +1050,34 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   const fullLocationQuery = [venueName !== 'TBD' ? venueName : '', venueAddress, venueCityPart].filter(Boolean).join(', ');
   const venueShown = venueName === 'TBD' ? t('TBD') : venueName;
 
+  // A date deleted from its series, opened from the "Rehearsal cancelled"
+  // push: shown as cancelled, with no RSVP or calendar (Claude #297 r5 minor 6).
+  const cancelledDate = isRehearsal && !!event.is_recurring && isSkippedOccurrence(event, event.date);
+  // The series' other deleted dates still to come, for admins to restore (minor 5).
+  const todayYmd = (() => {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+  })();
+  const deletedDates =
+    isRehearsal && !!event.is_recurring && isAdmin && !!onRestoreDate
+      ? Array.from(skippedDates(event.recurrence_rule)).filter((d) => d >= todayYmd && d !== occurrenceDate(event.date)).sort()
+      : [];
+  const [restoringDate, setRestoringDate] = useState<string | null>(null);
+  const restoreDate = async (day: string) => {
+    if (!onRestoreDate || restoringDate) return;
+    setRestoringDate(day);
+    try {
+      await onRestoreDate(day);
+    } finally {
+      setRestoringDate(null);
+    }
+  };
+  const longDate = (day: string) =>
+    parseLocalDate(day).toLocaleDateString(intlLocale(), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+
   // "Add to calendar": a saved event with a date, that the user is part of.
   const calendarDate =
-    !isQuote && !isPast && !!event.eventId && /^[0-9a-f-]{36}$/i.test(event.eventId) && (isPersonalGig || userResponse !== 'declined')
+    !cancelledDate && !isQuote && !isPast && !!event.eventId && /^[0-9a-f-]{36}$/i.test(event.eventId) && (isPersonalGig || userResponse !== 'declined')
       ? occurrenceDate(event.date)
       : null;
 
@@ -1098,7 +1130,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
       : typeLabels[eventType];
   const statusChips: string[] = [];
   if (isPersonalGig) statusChips.push(t('ONLY YOU'));
-  else if (isRehearsal) statusChips.push(rehearsalCadence(event.is_recurring, event.recurrence_rule, event.date));
+  else if (isRehearsal) statusChips.push(cancelledDate ? t('CANCELLED') : rehearsalCadence(event.is_recurring, event.recurrence_rule, event.date));
   else if (isQuote) {
     // Same fallback as the status card below: a quote never shared is a draft.
     const qs = String(linkedQuote?.status || event.quoteStatus || 'draft');
@@ -1258,6 +1290,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   // Rehearsal (Figma 22:895): always visible to invited members, current answer selected.
   const showRehearsalRsvp =
     isRehearsal &&
+    !cancelledDate &&
     !isPast &&
     !isPersonalGig &&
     (canRespond ?? !isAdmin) &&
@@ -1328,17 +1361,19 @@ export const EventDetail: React.FC<EventDetailProps> = ({
         {t('This rehearsal repeats. Delete only this date, or every date with its notes?')}
       </p>
       <div className="flex flex-wrap items-center gap-3">
-        <PillButton
-          size="sm"
-          fullWidth={false}
-          className="bg-destructive-solid text-white"
-          onClick={() => {
-            onDelete?.('date');
-            setShowDeleteConfirm(false);
-          }}
-        >
-          {t('Delete this date')}
-        </PillButton>
+        {!cancelledDate && (
+          <PillButton
+            size="sm"
+            fullWidth={false}
+            className="bg-destructive-solid text-white"
+            onClick={() => {
+              onDelete?.('date');
+              setShowDeleteConfirm(false);
+            }}
+          >
+            {t('Delete this date')}
+          </PillButton>
+        )}
         <PillButton
           size="sm"
           fullWidth={false}
@@ -1692,6 +1727,32 @@ export const EventDetail: React.FC<EventDetailProps> = ({
               )}
               style={{ paddingBottom: 'calc(var(--safe-bottom) + 48px)' }}
             >
+              {/* ─── A DATE DELETED FROM THE SERIES (Claude #297 r5 minors 5, 6) ─── */}
+              {cancelledDate && (
+                <section
+                  role="status"
+                  data-testid="ed-date-cancelled"
+                  className={cn('rounded-[16px] border border-destructive-solid/40 bg-destructive-solid/5 p-5 flex flex-col gap-3', spanAll)}
+                >
+                  <h2 className="bw-h3">{t('This date was cancelled')}</h2>
+                  <p className="bw-body-sm text-muted-foreground">
+                    {t('The rehearsal on {date} is off. The other dates of the series stay as they are.', { date: longDate(occurrenceDate(event.date) || '') })}
+                  </p>
+                  {isAdmin && onRestoreDate && (
+                    <PillButton
+                      size="sm"
+                      fullWidth={false}
+                      variant="outline"
+                      disabled={!!restoringDate}
+                      onClick={() => restoreDate(occurrenceDate(event.date) || '')}
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      {t('Restore this date')}
+                    </PillButton>
+                  )}
+                </section>
+              )}
+
               {/* ─── RSVP (pending gig invite) ─── */}
               {showRsvpCard && (
                 <section className={cn('dark bg-sheet text-sheet-foreground rounded-[16px] p-5 flex flex-col gap-4', spanAll)}>
@@ -2383,6 +2444,30 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                           : t('No notes added yet.'))}
                     </span>
                   </button>
+                </section>
+              )}
+
+              {/* ─── DELETED DATES (admins, repeating rehearsal): Restore (r5 minor 5) ─── */}
+              {deletedDates.length > 0 && (
+                <section data-testid="ed-deleted-dates" className={cn('flex flex-col gap-3', spanAll)} aria-labelledby="ed-deleted-dates-title">
+                  <h2 id="ed-deleted-dates-title" className="bw-label-sm">{t('Deleted dates')}</h2>
+                  <ul className="flex flex-col divide-y divide-border rounded-[16px] border border-border">
+                    {deletedDates.map((day) => (
+                      <li key={day} className="flex items-center justify-between gap-3 px-4 py-3 min-h-12">
+                        <span className="bw-body-sm">{longDate(day)}</span>
+                        <button
+                          type="button"
+                          className={LINK_CLASS}
+                          disabled={!!restoringDate}
+                          aria-label={t('Restore {date}', { date: longDate(day) })}
+                          onClick={() => restoreDate(day)}
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          {restoringDate === day ? '…' : t('RESTORE')}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 </section>
               )}
 

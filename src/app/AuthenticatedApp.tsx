@@ -99,7 +99,7 @@ import { listMyDeputyGigs } from "@/lib/services/deputies";
 import { OfflineBanner } from "@/app/components/ui/OfflineBanner";
 import { useNetworkStatus, isOfflineError, reportNetworkStatus } from "@/lib/offline/useNetworkStatus";
 import { enqueueMutation, getPendingMutations } from "@/lib/offline/syncQueue";
-import { deleteRehearsalDate, moveRehearsalDateOnly } from "@/lib/services/rehearsalSkip";
+import { deleteRehearsalDate, moveRehearsalDateOnly, restoreRehearsalDate } from "@/lib/services/rehearsalSkip";
 import { isSkippedOccurrence, mergeRecurrenceRule, occurrenceOn, openDateFor } from "@/lib/recurrenceSkips";
 import { occurrenceStart } from "@/lib/eventOverviewEdit";
 import type { QueuedEventExtras } from "@/lib/offline/eventExtras";
@@ -2755,6 +2755,26 @@ export default function AuthenticatedApp() {
     }
   };
 
+  // A date deleted on its own back in the series (undo toast, the cancelled
+  // date's banner, "Deleted dates"; Claude #297 r5 minor 5).
+  const handleRestoreDate = async (date: string | null | undefined, eventId?: string | null) => {
+    const id = eventId ?? selectedEvent?.eventId;
+    const { error, skipDates } = await restoreRehearsalDate(id, date);
+    if (error) {
+      setSaveToast({ message: error.message, type: 'error' });
+      return;
+    }
+    // The open detail shows the date as on again at once.
+    if (skipDates) {
+      setSelectedEvent((prev: any) => prev && prev.eventId === id && prev.recurrence_rule
+        ? { ...prev, recurrence_rule: { ...prev.recurrence_rule, skip_dates: skipDates }, skippedOccurrence: undefined }
+        : prev);
+    }
+    setSaveToast({ message: t('Rehearsal date restored'), type: 'success' });
+    refetchEvents();
+    refetchDashboard?.();
+  };
+
   const handleEventDelete = async (scope?: 'date' | 'series') => {
     if (!selectedEvent?.eventId) return;
     haptic.delete();
@@ -2764,7 +2784,15 @@ export default function AuthenticatedApp() {
         // No band or no date: refused with a message, never the whole series.
         const { error } = await deleteRehearsalDate(selectedEvent);
         if (error) throw error;
-        setSaveToast({ message: t('Rehearsal date deleted'), type: 'success' });
+        // Undo right away (Claude #297 r5 minor 5); later, Restore in the
+        // series' "Deleted dates".
+        const seriesId = selectedEvent.eventId;
+        const deletedDay = selectedEvent.date;
+        setSaveToast({
+          message: t('Rehearsal date deleted'),
+          type: 'success',
+          action: { label: t('Undo'), onClick: () => handleRestoreDate(deletedDay, seriesId) },
+        });
         refetchEvents();
         refetchDashboard?.();
         setSelectedEvent(null);
@@ -3356,8 +3384,11 @@ export default function AuthenticatedApp() {
 
       // "Only this date" (Claude #297 round 4): the date leaves the series as
       // a one-off in one transaction (bw_move_rehearsal_date: every column,
-      // lineup, rider & stage), then the rest of the wizard is saved on that
-      // one-off, not on the series. Its to-dos are new ones there.
+      // lineup, rider & stage, its own copy of the setlist), with the edits
+      // made here in the same write, so one notice lists what changed and no
+      // second update follows (r5 minors 1 and 2). The lineup, to-dos and
+      // setlist are then saved on that one-off. Its to-dos are new ones there.
+      let movedHere = false;
       if (moveOnly) {
         if (!isOnline || (typeof navigator !== 'undefined' && !navigator.onLine)) {
           setSaveToast({ message: t('Moving one date needs a connection. Try again when you are online.'), type: 'error' });
@@ -3365,13 +3396,14 @@ export default function AuthenticatedApp() {
         }
         const moved = await moveRehearsalDateOnly(
           { eventId: data._editingEventId, band_id: realBand.id, date: editingEventData?.date ?? null, seriesDate: editingEventData?.seriesDate ?? null },
-          { title: title || '', date, startTime: timeFinal, endTime: endTime || '', clientId: data._moveClientId },
+          { title: title || '', date, startTime: timeFinal, endTime: endTime || '', clientId: data._moveClientId, fields: eventData },
         );
         if (moved.error || !moved.eventId) {
           setSaveToast({ message: t('Save failed: {error}', { error: moved.error?.message || '' }), type: 'error' });
           return false;
         }
         data = { ...data, _editingEventId: moved.eventId, _originalTaskIds: [], _moveScope: undefined };
+        movedHere = true;
         eventData.event_date = date;
         eventData.is_recurring = false;
         eventData.recurrence_rule = null;
@@ -3660,7 +3692,11 @@ export default function AuthenticatedApp() {
       }
 
       if (data._editing && data._editingEventId) {
-        const { error } = await withFastTimeout(updateEvent(data._editingEventId, eventData), 4500);
+        // A date just moved on its own has its edits saved: only a setlist
+        // made now is linked (no date/time/venue change, so no second notice).
+        const { error } = movedHere
+          ? (setlistId ? await withFastTimeout(updateEvent(data._editingEventId, { setlist_id: setlistId }), 4500) : { error: null })
+          : await withFastTimeout(updateEvent(data._editingEventId, eventData), 4500);
         if (!error) {
           closeWizard();
           const memberResult = await persistMembers(data._editingEventId, true);
@@ -4958,6 +4994,7 @@ export default function AuthenticatedApp() {
             onToast={(message, type) => setSaveToast({ message, type })}
             onEdit={() => inItemBand(selectedEvent.band_id, "edit this event", handleEventEdit)}
             onDelete={(scope) => inItemBand(selectedEvent.band_id, "delete this event", () => handleEventDelete(scope))}
+            onRestoreDate={(day) => inItemBand(selectedEvent.band_id, "restore this date", () => handleRestoreDate(day))}
             onChat={handleEventChat}
             onConfirmQuote={(ev) => inItemBand(ev.band_id, "confirm this quote", () => handleConfirmQuote(ev))}
             onRevertQuote={(ev) => inItemBand(ev.band_id, "change this quote", () => handleRevertQuote(ev))}

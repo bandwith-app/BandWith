@@ -131,3 +131,59 @@ describe('Event detail: deleting a repeating rehearsal (audit 05 #4)', () => {
     expect(appSource).toMatch(/onDelete=\{\(scope\) => inItemBand\(selectedEvent\.band_id, "delete this event", \(\) => handleEventDelete\(scope\)\)\}/);
   });
 });
+
+describe('Claude #297 r5: deleted dates (minors 2, 5, 6)', () => {
+  const later = { ...rehearsal, recurrence_rule: { frequency: 'weekly', interval: 1, skip_dates: ['2099-12-19', '2099-12-26', '2000-01-01'] } } as EventData;
+  const showWith = (event: EventData, extra: Record<string, unknown> = {}) =>
+    render(<EventDetail event={event} onClose={vi.fn()} onEventUpdated={vi.fn()} onToast={vi.fn()} currentUserId="u-1" onDelete={vi.fn()} {...extra} />);
+
+  it('minor 6: a deleted date opened from its push is shown as cancelled, with no RSVP', async () => {
+    showWith(later, { isAdmin: false, canRespond: true, onRespond: vi.fn() });
+    expect(await screen.findByTestId('ed-date-cancelled')).toBeTruthy();
+    expect(screen.getByText('This date was cancelled')).toBeTruthy();
+    expect(screen.getByText('CANCELLED')).toBeTruthy();
+    expect(screen.queryByText('Are you coming?')).toBeNull();
+    // A member has no Restore.
+    expect(screen.queryByRole('button', { name: /Restore this date/ })).toBeNull();
+  });
+
+  it('minor 5: an admin restores the cancelled date, and "Delete this date" is not offered on it', async () => {
+    const onRestoreDate = vi.fn();
+    showWith(later, { isAdmin: true, onRestoreDate });
+    fireEvent.click(await screen.findByRole('button', { name: /Restore this date/ }));
+    expect(onRestoreDate).toHaveBeenCalledWith('2099-12-19');
+    fireEvent.click(screen.getByRole('button', { name: 'DELETE THIS REHEARSAL' }));
+    expect(screen.queryByRole('button', { name: 'Delete this date' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Delete the whole series' })).toBeTruthy();
+  });
+
+  it('minor 5: the series lists its other deleted dates still to come for admins, each with Restore', async () => {
+    const onRestoreDate = vi.fn();
+    showWith({ ...later, date: '2099-12-12' } as EventData, { isAdmin: true, onRestoreDate });
+    const list = await screen.findByTestId('ed-deleted-dates');
+    const rows = list.querySelectorAll('li');
+    expect(rows).toHaveLength(2); // 2000-01-01 is past
+    fireEvent.click(screen.getAllByRole('button', { name: /^Restore / })[1]);
+    expect(onRestoreDate).toHaveBeenCalledWith('2099-12-26');
+    expect(screen.queryByTestId('ed-date-cancelled')).toBeNull();
+  });
+
+  it('minor 5: members see no deleted-dates list', async () => {
+    showWith({ ...later, date: '2099-12-12' } as EventData, { isAdmin: false, onRestoreDate: vi.fn() });
+    await screen.findByText('Weekly rehearsal');
+    expect(screen.queryByTestId('ed-deleted-dates')).toBeNull();
+  });
+
+  it('minor 5: "Delete this date" offers Undo, and the detail restores through the app', () => {
+    const start = appSource.indexOf('const handleEventDelete = async');
+    const body = appSource.slice(start, appSource.indexOf('if (!selectedEvent.band_id)', start));
+    expect(body).toMatch(/action: \{ label: t\('Undo'\), onClick: \(\) => handleRestoreDate\(deletedDay, seriesId\) \}/);
+    expect(appSource).toMatch(/onRestoreDate=\{\(day\) => inItemBand\(selectedEvent\.band_id, "restore this date", \(\) => handleRestoreDate\(day\)\)\}/);
+    expect(appSource).toMatch(/const handleRestoreDate = async[\s\S]{0,200}restoreRehearsalDate\(id, date\)/);
+  });
+
+  it('minor 2: "Only this date" sends the wizard\'s edits with the move and no second full update', () => {
+    expect(appSource).toMatch(/moveRehearsalDateOnly\([\s\S]{0,300}fields: eventData \}/);
+    expect(appSource).toMatch(/movedHere\s*\? \(setlistId \? await withFastTimeout\(updateEvent\(data\._editingEventId, \{ setlist_id: setlistId \}\)/);
+  });
+});

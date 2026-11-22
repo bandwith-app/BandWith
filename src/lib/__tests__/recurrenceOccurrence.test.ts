@@ -107,3 +107,16 @@ describe('the Event card on one date of a series', () => {
     expect(eventCardPatch('rehearsal', v, at, 'date')).not.toHaveProperty('event_date');
   });
 });
+
+describe('a deleted date opened from its "Rehearsal cancelled" push (Claude #297 r5 minor 6)', () => {
+  it('comes back marked as cancelled, on that date', () => {
+    expect(occurrenceOn(series, '2099-12-15')).toMatchObject({ date: '2099-12-15', seriesDate: '2099-12-01', skippedOccurrence: true });
+  });
+  it('the first date deleted: the series row, marked', () => {
+    const first = { ...series, recurrence_rule: { ...series.recurrence_rule, skip_dates: ['2099-12-01'] } };
+    expect(occurrenceOn(first, '2099-12-01')).toMatchObject({ date: '2099-12-01', skippedOccurrence: true });
+  });
+  it('a date still on is not marked', () => {
+    expect(occurrenceOn(series, '2099-12-08')).not.toHaveProperty('skippedOccurrence');
+  });
+});

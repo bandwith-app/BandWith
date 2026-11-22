@@ -47,7 +47,7 @@ export function withSkippedDate<T extends object>(rule: T, date: string): T & { 
   return { ...rule, skip_dates: Array.from(all).sort() };
 }
 
-type Repeating = { date?: string | null; is_recurring?: boolean | null; recurrence_rule?: unknown; seriesDate?: string };
+type Repeating = { date?: string | null; is_recurring?: boolean | null; recurrence_rule?: unknown; seriesDate?: string; skippedOccurrence?: boolean };
 
 const ymd = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -68,13 +68,21 @@ const ymd = (d: Date) =>
  * A later date carries `seriesDate` (the series' first date), so an edit
  * of that date does not move the series start (see eventCardPatch and the
  * wizard save). An event that does not repeat comes back as it is.
+ *
+ * A `date` that was deleted on its own (the "Rehearsal cancelled" push opens
+ * it) comes back with `skippedOccurrence: true`: shown as cancelled, never as
+ * a rehearsal still on (Claude #297 r5 minor 6).
  */
 export function occurrenceOn<T extends Repeating>(event: T, date?: string | null, from?: string | null): T | null {
   const rule = event.recurrence_rule as Record<string, any> | null | undefined;
   const base = dayOf(event.date);
   if (!event.is_recurring || !rule || !DAY.test(base)) return event;
   const picked = dayOf(date);
-  if (picked) return picked === base || !DAY.test(picked) ? event : { ...event, date: picked, seriesDate: base };
+  if (picked) {
+    if (!DAY.test(picked)) return event;
+    const at = picked === base ? event : { ...event, date: picked, seriesDate: base };
+    return skippedDates(rule).has(picked) ? { ...at, skippedOccurrence: true } : at;
+  }
 
   const start = dayOf(from);
   const skips = skippedDates(rule);
