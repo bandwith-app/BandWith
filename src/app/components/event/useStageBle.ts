@@ -12,7 +12,6 @@ import {
   previousStageKey,
   signerRefused,
   stageBleAvailable,
-  stageKey,
   stageSigner,
 } from '@/lib/stageBleNative';
 import {
@@ -399,13 +398,20 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
         // Every few minutes, and as soon as the phone is back online (a rotation meanwhile).
         // The band key too: it changes when someone may no longer see the gig (191).
         const recheckSigner = () => {
-          void Promise.all([stageSigner(eventId), stageKey(eventId)]).then(([fresh, nowKey]) => {
+          void Promise.all([stageSigner(eventId), fetchStageKey(eventId)]).then(([fresh, band]) => {
             if (cancelled) return;
+            // The server's no on the band key: stop leading now (Claude round 8 on #288).
+            if (band.denied) {
+              inUseKeyRef.current = null;
+              setKeyDenied(true);
+              return;
+            }
+            // No answer and nothing kept (offline, storage full) is not a change: keep leading.
             if (
               (fresh?.public ?? null) !== (fetched?.public ?? null) ||
               (fresh?.version ?? null) !== (fetched?.version ?? null) ||
               (!fresh && signerRefused(eventId)) !== notAdmin ||
-              nowKey !== key
+              (band.key && band.key !== key)
             )
               setAttempt((n) => n + 1);
           });
@@ -1327,6 +1333,9 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       if (cancelled) return;
       if (denied) {
         lose();
+        // Bluetooth stays stopped until a later check gets a key again.
+        inUseKeyRef.current = null;
+        setKeyDenied(true);
         return;
       }
       if (nowKey && nowKey !== key) {

@@ -15,13 +15,16 @@
 //
 // <178 file>: supabase/migrations/178_date_on_hold.sql from #294 (feat/date-on-hold).
 import { PGlite } from '@electric-sql/pglite';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { webcrypto } from 'node:crypto';
 
 const REPO = process.argv[2];
 const MIG178 = process.argv[3];
 const MIG190 = process.argv[4] ?? `${REPO}/supabase/migrations/190_stage_signing_keys.sql`;
 const with178 = MIG178 && MIG178 !== '/dev/null';
+/** 191 (the band key's triggers) runs here too when it's in the tree: 190 and 191 together, both orders (Claude round 8). */
+const MIG191 = `${REPO}/supabase/migrations/191_stage_clock_topic.sql`;
+const with191 = existsSync(MIG191);
 const migFile = (n) => readFileSync(`${REPO}/supabase/migrations/${n}`, 'utf8');
 const lines = (n, a, b) => migFile(n).split('\n').slice(a - 1, b).join('\n');
 /** One function's CREATE block from a migration, by name (line numbers move when a migration is edited, #273). */
@@ -61,6 +64,14 @@ async function boot(d) {
 await d.exec(`
 CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
 CREATE SCHEMA auth; CREATE SCHEMA vault; CREATE SCHEMA cron; CREATE SCHEMA net; CREATE SCHEMA extensions;
+-- Supabase Realtime, enough for 191 (its topic policies and realtime.send).
+CREATE SCHEMA realtime;
+CREATE TABLE realtime.messages (topic text, extension text, event text, payload jsonb);
+ALTER TABLE realtime.messages ENABLE ROW LEVEL SECURITY;
+CREATE FUNCTION realtime.topic() RETURNS text LANGUAGE sql STABLE AS $rt$ SELECT current_setting('realtime.topic', true) $rt$;
+CREATE FUNCTION realtime.send(payload jsonb, event text, topic text, private boolean DEFAULT true) RETURNS void LANGUAGE sql AS $rt$
+  INSERT INTO realtime.messages (topic, extension, event, payload) VALUES (topic, 'broadcast', event, payload)
+$rt$;
 GRANT USAGE ON SCHEMA public, auth TO authenticated, anon, service_role;
 CREATE TABLE auth.users (id uuid PRIMARY KEY, email text);
 CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
@@ -231,6 +242,35 @@ try {
 } catch (e) {
   ok(false, `190 runs twice: ${e.message}`);
 }
+if (with191) {
+  try {
+    const keysBefore = JSON.stringify((await db.query(`SELECT event_id, key FROM stage_keys ORDER BY event_id`)).rows);
+    const m190 = readFileSync(MIG190, 'utf8'), m191 = readFileSync(MIG191, 'utf8');
+    await db.exec(m191);
+    await db.exec(m190);
+    await db.exec(m191);
+    ok(true, '191 after 190, then 190 and 191 again: both orders apply');
+    ok(JSON.stringify((await db.query(`SELECT event_id, key FROM stage_keys ORDER BY event_id`)).rows) === keysBefore, 'applying 191 changes no key');
+  } catch (e) {
+    ok(false, `190 and 191 together: ${e.message}`);
+  }
+}
+
+/**
+ * Advisory locks held right after `sql` runs as `uid` (rolled back): the band's lock is
+ * shared while a pair is stored, exclusive while a trigger rotates (Claude round 8: never
+ * the band's row, which a band delete holds while it cascades).
+ */
+async function locksAfter(uid, sql) {
+  await db.exec(`BEGIN; SET LOCAL ROLE authenticated; SELECT set_config('request.jwt.claims', '${claims(uid)}', true);`);
+  try {
+    await db.query(sql);
+    await db.exec('RESET ROLE');
+    return (await db.query(`SELECT mode FROM pg_locks WHERE locktype = 'advisory' AND granted ORDER BY mode`)).rows.map((r) => r.mode);
+  } finally {
+    await db.exec('ROLLBACK');
+  }
+}
 
 const verify = (ev) => `SELECT public.bw_stage_verify_key('${ev}')::text`;
 const set = (ev, p, replace = null) =>
@@ -325,6 +365,44 @@ ok(json(await as(LINEUP, set(GIG, await pair(), p4.public))) === null, 'a member
   const after = await row();
   ok(after.sign_public === null && after.sign_version === before.sign_version + 1, `moved to another band: no pair, version ${before.sign_version + 1}, got ${JSON.stringify(after)}`);
   ok((await db.query(`SELECT has_function_privilege('authenticated', 'public.bw_stage_event_moved()', 'EXECUTE') x`)).rows[0]?.x === false, 'clients cannot call the trigger function');
+}
+
+// The band's advisory lock: shared while a pair is stored, exclusive while a demotion rotates.
+{
+  const A9 = id(46);
+  await db.exec(`INSERT INTO auth.users (id) VALUES ('${A9}'); INSERT INTO band_members (band_id, user_id, role, is_active) VALUES ('${BAND}','${A9}','admin',true)`);
+  const p = await pair();
+  const storing = await locksAfter(A9, `SELECT public.bw_stage_set_signer('${GIG}', '${p.public}', '${p.private}')`);
+  ok(storing.length === 1 && storing[0] === 'ShareLock', `storing a pair takes the band's advisory lock, shared (got ${JSON.stringify(storing)})`);
+  await db.exec('BEGIN');
+  try {
+    await db.exec(`UPDATE band_members SET role = 'member' WHERE user_id = '${A9}'`);
+    const held = (await db.query(`SELECT mode FROM pg_locks WHERE locktype = 'advisory' AND granted`)).rows.map((r) => r.mode);
+    ok(held.includes('ExclusiveLock'), `a demotion takes the band's advisory lock, exclusive (got ${JSON.stringify(held)})`);
+  } finally {
+    await db.exec('ROLLBACK');
+  }
+}
+
+// Both migrations' triggers on band_members.
+if (with191) {
+  const k = async (ev) => (await db.query(`SELECT key, sign_public, sign_version FROM stage_keys WHERE event_id = '${ev}'`)).rows[0];
+  const before = await k(GIG);
+  await db.exec(`UPDATE band_members SET is_active = false WHERE user_id = '${OFF}'`);
+  const after = await k(GIG);
+  ok(after.key !== before.key, 'with 191: a member leaving changes the band key');
+  ok(after.sign_public === before.sign_public, "with 191: a member leaving keeps the admins' pair");
+  const Q3 = id(45);
+  await db.exec(`INSERT INTO events (id, band_id, title, status, event_type, created_by, event_date)
+    VALUES ('${Q3}','${BAND}','Kim Anniversary','tentative','gig','${ADMIN}', current_date + 12);
+    INSERT INTO stage_keys (event_id, key) VALUES ('${Q3}', 'q3-key')`);
+  await db.exec(`UPDATE band_members SET role = 'admin' WHERE user_id = '${LINEUP}'`);
+  const g0 = await k(GIG), q0 = await k(Q3);
+  await db.exec(`UPDATE band_members SET role = 'member' WHERE user_id = '${LINEUP}'`);
+  const g1 = await k(GIG), q1 = await k(Q3);
+  ok(q1.key !== q0.key, "with 191: an admin made a member changes the coming quote gig's band key");
+  ok(g1.key === g0.key, "with 191: an admin made a member keeps a normal gig's band key");
+  ok(g0.sign_public === null || g1.sign_version === g0.sign_version + 1, `with 191: an admin made a member rotates the pair (${JSON.stringify([g0.sign_version, g1.sign_version])})`);
 }
 
 // 178's own rule is spelled out in 190's public-key function, not only inherited through bw_can_view_event.

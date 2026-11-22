@@ -159,9 +159,9 @@ BEGIN
   END IF;
   -- First the band's row, FOR KEY SHARE: a band being deleted holds it FOR
   -- UPDATE and then locks its members' rows (the cascade), so this waits for
-  -- that before it locks an admin row, and the two can't deadlock. A
-  -- demotion's FOR NO KEY UPDATE on it doesn't conflict, so that order
-  -- (below) stays as it was (Claude on #288).
+  -- that before it locks an admin row, and the two can't deadlock. No
+  -- trigger locks the band's row (they take its advisory lock, below), so
+  -- nothing else waits on this (Claude on #288).
   PERFORM 1 FROM public.bands b WHERE b.id = band FOR KEY SHARE;
   IF NOT FOUND THEN
     RETURN NULL;
@@ -189,15 +189,18 @@ BEGIN
   IF NOT FOUND THEN
     RETURN NULL;
   END IF;
-  -- Then the band's row, which a rotation (bw_stage_rotate_signer,
-  -- bw_stage_event_moved) locks for update before it looks at the pairs: a
-  -- pair stored while another admin is demoted can't slip past it unseen
-  -- (READ COMMITTED skips a row whose committed pair is still empty). This
-  -- order (band KEY SHARE, admin row, gig row, band row) can't deadlock: a
-  -- demotion holds the admin row then wants the band's (NO KEY UPDATE, which
-  -- KEY SHARE lets through); a move holds the gig's then the band's; a band
-  -- delete holds the band's first, which KEY SHARE waits for.
-  PERFORM 1 FROM public.bands b WHERE b.id = band FOR SHARE;
+  -- Then the band's advisory lock, shared: a rotation (bw_stage_rotate_signer,
+  -- bw_stage_event_moved, and 191's key triggers) takes it exclusive before it
+  -- looks at the pairs, so a pair stored while another admin is demoted can't
+  -- slip past it unseen (READ COMMITTED skips a row whose committed pair is
+  -- still empty). An advisory lock, not the band's row (Claude round 8): a
+  -- band delete holds that row and cascades into the members' and gigs' rows
+  -- the triggers fire on; no delete takes this lock. This order (band KEY
+  -- SHARE, admin row, gig row, advisory) can't deadlock: a demotion holds the
+  -- admin row then wants the advisory lock, which this takes only after the
+  -- admin row; a move holds the gig's row then the advisory lock, the same; a
+  -- band delete holds the band's row first, which KEY SHARE waits for.
+  PERFORM pg_advisory_xact_lock_shared(hashtextextended('bw-stage-band:' || band::text, 0));
   -- The row (and the band key) are made on first use.
   PERFORM public.bw_stage_key(p_event_id);
   UPDATE public.stage_keys
@@ -220,8 +223,8 @@ GRANT EXECUTE ON FUNCTION public.bw_stage_set_signer(uuid, text, text, text) TO 
 -- Only gigs that had a real pair (one now, or a version past 1): one that
 -- never had one (a band whose admins are all on 383f15b, which never makes
 -- one) stays as it was, so members keep following its band-key state
--- instead of waiting for a pair nobody makes. The band's row is locked first
--- (bw_stage_set_signer takes it for share): a pair being stored meanwhile is
+-- instead of waiting for a pair nobody makes. The band's advisory lock is
+-- taken first (bw_stage_set_signer takes it shared): a pair being stored meanwhile is
 -- either committed before this looks (and cleared) or stored after the
 -- demotion is (when the demoted admin can't fetch it).
 -- Note for older apps: after an admin's role change, a gig that had a pair
@@ -239,8 +242,8 @@ BEGIN
           OR NOT COALESCE(NEW.is_active, true)
           OR NEW.band_id IS DISTINCT FROM OLD.band_id
           OR NEW.user_id IS DISTINCT FROM OLD.user_id) THEN
-    -- NO KEY UPDATE: conflicts with bw_stage_set_signer's FOR SHARE, not with foreign-key checks.
-    PERFORM 1 FROM public.bands b WHERE b.id = OLD.band_id FOR NO KEY UPDATE;
+    -- The band's advisory lock, exclusive: waits for bw_stage_set_signer's shared one (see there).
+    PERFORM pg_advisory_xact_lock(hashtextextended('bw-stage-band:' || OLD.band_id::text, 0));
     UPDATE public.stage_keys s
        SET sign_public = NULL, sign_private = NULL, sign_version = s.sign_version + 1
       FROM public.events e
@@ -270,7 +273,7 @@ AS $$
 BEGIN
   IF NEW.band_id IS DISTINCT FROM OLD.band_id THEN
     -- As in bw_stage_rotate_signer: an old-band admin storing a pair meanwhile waits, then finds the gig moved.
-    PERFORM 1 FROM public.bands b WHERE b.id = OLD.band_id FOR NO KEY UPDATE;
+    PERFORM pg_advisory_xact_lock(hashtextextended('bw-stage-band:' || OLD.band_id::text, 0));
     UPDATE public.stage_keys s
        SET sign_public = NULL, sign_private = NULL, sign_version = s.sign_version + 1
      WHERE s.event_id = NEW.id

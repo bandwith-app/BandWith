@@ -131,7 +131,8 @@ export const STAGE_KEY_EVENT = 'bw:stage-key';
  * may no longer see the gig, migration 191) and kept; the kept copy offline
  * (no answer in KEY_FETCH_TIMEOUT_MS; an answer that comes later is still
  * kept, unless the account changed meanwhile). A no from the server deletes
- * it (`denied`: the caller drops any copy of its own too). Null for people
+ * it and every other key kept for the gig (`denied`: the caller drops any
+ * copy of its own too). Null for people
  * outside the band, or offline before the first fetch.
  */
 export async function fetchStageKey(eventId: string): Promise<{ key: string | null; denied: boolean }> {
@@ -148,13 +149,12 @@ export async function fetchStageKey(eventId: string): Promise<{ key: string | nu
         // The key it replaced, kept for the gig day (previousStageKey).
         if (before && before !== data)
           localStorage.setItem(PREV_PREFIX + eventId, JSON.stringify({ key: before, until: Date.now() + PREV_KEY_MS }));
-      } else {
-        localStorage.removeItem(KEY_PREFIX + eventId);
-        localStorage.removeItem(PREV_PREFIX + eventId);
       }
     } catch {
       /* kept for this session only */
     }
+    // The server's no: every key kept for the gig goes, the public and the private one too (Claude round 8 on #288).
+    if (!(typeof data === 'string' && data)) forgetStageKeys(eventId);
     // Answered after the caller stopped waiting: Stage takes it now (Codex on 642676fc).
     if (late() && typeof data === 'string' && data && data !== before && typeof window !== 'undefined')
       window.dispatchEvent(new CustomEvent(STAGE_KEY_EVENT, { detail: eventId }));
@@ -430,7 +430,13 @@ export function prefetchStageKey(eventId?: string, isAdmin = false) {
   // Every time: a changed band key (191) or a pair rotated since (an admin who stopped being one) is picked up here.
   void stageKey(eventId);
   if (isAdmin) void stageSigner(eventId);
-  else void stageVerifyKey(eventId);
+  else {
+    void stageVerifyKey(eventId);
+    // A private key kept from when this account was an admin: the server is asked, and its no
+    // deletes it (stageSigner). Never on the role shown alone: it may not be loaded yet, and
+    // offline the pair stays (Claude round 8 on #288).
+    if (kept(mine(SIGNER_PREFIX, eventId), asSigner)) void stageSigner(eventId);
+  }
 }
 
 /** The old copy of a setlist (until 11-21); moved into the live pack (livePackStore.ts). */

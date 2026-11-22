@@ -199,7 +199,7 @@ vi.mock('@/lib/stageBle', async (importOriginal) => {
 });
 
 const stageBleHook = await import('../useStageBle');
-const { useStageBle, LEADER_CHECK_MS, SIGNER_RECHECK_MS } = stageBleHook;
+const { useStageBle, LEADER_CHECK_MS, SIGNER_RECHECK_MS, KEY_RECHECK_MS } = stageBleHook;
 
 const lead = (from: string, seq: number, songId: string): StageLiveState => ({ seq, from, songId, order: null });
 /** An admin's phone in Stage, leading nothing yet: its signed "here" (seq 0). */
@@ -824,6 +824,44 @@ describe('useStageBle: keys that change while Stage is open (Codex + Claude on #
     await waitFor(() => expect(air.forgotten).toContain('gig'), { timeout: 5000 });
     hook.unmount();
   }, 20_000);
+
+  it('a leader checking its keys with no band key answer and none kept (offline) keeps leading: it never starts again with no key (Claude round 8 on #288)', async () => {
+    air.signer = { ...admins, version: 1 };
+    const l = leader();
+    await waitFor(() => expect(l.result.current.status).toBe('leading'));
+    const starts = air.started.length;
+    air.keyAnswer = { key: null, denied: false };
+    online();
+    await vi.advanceTimersByTimeAsync(3000);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(l.result.current.status).toBe('leading');
+    expect(air.started.length).toBe(starts);
+    l.unmount();
+  }, 20_000);
+
+  it("a leader checking its keys and getting the server's no on the band key stops leading (Claude round 8 on #288)", async () => {
+    air.signer = { ...admins, version: 1 };
+    const l = leader();
+    await waitFor(() => expect(l.result.current.status).toBe('leading'));
+    air.keyAnswer = { key: null, denied: true };
+    online();
+    await waitFor(() => expect(l.result.current.status).toBe('off'), { timeout: 5000 });
+    l.unmount();
+  }, 20_000);
+
+  it("a member stopped by the server's no starts again once a later check gets a key (Claude round 8 on #288)", async () => {
+    put('admin', 'new', lead('a', 9, 'c3'), admins);
+    const { onState, hook } = member();
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a' }), true));
+    air.keyAnswer = { key: null, denied: true };
+    online();
+    await waitFor(() => expect(air.forgotten).toContain('gig'), { timeout: 5000 });
+    const links = air.connects.length;
+    air.keyAnswer = null;
+    await vi.advanceTimersByTimeAsync(KEY_RECHECK_MS + 1000);
+    await waitFor(() => expect(air.connects.length).toBeGreaterThan(links), { timeout: 5000 });
+    hook.unmount();
+  }, 30_000);
 
   it('a band key changed on the server: the leader starts again with the new one (Claude on #288)', async () => {
     air.signer = { ...admins, version: 1 };

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { Capacitor } from '@capacitor/core';
 
 // jsdom has no WebCrypto; the app runs where it does (WKWebView, Android WebView).
 const nodeCrypto = 'node:crypto';
@@ -59,7 +60,8 @@ vi.mock('../supabase', () => ({
         db.pair ??= { public: args.p_public, private: args.p_private };
         return { data: withVersion(db.pair), error: null };
       }
-      if (fn === 'bw_stage_key') return { data: 'a2V5', error: null };
+      // 191: SQL NULL for an account that may not see the gig.
+      if (fn === 'bw_stage_key') return { data: db.member ? 'a2V5' : null, error: null };
       return { data: null, error: null };
     }),
   },
@@ -185,6 +187,47 @@ describe('stageSigner / stageVerifyKey (migration 190)', () => {
     db.offline = true;
     expect(await stageSigner('gig')).toBeNull();
     expect(await native.stageKey('gig')).toBeNull();
+  });
+
+  it("the server's no on the band key drops every key kept for the gig too, the private one included (Claude round 8 on #288)", async () => {
+    const signer = await stageSigner('gig');
+    await native.stageKey('gig');
+    expect(await stageVerifyKey('gig')).not.toBeNull();
+    db.member = false;
+    db.admin = false;
+    expect(await native.fetchStageKey('gig')).toEqual({ key: null, denied: true });
+    expect(storedKeys().filter((k) => k.includes('gig'))).toEqual([]);
+    expect(storedValues().some((v) => String(v).includes(signer!.private))).toBe(false);
+  });
+
+  it("an admin made a member: opening the gig asks the server, and its no deletes the private key kept on the phone; offline it stays (Claude round 8 on #288)", async () => {
+    const native_ = vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
+    try {
+      const signer = await stageSigner('gig');
+      const keptPrivate = () => storedValues().some((v) => String(v).includes(signer!.private));
+      expect(keptPrivate()).toBe(true);
+      // Offline (the role shown may be stale): nothing is deleted.
+      db.offline = true;
+      native.prefetchStageKey('gig', false);
+      await new Promise((r) => setTimeout(r, 50));
+      expect(keptPrivate()).toBe(true);
+      // Online, still an admin after all (the role wasn't loaded yet): the pair stays.
+      db.offline = false;
+      native.prefetchStageKey('gig', false);
+      await new Promise((r) => setTimeout(r, 50));
+      expect(keptPrivate()).toBe(true);
+      db.admin = false;
+      db.calls.length = 0;
+      native.prefetchStageKey('gig', false);
+      await vi.waitFor(() => expect(keptPrivate()).toBe(false));
+      // A member who never had a pair isn't asked for one.
+      db.calls.length = 0;
+      native.prefetchStageKey('gig', false);
+      await new Promise((r) => setTimeout(r, 50));
+      expect(db.calls).not.toContain('bw_stage_signer');
+    } finally {
+      native_.mockRestore();
+    }
   });
 
   it('overlapping fetches: an older answer arriving last never replaces a newer key (Codex on #288)', async () => {
