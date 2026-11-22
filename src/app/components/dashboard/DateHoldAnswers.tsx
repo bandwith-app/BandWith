@@ -25,7 +25,7 @@ export const DateHoldAnswers: React.FC<{ eventId: string | null | undefined; cla
     <div className="flex flex-col gap-2 min-w-0" data-testid={testId}>
       <span className="bw-label-md">{label}</span>
       {list.length === 0 ? (
-        <span className="bw-body-sm text-muted-foreground">—</span>
+        <span className="bw-body-sm text-muted-foreground">{t('Nobody yet')}</span>
       ) : (
         <ul className="flex flex-col gap-1.5 min-w-0">
           {list.map((r) => (

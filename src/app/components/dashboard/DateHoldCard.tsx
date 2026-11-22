@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, Clock, MapPin, X } from '@/app/components/icons';
+import { Check, Clock, Loader2, MapPin, X } from '@/app/components/icons';
 import { BwSheet, PillButton } from '@/app/components/bw';
 import { cn } from '@/app/components/ui/utils';
 import { useT } from '@/lib/i18n';
@@ -82,9 +82,12 @@ export const DateHoldCard: React.FC<{
           size="md"
           variant={answer === 'free' ? 'primary' : 'outline'}
           className="min-w-0 px-3 whitespace-normal leading-tight h-auto min-h-11 py-2"
-          icon={answer === 'free' ? <Check className="w-4 h-4 shrink-0" /> : undefined}
+          icon={saving === 'free'
+            ? <Loader2 className="w-4 h-4 shrink-0 animate-spin" aria-hidden />
+            : answer === 'free' ? <Check className="w-4 h-4 shrink-0" /> : undefined}
           aria-pressed={answer === 'free'}
-          loading={saving === 'free'}
+          // Busy, not disabled: focus stays on the button; answerWith ignores repeat taps.
+          aria-busy={saving === 'free'}
           onClick={() => void answerWith('free')}
         >
           {t("I'm free")}
@@ -93,9 +96,12 @@ export const DateHoldCard: React.FC<{
           size="md"
           variant={answer === 'busy' ? 'dark' : 'outline'}
           className="min-w-0 px-3 whitespace-normal leading-tight h-auto min-h-11 py-2"
-          icon={answer === 'busy' ? <X className="w-4 h-4 shrink-0" /> : undefined}
+          icon={saving === 'busy'
+            ? <Loader2 className="w-4 h-4 shrink-0 animate-spin" aria-hidden />
+            : answer === 'busy' ? <X className="w-4 h-4 shrink-0" /> : undefined}
           aria-pressed={answer === 'busy'}
-          loading={saving === 'busy'}
+          // Busy, not disabled: focus stays on the button; answerWith ignores repeat taps.
+          aria-busy={saving === 'busy'}
           onClick={() => void answerWith('busy')}
         >
           {t("I can't")}

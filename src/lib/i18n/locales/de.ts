@@ -3179,6 +3179,7 @@ const dict: Dictionary = {
   // Date on hold (178)
   "Who's free": "Wer Zeit hat",
   "No members to ask yet.": "Noch keine Mitglieder zum Fragen.",
+  "Nobody yet": "Noch niemand",
   "On the lineup": "In der Besetzung",
   "Members see only the day, time and place, and keep the date free until you confirm.": "Mitglieder sehen nur Tag, Uhrzeit und Ort und halten sich den Termin frei, bis du bestätigst.",
   "Free ({count})": "Haben Zeit ({count})",
