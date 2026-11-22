@@ -249,6 +249,48 @@ describe('runLivePackPrefetch', () => {
   });
 });
 
+// Kill switch live_pack off (docs/flags.md): it stops new downloads only.
+// The tidy-up (old copies moved in, packs of left bands and past events
+// removed) always runs: privacy and data migration are never switched off.
+describe('runLivePackPrefetch with downloads off', () => {
+  const ev = (id: string, date: string, over: Record<string, unknown> = {}) => ({
+    eventId: id,
+    bandId: 'b1',
+    date,
+    eventType: 'gig',
+    setlistId: 's1',
+    row: gig({ id, event_date: date, ...over }),
+  });
+
+  it('still moves the old copies in and removes packs of bands I left, downloads nothing', async () => {
+    writeChoice(me, { auto: true, events: [], wifiOnly: false });
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    await savePackSongs({ userId: me, event: gig({ id: 'e9', band_id: 'b2', setlist_id: 's9' }), songs });
+    localStorage.setItem('bw-setlist-songs:s1', JSON.stringify(songs));
+    const events = [ev('e1', inDays(1)), ev('e2', inDays(2), { setlist_id: 's2' })];
+    events[1].setlistId = 's2';
+    expect(await runLivePackPrefetch({ userId: me, bandIds: ['b1'], events, online: true, downloads: false })).toBe(0);
+    expect(localStorage.getItem('bw-setlist-songs:s1')).toBeNull();
+    expect((await readPack(me, 'b1', 'e1'))?.songs).toHaveLength(2); // the old copy, not a download
+    expect(await readPack(me, 'b1', 'e2')).toBeNull();
+    expect(await readPack(me, 'b2', 'e9')).toBeNull();
+  });
+
+  it('switched off while downloading: the next event is not fetched', async () => {
+    writeChoice(me, { auto: true, events: [], wifiOnly: false });
+    answers.setlist_songs = () => ({ data: [row('ss1', 'song1', 'Paper Boats')], error: null });
+    const events = [ev('e1', inDays(1)), ev('e2', inDays(2))];
+    // On until the first pack is saved, then switched off.
+    let on = true;
+    const off = () => (on = false);
+    window.addEventListener('bw:live-pack-changed', off);
+    const n = await runLivePackPrefetch({ userId: me, bandIds: ['b1'], events, online: true, keepGoing: () => on });
+    window.removeEventListener('bw:live-pack-changed', off);
+    expect(n).toBe(1);
+    expect((await listPacks(me)).map((p) => p.eventId)).toEqual(['e1']);
+  });
+});
+
 describe('migrateLegacySetlists', () => {
   it('moves the old localStorage copy into the pack, then removes it', async () => {
     localStorage.setItem('bw-setlist-songs:s1', JSON.stringify(songs));

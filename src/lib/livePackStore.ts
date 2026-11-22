@@ -419,6 +419,14 @@ export function runLivePackPrefetch(args: {
   now?: Date;
   /** Refresh these events even if their pack is fresh (silent push: something changed). */
   force?: string[];
+  /**
+   * false: tidy up only (old copies moved in, expired packs and bands left
+   * removed), no downloads. The kill switch live_pack (docs/flags.md) stops
+   * downloads, never the tidy-up.
+   */
+  downloads?: boolean;
+  /** Asked before each download: false stops the run (switched off meanwhile). */
+  keepGoing?: () => boolean;
 }): Promise<number> {
   if (running) return running.then(() => (args.force?.length ? runLivePackPrefetch(args) : 0));
   running = prefetchOnce(args).finally(() => {
@@ -427,10 +435,22 @@ export function runLivePackPrefetch(args: {
   return running;
 }
 
-async function prefetchOnce({ userId, bandIds, events, online, onWifi = true, unknownTitle, now = new Date(), force = [] }: Parameters<typeof runLivePackPrefetch>[0]): Promise<number> {
+async function prefetchOnce({
+  userId,
+  bandIds,
+  events,
+  online,
+  onWifi = true,
+  unknownTitle,
+  now = new Date(),
+  force = [],
+  downloads = true,
+  keepGoing = () => true,
+}: Parameters<typeof runLivePackPrefetch>[0]): Promise<number> {
   const rows = new Map(events.map((e) => [e.eventId, e.row]));
   await migrateLegacySetlists(userId, events, rows);
   if (bandIds) await sweepPacks(userId, bandIds, now);
+  if (!downloads || !keepGoing()) return 0;
   const choice = readChoice(userId);
   if (!online || !anyPackAllowed(choice) || (choice.wifiOnly && !onWifi)) return 0;
   let candidates = prefetchCandidates(events, now).filter((e) => packAllowed(choice, e.eventId));
@@ -445,6 +465,7 @@ async function prefetchOnce({ userId, bandIds, events, online, onWifi = true, un
   candidates = candidates.filter((e) => !declined.has(e.eventId));
   let done = 0;
   for (const e of candidates) {
+    if (!keepGoing()) break;
     const prev = await readPack(userId, e.bandId, e.eventId);
     const fresh = prev && prev.event.event_date === e.date && now.getTime() - new Date(prev.savedAt).getTime() < FRESH_MS;
     if (fresh && !force.includes(e.eventId)) continue;

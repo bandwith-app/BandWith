@@ -87,10 +87,15 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
   const keyRef = useRef<string | null>(null);
   const startedRef = useRef(false);
   const pendingRef = useRef<StageLiveState | null>(null);
+  /** Leader: the last state published for this event, served again whenever Bluetooth (re)starts. */
+  const lastRef = useRef<StageLiveState | null>(null);
   /**
    * Click / playhead clock over Bluetooth (app_flags ble_live, docs/flags.md).
-   * Off: the leader serves only the song (no clock or live characteristic),
-   * members read no clock (`clock` null, the click uses the Realtime clock).
+   * Read when the leader starts: off then, it serves only the song (no clock
+   * or live characteristic). Turned off mid-show, the leader's service is NOT
+   * restarted (that would drop every member's link): it stops recalibrating,
+   * and members stop reading the clock (`clock` null, the click uses the
+   * Realtime clock). Turned on mid-show: from the next time Stage opens.
    */
   const bleLive = useFlag('ble_live');
   const bleLiveRef = useRef(bleLive);
@@ -101,6 +106,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
   const active = open && !!eventId && stageBleAvailable() && savedIds.length > 0;
 
   const push = useCallback(async (state: StageLiveState) => {
+    lastRef.current = state;
     const key = keyRef.current;
     if (!key || !startedRef.current) {
       pendingRef.current = state;
@@ -124,13 +130,21 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     [isLeader, push],
   );
 
+  // Another event: its last state isn't this one's.
+  useEffect(() => {
+    lastRef.current = null;
+  }, [eventId]);
+
   // Leader: advertise while Stage mode is open.
   useEffect(() => {
     if (!active || !isLeader || !eventId) return;
     let cancelled = false;
     let listener: PluginListenerHandle | null = null;
     let recalibrate: ReturnType<typeof setInterval> | undefined;
+    // Read once: a flip mid-show must not restart the service (see bleLive above).
+    const withClock = bleLiveRef.current;
     const calibrate = async () => {
+      if (!bleLiveRef.current) return;
       try {
         const offset = await calibrateClock();
         if (offset !== null && !cancelled) await StageBle.setClock({ offset });
@@ -160,21 +174,23 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
           characteristicUuid: STAGE_BLE_CHARACTERISTIC,
           value: '',
           notify: '',
-          ...(bleLive ? { clockUuid: STAGE_BLE_CLOCK_CHARACTERISTIC, liveUuid: STAGE_BLE_LIVE_CHARACTERISTIC } : {}),
+          ...(withClock ? { clockUuid: STAGE_BLE_CLOCK_CHARACTERISTIC, liveUuid: STAGE_BLE_LIVE_CHARACTERISTIC } : {}),
           key,
         });
         if (cancelled) return;
         startedRef.current = true;
         setStatus(leaderStatus(state));
-        if (bleLive) {
+        if (withClock) {
           // Clock reads carry the app's clock (the one `startAt` uses); kept right as the two drift.
           await calibrate();
           if (cancelled) return;
           recalibrate = setInterval(() => void calibrate(), CLOCK_RESYNC_MS);
         }
-        const pending = pendingRef.current;
+        // The newest state: one that waited for the start, or the last one
+        // served before a restart (members joining get the song at once).
+        const next = pendingRef.current ?? lastRef.current;
         pendingRef.current = null;
-        if (pending) void push(pending);
+        if (next) void push(next);
       } catch (e) {
         if (!cancelled) setStatus(bleProblem(e));
       }
@@ -189,7 +205,7 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       void StageBle.stop().catch(() => {});
       setStatus('off');
     };
-  }, [active, isLeader, eventId, push, attempt, bleLive]);
+  }, [active, isLeader, eventId, push, attempt]);
 
   // Member: find the leader, subscribe, read on every change.
   useEffect(() => {
@@ -212,6 +228,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
     let link = 0;
 
     const emitClock = () => {
+      // Switched off: a read still in flight, or a new leader id, brings no clock back.
+      if (!bleLiveRef.current) return;
       const sample = book.best(nowMs());
       if (sample) setClock({ from: leaderFrom, sample });
     };
@@ -354,6 +372,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState }: Opti
       },
       stop: () => {
         stopSync();
+        book.clear();
+        bookDevice = null;
         setClock(null);
       },
     };

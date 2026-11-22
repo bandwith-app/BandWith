@@ -6,7 +6,7 @@ import { runLivePackPrefetch, type PrefetchEvent } from '@/lib/livePackStore';
 import { LIVE_PACK_CHOICE_EVENT, hasAnswered, readChoice, writeChoice } from '@/lib/livePackConsent';
 import { readProfileAuto } from '@/lib/livePackStatus';
 import { t } from '@/lib/i18n';
-import { useFlag } from '@/lib/appFlags';
+import { isFlagOn, useFlag } from '@/lib/appFlags';
 
 const isOnline = () => (typeof navigator === 'undefined' ? true : navigator.onLine !== false);
 
@@ -43,14 +43,16 @@ export function useLivePackPrefetch(
         })),
     [events],
   );
-  // Switched off (app_flags live_pack, docs/flags.md): no downloads ahead of time, silent pushes ignored.
+  // Switched off (app_flags live_pack, docs/flags.md): no downloads ahead of
+  // time, silent pushes ignored, a running download stops. The tidy-up (old
+  // copies moved in, expired packs and bands left removed) always runs.
   const on = useFlag('live_pack');
   const key = `${on ? 1 : 0}#${userId ?? ''}#${bandIds ? bandIds.slice().sort().join(',') : '?'}#${list.map((e) => `${e.eventId}@${e.date}@${e.setlistId}`).join('|')}`;
   const ref = useRef({ list, bandIds });
   ref.current = { list, bandIds };
 
   useEffect(() => {
-    if (!userId || !on) return;
+    if (!userId) return;
     const run = (force?: string[]) =>
       void runLivePackPrefetch({
         userId,
@@ -59,7 +61,9 @@ export function useLivePackPrefetch(
         online: Capacitor.isNativePlatform() && isOnline(),
         onWifi: !onCellular(),
         unknownTitle: t('Unknown Song'),
-        force,
+        force: on ? force : undefined,
+        downloads: on,
+        keepGoing: () => isFlagOn('live_pack'),
       }).catch(() => undefined);
     const again = () => run();
     const refresh = (e: Event) => {

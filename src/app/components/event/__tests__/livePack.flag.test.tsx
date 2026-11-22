@@ -3,8 +3,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, renderHook, act } from '@testing-library/react';
 
 // Kill switch `live_pack` (docs/flags.md): off → no downloads ahead of time,
-// no consent sheet, no "Download for offline" / ready rows.
-const h = vi.hoisted(() => ({ runs: [] as Array<{ force?: string[] }> }));
+// no consent sheet, no "Download for offline" / ready rows. The tidy-up
+// (old copies moved in, packs of bands left removed) still runs.
+type Run = { force?: string[]; downloads?: boolean; keepGoing?: () => boolean };
+const h = vi.hoisted(() => ({ runs: [] as Run[] }));
 vi.mock('@capacitor/core', async (orig) => ({
   ...(await orig<typeof import('@capacitor/core')>()),
   Capacitor: { isNativePlatform: () => true, getPlatform: () => 'android', isPluginAvailable: () => false },
@@ -12,8 +14,8 @@ vi.mock('@capacitor/core', async (orig) => ({
 vi.mock('@/lib/appResume', () => ({ onAppResume: () => () => undefined }));
 vi.mock('@/lib/haptics', () => ({ haptic: { tap: vi.fn(), medium: vi.fn(), confirm: vi.fn(), selection: vi.fn() } }));
 vi.mock('@/lib/livePackStore', () => ({
-  runLivePackPrefetch: async (a: { force?: string[] }) => {
-    h.runs.push({ force: a.force });
+  runLivePackPrefetch: async (a: Run) => {
+    h.runs.push({ force: a.force, downloads: a.downloads, keepGoing: a.keepGoing });
     return 0;
   },
   refreshPack: async () => true,
@@ -46,7 +48,7 @@ afterEach(() => {
 });
 
 describe('live_pack off', () => {
-  it('nothing is downloaded ahead of time, a silent push is ignored', async () => {
+  it('nothing is downloaded ahead of time, a silent push is ignored; the tidy-up still runs', async () => {
     __setAppFlagsForTest({ live_pack: false });
     renderHook(() => useLivePackPrefetch([], 'u-1', ['b-1']));
     act(() => {
@@ -54,17 +56,31 @@ describe('live_pack off', () => {
       window.dispatchEvent(new Event('online'));
     });
     await vi.advanceTimersByTimeAsync(2000);
-    expect(h.runs).toEqual([]);
+    expect(h.runs.length).toBeGreaterThan(0);
+    expect(h.runs.every((r) => r.downloads === false && !r.force)).toBe(true);
   });
 
-  it('turned off while the app is open: the next push does nothing', async () => {
+  it('turned off while the app is open: the next push only tidies up', async () => {
     renderHook(() => useLivePackPrefetch([], 'u-1', ['b-1']));
     act(() => __setAppFlagsForTest({ live_pack: false }));
+    h.runs = [];
     act(() => {
       window.dispatchEvent(new CustomEvent(LIVE_PACK_REFRESH_EVENT, { detail: { eventId: 'ev-9' } }));
     });
     await vi.advanceTimersByTimeAsync(2000);
-    expect(h.runs).toEqual([]);
+    expect(h.runs.length).toBeGreaterThan(0);
+    expect(h.runs.every((r) => r.downloads === false && !r.force)).toBe(true);
+  });
+
+  it('a download already running stops when it is switched off', () => {
+    renderHook(() => useLivePackPrefetch([], 'u-1', ['b-1']));
+    act(() => {
+      window.dispatchEvent(new CustomEvent(LIVE_PACK_REFRESH_EVENT, { detail: { eventId: 'ev-9' } }));
+    });
+    const running = h.runs.find((r) => r.downloads !== false)!;
+    expect(running.keepGoing?.()).toBe(true);
+    act(() => __setAppFlagsForTest({ live_pack: false }));
+    expect(running.keepGoing?.()).toBe(false);
   });
 
   it('on (the default): a silent push still refreshes', () => {
@@ -72,7 +88,7 @@ describe('live_pack off', () => {
     act(() => {
       window.dispatchEvent(new CustomEvent(LIVE_PACK_REFRESH_EVENT, { detail: { eventId: 'ev-9' } }));
     });
-    expect(h.runs).toContainEqual({ force: ['ev-9'] });
+    expect(h.runs.some((r) => r.force?.[0] === 'ev-9' && r.downloads !== false)).toBe(true);
   });
 
   it('no "Download for offline" row on the event', () => {

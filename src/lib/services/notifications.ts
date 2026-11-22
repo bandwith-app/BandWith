@@ -1,3 +1,4 @@
+import { isFlagOn } from '@/lib/appFlags';
 import { supabase, getSafeUser } from '../supabase';
 import { parseLocalDate } from '@/lib/dates';
 import { getActiveSymbol } from '@/lib/currency';
@@ -227,6 +228,11 @@ export const getNotifications = async (options?: {
       query = query.not('type', 'in', CHAT_TYPES_FILTER);
     }
 
+    // Kill switch live_pack off (docs/flags.md): no "Download for offline" prompts.
+    if (!isFlagOn('live_pack')) {
+      query = query.neq('type', 'live_pack_ready');
+    }
+
     if (options?.limit) {
       query = query.limit(options.limit);
     }
@@ -265,11 +271,13 @@ export const getUnreadCount = async (): Promise<{ data: number | null; error: Er
     const { data: { user } } = await getSafeUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { count, error } = await supabase
+    let query = supabase
       .from('notifications')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', user.id)
       .eq('read', false);
+    if (!isFlagOn('live_pack')) query = query.neq('type', 'live_pack_ready');
+    const { count, error } = await query;
 
     if (error) throw error;
 
@@ -484,6 +492,7 @@ export const subscribeToNotifications = (
         { event: 'INSERT', schema: 'public', table: 'notifications', filter },
         (payload) => {
           const notification = payload.new as Notification;
+          if (String(notification.type) === 'live_pack_ready' && !isFlagOn('live_pack')) return;
           if (notification.user_id === user.id) callback(notification);
         }
       )

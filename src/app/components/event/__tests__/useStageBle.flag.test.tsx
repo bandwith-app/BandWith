@@ -6,8 +6,12 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 // itself still syncs over Bluetooth, the click uses the Realtime clock.
 const h = vi.hoisted(() => ({
   starts: [] as Array<Record<string, unknown>>,
+  stops: 0,
+  updates: [] as string[],
   setClock: 0,
   reads: [] as string[],
+  /** While set, clock reads wait for it (a read in flight). */
+  hold: null as Promise<void> | null,
 }));
 vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => true, getPlatform: () => 'ios' } }));
 vi.mock('@capacitor/app', () => ({ App: { addListener: async () => ({ remove: async () => {} }) } }));
@@ -20,15 +24,42 @@ vi.mock('@/lib/stageBleNative', () => ({
       h.starts.push(o);
       return { state: 'on' };
     },
-    stop: async () => {},
-    update: async () => {},
+    stop: async () => {
+      h.stops++;
+    },
+    update: async (o: { value: string }) => {
+      h.updates.push(o.value);
+    },
     now: async () => ({ now: Date.now() }),
     setClock: async () => {
       h.setClock++;
     },
   },
 }));
-vi.mock('@/lib/stageBle', async (orig) => ({ ...(await orig<typeof import('@/lib/stageBle')>()), stageServiceUuid: async () => 'svc' }));
+// No WebCrypto in this jsdom: the state's bytes are its JSON here.
+vi.mock('@/lib/stageBle', async (orig) => ({
+  ...(await orig<typeof import('@/lib/stageBle')>()),
+  stageServiceUuid: async () => 'svc',
+  encodeStageState: async (state: unknown) => new TextEncoder().encode(JSON.stringify(state)),
+}));
+// Every clock read decodes and counts (the real book keeps only better samples).
+vi.mock('@/lib/stageBleSync', async (orig) => {
+  const real = await orig<typeof import('@/lib/stageBleSync')>();
+  class Book {
+    last: { offset: number; rtt: number } | null = null;
+    add() {
+      this.last = { offset: 0, rtt: 1 };
+      return this.last;
+    }
+    best() {
+      return this.last;
+    }
+    clear() {
+      this.last = null;
+    }
+  }
+  return { ...real, BleClockBook: Book, decodeClock: async () => Date.now() };
+});
 vi.mock('@capacitor-community/bluetooth-le', () => ({
   ConnectionPriority: { CONNECTION_PRIORITY_HIGH: 1 },
   BleClient: {
@@ -46,6 +77,7 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
     requestConnectionPriority: async () => {},
     read: async (_id: string, _svc: string, ch: string) => {
       h.reads.push(ch);
+      if (h.hold && ch === 'b7d50002-5b1e-4c6a-9b3d-6e0a2f7c1d42') await h.hold;
       return new DataView(new ArrayBuffer(4));
     },
   },
@@ -61,8 +93,11 @@ beforeEach(() => {
   localStorage.clear();
   __resetAppFlagsForTest(null);
   h.starts = [];
+  h.stops = 0;
+  h.updates = [];
   h.setClock = 0;
   h.reads = [];
+  h.hold = null;
 });
 afterEach(() => vi.useRealTimers());
 
@@ -101,6 +136,52 @@ describe('ble_live', () => {
     act(() => result.current.burst());
     await new Promise((r) => setTimeout(r, 1200));
     expect(h.reads.filter((c) => c === STAGE_BLE_CLOCK_CHARACTERISTIC).length).toBe(n);
+    expect(result.current.clock).toBeNull();
+  });
+
+  it('turned off mid-show: the leader keeps serving, no restart, members keep the song', async () => {
+    const { result } = renderHook(() => useStageBle(opts(true)));
+    await waitFor(() => expect(h.starts).toHaveLength(1));
+    await act(async () => {
+      result.current.publish({ seq: 7, from: 'lead', songId: 'r2', order: null });
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    expect(h.updates).toHaveLength(1);
+    act(() => __setAppFlagsForTest({ ble_live: false }));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(h.stops).toBe(0);
+    expect(h.starts).toHaveLength(1);
+  });
+
+  it('a restarted leader serves the last song again, not an empty value', async () => {
+    const { result, rerender } = renderHook((o: ReturnType<typeof opts>) => useStageBle(o), { initialProps: opts(true) });
+    await waitFor(() => expect(h.starts).toHaveLength(1));
+    await act(async () => {
+      result.current.publish({ seq: 7, from: 'lead', songId: 'r2', order: null });
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    const last = h.updates[h.updates.length - 1];
+    rerender({ ...opts(true), open: false });
+    rerender(opts(true));
+    await waitFor(() => expect(h.starts).toHaveLength(2));
+    await waitFor(() => expect(h.updates).toHaveLength(2));
+    expect(h.updates[1]).toBe(last);
+  });
+
+  it('a clock read still in flight when it is turned off sets no clock', async () => {
+    const { result } = renderHook(() => useStageBle(opts(false)));
+    await waitFor(() => expect(result.current.clock).not.toBeNull());
+    let release = () => {};
+    h.hold = new Promise<void>((r) => (release = r));
+    const before = h.reads.length;
+    act(() => result.current.burst());
+    await waitFor(() => expect(h.reads.length).toBeGreaterThan(before));
+    act(() => __setAppFlagsForTest({ ble_live: false }));
+    expect(result.current.clock).toBeNull();
+    await act(async () => {
+      release();
+      await new Promise((r) => setTimeout(r, 30));
+    });
     expect(result.current.clock).toBeNull();
   });
 });

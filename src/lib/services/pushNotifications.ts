@@ -11,6 +11,7 @@ import { getActiveChat } from './activeChatTracker';
 import { getLocale } from '@/lib/i18n';
 import { localizePushLabel, pushLanguage } from '@/lib/pushLabels';
 import { LIVE_PACK_REFRESH_EVENT } from '@/lib/livePack';
+import { isFlagOn } from '@/lib/appFlags';
 
 // Cache the token to avoid re-registration issues
 let cachedToken: string | null = null;
@@ -312,6 +313,8 @@ export const setupNativePushListeners = (
       window.dispatchEvent(new CustomEvent(LIVE_PACK_REFRESH_EVENT, { detail: { eventId: String(notification.data?.event_id || '') } }));
       return;
     }
+    // Kill switch live_pack off (docs/flags.md): no "Download for offline" prompt.
+    if (notification.data?.type === 'live_pack_ready' && !isFlagOn('live_pack')) return;
 
     // Check if this is a chat notification for the currently open chat
     const notificationChatId = notification.data?.chatId || notification.data?.chat_id;

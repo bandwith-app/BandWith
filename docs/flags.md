@@ -36,11 +36,11 @@ All are **ON** by default (built into the app). The table can only turn things o
 
 | key | Switched off, this goes | This stays | Wrapped |
 | --- | --- | --- | --- |
-| `live_pack` | Downloads ahead of time, the silent-push refresh, files and notes in the pack, the consent sheet, "Download for offline" / "Offline ready" row, "N of M members ready" row, Settings › Offline & live | The setlist you last opened stays on the phone and opens with no signal (the behaviour from before the live pack, #93) | yes (#267 #269) |
+| `live_pack` | Downloads ahead of time (a download already running stops before the next event), the silent-push refresh, the consent sheet, "Download for offline" / "Offline ready" row, "N of M members ready" row and "Remind", the "keep it offline" prompts (`live_pack_ready`: inbox, unread count, banner while the app is open), Settings › Offline & live | The setlist you last opened stays on the phone and opens with no signal (the behaviour from before the live pack, #93). **The tidy-up always runs**: old copies moved into packs once, packs removed 24 h after the event and for bands you left (files and the Bluetooth key with them). **Packs already on the phone stay readable offline** (songs, my notes and files, rehearsal notes): it is data the person already has, and losing it at a gig with no signal is worse than the feature | yes (#267 #269) |
 | `voice_parts` | Part colours and styles, the legend and "Highlight my part", Who sings what (nothing fetched), the Voice row and "Mark the voice parts" in the chord editor | Lyrics read as plain lead lines; the `{bv}…{/bv}` markers stay saved in the song and are never shown | yes (#264 #266) |
 | `follow_tempo` | Follow the tempo (playhead) on Stage | Stage, the click | **to do by the live-tempo / live-follow session** (B1 #272, B2) |
 | `count_in` | Count-in before a song | Stage, the click | **to do by the live-tempo session** (D1) |
-| `ble_live` | Leader: the clock and live characteristics over Bluetooth. Members: the clock reads over Bluetooth | The song and order over Bluetooth (#93); the click uses the Realtime clock | clock: yes (#265 #268). **B3 (click / playhead / count-in on the live characteristic): to do by the live-bluetooth session** |
+| `ble_live` | Leader: the clock and live characteristics over Bluetooth (read when Stage starts). Members: the clock reads over Bluetooth, a read in flight brings no clock back | The song and order over Bluetooth (#93); the click uses the Realtime clock. **Turned off mid-show the leader's Bluetooth is not restarted** (that would drop every member's link): it stops recalibrating, members stop reading the clock. Turned on mid-show: from the next time the leader opens Stage. A restarted leader serves the last song again at once | clock: yes (#265 #268). **B3 (click / playhead / count-in on the live characteristic): to do by the live-bluetooth session** |
 
 ## How it works
 
@@ -86,6 +86,7 @@ if (!isFlagOn('count_in')) return;    // outside React (a send, a timer, a push 
 ```
 
 Rules:
+0. **A switch hides and stops, it never skips the housekeeping.** Off hides the feature's entry points and stops its *new* behaviour. Clean-up, privacy sweeps (packs of bands left), data migrations (old copies moved in) and replaying the last state (a restarted Bluetooth leader) always run.
 1. **Hide the entry point.** The button, row, sheet or menu entry renders nothing while off. The pattern used for the live pack:
    ```tsx
    export const X: React.FC<P> = (props) => (useFlag('live_pack') ? <XInner {...props} /> : null);
@@ -116,6 +117,7 @@ Where to wrap the parts still to come:
   - publish / receive the click, playhead and count-in on `b7d50003` only while on.
   - The leader already leaves the characteristic out when off (`useStageBle`).
   - The member's clock reads already stop.
+- **Server side, later**: the `live_pack_ready` prompts are written by 170's daily sweep (pg_cron, not applied yet) and drawn by the phone's system while the app is in the background, so the app can't hide that banner. When 170's cron goes live, its sweep should skip everything while `app_flags.live_pack` is off.
 - **A new feature** adds:
   - its key to `APP_FLAG_DEFAULTS` (`src/lib/appFlags.ts`),
   - a row here,
