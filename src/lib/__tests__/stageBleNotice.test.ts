@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bleProblem, stageBleNotice, type StageBleNoticeInput } from '../stageBleNotice';
+import { bleLinked, bleProblem, stageBleNotice, type StageBleNoticeInput } from '../stageBleNotice';
 
 const member = (over: Partial<StageBleNoticeInput>): StageBleNoticeInput => ({
   status: 'connected',
@@ -65,8 +65,17 @@ describe('stageBleNotice: one plain line, only when it matters', () => {
     expect(stageBleNotice(leader({ status: 'unsupported' }))?.text).toBe("This phone can't lead the band without internet.");
   });
 
+  it("a leader on an older app: followed, and one plain line asks to update it, online too", () => {
+    const text = "The leader's app is out of date: ask them to update";
+    expect(stageBleNotice(member({ status: 'old-leader' }))).toEqual({ tone: 'warn', text });
+    expect(stageBleNotice(member({ status: 'old-leader', online: true }))).toEqual({ tone: 'warn', text });
+    expect(bleLinked('old-leader')).toBe(true);
+    expect(bleLinked('connected')).toBe(true);
+    expect(bleLinked('searching')).toBe(false);
+  });
+
   it('never uses technical words', () => {
-    const all = (['connected', 'searching', 'leading', 'denied', 'bt-off', 'outdated', 'unsupported'] as const).flatMap((status) =>
+    const all = (['connected', 'old-leader', 'searching', 'leading', 'denied', 'bt-off', 'outdated', 'unsupported'] as const).flatMap((status) =>
       [false, true].flatMap((isLeader) =>
         (['ios', 'android'] as const).map((platform) => stageBleNotice({ status, online: false, isLeader, followers: 2, platform })?.text ?? ''),
       ),

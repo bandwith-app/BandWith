@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { encodeStageState, toBase64, STAGE_BLE_CHARACTERISTIC } from '@/lib/stageBle';
+import { encodeSignedState, encodeStageState, toBase64, STAGE_BLE_CHARACTERISTIC, STAGE_BLE_SIGNED_CHARACTERISTIC } from '@/lib/stageBle';
+import { generateSigner } from '@/lib/stageSign';
 import { STAGE_BLE_CLOCK_CHARACTERISTIC, encodeClock } from '@/lib/stageBleSync';
 import { nowMs } from '@/lib/stageClick';
 import type { StageLiveState } from '@/lib/stageLive';
@@ -14,6 +15,8 @@ if (!globalThis.crypto?.subtle) {
 
 const KEY = toBase64(new Uint8Array(32).map((_, i) => i * 5));
 const IDS = ['a1', 'b2', 'c3'];
+/** The gig's key pair: phones with a clock here run this app (signed state and clock); the others an older one. */
+const SIGNER = await generateSigner();
 
 /**
  * Admins' phones advertising the gig (review of #280). Closer to the real
@@ -70,20 +73,27 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
       air.log.push(`disconnected:${id}`);
     }),
     requestConnectionPriority: vi.fn(async () => {}),
+    getServices: vi.fn(async (id: string) => {
+      const signs = air.devices.get(id)?.clockAhead !== undefined;
+      const chars = signs ? [STAGE_BLE_CHARACTERISTIC, STAGE_BLE_SIGNED_CHARACTERISTIC, STAGE_BLE_CLOCK_CHARACTERISTIC] : [STAGE_BLE_CHARACTERISTIC];
+      return [{ uuid: 'gig', characteristics: chars.map((uuid) => ({ uuid, properties: {}, descriptors: [] })) }];
+    }),
     startNotifications: vi.fn(async () => {}),
     read: vi.fn(async (id: string, _s: string, char: string) => {
       const d = air.devices.get(id);
       if (char === STAGE_BLE_CLOCK_CHARACTERISTIC) {
         if (d?.clockAhead === undefined) throw new Error('Characteristic not found.');
-        return new DataView((await encodeClock(nowMs() + d.clockAhead, KEY)).buffer);
+        return new DataView((await encodeClock(nowMs() + d.clockAhead, SIGNER.private)).buffer);
       }
-      if (char !== STAGE_BLE_CHARACTERISTIC) throw new Error('Characteristic not found.');
+      const signed = char === STAGE_BLE_SIGNED_CHARACTERISTIC && d?.clockAhead !== undefined;
+      if (char !== STAGE_BLE_CHARACTERISTIC && !signed) throw new Error('Characteristic not found.');
       air.pendingReads++;
       try {
         if (d?.readMs) await new Promise((r) => setTimeout(r, d.readMs));
         const st = d?.state as StageLiveState | null;
         if (!st) return new DataView(new ArrayBuffer(0));
-        return new DataView((await encodeStageState(st, d?.ids ?? IDS, KEY))!.buffer);
+        const ids = d?.ids ?? IDS;
+        return new DataView((signed ? await encodeSignedState(st, ids, SIGNER.private) : await encodeStageState(st, ids, KEY))!.buffer);
       } finally {
         air.pendingReads--;
       }
@@ -98,6 +108,8 @@ vi.mock('@/lib/stageBleNative', () => ({
   StageBle: {},
   stageBleAvailable: () => true,
   stageKey: async () => KEY,
+  stageVerifyKey: async () => SIGNER.public,
+  stageSigner: async () => null,
 }));
 
 const { useStageBle, LEADER_CHECK_MS } = await import('../useStageBle');
@@ -215,19 +227,23 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
 
   it("moving to another admin's phone drops the old leader's clock (an older app has none to replace it)", async () => {
     appear('admin-b', lead('b', 3, 'a1'), { clockAhead: 800 });
-    const m = member();
+    const onState = vi.fn();
+    const m = member(onState);
     await waitFor(() => expect(m.result.current.clock?.from).toBe('b'));
-    // Admin A leads on an older app: no clock characteristic.
+    // Admin B walks out of range; admin A leads on an older app (no clock characteristic).
+    air.devices.delete('admin-b');
+    air.connected.delete('admin-b');
+    air.goodbyes.get('admin-b')!();
     appear('admin-a', lead('a', 9, 'c3'));
-    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 5000);
-    await waitFor(() => expect(air.connected).toEqual(new Set(['admin-a'])));
+    await vi.advanceTimersByTimeAsync(5000);
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a' })));
     await vi.advanceTimersByTimeAsync(1000);
     expect(m.result.current.clock).toBeNull();
     m.unmount();
   });
 
   it('the leader drops out during a look: the look ends its scan, and the member finds the leader again', async () => {
-    appear('admin-b', lead('b', 3, 'a1'));
+    appear('admin-b', lead('b', 3, 'a1'), { clockAhead: 0 });
     const m = member();
     await waitFor(() => expect(air.connected).toEqual(new Set(['admin-b'])));
     await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 500);

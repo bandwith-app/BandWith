@@ -16,9 +16,23 @@ import { t } from '@/lib/i18n';
  * - bt-off: Bluetooth turned off on the phone;
  * - unsupported: this phone can't do it;
  * - outdated: linked, but the leader's setlist has other songs than the one
- *   on this phone (songs added or removed while it was offline).
+ *   on this phone (songs added or removed while it was offline);
+ * - old-leader: linked and following, but the leader's app is from before
+ *   signed states (audit #1): it works, the leader should update.
  */
-export type StageBleStatus = 'off' | 'leading' | 'searching' | 'connected' | 'denied' | 'bt-off' | 'unsupported' | 'outdated';
+export type StageBleStatus =
+  | 'off'
+  | 'leading'
+  | 'searching'
+  | 'connected'
+  | 'old-leader'
+  | 'denied'
+  | 'bt-off'
+  | 'unsupported'
+  | 'outdated';
+
+/** A member's phone linked to the leader's (and following it). */
+export const bleLinked = (status: StageBleStatus | undefined) => status === 'connected' || status === 'old-leader';
 
 export interface StageBleNoticeInput {
   status: StageBleStatus;
@@ -48,6 +62,8 @@ export function stageBleNotice({ status, online, isLeader, followers, platform }
       action: 'allow',
     };
   }
+  // Worth fixing before the internet drops, so shown with it up too.
+  if (status === 'old-leader') return { tone: 'warn', text: t("The leader's app is out of date: ask them to update") };
   // With the internet up, the band is in sync anyway: nothing to say.
   if (online) return null;
   switch (status) {

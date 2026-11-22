@@ -3835,6 +3835,7 @@ const dict: Dictionary = {
   "Allow Bluetooth so the band can follow you when the internet drops.": "Permita o Bluetooth para a banda seguir você quando a internet cair.",
   "Allow Bluetooth to stay with the band when the internet drops.": "Permita o Bluetooth para continuar com a banda quando a internet cair.",
   "Connected to the leader's phone": "Conectado ao celular do líder",
+  "The leader's app is out of date: ask them to update": "O app do líder está desatualizado: peça para atualizar",
   "Not connected: ask the leader to open Stage": "Sem conexão: peça ao líder para abrir o modo palco",
   "No phones connected yet: ask the band to open Stage": "Nenhum celular conectado ainda: peça à banda para abrir o modo palco",
   "1 phone connected to you": "1 celular conectado a você",

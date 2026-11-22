@@ -20,7 +20,7 @@ import { StageClickButton, StageClickFrame, useStageClickUi, type StageClickCont
 import { useSessionSeconds } from '@/app/components/dashboard/RehearsalSession';
 import type { RehearsalSessionControls } from '@/app/components/event/useRehearsalSession';
 import { formatClock } from '@/lib/rehearsalSession';
-import type { StageBleStatus } from '@/lib/stageBleNotice';
+import { bleLinked, type StageBleStatus } from '@/lib/stageBleNotice';
 import { StageBleNoticeLine } from '@/app/components/event/StageBleNoticeLine';
 import { NoteSheetsHost, WedgeNotesPad, useNoteSheets, type LiveNotes } from '@/app/components/dashboard/RehearsalNotes';
 
@@ -460,7 +460,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
                 ? t('Follow leader')
                 : !follow.leaderSeen
                   ? t('Waiting for leader')
-                  : !follow.connected && follow.bluetooth !== 'connected'
+                  : !follow.connected && !bleLinked(follow.bluetooth)
                     ? t('Offline')
                     : t('Following leader')}
             </button>

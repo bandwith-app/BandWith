@@ -1367,6 +1367,7 @@ const music: AreaText = {
             "**· BT** après le libellé veut dire que tu es relié au leader en Bluetooth.",
             "**Hors ligne** veut dire que rien ne peut atteindre ton téléphone pour l’instant.",
             "Les membres ne peuvent ni changer le morceau des autres ni modifier l’ordre.",
+            "Si la ligne **L’app du leader n’est pas à jour : demande-lui de la mettre à jour** s’affiche, tu suis quand même : il lui suffit d’installer la dernière version de BandWith.",
           ],
         },
       ],

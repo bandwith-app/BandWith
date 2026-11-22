@@ -1234,6 +1234,7 @@ const music: AreaText = {
             "**· BT** después de la etiqueta significa que estás conectado al líder por Bluetooth.",
             "**Desconectado** significa que ahora mismo no puede llegar nada a tu teléfono.",
             "Los miembros no pueden mover la canción de nadie más ni cambiar el orden.",
+            "Si aparece **La app del líder no está actualizada: pídele que la actualice**, sigues al líder igual: solo le falta la última versión de BandWith.",
           ],
         },
       ],

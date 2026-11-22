@@ -30,6 +30,7 @@ import { useKeepAwake } from '@/lib/posture';
 import type { StageSaveState } from '@/app/components/event/useStageLive';
 import type { StageBleStatus } from '@/app/components/event/useStageBle';
 import { StageBleNoticeLine } from '@/app/components/event/StageBleNoticeLine';
+import { bleLinked } from '@/lib/stageBleNotice';
 import type { LiveKind } from '@/lib/liveMode';
 import type { RehearsalSessionControls } from '@/app/components/event/useRehearsalSession';
 import { RehearsalSessionBar, RehearsalSummaryDialog, summaryOf } from './RehearsalSession';
@@ -1158,7 +1159,7 @@ const followLabel = (live: StageLiveControls, t: ReturnType<typeof useT>) =>
     ? t('Follow leader')
     : !live.leaderSeen
       ? t('Waiting for leader')
-      : !live.connected && live.bluetooth !== 'connected'
+      : !live.connected && !bleLinked(live.bluetooth)
         ? t('Offline')
         : t('Following leader');
 

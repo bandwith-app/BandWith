@@ -1367,6 +1367,7 @@ const music: AreaText = {
             "**· BT** dopo l’etichetta vuol dire che sei collegato al leader via Bluetooth.",
             "**Offline** vuol dire che in questo momento non arriva niente al tuo telefono.",
             "I membri non possono spostare il brano degli altri né cambiare l’ordine.",
+            "Se compare **L’app del leader non è aggiornata: chiedi di aggiornarla**, stai comunque seguendo: al leader basta installare l’ultima versione di BandWith.",
           ],
         },
       ],

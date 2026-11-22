@@ -28,12 +28,22 @@
  * The service UUID is derived from the gig's key, so a member's app only
  * finds its own gig's leader, and the HMAC means only someone holding the
  * key (an active band member, migration 087) can publish an accepted state.
+ *
+ * Version 4 (audit #1): the same body, signed by the leader (ECDSA P-256,
+ * 64 bytes r‖s, the gig's key pair, migration 190) instead of the band key,
+ * so a member can't pose as the leader. It is served on a characteristic of
+ * its own (STAGE_BLE_SIGNED_CHARACTERISTIC) next to version 2, which stays
+ * for apps from before it.
  */
 import type { StageLiveState } from './stageLive';
+import { SIGNATURE_BYTES, signBytes, verifyBytes } from './stageSign';
 
 export const STAGE_BLE_VERSION = 2;
 /** Characteristic carrying the state (same for every gig). */
 export const STAGE_BLE_CHARACTERISTIC = 'b7d50001-5b1e-4c6a-9b3d-6e0a2f7c1d42';
+/** The leader-signed state (version 4). */
+export const STAGE_BLE_SIGNED_VERSION = 4;
+export const STAGE_BLE_SIGNED_CHARACTERISTIC = 'b7d50004-5b1e-4c6a-9b3d-6e0a2f7c1d42';
 const SERVICE_SUFFIX = '-5b1e-4c6a-9b3d-6e0a2f7c1d42';
 const NONE = 255;
 const MAX_SONGS = 254;
@@ -95,6 +105,27 @@ export async function encodeStageState(
   savedIds: string[],
   keyB64: string,
 ): Promise<Uint8Array | null> {
+  const body = await stateBody(state, savedIds, STAGE_BLE_VERSION);
+  if (!body) return null;
+  const mac = (await hmac(keyB64, body)).slice(0, MAC_BYTES);
+  const out = new Uint8Array(body.length + MAC_BYTES);
+  out.set(body);
+  out.set(mac, body.length);
+  return out;
+}
+
+/** The same state signed by the leader (version 4), or null when it can't be sent. */
+export async function encodeSignedState(state: StageLiveState, savedIds: string[], signKey: string): Promise<Uint8Array | null> {
+  const body = await stateBody(state, savedIds, STAGE_BLE_SIGNED_VERSION);
+  if (!body) return null;
+  const sig = await signBytes(signKey, body);
+  const out = new Uint8Array(body.length + sig.length);
+  out.set(body);
+  out.set(sig, body.length);
+  return out;
+}
+
+async function stateBody(state: StageLiveState, savedIds: string[], version: number): Promise<Uint8Array | null> {
   if (savedIds.length > MAX_SONGS || !/^[\x20-\x7e]{1,16}$/.test(state.from)) return null;
   const index = new Map(sortedIds(savedIds).map((id, i) => [id, i]));
   const current = state.songId === null ? NONE : index.get(state.songId);
@@ -117,7 +148,7 @@ export async function encodeStageState(
   const body = new Uint8Array(1 + 4 + 1 + from.length + 4 + 1 + 1 + order.length + tail);
   const view = new DataView(body.buffer);
   let o = 0;
-  body[o++] = STAGE_BLE_VERSION;
+  body[o++] = version;
   view.setUint32(o, state.seq >>> 0);
   o += 4;
   body[o++] = from.length;
@@ -133,11 +164,7 @@ export async function encodeStageState(
     body[o++] = skipped.length;
     body.set(skipped, o);
   }
-  const mac = (await hmac(keyB64, body)).slice(0, MAC_BYTES);
-  const out = new Uint8Array(body.length + MAC_BYTES);
-  out.set(body);
-  out.set(mac, body.length);
-  return out;
+  return body;
 }
 
 export type DecodeResult =
@@ -153,7 +180,18 @@ export async function decodeStageState(bytes: Uint8Array, savedIds: string[], ke
   let diff = 0;
   for (let i = 0; i < MAC_BYTES; i++) diff |= mac[i] ^ expected[i];
   if (diff !== 0) return { ok: false, reason: 'auth' };
+  return parseBody(body, savedIds);
+}
 
+/** Checks and reads a leader-signed state (version 4) with the gig's public key. */
+export async function decodeSignedState(bytes: Uint8Array, savedIds: string[], publicKey: string): Promise<DecodeResult> {
+  if (bytes.length < 1 + 4 + 1 + 4 + 1 + 1 + SIGNATURE_BYTES || bytes[0] !== STAGE_BLE_SIGNED_VERSION) return { ok: false, reason: 'format' };
+  const body = bytes.slice(0, bytes.length - SIGNATURE_BYTES);
+  if (!(await verifyBytes(publicKey, body, bytes.slice(bytes.length - SIGNATURE_BYTES)))) return { ok: false, reason: 'auth' };
+  return parseBody(body, savedIds);
+}
+
+async function parseBody(body: Uint8Array, savedIds: string[]): Promise<DecodeResult> {
   const view = new DataView(body.buffer, body.byteOffset, body.byteLength);
   let o = 1;
   const seq = view.getUint32(o);

@@ -1377,6 +1377,7 @@ const music: AreaModule = {
             "**· BT** after the label means you are linked to the leader over Bluetooth.",
             "**Offline** means nothing can reach your phone right now.",
             "Members cannot move anyone else's song or change the order.",
+            "If a line says **The leader's app is out of date: ask them to update**, you are still following: the leader just needs the latest version of BandWith.",
           ],
         },
       ],
