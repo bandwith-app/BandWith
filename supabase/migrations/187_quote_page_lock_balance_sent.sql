@@ -84,6 +84,13 @@ $guard$;
 ALTER TABLE public.quote_links ADD COLUMN IF NOT EXISTS event_removed_at timestamptz;
 
 -- Before the delete: the FK (ON DELETE SET NULL) still points at the event.
+-- Round 11: a band deleted with its events (the cascade) leaves its links
+-- alone: they go with the band, and a link written in the same transaction
+-- would have its band FK checked again and abort the delete (23503). The
+-- write changes event_removed_at only: 176's pdf_keys trigger keeps the
+-- keys (the document is the same), and 180's account-deletion guard checks
+-- only the account columns a write changes (none here); the deleting
+-- account itself is refused there, as on its own events delete.
 CREATE OR REPLACE FUNCTION public.bw_trg_quote_link_event_removed()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -97,7 +104,8 @@ BEGIN
    WHERE l.quote_id = q.id
      AND q.band_id IS NOT DISTINCT FROM OLD.band_id
      AND (q.converted_to_event_id = OLD.id OR q.id = OLD.quote_id)
-     AND l.status <> 'accepted';
+     AND l.status <> 'accepted'
+     AND EXISTS (SELECT 1 FROM public.bands b WHERE b.id = l.band_id);
   RETURN OLD;
 END;
 $$;

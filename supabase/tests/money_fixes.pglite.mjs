@@ -27,6 +27,12 @@
 //      deleted date (BWQ01, nothing written); decline and messages still
 //      work; a version published after the deletion, or a new event, can
 //      be accepted; an accepted quote is left as it is;
+//   11. round 11: a band deleted with its events in the transaction that
+//      made its link (the cascade) goes through; 176's pdf_keys trigger
+//      and 180's account-deletion guard (loaded from their branches,
+//      BW_176_REF / BW_180_REF, git repo BW_GIT or the repo; SKIP when
+//      not found) let the
+//      event_removed_at write through;
 //   7. 187 is a superset of 183 round 3 (the receipt in the quote's
 //      currency, deposit received locks the link before the gig, one
 //      conversation per link, a new client's old link takes nothing), the
@@ -716,6 +722,104 @@ const gig = (E) => q(`SELECT deposit_paid, payment_status FROM events WHERE id =
   const h1 = await tryIt(asAnon(() => q(`SELECT public.bw_quote_date_unavailable($1, NULL, NULL)`, [l.Q])));
   const h2 = await tryIt(asMember(() => q(`SELECT public.bw_quote_date_unavailable($1, NULL, NULL)`, [l.Q])));
   ok(!!h1.e && !!h2.e, `round 10: bw_quote_date_unavailable is not callable by anon or members (${h1.e ? 'refused' : 'allowed'}, ${h2.e ? 'refused' : 'allowed'})`);
+}
+
+// ---------------------------------------------------------------- 11. round 11: the delete trigger from a cascade, 176 and 180
+{
+  // a. As prod: events go with their band (the events FK older than the
+  // link's, so its cascade runs first). In one transaction: a band, its
+  // event, a quote on it and a link, then the band is deleted.
+  await db.exec(`
+    ALTER TABLE events ADD CONSTRAINT test_events_band_fkey FOREIGN KEY (band_id) REFERENCES bands(id) ON DELETE CASCADE NOT VALID;
+    ALTER TABLE quote_links DROP CONSTRAINT quote_links_band_id_fkey;
+    ALTER TABLE quote_links ADD CONSTRAINT quote_links_band_id_fkey FOREIGN KEY (band_id) REFERENCES bands(id) ON DELETE CASCADE;`);
+  const [B2, E2, Q2] = [id(n++), id(n++), id(n++)];
+  const cascade = await db.exec(`BEGIN;
+    INSERT INTO bands VALUES ('${B2}', 'The Hudson Horns');
+    INSERT INTO events (id, band_id, status) VALUES ('${E2}', '${B2}', 'tentative');
+    INSERT INTO quotes (id, band_id, client_name, status, converted_to_event_id) VALUES ('${Q2}', '${B2}', 'Emma Carter', 'sent', '${E2}');
+    INSERT INTO quote_links (quote_id, band_id, snapshot, version, status) VALUES ('${Q2}', '${B2}', '{}'::jsonb, 1, 'sent');
+    DELETE FROM bands WHERE id = '${B2}';
+    COMMIT;`).then(() => null, async (e) => { await db.exec('ROLLBACK').catch(() => {}); return `${e.code} ${e.message}`; });
+  const left = (await q(`SELECT (SELECT count(*)::int FROM bands WHERE id = $1) b, (SELECT count(*)::int FROM quote_links WHERE band_id = $1) l,
+                          (SELECT count(*)::int FROM events WHERE band_id = $1) e`, [B2])).rows[0];
+  ok(cascade === null && left.b === 0 && left.l === 0 && left.e === 0,
+    `round 11: a band deleted in the transaction that made its link goes through, with its events and link (${cascade || JSON.stringify(left)})`);
+  // b. An event deleted on its own still marks the link (the band is there).
+  const { Q: Q3, E: E3 } = await quote();
+  await db.exec(`DELETE FROM events WHERE id = '${E3}'`);
+  ok((await link(Q3)).event_removed_at !== null, `round 11: an event deleted on its own still marks its quote's link`);
+  await db.exec(`ALTER TABLE events DROP CONSTRAINT test_events_band_fkey`);
+}
+{
+  // c. 176's pdf_keys trigger (BEFORE INSERT OR UPDATE, no column list) and
+  // 180's account-deletion guard (AFTER, WHEN auth.uid() IS NOT NULL) also
+  // fire on the event_removed_at write. Loaded from their own branches.
+  const { execFileSync } = await import('node:child_process');
+  const show = (ref, path) => { try { return execFileSync('git', ['-C', process.env.BW_GIT || REPO, 'show', `${ref}:${path}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); } catch { return null; } };
+  const m176 = show(process.env.BW_176_REF || 'origin/fix/security-audit', 'supabase/migrations/176_quote_pdf_gate.sql');
+  const m180 = show(process.env.BW_180_REF || 'origin/fix/account-deletion', 'supabase/migrations/180_account_deletion_safety.sql');
+  const cut = (src, from, to) => { const a = src?.indexOf(from) ?? -1; const b = a < 0 ? -1 : src.indexOf(to, a); return a < 0 || b < 0 ? null : src.slice(a, b + to.length); };
+  const keys176 = m176 && cut(m176, 'ALTER TABLE public.quote_links', 'EXECUTE FUNCTION public.bw_trg_quote_link_pdf_keys();');
+  const guard180 = m180 && cut(m180, 'CREATE OR REPLACE FUNCTION public.bw_trg_deleting_account_writes()', '$$;');
+  // The app's admins delete events (as RLS allows them on prod).
+  await db.exec(`GRANT SELECT, DELETE ON public.events TO authenticated`);
+  if (!keys176) console.log('SKIP round 11: 176 (pdf keys) not found on its branch');
+  if (!guard180) console.log('SKIP round 11: 180 (account-deletion guard) not found on its branch');
+  if (keys176) {
+    await db.exec(keys176);
+    // A legacy link: a PDF on the version, no keys, and an odd key document.
+    const { Q, E } = await quote();
+    await db.exec(`UPDATE quote_links SET pdf_url = 'https://example.supabase.co/storage/v1/object/public/quotes/q_Emma_Carter.pdf', pdf_version = version WHERE quote_id = '${Q}';
+                   ALTER TABLE quote_links DISABLE TRIGGER bw_quote_link_pdf_keys;
+                   UPDATE quote_links SET pdf_key = NULL, pdf_key_doc = 'not-a-hash', balance_pdf_key = NULL, balance_pdf_key_doc = NULL WHERE quote_id = '${Q}';
+                   ALTER TABLE quote_links ENABLE TRIGGER bw_quote_link_pdf_keys;`);
+    const del = await asAdmin(() => q(`DELETE FROM events WHERE id = $1`, [E])).then(() => null, (e) => e.message);
+    const l = await link(Q);
+    ok(del === null && l.event_removed_at !== null && l.pdf_key && l.pdf_key_doc !== 'not-a-hash',
+      `round 11: 176's pdf_keys trigger on a legacy link (no key, odd key document): the event delete goes through and marks the link; the trigger gives it its key (${del || `key ${!!l.pdf_key}`})`);
+    // A link with its keys: the write keeps them (the document is the same).
+    const { Q: Qk, E: Ek } = await quote();
+    await db.exec(`UPDATE quote_links SET pdf_url = 'https://example.supabase.co/storage/v1/object/public/quotes/q_Emma_Carter.pdf', pdf_version = version WHERE quote_id = '${Qk}'`);
+    const before = (await link(Qk)).pdf_key;
+    await db.exec(`DELETE FROM events WHERE id = '${Ek}'`);
+    const after = await link(Qk);
+    ok(!!before && after.pdf_key === before && after.event_removed_at !== null, `round 11: the event_removed_at write keeps the link's PDF key (${before === after.pdf_key})`);
+  }
+  if (guard180) {
+    await db.exec(`CREATE TABLE IF NOT EXISTS public.account_deletions_pending (user_id uuid PRIMARY KEY, started_at timestamptz NOT NULL DEFAULT now(),
+                     band_ids uuid[] NOT NULL DEFAULT '{}', committed_at timestamptz);
+                   ${guard180}
+                   ALTER TABLE quote_links ALTER COLUMN created_by DROP DEFAULT;
+                   CREATE TRIGGER bw_deleting_account_writes AFTER INSERT OR UPDATE OR DELETE ON public.quote_links
+                     FOR EACH ROW WHEN (auth.uid() IS NOT NULL) EXECUTE FUNCTION public.bw_trg_deleting_account_writes('created_by');
+                   ALTER TABLE events ADD COLUMN IF NOT EXISTS created_by uuid;
+                   CREATE TRIGGER bw_deleting_account_writes AFTER INSERT OR UPDATE OR DELETE ON public.events
+                     FOR EACH ROW WHEN (auth.uid() IS NOT NULL) EXECUTE FUNCTION public.bw_trg_deleting_account_writes('created_by');
+`);
+    // The link's creator is deleting their account (committed); another admin deletes the event.
+    const { Q, E } = await quote();
+    await db.exec(`UPDATE quote_links SET created_by = '${SUB}' WHERE quote_id = '${Q}';
+                   INSERT INTO account_deletions_pending (user_id, committed_at) VALUES ('${SUB}', now());`);
+    const del = await asAdmin(() => q(`DELETE FROM events WHERE id = $1`, [E])).then(() => null, (e) => e.message);
+    ok(del === null && (await link(Q)).event_removed_at !== null,
+      `round 11: 180's guard: an admin deletes the event of a link made by an account being deleted: goes through, link marked (${del})`);
+    // The admin's own deletion started, not committed yet: their delete goes through too.
+    const { Q: Qp, E: Ep } = await quote();
+    await db.exec(`INSERT INTO account_deletions_pending (user_id) VALUES ('${ADMIN}')`);
+    const delp = await asAdmin(() => q(`DELETE FROM events WHERE id = $1`, [Ep])).then(() => null, (e) => e.message);
+    ok(delp === null && (await link(Qp)).event_removed_at !== null, `round 11: an admin whose account deletion is pending (not committed) deletes an event: goes through, link marked (${delp})`);
+    // Committed: 180 refuses that account's writes and deletes by design; the
+    // events delete is refused as a whole (no half-written mark).
+    const { Q: Qc, E: Ec } = await quote();
+    await db.exec(`UPDATE account_deletions_pending SET committed_at = now() WHERE user_id = '${ADMIN}'`);
+    const delc = await asAdmin(() => q(`DELETE FROM events WHERE id = $1`, [Ec])).then(() => null, (e) => e.message);
+    const lc = await link(Qc);
+    const still = (await q(`SELECT count(*)::int c FROM events WHERE id = $1`, [Ec])).rows[0].c;
+    ok(!!delc && /being deleted/.test(delc) && lc.event_removed_at === null && still === 1,
+      `round 11: an admin whose account deletion is committed: 180 refuses the event delete as on any table, nothing marked (${delc})`);
+    await db.exec(`DELETE FROM account_deletions_pending; DROP TRIGGER bw_deleting_account_writes ON quote_links; DROP TRIGGER bw_deleting_account_writes ON events;`);
+  }
 }
 
 // ---------------------------------------------------------------- 7. 187 is a superset of 183 (round 3)
