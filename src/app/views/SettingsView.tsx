@@ -514,7 +514,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </IconTile>
           <RowText
             title={t('Anonymous usage statistics')}
-            hint={t('Which screens are used and how often, to improve BandWith. Never your songs, gigs, messages or contacts, and nothing for ads.')}
+            hint={t('Which screens are used and how often, and the crash details if the app crashes, to improve BandWith. Never your songs, gigs, messages or contacts, and nothing for ads.')}
           />
           <Toggle
             checked={analyticsConsent === 'granted'}

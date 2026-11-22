@@ -2,15 +2,18 @@
  * Crash reports (migration 174). Settings › Privacy & account › "Send crash
  * reports", on by default, per device.
  *
- * - Native crashes (iOS, Android): Firebase Crashlytics, switched on or off
- *   with the same setting (Crashlytics keeps the choice across launches).
+ * - Native crashes (iOS, Android): Firebase Crashlytics, only with the usage
+ *   statistics consent (src/lib/appAnalytics.ts, #238) AND this switch on.
+ *   Off from the very first launch (Info.plist / AndroidManifest), so no
+ *   collection and no installation ID until the user says yes; while it is
+ *   off, the reports it kept are deleted at every start.
  * - JavaScript errors (the web app and the apps' WebView): window errors,
  *   unhandled promise rejections and screens that fail to draw
  *   (ErrorBoundary), sent to `bw_report_client_error`.
  *
  * No personal data and no user content: only the message and stack, scrubbed
  * here line by line (no emails, ids, long numbers, tokens, quoted text of any
- * kind, or query strings on any link, relative ones too),
+ * kind, link paths other than the app's own files, or query strings),
  * the app version, the platform and the screen name ("Stage", "Gig").
  * At most 10 per session, each error once; the server caps it again.
  * Reporting never throws and never reports itself.
@@ -19,7 +22,7 @@ import { useSyncExternalStore } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { supabase } from '@/lib/supabase';
 import { currentPlatform, installedVersion } from '@/lib/minVersion';
-import { currentScreenName } from '@/lib/appAnalytics';
+import { currentScreenName, onAnalyticsConsentChange, readAnalyticsConsent } from '@/lib/appAnalytics';
 
 export type ClientErrorKind = 'error' | 'rejection' | 'render';
 
@@ -33,11 +36,15 @@ const STACK_MAX = 4000;
 // ------------------------------------------------------------ the switch --
 
 const listeners = new Set<() => void>();
-/** This run's choice: wins over storage (blocked storage must not turn it back on). */
-let override: boolean | null = null;
+/**
+ * Off for this run because storage is blocked. Only ever OFF: where storage
+ * works it is the truth (shared by every tab), so no tab can turn reports
+ * back on over an opt-out made in another one.
+ */
+let blockedOptOut = false;
 
 export function readCrashReportsEnabled(): boolean {
-  if (override !== null) return override;
+  if (blockedOptOut) return false;
   try {
     return localStorage.getItem(CRASH_REPORTS_KEY) !== 'off';
   } catch {
@@ -48,9 +55,13 @@ export function readCrashReportsEnabled(): boolean {
 let pluginPromise: Promise<typeof import('@capacitor-firebase/crashlytics')> | null = null;
 const loadPlugin = () => (pluginPromise ??= import('@capacitor-firebase/crashlytics'));
 
-/** Crashlytics follows the setting (native only; no Firebase config in a build → nothing happens). */
-async function applyNative(on: boolean) {
+/** Crashlytics: only with the usage statistics consent and this switch on. */
+const nativeAllowed = () => readCrashReportsEnabled() && readAnalyticsConsent() === 'granted';
+
+/** Native only; no Firebase config in a build → nothing happens. */
+async function applyNative() {
   if (!Capacitor.isNativePlatform()) return;
+  const on = nativeAllowed();
   try {
     const { FirebaseCrashlytics } = await loadPlugin();
     await FirebaseCrashlytics.setEnabled({ enabled: on });
@@ -61,16 +72,28 @@ async function applyNative(on: boolean) {
   }
 }
 
+/** Switched off (here or in another tab): nothing queued or in flight leaves. */
+function stopEverything() {
+  pending.length = 0;
+  inFlight.forEach((c) => c.abort());
+  inFlight.clear();
+}
+
+function changed() {
+  if (!readCrashReportsEnabled()) stopEverything();
+  listeners.forEach((l) => l());
+  void applyNative();
+}
+
 export function setCrashReportsEnabled(on: boolean) {
-  override = on;
+  blockedOptOut = false;
   try {
     localStorage.setItem(CRASH_REPORTS_KEY, on ? 'on' : 'off');
   } catch {
-    /* storage blocked: the override holds for this run */
+    /* storage blocked: an opt-out still holds for this run */
+    if (!on) blockedOptOut = true;
   }
-  if (!on) pending.length = 0;
-  listeners.forEach((l) => l());
-  void applyNative(on);
+  changed();
 }
 
 export const useCrashReportsEnabled = (): boolean =>
@@ -90,29 +113,84 @@ export const useCrashReportsEnabled = (): boolean =>
 const EMAIL = /[\w.+-]+@[\w-]+(\.[\w-]+)+/g;
 const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 const JWT = /\beyJ[\w-]*\.[\w-]+\.[\w-]+/g;
-/** Random-looking: 20+ characters with a digit, or 40+ of anything (long function names stay). */
-const LONG_TOKEN = /\b(?:(?=[A-Za-z_-]*\d)[A-Za-z0-9_-]{20,}|[A-Za-z0-9_-]{40,})\b/g;
+/** Random-looking: 16+ characters with a digit, or 40+ of anything (long function names stay). */
+const LONG_TOKEN = /\b(?:(?=[A-Za-z_-]*\d)[A-Za-z0-9_-]{16,}|[A-Za-z0-9_-]{40,})\b/g;
 /** Any query string, on full and relative links alike (/deputy.html?deputy=…, /quote.html?t=…). */
 const QUERY = /\?[^\s'"`()]+/g;
 /** A fragment after a path (#418 in "Minified React error #418" stays). */
 const FRAGMENT = /(\/[^\s#'"`()]*)#[^\s'"`()]+/g;
 const PHONE_OR_NUMBER = /\+?\d[\d\s().-]{5,}\d/g;
-/** All quoted text: it can be anything the user typed, even one word (a song called "Yesterday"). */
-const QUOTED = /(["'`“‘])([^"'`”’\n]*)(["'`”’])/g;
 /** A stack line's position (file:line:col), kept as it is. */
 const POSITION = /:\d+:\d+\)?$/;
 
+/**
+ * Links: the origin stays, and so do the app's own files (/assets/…, and a
+ * page like /quote.html); any other path goes, whole: it can name a band, a
+ * person or a file (/storage/v1/object/sign/audio/Mirage/Mary Smith - Yesterday.mp3),
+ * so the words after it up to a file extension go too.
+ */
+const LINK_CHARS = `[^\\s'"\`()<>]`;
+const ORIGIN = `[a-z][a-z0-9+.-]*:\\/\\/[^\\s/'"\`()<>]+`;
+const LINK = new RegExp(
+  `(${ORIGIN})?((?:\\/${LINK_CHARS.replace(']', '/]')}+)+\\/?)((?:\\s+[^\\s/'"\`()<>]+)*?\\.[A-Za-z0-9]{2,5}\\b)?`,
+  'gi',
+);
+const APP_FILE = /^\/(?:assets\/[^\s/]+(?:\/[^\s/]+)*|[\w.-]+\.(?:html|js))$/;
+
+function scrubLinks(s: string): string {
+  return s.replace(LINK, (all, origin: string | undefined, path: string, tail: string | undefined, offset: number) => {
+    // A relative path only after a space, a bracket, a quote or the start ("a/b" is not a link).
+    if (!origin && offset > 0 && !/[\s('"=,:[]/.test(s[offset - 1])) return all;
+    if (!tail && APP_FILE.test(path)) return all;
+    return `${origin ?? ''}/…`;
+  });
+}
+
+/**
+ * All quoted text: it can be anything the user typed, even one word (a song
+ * called "Yesterday"). Each opening quote with its own closing one; double
+ * quotes first, so an apostrophe inside them ("Don't Stop Me Now") is just
+ * text; for single quotes, an apostrophe between letters is text too. A
+ * quote left open (a message cut short) hides the rest of the line.
+ */
+const DOUBLE_PAIRS: Array<[string, string]> = [['"', '"'], ['“', '”'], ['„', '“'], ['«', '»'], ['»', '«'], ['`', '`']];
+const SINGLE_PAIRS: Array<[string, string]> = [["'", "'"], ['‘', '’'], ['‚', '‘'], ['‹', '›'], ['›', '‹']];
+const esc = (c: string) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const pairRe = ([o, c]: [string, string], apostrophes: boolean) => {
+  const [O, C] = [esc(o), esc(c)];
+  // Single quotes: not opened by the apostrophe of a word (can't), not closed by one (Don't).
+  const body = apostrophes ? `(?:[^${C}\\n]|${C}(?=[\\p{L}\\p{N}]))*` : `[^${C}\\n]*`;
+  const lead = apostrophes ? '(?<![\\p{L}\\p{N}])' : '';
+  const trail = apostrophes ? '(?![\\p{L}\\p{N}])' : '';
+  return { closed: new RegExp(`${lead}${O}${body}${C}${trail}`, 'gu'), open: new RegExp(`${lead}${O}[^${C}\\n]*$`, 'u'), o, c };
+};
+const QUOTE_RES = [...DOUBLE_PAIRS.map((p) => pairRe(p, false)), ...SINGLE_PAIRS.map((p) => pairRe(p, true))];
+
+function scrubQuotes(s: string): string {
+  // Closed pairs become markers first, so their quote marks can't open or close another pair.
+  const done: string[] = [];
+  const mark = (text: string) => `\u0001${done.push(text) - 1}\u0001`;
+  let out = s;
+  for (const q of QUOTE_RES) out = out.replace(q.closed, () => mark(`${q.o}…${q.c}`));
+  for (const q of QUOTE_RES) out = out.replace(q.open, () => mark(`${q.o}…`));
+  return out.replace(/\u0001(\d+)\u0001/g, (_m, i: string) => done[Number(i)]);
+}
+
 /** The one scrub, for the message and for every stack line. */
 function scrubText(s: string): string {
-  return s
-    .replace(QUERY, '')
-    .replace(FRAGMENT, '$1')
+  const out = scrubLinks(s.replace(QUERY, '').replace(FRAGMENT, '$1'))
     .replace(EMAIL, '<email>')
     .replace(UUID, '<id>')
-    .replace(JWT, '<token>')
-    .replace(QUOTED, (_all, open: string, _body: string, close: string) => `${open}…${close}`)
-    .replace(LONG_TOKEN, '<token>')
+    .replace(JWT, '<token>');
+  return scrubQuotes(out)
+    .replace(LONG_TOKEN, (t, offset: number, all: string) => (insideAppFile(all, offset) ? t : '<token>'))
     .replace(PHONE_OR_NUMBER, '<n>');
+}
+
+/** A bundle name like /assets/EventDetailWorkspace-B4xK9q1aZ2.js is ours: it stays. */
+function insideAppFile(all: string, offset: number): boolean {
+  const before = all.lastIndexOf('/assets/', offset);
+  return before !== -1 && !/[\s'"`()<>]/.test(all.slice(before, offset));
 }
 
 export function scrubMessage(raw: string): string {
@@ -155,12 +233,20 @@ const seen = new Set<string>();
 /** Waiting to go out, oldest first (not signed in yet, no signal), a few at most. */
 const pending: Array<Record<string, unknown>> = [];
 
+/** Requests out now: an opt-out aborts them, even one still waiting for a session refresh. */
+const inFlight = new Set<AbortController>();
+
 async function send(args: Record<string, unknown>): Promise<boolean> {
+  if (!readCrashReportsEnabled()) return false;
+  const ctl = new AbortController();
+  inFlight.add(ctl);
   try {
-    const { error } = await supabase.rpc('bw_report_client_error', args);
+    const { error } = await supabase.rpc('bw_report_client_error', args).abortSignal(ctl.signal);
     return !error;
   } catch {
     return false;
+  } finally {
+    inFlight.delete(ctl);
   }
 }
 
@@ -224,11 +310,18 @@ export async function reportClientError(kind: ClientErrorKind, err: unknown): Pr
 
 let installed = false;
 
-/** At app start: native Crashlytics follows the switch; JS errors are caught. Returns a stop (tests). */
+/** At app start: native Crashlytics follows consent and the switch; JS errors are caught. Returns a stop (tests). */
 export function installCrashReports(): () => void {
   if (installed || typeof window === 'undefined') return () => {};
   installed = true;
-  void applyNative(readCrashReportsEnabled());
+  void applyNative();
+  // Another tab (web) changed the switch: storage is the truth.
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === CRASH_REPORTS_KEY || e.key === null) changed();
+  };
+  window.addEventListener('storage', onStorage);
+  // Crashlytics follows the usage statistics answer too.
+  const offConsent = onAnalyticsConsentChange(() => void applyNative());
   const onError = (e: ErrorEvent) => void reportClientError('error', e.error ?? e.message);
   const onRejection = (e: PromiseRejectionEvent) => void reportClientError('rejection', (e as { reason?: unknown }).reason);
   window.addEventListener('error', onError);
@@ -245,6 +338,8 @@ export function installCrashReports(): () => void {
   }
   return () => {
     installed = false;
+    window.removeEventListener('storage', onStorage);
+    offConsent();
     window.removeEventListener('error', onError);
     window.removeEventListener('unhandledrejection', onRejection as EventListener);
     unsubscribe?.();
@@ -256,7 +351,8 @@ export function __resetCrashReportsForTest() {
   seen.clear();
   pending.length = 0;
   listeners.clear();
-  override = null;
+  blockedOptOut = false;
+  inFlight.clear();
   flushing = null;
   installed = false;
 }

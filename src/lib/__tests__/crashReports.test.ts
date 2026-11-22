@@ -12,14 +12,37 @@ const h = vi.hoisted(() => ({
   rpcGate: null as Promise<void> | null,
   version: async () => '1.0.14' as string | null,
   auth: null as ((event: string) => void) | null,
+  /** Requests that actually left (an aborted one never does). */
+  wire: [] as Array<Record<string, unknown>>,
+  signals: [] as AbortSignal[],
+  consent: null as 'granted' | 'denied' | null,
+  consentListeners: [] as Array<(c: 'granted' | 'denied' | null) => void>,
 }));
 vi.mock('@/lib/supabase', () => ({
   supabase: {
-    rpc: async (fn: string, args: Record<string, unknown>) => {
+    // Like supabase-js: a builder with abortSignal(); the request leaves only after
+    // the gate (the session refresh), and an aborted signal stops it there.
+    rpc: (fn: string, args: Record<string, unknown>) => {
       h.rpc.push({ fn, args });
       const result = h.rpcResult;
-      if (h.rpcGate) await h.rpcGate;
-      return result;
+      let signal: AbortSignal | undefined;
+      const run = async () => {
+        if (h.rpcGate) await h.rpcGate;
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+        h.wire.push(args);
+        return result;
+      };
+      const builder = {
+        abortSignal(s: AbortSignal) {
+          signal = s;
+          h.signals.push(s);
+          return builder;
+        },
+        then<T>(ok: (v: typeof result) => T, bad?: (e: unknown) => T) {
+          return run().then(ok, bad);
+        },
+      };
+      return builder;
     },
     auth: {
       onAuthStateChange: (cb: (event: string) => void) => {
@@ -44,7 +67,16 @@ vi.mock('@capacitor-firebase/crashlytics', () => ({
   },
 }));
 vi.mock('@/lib/minVersion', () => ({ currentPlatform: () => (h.native ? 'android' : 'web'), installedVersion: () => h.version() }));
-vi.mock('@/lib/appAnalytics', () => ({ currentScreenName: () => 'Stage' }));
+vi.mock('@/lib/appAnalytics', () => ({
+  currentScreenName: () => 'Stage',
+  readAnalyticsConsent: () => h.consent,
+  onAnalyticsConsentChange: (fn: (c: 'granted' | 'denied' | null) => void) => {
+    h.consentListeners.push(fn);
+    return () => {
+      h.consentListeners = h.consentListeners.filter((l) => l !== fn);
+    };
+  },
+}));
 
 import {
   CRASH_REPORTS_KEY,
@@ -70,6 +102,10 @@ beforeEach(() => {
   h.rpcGate = null;
   h.version = async () => '1.0.14';
   h.auth = null;
+  h.wire = [];
+  h.signals = [];
+  h.consent = null;
+  h.consentListeners = [];
   vi.unstubAllGlobals();
   __resetCrashReportsForTest();
 });
@@ -88,7 +124,7 @@ describe('scrubbing: no personal data, no user content', () => {
     expect(m).not.toMatch(/leo@|brooklynband|3f2b8c1e|Hudson|718|555|token=abc|#frag|eyJ/);
     expect(m).toContain('<email>');
     expect(m).toContain('<id>');
-    expect(m).toContain('https://app.bandwith.fun/x');
+    expect(m).toContain('https://app.bandwith.fun/…');
   });
 
   it('keeps the error name and shape, never quoted text (it can be a song title)', () => {
@@ -127,6 +163,40 @@ describe('scrubbing: no personal data, no user content', () => {
     const s = scrubStack(stack)!;
     expect(s.split('\n').length).toBeLessThanOrEqual(15);
     expect(s).not.toContain('?v=1');
+  });
+});
+
+describe('scrubbing: quotes and links (review #277)', () => {
+  it('an apostrophe inside quoted text does not end it', () => {
+    expect(scrubMessage(`SyntaxError: Unexpected token 'D', "Don't Stop Me Now" is not valid JSON`)).toBe(
+      `SyntaxError: Unexpected token '…', "…" is not valid JSON`,
+    );
+    expect(scrubMessage(`Error: no song 'Don't Stop Me Now' in set`)).toBe(`Error: no song '…' in set`);
+    expect(scrubMessage(`Error: can't open 'Ain’t No Sunshine'`)).toBe(`Error: can't open '…'`);
+  });
+
+  it('typographic quotes of every kind, and a quote left open', () => {
+    for (const q of ['“Hudson Line”', '‘Hudson Line’', '«Hudson Line»', '„Hudson Line“', '‚Hudson Line‘', '‹Hudson Line›', '« Hudson Line »']) {
+      expect(scrubMessage(`Error: ${q} failed`), q).not.toMatch(/Hudson|Line/);
+    }
+    expect(scrubMessage('Error: "Hudson Line is cut off')).not.toMatch(/Hudson|Line/);
+  });
+
+  it('links keep the origin and the app files, never a path that can name a band, a person or a file', () => {
+    const m = scrubMessage(
+      'Failed to fetch https://xyz.supabase.co/storage/v1/object/sign/audio/Mirage/Mary Smith - Yesterday.mp3 and /storage/v1/object/public/abcDEF123ghiJKL456/x.pdf',
+    );
+    expect(m).not.toMatch(/storage|Mirage|Mary|Smith|Yesterday|abcDEF123|x\.pdf/);
+    expect(m).toContain('https://xyz.supabase.co/…');
+    const s = scrubStack(
+      '    at a (https://app.bandwith.fun/assets/EventDetailWorkspace-B4xK9q1aZ2.js:1:2)\n    at b (capacitor://localhost/assets/index-Q1w2e3r4.js:3:4)',
+    )!;
+    expect(s).toContain('https://app.bandwith.fun/assets/EventDetailWorkspace-B4xK9q1aZ2.js:1:2');
+    expect(s).toContain('capacitor://localhost/assets/index-Q1w2e3r4.js:3:4');
+  });
+
+  it('shorter random tokens go too', () => {
+    expect(scrubMessage('Error: bad key abcDEF123ghiJKL456')).toBe('Error: bad key <token>');
   });
 });
 
@@ -237,17 +307,64 @@ describe('switched off: nothing leaves, whatever is in flight', () => {
   });
 });
 
-describe('native: Crashlytics follows the switch', () => {
-  it('off deletes the crash reports not sent yet', async () => {
-    h.native = true;
-    setCrashReportsEnabled(false);
-    await flush();
-    await flush();
-    expect(h.deleted).toBe(1);
+describe('opt-out wins everywhere (review #277)', () => {
+  it('an opt-out made in another tab wins over this tab turning it on', async () => {
+    const stop = installCrashReports();
+    setCrashReportsEnabled(true);
+    localStorage.setItem(CRASH_REPORTS_KEY, 'off');
+    window.dispatchEvent(new StorageEvent('storage', { key: CRASH_REPORTS_KEY, newValue: 'off' }));
+    expect(readCrashReportsEnabled()).toBe(false);
+    await reportClientError('error', new Error('after the other tab said no'));
+    expect(h.wire).toHaveLength(0);
+    stop();
   });
 
-  it('on at start, off when the switch goes off', async () => {
+  it('a request waiting for the session refresh never leaves after the opt-out', async () => {
+    const g = gate();
+    h.rpcGate = g.p;
+    const p = reportClientError('error', new Error('waiting for the token'));
+    await flush();
+    await flush();
+    expect(h.rpc).toHaveLength(1);
+    setCrashReportsEnabled(false);
+    expect(h.signals[0]?.aborted).toBe(true);
+    g.open();
+    await p;
+    expect(h.wire).toHaveLength(0);
+  });
+});
+
+describe('native: Crashlytics only with the usage statistics consent', () => {
+  it('a fresh install with no answer never turns Crashlytics on, and clears what it kept', async () => {
     h.native = true;
+    const stop = installCrashReports();
+    await flush();
+    await flush();
+    expect(h.setEnabled).toEqual([false]);
+    expect(h.deleted).toBe(1);
+    stop();
+  });
+
+  it('on once the user allows usage statistics, off again when they say no', async () => {
+    h.native = true;
+    const stop = installCrashReports();
+    await flush();
+    h.consent = 'granted';
+    h.consentListeners.forEach((l) => l('granted'));
+    await flush();
+    await flush();
+    expect(h.setEnabled).toEqual([false, true]);
+    h.consent = 'denied';
+    h.consentListeners.forEach((l) => l('denied'));
+    await flush();
+    await flush();
+    expect(h.setEnabled).toEqual([false, true, false]);
+    stop();
+  });
+
+  it('consent given but crash reports off: Crashlytics stays off and its unsent reports go', async () => {
+    h.native = true;
+    h.consent = 'granted';
     const stop = installCrashReports();
     await flush();
     await flush();
@@ -256,6 +373,7 @@ describe('native: Crashlytics follows the switch', () => {
     await flush();
     await flush();
     expect(h.setEnabled).toEqual([true, false]);
+    expect(h.deleted).toBe(1);
     stop();
   });
 });

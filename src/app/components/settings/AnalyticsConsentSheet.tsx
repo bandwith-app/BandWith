@@ -60,7 +60,7 @@ export const AnalyticsConsentSheet: React.FC<{
                   {t('Help us improve BandWith?')}
                 </span>
                 <span id="analytics-consent-body" className="bw-body-sm text-sheet-foreground/70">
-                  {t('Share anonymous usage statistics: which screens are used and how often. Never your songs, gigs, messages or contacts, and nothing for ads. You can change this anytime in Settings › Privacy & account.')}
+                  {t('Share anonymous usage statistics (which screens are used and how often) and, if the app crashes, the crash details. Never your songs, gigs, messages or contacts, and nothing for ads. You can change this anytime in Settings › Privacy & account.')}
                 </span>
               </div>
             </div>

@@ -890,8 +890,8 @@ const basics: AreaModule = {
           type: "list",
           items: [
             "**App lock** (phones and tablets only): ask for Face ID, fingerprint or the device passcode when BandWith starts again after being closed. Per device ([[app-lock]]).",
-            "**Anonymous usage statistics** (Android and iOS apps only): off until you say yes. BandWith asks once, after the first tour; the answer can be changed here anytime. It shares only which screens are used and how often, never your songs, gigs, messages or contacts, and nothing for ads. Switching it off deletes what was collected on this device. Per device.",
-            "**Send crash reports**: on unless you switch it off. When something goes wrong, BandWith sends the error, the screen it happened on and the app version, so it can be fixed. Never your songs, gigs, messages or contacts. Per device.",
+            "**Anonymous usage statistics** (Android and iOS apps only): off until you say yes. BandWith asks once, after the first tour; the answer can be changed here anytime. It shares only which screens are used and how often, never your songs, gigs, messages or contacts, and nothing for ads. Switching it off deletes what was collected on this device. Per device. With a yes, the phone apps also send the crash details if the app crashes.",
+            "**Send crash reports**: on unless you switch it off. When something goes wrong, BandWith sends the error, the screen it happened on and the app version, so it can be fixed. Never your songs, gigs, messages or contacts. Per device. On the phone apps, full crash details go only with **Anonymous usage statistics** on too.",
             "**Personal gigs stay private**: an info row, not a switch. Only you see the title and venue of your personal gigs; bands only see that you are busy ([[personal-gigs]]).",
             "**Export my data**: a JSON copy of what you own ([[export-your-data]]).",
             "**Terms of Service** and **Privacy Policy**: open the documents inside the app.",
