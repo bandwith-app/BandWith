@@ -269,6 +269,118 @@ describe('ChatDetailModal', () => {
     expect(localStorage.getItem('bw:chat_outbox:me')).toBeNull();
   });
 
+  // Codex 11-22 (#291): the chat was closed while the send was out and the
+  // server answered with a hiccup (a 5xx: not offline, not a refusal). The
+  // text went "back into the composer", which was gone, and the kept copy
+  // was dropped: the message was lost.
+  describe('a send that fails after the chat was closed', () => {
+    const serverDown = () => Object.assign(new Error('Internal Server Error'), { status: 500 });
+    const stored = () => JSON.parse(localStorage.getItem('bw:chat_outbox:me') ?? '[]');
+
+    it('a 5xx after the chat was closed: kept as "Not sent" for its chat, never sent again by itself', async () => {
+      openComposer();
+      let answer: (v: unknown) => void = () => {};
+      svc.sendMessage.mockImplementation(() => new Promise((r) => { answer = r; }));
+      const first = render(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+      await settle();
+      const input = screen.getByRole('textbox', { name: 'Message' }) as HTMLInputElement;
+      fireEvent.change(input, { target: { value: 'Load-in is 5:30 at the Bowery side door' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await settle();
+      expect(svc.sendMessage).toHaveBeenCalledTimes(1);
+      const clientId = svc.sendMessage.mock.calls[0][4];
+      first.unmount();
+      await act(async () => { answer({ data: null, error: serverDown() }); });
+      await settle();
+      // Still on the device, for its chat, marked not sent (`refused`).
+      expect(stored()).toEqual([
+        expect.objectContaining({ chatId: 'c1', clientId, body: 'Load-in is 5:30 at the Bowery side door', refused: '' }),
+      ]);
+      // Opened again: "Not sent" with Try again and Delete.
+      render(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+      await settle();
+      await settle();
+      expect(screen.getByText('Load-in is 5:30 at the Bowery side door')).toBeTruthy();
+      expect(screen.getByText('Not sent')).toBeTruthy();
+      expect(screen.queryByText('Waiting for connection')).toBeNull();
+      expect(screen.getByRole('button', { name: /^Try again: Load-in is 5:30/ })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /^Delete unsent message: Load-in is 5:30/ })).toBeTruthy();
+      // Not sent again by itself: not on opening, not when the network is back.
+      await act(async () => { window.dispatchEvent(new Event('online')); });
+      await settle();
+      expect(svc.sendMessage).toHaveBeenCalledTimes(1);
+      // Try again sends it once, with the same client id.
+      svc.sendMessage.mockImplementation(async () => ({ data: { ...msg(206, 'me'), content: 'Load-in is 5:30 at the Bowery side door', client_id: clientId }, error: null }));
+      fireEvent.click(screen.getByRole('button', { name: /^Try again: Load-in is 5:30/ }));
+      await settle();
+      expect(svc.sendMessage).toHaveBeenCalledTimes(2);
+      expect(svc.sendMessage.mock.calls[1][4]).toBe(clientId);
+      expect(localStorage.getItem('bw:chat_outbox:me')).toBeNull();
+    });
+
+    it('the same 5xx with the chat still open: the text goes back into the composer and leaves the device, as before', async () => {
+      openComposer();
+      let answer: (v: unknown) => void = () => {};
+      svc.sendMessage.mockImplementation(() => new Promise((r) => { answer = r; }));
+      render(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+      await settle();
+      const input = () => screen.getByRole('textbox', { name: 'Message' }) as HTMLInputElement;
+      fireEvent.change(input(), { target: { value: 'Load-in is 5:30 at the Bowery side door' } });
+      fireEvent.keyDown(input(), { key: 'Enter' });
+      await settle();
+      expect(stored()).toHaveLength(1);
+      await act(async () => { answer({ data: null, error: serverDown() }); });
+      await settle();
+      expect(input().value).toBe('Load-in is 5:30 at the Bowery side door');
+      expect(screen.getByRole('alert').textContent).toBe('Message not sent. Try again.');
+      expect(screen.queryByText('Not sent')).toBeNull();
+      expect(localStorage.getItem('bw:chat_outbox:me')).toBeNull();
+    });
+
+    it('a 5xx after the chat was closed, storage full: a toast, and "Not sent" when the chat is opened again', async () => {
+      openComposer();
+      let answer: (v: unknown) => void = () => {};
+      svc.sendMessage.mockImplementation(() => new Promise((r) => { answer = r; }));
+      const real = localStorage.setItem.bind(localStorage);
+      const spy = vi.spyOn(localStorage, 'setItem').mockImplementation((k: string, v: string) => {
+        if (k.startsWith('bw:chat_outbox:')) throw new DOMException('full', 'QuotaExceededError');
+        return real(k, v);
+      });
+      const toasts: string[] = [];
+      const onToast = (e: Event) => toasts.push((e as CustomEvent<{ message: string }>).detail.message);
+      window.addEventListener('bw:toast', onToast);
+      try {
+        const first = render(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+        await settle();
+        const input = screen.getByRole('textbox', { name: 'Message' }) as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'Set two starts at 9:15' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        await settle();
+        expect(svc.sendMessage).toHaveBeenCalledTimes(1);
+        first.unmount();
+        await act(async () => { answer({ data: null, error: serverDown() }); });
+        await settle();
+        expect(toasts).toEqual(['Message not saved on this phone: Set two starts at 9:15']);
+        const again = render(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+        await settle();
+        await settle();
+        expect(screen.getByText('Set two starts at 9:15')).toBeTruthy();
+        expect(screen.getByText('Not sent')).toBeTruthy();
+        expect(svc.sendMessage).toHaveBeenCalledTimes(1);
+        // Delete takes it away for good (nothing stays held for the next test).
+        fireEvent.click(screen.getByRole('button', { name: /^Delete unsent message/ }));
+        await settle();
+        again.unmount();
+        render(<ChatDetailModal chat={directProp} onClose={() => {}} />);
+        await settle();
+        expect(screen.queryByText('Set two starts at 9:15')).toBeNull();
+      } finally {
+        window.removeEventListener('bw:toast', onToast);
+        spy.mockRestore();
+      }
+    });
+  });
+
   // Claude review #291 round 8, finding 2: storage full or blocked and
   // another chat on screen when the send fails: the message is not lost
   // silently. It is held as "Not sent" for its chat, and a toast says so.

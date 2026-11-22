@@ -157,6 +157,13 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
   // The chat on screen. The same screen shows another chat when one is picked
   // beside it (two panes) or a push opens one: answers for the old chat are dropped.
   const chatIdRef = useRef(chat.id);
+  // False once this screen is closed (Codex 11-22): a send that answers
+  // later has no composer and no bubble to put its text back in.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const onlineUserIds = useOnlinePresence(user?.id);
 
   // Event chats on the open Duo and on a landscape tablet: the event's times,
@@ -847,7 +854,9 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
         // A refusal (the composer may be locked by it) stays in the "Not
         // sent" list with its reason, never in a hidden composer (Codex #291
         // r7 B7). A hiccup with the composer on screen and empty: back there.
-        if (!isRefusal(error) && canTextRef.current && !draftRef.current.trim() && !replyingToRef.current) {
+        // Never once the chat was closed (Codex 11-22): there is no composer,
+        // so it is kept as "Not sent" below, not dropped.
+        if (mountedRef.current && !isRefusal(error) && canTextRef.current && !draftRef.current.trim() && !replyingToRef.current) {
           // Nothing new typed: the text goes back into the composer.
           setMessages(prev => prev.filter(m => m.id !== pending.id));
           setNewMessage(pending.content);
@@ -858,8 +867,12 @@ export const ChatDetailModal: React.FC<ChatDetailModalProps> = ({ chat, onClose,
           void dropChatOutbox(author, pending.client_id);
         } else {
           // A refusal, or a new draft is in the composer (never overwritten,
-          // 07 #5): a "Not sent" bubble with Try again (kept).
-          await keep(refused);
+          // 07 #5): a "Not sent" bubble with Try again (kept). The same when
+          // the chat was closed meanwhile: "Not sent" when it is opened
+          // again, never sent again by itself; with nothing kept on the
+          // device and no bubble left, held in memory with a toast.
+          const saved = await keep(refused);
+          if (!saved && !mountedRef.current) strand(refused);
           setMessages(prev => markSendFailed(prev, pending.id, { reason: refused }));
         }
         }
