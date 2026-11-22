@@ -7,14 +7,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // which supabase/tests/song_files_adopted.pglite.mjs checks on Postgres).
 
 type Song = { id: string; band_id: string; status: string; audio_url: string | null; chart_url: string | null };
-type Adoption = { song_id: string; field: string; from: string; to: string; state: 'copying' | 'repointed' | 'deleting' | 'cleaned'; by: string | null; deletingAt?: number };
-type Step = 'begin' | 'copy' | 'info' | 'repoint' | 'sweep_list' | 'sweep_claim' | 'remove' | 'sweep_done' | 'reread';
+type Adoption = { song_id: string; field: string; from: string; to: string; state: 'copying' | 'repointed' | 'deleting' | 'cleaned'; by: string | null; deletingAt?: number; deletingBy?: string };
+type Step = 'begin' | 'copy' | 'info' | 'repoint' | 'sweep_list' | 'sweep_claim' | 'remove' | 'sweep_done' | 'reread' | 'claim_delete' | 'removed';
 
 const fake = vi.hoisted(() => {
   const REF = 'sb://song-files/';
   const store = new Map<string, { body: string; etag: string }>();
   const songs = new Map<string, Song>();
   let adoptions: Adoption[] = [];
+  // Delete claims outside the sweep (197: bw_song_files_claim_delete).
+  const removals = new Map<string, { by: string; at: number }>();
   let failRemove = 0;
   const clock = { now: 0 };
   const LAPSE = 10 * 60_000;
@@ -72,8 +74,25 @@ const fake = vi.hoisted(() => {
         r.state = 'repointed';
         return { data: { ok: false, reason: 'referenced' } };
       }
-      Object.assign(r, { state: 'deleting', deletingAt: clock.now });
+      Object.assign(r, { state: 'deleting', deletingAt: clock.now, deletingBy: uid });
       return { data: { ok: true } };
+    },
+    bw_song_files_claim_delete: (uid: string, a: { p_refs: string[] }) => {
+      const out: string[] = [];
+      for (const r of a.p_refs || []) {
+        const p = r.slice(REF.length);
+        if (!r.startsWith(REF) || !admins.has(uid) || inUse(p)) continue;
+        const c = removals.get(p);
+        if (c && c.by !== uid && clock.now - c.at <= LAPSE) continue;
+        removals.set(p, { by: uid, at: clock.now });
+        out.push(r);
+      }
+      return { data: out };
+    },
+    bw_song_files_removed: (uid: string, a: { p_refs: string[] }) => {
+      let n = 0;
+      for (const r of a.p_refs || []) if (removals.get(r.slice(REF.length))?.by === uid) (removals.delete(r.slice(REF.length)), n++);
+      return { data: n };
     },
     bw_song_file_sweep_done: (uid: string, a: { p_band_id: string; p_paths: string[] }) => {
       if (!admins.has(uid)) return { error: { message: 'Only band admins', code: '42501' } };
@@ -102,6 +121,7 @@ const fake = vi.hoisted(() => {
     };
     const STEP: Record<string, Step> = {
       bw_song_file_adopt_begin: 'begin', bw_song_file_adopt_repoint: 'repoint', bw_song_file_sweep_list: 'sweep_list', bw_song_file_sweep_claim: 'sweep_claim', bw_song_file_sweep_done: 'sweep_done',
+      bw_song_files_claim_delete: 'claim_delete', bw_song_files_removed: 'removed',
     };
     const client = {
       rpc: async (fn: string, args: unknown) => {
@@ -149,7 +169,13 @@ const fake = vi.hoisted(() => {
               failRemove--;
               return { data: null, error: new Error('Failed to fetch') };
             }
-            const gone = paths.filter((p) => store.delete(p));
+            // 197's RESTRICTIVE delete policy: only a file this user claimed
+            // (sweep or delete claim, not lapsed) that nothing links.
+            const allowed = (p: string) =>
+              !inUse(p) &&
+              (adoptions.some((r) => r.from === p && r.state === 'deleting' && r.deletingBy === uid && clock.now - (r.deletingAt ?? 0) <= LAPSE) ||
+                (removals.get(p)?.by === uid && clock.now - removals.get(p)!.at <= LAPSE));
+            const gone = paths.filter((p) => allowed(p) && store.delete(p));
             log.push(`remove ${paths.join(',')}`);
             return { data: gone.map((name) => ({ name })), error: null };
           },
@@ -170,6 +196,7 @@ const fake = vi.hoisted(() => {
     store.clear();
     songs.clear();
     adoptions = [];
+    removals.clear();
     failRemove = 0;
     clock.now = 0;
     admins.clear();
@@ -179,6 +206,7 @@ const fake = vi.hoisted(() => {
     /** Past the claim's 10 minutes. */
     lapse: () => void (clock.now += LAPSE + 1),
     adoptions: () => adoptions,
+    removals: () => removals,
     failNextRemove: () => void failRemove++,
     put: (path: string, body: string) => store.set(path, { body, etag: etag(body) }),
   };
@@ -461,6 +489,36 @@ describe('what is left behind', () => {
     expect(fake.store.has(DEST)).toBe(false);
     expect(fake.store.has(ORIG)).toBe(true); // not this run's to delete
     expect(song().audio_url).toBe(ref(`${BAND}/audio/new-take.mp3`));
+    noDanglingSong();
+  });
+
+  it('the rollback of its own copy claims it first; the claim is closed after (Codex review of f32a26e7)', async () => {
+    const aRe = A.pause('repoint');
+    const pa = adopt(A);
+    await aRe.reached;
+    fake.put(`${BAND}/audio/new-take.mp3`, 'new take');
+    song().audio_url = ref(`${BAND}/audio/new-take.mp3`);
+    aRe.release();
+    await pa;
+    const i = A.log.indexOf('bw_song_files_claim_delete');
+    expect(i).toBeGreaterThanOrEqual(0);
+    expect(A.log.findIndex((l) => l.startsWith(`remove ${DEST}`))).toBeGreaterThan(i);
+    expect(fake.store.has(DEST)).toBe(false);
+    expect(fake.removals().size).toBe(0);
+  });
+
+  it('a sweep delete that wakes up after the lapse, with the original linked again, deletes nothing (Codex review of f32a26e7)', async () => {
+    // Stop the first sweep right before its delete.
+    const aRm = A.pause('remove');
+    const pa = adopt(A);
+    await aRm.reached;
+    fake.lapse();
+    // Meanwhile another song links the original (allowed again after the lapse).
+    fake.songs.set('song-9', { id: 'song-9', band_id: BAND, status: 'ready', audio_url: ref(ORIG), chart_url: null });
+    aRm.release();
+    await pa;
+    expect(fake.store.has(ORIG)).toBe(true);
+    expect(fake.adoptions().find((r) => r.from === ORIG)?.state).not.toBe('cleaned');
     noDanglingSong();
   });
 

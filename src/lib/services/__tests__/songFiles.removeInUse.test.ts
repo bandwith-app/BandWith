@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const m = vi.hoisted(() => ({
   claimable: [] as string[] | null,
   removeError: null as null | { message: string },
+  refused: [] as string[],
   removed: [] as string[][],
   rpcs: [] as Array<{ fn: string; args: unknown }>,
   songRow: { audio_url: null as string | null, chart_url: null as string | null },
@@ -30,7 +31,15 @@ vi.mock('@/lib/supabase', () => {
         if (fn === 'bw_song_files_removed') return { data: (args.p_refs || []).length, error: null };
         return { data: null, error: { message: `unexpected rpc ${fn}` } };
       }),
-      storage: { from: () => ({ remove: async (p: string[]) => (m.removed.push(p), { data: [], error: m.removeError }) }) },
+      // Storage returns the objects it deleted (the delete policy can refuse some).
+      storage: {
+        from: () => ({
+          info: async (path: string) => (m.refused.includes(path) ? { data: { size: 1 }, error: null } : { data: null, error: { message: 'Object not found', statusCode: '404' } }),
+          remove: async (p: string[]) => (
+            m.removed.push(p), { data: m.removeError ? null : p.filter((x) => !m.refused.includes(x)).map((name) => ({ name })), error: m.removeError }
+          ),
+        }),
+      },
     },
   };
 });
@@ -45,6 +54,7 @@ const calls = (fn: string) => m.rpcs.filter((r) => r.fn === fn).map((r) => r.arg
 beforeEach(() => {
   m.claimable = [];
   m.removeError = null;
+  m.refused = [];
   m.removed = [];
   m.rpcs = [];
 });
@@ -64,6 +74,13 @@ describe('removing song files', () => {
     m.removeError = { message: 'Storage unavailable' };
     await removeSongFiles([U]);
     expect(calls('bw_song_files_removed')).toEqual([]);
+  });
+
+  it('closes only the claims of files Storage really deleted (Codex review of f32a26e7)', async () => {
+    m.claimable = [O, U];
+    m.refused = ['band-1/audio/o-band-take.mp3'];
+    await removeSongFiles([O, U]);
+    expect(calls('bw_song_files_removed')).toEqual([{ p_refs: [U] }]);
   });
 
   it('removes nothing when it cannot claim', async () => {

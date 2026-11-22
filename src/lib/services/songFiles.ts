@@ -283,8 +283,9 @@ async function adoptOne(client: AdoptClient, songId: string, field: Field, busyW
   // Another run finished first: the song already links to a copy.
   if (res.ref && res.ref === `${REF_PREFIX}${to}`) return { ref: res.ref };
   if (isStoredSongFile(res.ref) && res.ref.startsWith(`${REF_PREFIX}${to.split('/').slice(0, 2).join('/')}/${songId}-`)) return { ref: res.ref };
-  // The song changed meanwhile: only a copy this run made, and no song uses.
-  if (created && res.to_referenced === false) await bucket.remove([to]).catch(() => undefined);
+  // The song changed meanwhile: only a copy this run made, and no song uses,
+  // through a claim like any delete (Storage refuses one without it).
+  if (created && res.to_referenced === false) await removeClaimed(client, [`${REF_PREFIX}${to}`]);
   return { error: new Error('The song changed while its files were being moved.') };
 }
 
@@ -342,11 +343,15 @@ export const sweepAdoptedFiles = async (bandId: string, opts?: { client?: AdoptC
       }
       // Linked again, being deleted by someone else, or already gone: skip it.
       if (!(claim as { ok?: boolean } | null)?.ok) continue;
-      const { error: removeError } = await client.storage.from(SONG_FILES_BUCKET).remove([path]);
+      const { data: gone, error: removeError } = await client.storage.from(SONG_FILES_BUCKET).remove([path]);
       if (removeError) {
         first ??= asError(removeError, 'Could not tidy the song files');
         continue;
       }
+      // Storage refused it (the claim lapsed, or the file is linked again):
+      // not done; the claim lapses and the next sweep decides again. Already
+      // gone (an earlier run deleted it, then stopped): done.
+      if (!deletedNames(gone).has(path) && (await stillStored(client, path))) continue;
       const { error: doneError } = await client.rpc('bw_song_file_sweep_done', { p_band_id: bandId, p_paths: [path] });
       if (doneError) first ??= asError(doneError, 'Could not tidy the song files');
     }
@@ -366,7 +371,26 @@ export const hasUnadoptedFiles = (song: { status?: string | null; audio_url?: st
   song.status !== 'suggested' && (isSuggestionFile(song.audio_url) || isSuggestionFile(song.chart_url));
 
 /** Delete stored files nothing else uses (ignores links). Best effort: unsure means kept. */
-export const removeSongFiles = async (refs: Array<string | null | undefined>): Promise<void> => {
+export const removeSongFiles = async (refs: Array<string | null | undefined>): Promise<void> => removeClaimed(supabase, refs);
+
+/** The file is still in Storage (or we can't tell: then it counts as there). */
+async function stillStored(client: AdoptClient, path: string): Promise<boolean> {
+  try {
+    const { data, error } = await client.storage.from(SONG_FILES_BUCKET).info(path);
+    if (data) return true;
+    const e = error as { statusCode?: unknown; status?: unknown; message?: unknown } | null;
+    return !(e && (String(e.statusCode ?? e.status ?? '') === '404' || /not found/i.test(String(e.message ?? ''))));
+  } catch {
+    return true;
+  }
+}
+
+/** The names a Storage remove() really deleted (its delete policy can refuse some). */
+const deletedNames = (data: unknown) =>
+  new Set(Array.isArray(data) ? (data as Array<{ name?: unknown }>).map((o) => (typeof o?.name === 'string' ? o.name : '')) : []);
+
+async function removeClaimed(client: AdoptClient, refs: Array<string | null | undefined>): Promise<void> {
+  const supabase = client;
   const stored = [...new Set(refs.filter(isStoredSongFile))];
   if (stored.length === 0) return;
   try {
@@ -379,14 +403,21 @@ export const removeSongFiles = async (refs: Array<string | null | undefined>): P
     if (error || !Array.isArray(data)) return;
     const claimed = stored.filter((r) => (data as string[]).includes(r));
     if (claimed.length === 0) return;
-    const { error: removeError } = await supabase.storage.from(SONG_FILES_BUCKET).remove(claimed.map((r) => r.slice(REF_PREFIX.length)));
+    const { data: gone, error: removeError } = await supabase.storage
+      .from(SONG_FILES_BUCKET)
+      .remove(claimed.map((r) => r.slice(REF_PREFIX.length)));
     // A failed delete keeps the claim: it lapses, and the files stay.
     if (removeError) return;
-    await supabase.rpc('bw_song_files_removed', { p_refs: claimed });
+    // Storage deletes only files with this user's live claim that nothing
+    // links (197's delete policy): close the claims of those it deleted.
+    const names = deletedNames(gone);
+    const done: string[] = [];
+    for (const r of claimed) if (names.has(r.slice(REF_PREFIX.length)) || !(await stillStored(supabase, r.slice(REF_PREFIX.length)))) done.push(r);
+    if (done.length) await supabase.rpc('bw_song_files_removed', { p_refs: done });
   } catch {
     /* kept */
   }
-};
+}
 
 /**
  * Open a stored file or https link outside the app.

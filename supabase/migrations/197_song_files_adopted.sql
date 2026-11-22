@@ -28,7 +28,9 @@
 --        `from` for the sweep, in the same transaction.
 --      bw_song_file_sweep_list(band)
 --        the recorded originals nothing references any more (checked across
---        all songs and member suggestions).
+--        all songs and member suggestions), and lapsed delete claims of the
+--        band nothing uses (claimed again by bw_song_file_sweep_claim, closed
+--        by bw_song_file_sweep_done), so no file stays orphaned for good.
 --      bw_song_file_sweep_claim(band, path)
 --        right before each delete, the file key locked: re-checks that no
 --        song and no member suggestion links the path, then marks it
@@ -46,14 +48,30 @@
 --
 -- 3. A file another song (or a suggestion) uses is never removed:
 --    bw_review_song_suggestion / bw_withdraw_song_suggestion (108, otherwise
---    unchanged; withdraw as 180 lines 751-786 on fix/account-deletion at
---    b91fd064, with IS DISTINCT FROM for a NULL author) return only the
+--    unchanged; withdraw identical to 180 lines 826-867 on
+--    fix/account-deletion at d468b10b) return only the
 --    files nothing else uses, already claimed for deletion. The app deletes
 --    only through a claim: bw_song_files_claim_delete (under the file keys'
 --    exclusive locks; claimed files can't be linked), the Storage delete,
 --    then bw_song_files_removed; a failed delete lapses after 10 minutes.
---    A member's song can't link a file another song of the band uses
---    (BW_FILE_IN_USE, SQLSTATE BWF01) nor another band's file (42501).
+--    Someone outside the band gets 42501 before any file check. No song
+--    (an admin's either) links another band's file (42501); a member's
+--    can't link a file another song of the band uses (BW_FILE_IN_USE,
+--    SQLSTATE BWF01). An app user can't link a file no longer in Storage
+--    (BW_FILE_REMOVED, BWF02).
+--
+-- 4. Storage deletes need a claim: bw_song_files_delete_claimed, a
+--    RESTRICTIVE delete policy on song-files (bw_song_files_write_delete,
+--    PERMISSIVE, stays as is: who; this one: when). A delete goes through
+--    only with the user's own claim of the last 10 minutes on a file nothing
+--    links. Links stay refused for 15 minutes after a claim, so a delete
+--    that started in time never races a link. Other buckets (personal-files)
+--    are untouched. Older builds' deletes without a claim (replacing a
+--    file, deleting a song, rolling back an upload) are refused: an orphan
+--    in Storage, never a lost file.
+--
+-- 5. song_file_adoptions / song_file_removals rows go with their band
+--    (band_id FK, ON DELETE CASCADE).
 --
 -- Links and deletes of one file are ordered by one advisory lock on the
 -- file's key (shared to link, exclusive to claim), so a link can't slip in
@@ -63,7 +81,8 @@
 -- and withdraw RPCs keep their arguments and result (the files list can only
 -- be shorter), their move + update still works for admins, and they never
 -- link a file being deleted or another song's file (they link only new
--- uploads). Safe to run more than once.
+-- uploads). Their Storage deletes outside reject / withdraw are refused (an
+-- orphan, see 4). Safe to run more than once.
 -- ============================================================================
 
 BEGIN;
@@ -179,7 +198,8 @@ REVOKE ALL ON FUNCTION public.bw_song_file_band_key(uuid) FROM PUBLIC, anon, aut
 
 -- Delete claims outside the sweep (deleting a song, replacing a file,
 -- rejecting / withdrawing a suggested song): the file is being removed
--- until the app says it is gone, or for 10 minutes (a delete that failed).
+-- until the app says it is gone; a delete that failed: 10 minutes for its
+-- Storage delete, 15 with links refused, then the sweep retries it.
 CREATE TABLE IF NOT EXISTS public.song_file_removals (
   path text PRIMARY KEY,
   band_id uuid NOT NULL,
@@ -187,14 +207,29 @@ CREATE TABLE IF NOT EXISTS public.song_file_removals (
   claimed_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS song_file_removals_band_idx ON public.song_file_removals (band_id);
+-- A band's file records go with the band.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'song_file_adoptions_band_fk') THEN
+    ALTER TABLE public.song_file_adoptions
+      ADD CONSTRAINT song_file_adoptions_band_fk FOREIGN KEY (band_id) REFERENCES public.bands (id) ON DELETE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'song_file_removals_band_fk') THEN
+    ALTER TABLE public.song_file_removals
+      ADD CONSTRAINT song_file_removals_band_fk FOREIGN KEY (band_id) REFERENCES public.bands (id) ON DELETE CASCADE;
+  END IF;
+END;
+$$;
 ALTER TABLE public.song_file_removals ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.song_file_removals FROM PUBLIC, anon, authenticated;
 
--- The file is being deleted, or was (no new link to it).
+-- The file is being deleted, or was (no new link to it). A claim allows
+-- its Storage delete for 10 minutes (the delete policy below) and blocks
+-- links for 15, so a delete that started in time never races a link.
 CREATE OR REPLACE FUNCTION public.bw_song_file_being_removed(p_path text)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $$
   SELECT EXISTS (SELECT 1 FROM public.song_file_adoptions a WHERE a.from_path = p_path AND a.state IN ('deleting', 'cleaned'))
-      OR EXISTS (SELECT 1 FROM public.song_file_removals r WHERE r.path = p_path AND r.claimed_at >= now() - interval '10 minutes');
+      OR EXISTS (SELECT 1 FROM public.song_file_removals r WHERE r.path = p_path AND r.claimed_at >= now() - interval '15 minutes');
 $$;
 REVOKE ALL ON FUNCTION public.bw_song_file_being_removed(text) FROM PUBLIC, anon, authenticated;
 
@@ -326,12 +361,21 @@ BEGIN
     RAISE EXCEPTION 'Only band admins can move song files' USING ERRCODE = '42501';
   END IF;
   RETURN coalesce((
-    SELECT array_agg(DISTINCT a.from_path ORDER BY a.from_path)
-      FROM public.song_file_adoptions a
-     WHERE a.band_id = p_band_id
-       AND (a.state = 'repointed' OR (a.state = 'deleting' AND a.deleting_at < now() - interval '10 minutes'))
-       AND a.from_path LIKE p_band_id::text || '/suggestions/%'
-       AND NOT public.bw_song_file_in_use(a.from_path)), '{}'::text[]);
+    SELECT array_agg(DISTINCT x.p ORDER BY x.p) FROM (
+      SELECT a.from_path AS p
+        FROM public.song_file_adoptions a
+       WHERE a.band_id = p_band_id
+         AND (a.state = 'repointed' OR (a.state = 'deleting' AND a.deleting_at < now() - interval '10 minutes'))
+         AND a.from_path LIKE p_band_id::text || '/suggestions/%'
+      UNION
+      -- Lapsed delete claims (the app stopped before the delete or before
+      -- bw_song_files_removed): retried here, so no file stays orphaned.
+      SELECT r.path
+        FROM public.song_file_removals r
+       WHERE r.band_id = p_band_id
+         AND r.claimed_at < now() - interval '10 minutes'
+         AND r.path LIKE p_band_id::text || '/%') x
+     WHERE NOT public.bw_song_file_in_use(x.p)), '{}'::text[]);
 END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_song_file_sweep_list(uuid) FROM PUBLIC, anon;
@@ -361,6 +405,15 @@ BEGIN
    ORDER BY updated_at DESC LIMIT 1
    FOR UPDATE;
   IF a.id IS NULL THEN
+    -- A lapsed delete claim: claimed again, now for this admin.
+    IF EXISTS (SELECT 1 FROM public.song_file_removals r
+                WHERE r.path = p_path AND r.band_id = p_band_id AND r.path LIKE p_band_id::text || '/%') THEN
+      IF cardinality(public.bw_song_files_claim_for(ARRAY[public.bw_song_file_ref(p_path)], auth.uid(), true)) > 0 THEN
+        RETURN jsonb_build_object('ok', true);
+      END IF;
+      RETURN jsonb_build_object('ok', false, 'reason',
+        CASE WHEN public.bw_song_file_in_use(p_path) THEN 'referenced' ELSE 'busy' END);
+    END IF;
     RETURN jsonb_build_object('ok', false, 'reason', 'gone');
   END IF;
   IF a.state = 'deleting' AND a.deleting_at >= now() - interval '10 minutes' THEN
@@ -389,6 +442,7 @@ SET search_path TO 'public'
 AS $$
 DECLARE
   n integer;
+  m integer;
 BEGIN
   IF auth.uid() IS NULL OR NOT public.bw_is_band_admin(p_band_id, auth.uid()) THEN
     RAISE EXCEPTION 'Only band admins can move song files' USING ERRCODE = '42501';
@@ -396,16 +450,22 @@ BEGIN
   UPDATE public.song_file_adoptions SET state = 'cleaned', updated_at = now()
    WHERE band_id = p_band_id AND state = 'deleting' AND from_path = ANY (coalesce(p_paths, '{}'::text[]));
   GET DIAGNOSTICS n = ROW_COUNT;
-  RETURN n;
+  -- And the delete claims this admin's sweep retried.
+  DELETE FROM public.song_file_removals
+   WHERE band_id = p_band_id AND claimed_by = auth.uid() AND path = ANY (coalesce(p_paths, '{}'::text[]));
+  GET DIAGNOSTICS m = ROW_COUNT;
+  RETURN n + m;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.bw_song_file_sweep_done(uuid, text[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bw_song_file_sweep_done(uuid, text[]) TO authenticated;
 
--- A member's song links only files of its band, never one another song of
--- the band uses (BW_FILE_IN_USE; another band's file: the generic refusal,
--- so nothing tells whether another band uses it). No song links a file being
--- deleted or removed (BW_FILE_REMOVED), under the file key's shared lock.
+-- Outside the band: the generic refusal (42501) before any file check. A
+-- song (an admin's too) links only files of its band's folder (42501, so
+-- nothing tells whether another band uses one); a member's, never one
+-- another song of the band uses (BW_FILE_IN_USE). No song links a file being
+-- deleted, removed or no longer in Storage (BW_FILE_REMOVED), under the
+-- file key's shared lock.
 -- Older builds never hit either: they link only files they just uploaded
 -- and keep the ones a song has (an unchanged field is not checked).
 CREATE OR REPLACE FUNCTION public.bw_trg_song_file_not_removed()
@@ -425,10 +485,17 @@ BEGIN
       CONTINUE;
     END IF;
     v_path := substr(v_ref, length('sb://song-files/') + 1);
+    -- First of all: someone outside the band (a former member, say) gets
+    -- the generic refusal, before anything about the file is looked at.
+    -- (This trigger runs before the table's RLS check.)
+    IF auth.uid() IS NOT NULL AND NOT (NEW.band_id::text = ANY (public.bw_my_band_ids())) THEN
+      RAISE EXCEPTION 'Not allowed to link this file' USING ERRCODE = '42501';
+    END IF;
+    -- Only the band's own folder, for admins too.
+    IF auth.uid() IS NOT NULL AND split_part(v_path, '/', 1) IS DISTINCT FROM NEW.band_id::text THEN
+      RAISE EXCEPTION 'Not allowed to link this file' USING ERRCODE = '42501';
+    END IF;
     IF auth.uid() IS NOT NULL AND NOT public.bw_is_band_admin(NEW.band_id, auth.uid()) THEN
-      IF split_part(v_path, '/', 1) IS DISTINCT FROM NEW.band_id::text THEN
-        RAISE EXCEPTION 'Not allowed to link this file' USING ERRCODE = '42501';
-      END IF;
       -- (rejecting their song would then remove a file the band uses)
       IF EXISTS (SELECT 1 FROM public.songs o
                   WHERE o.band_id = NEW.band_id AND o.id IS DISTINCT FROM NEW.id
@@ -439,12 +506,21 @@ BEGIN
     END IF;
     v_paths := v_paths || v_path;
   END LOOP;
+  -- Sorted within the row. A single statement that links files on several
+  -- songs takes each row's locks in turn, so two such statements could still
+  -- deadlock (Postgres then cancels one; nothing is lost). No app path does
+  -- that: the app links one song per statement.
   FOR v_path IN SELECT DISTINCT p FROM unnest(v_paths) p ORDER BY 1 LOOP
     PERFORM pg_advisory_xact_lock_shared(public.bw_song_file_lock_key(v_path));
   END LOOP;
-  -- New statements: they see a claim that committed while we waited.
+  -- New statements: they see a claim (or a delete) that committed while we
+  -- waited. An app user's link to a file no longer in Storage (deleted
+  -- after its claim lapsed, or never uploaded) is refused the same way
+  -- (the service role may set a ref before its upload).
   FOREACH v_path IN ARRAY v_paths LOOP
-    IF public.bw_song_file_being_removed(v_path) THEN
+    IF public.bw_song_file_being_removed(v_path)
+       OR (auth.uid() IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM storage.objects o WHERE o.bucket_id = 'song-files' AND o.name = v_path)) THEN
       RAISE EXCEPTION 'BW_FILE_REMOVED: this file is being removed; upload it again'
         USING ERRCODE = 'BWF02';
     END IF;
@@ -483,7 +559,7 @@ BEGIN
               WHERE a.band_id = NEW.band_id AND a.state IN ('deleting', 'cleaned')
                 AND (strpos(v_json, public.bw_song_file_json_needle(a.from_path)) > 0 OR strpos(v_text, a.from_path) > 0))
      OR EXISTS (SELECT 1 FROM public.song_file_removals r
-              WHERE r.band_id = NEW.band_id AND r.claimed_at >= now() - interval '10 minutes'
+              WHERE r.band_id = NEW.band_id AND r.claimed_at >= now() - interval '15 minutes'
                 AND (strpos(v_json, public.bw_song_file_json_needle(r.path)) > 0 OR strpos(v_text, r.path) > 0)) THEN
     RAISE EXCEPTION 'BW_FILE_REMOVED: this file is being removed; upload it again'
       USING ERRCODE = 'BWF02';
@@ -521,7 +597,8 @@ DROP FUNCTION IF EXISTS public.bw_song_files_unused(text[]);
 
 -- Of these refs, claims for deletion the stored files nothing uses, under
 -- the file keys' exclusive locks (then the band keys'): each one returned is
--- 'being removed' (no new link) until bw_song_files_removed or 10 minutes.
+-- 'being removed' (no new link) until bw_song_files_removed or 15 minutes;
+-- its Storage delete is allowed for 10.
 -- p_check: only files the user may delete (an admin: the band's; a member:
 -- their own suggestion files). Never says "unused" without a claim.
 CREATE OR REPLACE FUNCTION public.bw_song_files_claim_for(p_refs text[], p_uid uuid, p_check boolean)
@@ -665,15 +742,17 @@ BEGIN
 
   IF p_decision = 'reject' THEN
     v_status := 'rejected';
-    UPDATE public.song_suggestions
-       SET status = v_status, reason = v_reason, reviewed_by = v_uid, reviewed_at = now()
-     WHERE id = g.id;
+    -- Song and claim first (file keys, then band keys), the suggestion
+    -- after: its file check takes the band key, always after file keys.
     IF g.kind = 'new_song' AND s.id IS NOT NULL AND s.status = 'suggested' THEN
       DELETE FROM public.songs WHERE id = s.id;
       -- Only files nothing else uses (197), claimed for the app to delete:
       -- another song may link the same one.
       v_files := public.bw_song_files_left_unused(ARRAY[s.audio_url, s.chart_url]);
     END IF;
+    UPDATE public.song_suggestions
+       SET status = v_status, reason = v_reason, reviewed_by = v_uid, reviewed_at = now()
+     WHERE id = g.id;
   ELSE
     IF s.id IS NULL THEN
       RAISE EXCEPTION 'The song no longer exists' USING ERRCODE = '55000';
@@ -739,10 +818,12 @@ REVOKE ALL ON FUNCTION public.bw_review_song_suggestion(uuid, text, text, jsonb,
 GRANT EXECUTE ON FUNCTION public.bw_review_song_suggestion(uuid, text, text, jsonb, boolean) TO authenticated;
 
 -- The author takes a pending suggestion back (a suggested song is deleted).
--- Mirrors 180_account_deletion_safety.sql lines 751-786 (fix/account-deletion
--- at b91fd064, unchanged since 898303a2: "As 108, with IS DISTINCT FROM",
--- created_by can be NULL) plus 197's file filter. Re-check against 180 if
--- that file changes (the PGlite test loads 180's real function first).
+-- Identical to 180_account_deletion_safety.sql lines 826-867
+-- (fix/account-deletion at d468b10b): IS DISTINCT FROM for a NULL author,
+-- and after the delete bw_song_files_left_unused when it exists (here it
+-- always does), so 180 and 197 give the same function in either order.
+-- Re-check against 180 if that file changes (the PGlite test loads 180's
+-- real function before and after 197).
 CREATE OR REPLACE FUNCTION public.bw_withdraw_song_suggestion(p_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -756,7 +837,6 @@ DECLARE
   v_files jsonb := '[]'::jsonb;
 BEGIN
   SELECT * INTO g FROM public.song_suggestions WHERE id = p_id FOR UPDATE;
-  -- 180 (B1): a former member's suggestion has created_by NULL; "<>" would let anyone through.
   IF v_uid IS NULL OR g.id IS NULL OR g.created_by IS DISTINCT FROM v_uid THEN
     RAISE EXCEPTION 'Not your suggestion' USING ERRCODE = '42501';
   END IF;
@@ -768,7 +848,14 @@ BEGIN
     SELECT id, status, audio_url, chart_url INTO s FROM public.songs WHERE id = g.song_id;
     IF s.id IS NOT NULL AND s.status = 'suggested' THEN
       DELETE FROM public.songs WHERE id = s.id;
-      v_files := public.bw_song_files_left_unused(ARRAY[s.audio_url, s.chart_url]);
+      IF to_regprocedure('public.bw_song_files_left_unused(text[])') IS NOT NULL THEN
+        -- 197: after the delete, the files nothing else uses (claimed).
+        EXECUTE 'SELECT public.bw_song_files_left_unused($1)' INTO v_files
+          USING ARRAY[s.audio_url, s.chart_url];
+        v_files := coalesce(v_files, '[]'::jsonb);
+      ELSE
+        v_files := to_jsonb(array_remove(ARRAY[s.audio_url, s.chart_url], NULL));
+      END IF;
     END IF;
   END IF;
   -- The admins' unread notification about it goes away.
@@ -795,6 +882,39 @@ CREATE POLICY bw_song_files_write_update ON storage.objects
           AND NOT public.bw_song_file_adopted(name))
     )
   );
+
+-- Storage deletes of song files: RESTRICTIVE, so it holds whatever
+-- PERMISSIVE delete policies exist (bw_song_files_write_delete below says
+-- who may delete in which folder; this says when). A delete goes through
+-- only with the user's own live claim (bw_song_files_claim_delete or the
+-- sweep's claim, at most 10 minutes old) on a file nothing links. A late
+-- delete (a rolled-back claim, a phone waking up after the lapse) or one
+-- of a file linked again is refused: an orphan for later, never a lost
+-- file. Other buckets are not touched.
+CREATE OR REPLACE FUNCTION public.bw_song_file_delete_allowed(p_bucket text, p_name text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT p_bucket IS DISTINCT FROM 'song-files'
+      OR (auth.uid() IS NOT NULL
+          AND NOT public.bw_song_file_in_use(p_name)
+          AND (EXISTS (SELECT 1 FROM public.song_file_removals r
+                        WHERE r.path = p_name AND r.claimed_by = auth.uid() AND r.claimed_at >= now() - interval '10 minutes')
+               OR EXISTS (SELECT 1 FROM public.song_file_adoptions a
+                           WHERE a.from_path = p_name AND a.state = 'deleting' AND a.deleting_by = auth.uid()
+                             AND a.deleting_at >= now() - interval '10 minutes')));
+$$;
+REVOKE ALL ON FUNCTION public.bw_song_file_delete_allowed(text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_song_file_delete_allowed(text, text) TO authenticated;
+
+DROP POLICY IF EXISTS bw_song_files_delete_claimed ON storage.objects;
+CREATE POLICY bw_song_files_delete_claimed ON storage.objects
+  AS RESTRICTIVE
+  FOR DELETE TO authenticated
+  USING (bucket_id <> 'song-files' OR public.bw_song_file_delete_allowed(bucket_id, name));
 
 DROP POLICY IF EXISTS bw_song_files_write_delete ON storage.objects;
 CREATE POLICY bw_song_files_write_delete ON storage.objects

@@ -32,6 +32,10 @@ CREATE TABLE storage.objects (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), buc
 ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 GRANT SELECT, INSERT, UPDATE, DELETE ON storage.objects TO authenticated;
 CREATE POLICY read_all ON storage.objects FOR SELECT TO authenticated USING (true);
+-- personal-files (109): the owner deletes their own; 197 must not touch it.
+CREATE POLICY bw_personal_files_own_delete ON storage.objects FOR DELETE TO authenticated
+  USING (bucket_id = 'personal-files' AND owner = auth.uid());
+CREATE TABLE public.bands (id uuid PRIMARY KEY);
 CREATE FUNCTION storage.foldername(name text) RETURNS text[] LANGUAGE sql IMMUTABLE AS $$
   SELECT (string_to_array(name, '/'))[1:array_length(string_to_array(name, '/'), 1) - 1] $$;
 GRANT EXECUTE ON FUNCTION storage.foldername(text) TO authenticated;
@@ -125,6 +129,7 @@ const P = {
   other: sug(MEM2, 'audio/e-other.mp3'),
 };
 await db.exec(`
+INSERT INTO bands VALUES ('${BAND}'), ('${OTHER_BAND}');
 INSERT INTO band_members VALUES ('${BAND}','${ADMIN}','admin',true),('${BAND}','${MEM}','member',true),('${BAND}','${MEM2}','member',true),
   ('${OTHER_BAND}','${STRANGER}','admin',true);
 INSERT INTO songs VALUES
@@ -145,9 +150,16 @@ const upd = (user, name) => as(user, () => q(`UPDATE storage.objects SET metadat
 const ins = (user, name) => as(user, () => q(`INSERT INTO storage.objects (bucket_id, name, owner) VALUES ('song-files', $1, $2)`, [name, user]).then(() => 1, () => 0));
 
 // While the song waits for review, the member manages their own files.
-ok((await del(MEM, P.waiting)) === 1, 'member deletes a file of their song still waiting');
+ok((await del(MEM, P.waiting)) === 0, 'a linked file is never deleted, not even by its owner (197 delete policy)');
 ok((await upd(MEM, P.waiting)) === 1, 'member replaces a file of their song still waiting');
-ok((await del(MEM, P.orphan)) === 1, 'member deletes their own unused upload');
+ok((await del(MEM, P.orphan)) === 0, 'no delete without a claim, even of an own unused upload');
+const claimEarly = (user, refs) => as(user, () => q(`SELECT public.bw_song_files_claim_delete($1) AS v`, [refs]).then((r) => r.rows[0].v, (e) => `error: ${e.message}`));
+const delClaimed = (user, name) => as(user, async () => {
+  await q(`SELECT public.bw_song_files_claim_delete($1)`, [[`sb://song-files/${name}`]]);
+  return q(`DELETE FROM storage.objects WHERE bucket_id = 'song-files' AND name = $1`, [name]).then((r) => r.affectedRows);
+}).catch((e) => `error: ${e.message}`);
+ok((await delClaimed(MEM, P.orphan)) === 1, 'member deletes their own unused upload once claimed');
+ok(JSON.stringify(await claimEarly(MEM2, [`sb://song-files/${P.orphan}`])) === '[]', 'another member cannot claim it');
 ok((await ins(MEM, sug(MEM, 'audio/f-new.mp3'))) === 1, 'member uploads into their suggestions folder');
 ok((await del(MEM2, P.waiting)) === 0, 'another member cannot delete it');
 
@@ -156,7 +168,7 @@ ok((await del(MEM, P.learning)) === 0, 'member cannot delete the recording of th
 ok((await upd(MEM, P.learning)) === 0, 'member cannot replace the recording of their accepted song');
 ok((await del(MEM, P.readyChart)) === 0, 'member cannot delete the chart of their accepted song (ready)');
 ok((await upd(MEM, P.readyChart)) === 0, 'member cannot replace the chart of their accepted song');
-ok((await del(ADMIN, P.learning)) === 1, 'admin still deletes it (moving it into the band folders)');
+ok((await del(ADMIN, P.learning)) === 0, 'an admin cannot delete it while a song links it');
 ok((await upd(ADMIN, P.readyChart)) === 1, 'admin still replaces it');
 
 // The helper says nothing about other bands' files.
@@ -200,6 +212,9 @@ ok(String(await repoint(ADMIN, SONG, `${OTHER_BAND}/suggestions/x/audio/y.mp3`, 
 ok(String(await repoint(MEM, SONG, P.learning, DEST)).startsWith('error'), 'a member cannot repoint');
 
 // Two runs: the first repoint wins, the second sees the new reference.
+// The app copies the file first; the repoint links that copy (197 needs it in Storage).
+const stored = (name, owner = ADMIN) => q(`INSERT INTO storage.objects (bucket_id, name, owner) VALUES ('song-files', $1, $2)`, [name, owner]);
+await stored(DEST);
 const r1 = await asCommit(ADMIN, `SELECT public.bw_song_file_adopt_repoint($1, 'audio_url', $2, $3) AS v`, [SONG, P.learning, DEST]);
 ok(r1.won === true && r1.ref === `sb://song-files/${DEST}`, 'first repoint wins');
 ok((await ref()) === `sb://song-files/${DEST}`, 'the song points at the copy');
@@ -283,6 +298,9 @@ ok((await ref()) === `sb://song-files/${DEST}`, 'after the repoint the song keep
 const O = `${BAND}/audio/o-band-take.mp3`;
 const U = `${BAND}/suggestions/${MEM}/audio/u-own.mp3`;
 const S1 = id(20);
+await stored(O);
+await stored(U, MEM);
+await stored(`${U}x`, MEM);
 await db.exec(`INSERT INTO songs VALUES ('${S1}','${BAND}','Band song on O','ready','sb://song-files/${O}',NULL)`);
 // A member can't point a song at a file another song uses.
 const reuse = await asCommit(MEM, `INSERT INTO songs VALUES ('${id(21)}','${BAND}','Reuse O','suggested','sb://song-files/${O}',NULL) RETURNING 1 AS v`);
@@ -343,9 +361,20 @@ ok((await removedDone(ADMIN, [`sb://song-files/${W}`])) === 1 && (await qs(`SELE
 // A failed delete: the claim lapses after 10 minutes, links work again.
 await db.exec(`UPDATE song_file_removals SET claimed_at = now() - interval '11 minutes' WHERE path = '${U}'`).catch(() => undefined);
 ok(JSON.stringify(await claimDel(ADMIN2, [`sb://song-files/${U}`])) === JSON.stringify([`sb://song-files/${U}`]), 'a lapsed claim can be claimed again');
-await db.exec(`UPDATE song_file_removals SET claimed_at = now() - interval '11 minutes' WHERE path = '${U}'`).catch(() => undefined);
+// After the link block (15 minutes, Codex review of f32a26e7): linkable again
+// while the file is still in Storage; once really deleted, refused (Claude
+// review of f32a26e7, MINOR 3).
+await db.exec(`UPDATE song_file_removals SET claimed_at = now() - interval '16 minutes' WHERE path = '${U}'`).catch(() => undefined);
 ok((await as(ADMIN, () => q(`INSERT INTO songs VALUES ('${id(41)}','${BAND}','Relink U later','ready','sb://song-files/${U}',NULL)`).then(() => 1, (e) => e.message))) === 1,
-  'after the lapse the file can be linked again');
+  'after the lapse the file, still in Storage, can be linked again');
+// (Storage deleted it as the service would: the stand-in row goes, as superuser.)
+await db.exec('BEGIN');
+await q(`DELETE FROM storage.objects WHERE bucket_id = 'song-files' AND name = $1`, [U]);
+await db.exec(`SELECT set_config('request.jwt.claims', '{"sub":"${ADMIN}","role":"authenticated"}', true); SET LOCAL ROLE authenticated;`);
+const relinkGone = await q(`INSERT INTO songs VALUES ('${id(42)}','${BAND}','Relink U deleted','ready','sb://song-files/${U}',NULL)`)
+  .then(() => 'linked', (e) => e.code ?? e.message);
+await db.exec('ROLLBACK');
+ok(relinkGone === 'BWF02', `after the lapse a file really deleted is refused, BWF02 (${relinkGone})`);
 await q(`INSERT INTO song_suggestions (band_id, kind, proposed) VALUES ($1, 'note', jsonb_build_object('note', $2::text))`, [BAND, `sb://song-files/${U}`]);
 ok(JSON.stringify(await claimDel(ADMIN, [`sb://song-files/${U}`])) === '[]', 'claim: a file a suggestion mentions is kept');
 await db.exec(`DELETE FROM song_suggestions WHERE kind = 'note'`);
@@ -373,6 +402,7 @@ const keyHeld = (k, mode) => k == null ? Promise.resolve(-1) : q(`SELECT count(*
     AND l.classid = (($1::bigint >> 32) & 4294967295)::oid AND l.objid = ($1::bigint & 4294967295)::oid`, [k, mode]).then((r) => r.rows[0].n, () => -1);
 const C = sug(MEM, 'audio/r5-copying.mp3');
 await db.exec(`INSERT INTO songs VALUES ('${id(50)}','${BAND}','R5 accepted','learning','sb://song-files/${C}',NULL)`);
+await stored(C, MEM);
 // A transaction that links C holds the shared key until it ends, also while
 // the adoption is still 'copying' (no record row to lock yet).
 await asCommit(ADMIN, `SELECT public.bw_song_file_adopt_begin($1, 'audio_url') AS v`, [id(50)]);
@@ -393,6 +423,7 @@ ok(heldExcl === 1, `a claim holds the exclusive lock on the same key (${heldExcl
 // Order 1: link (while copying) commits, then the adoption and the sweep claim: claim refused.
 const DC = `${BAND}/audio/${id(50)}-r5-copying.mp3`;
 ok((await asCommit(ADMIN, `INSERT INTO songs VALUES ('${id(52)}','${BAND}','Links C first','ready','sb://song-files/${C}',NULL) RETURNING 1 AS v`)) === 1, 'order 1: a song links C while copying');
+await stored(DC);
 await asCommit(ADMIN, `SELECT public.bw_song_file_adopt_repoint($1, 'audio_url', $2, $3) AS v`, [id(50), C, DC]);
 ok((await claim(ADMIN, C)).reason === 'referenced', 'order 1: then the sweep claim is refused');
 // Order 2: the claim first, then a link: link refused.
@@ -426,14 +457,16 @@ ok(JSON.stringify(await claimDel(ADMIN, [`sb://song-files/${Y}`])) === '[]', 'it
 await db.exec(`DELETE FROM song_suggestions WHERE kind = 'note'`);
 
 // Apply order the other way (197, then 180's real withdraw): it must still
-// filter files in use. #282 is making 180 call bw_song_files_left_unused when
-// it exists; until it pushes that, this case is pending.
+// filter files in use (180 calls bw_song_files_left_unused when it exists,
+// #282 at d468b10b). Required; skipped only when no 180 is available.
 if (!w180) {
-  console.warn('SKIP 197→180 order: no 180 available');
-} else if (!w180.includes('bw_song_files_left_unused')) {
-  console.warn('SKIP (pending #282) 197→180 order: 180’s withdraw does not call bw_song_files_left_unused yet');
+  console.warn('SKIP 197→180 order: no 180 available (main or origin/fix/account-deletion)');
 } else {
+  ok(w180.includes('bw_song_files_left_unused'), '197→180: 180’s withdraw calls bw_song_files_left_unused');
+  const def197 = (await q(`SELECT pg_get_functiondef('public.bw_withdraw_song_suggestion(uuid)'::regprocedure) AS d`)).rows[0].d;
   await db.exec(w180);
+  const def180 = (await q(`SELECT pg_get_functiondef('public.bw_withdraw_song_suggestion(uuid)'::regprocedure) AS d`)).rows[0].d;
+  ok(def197 === def180, '197’s withdraw is the same function as 180’s');
   await db.exec(`ALTER TABLE songs DISABLE TRIGGER songs_file_not_removed;
     INSERT INTO songs VALUES ('${id(62)}','${BAND}','S5 on O','suggested','sb://song-files/${O}',NULL);
     ALTER TABLE songs ENABLE TRIGGER songs_file_not_removed;
@@ -442,6 +475,122 @@ if (!w180) {
   ok(wd180 && Array.isArray(wd180.files) && wd180.files.length === 0, `197→180: withdraw keeps a file another song uses (${JSON.stringify(wd180?.files ?? wd180)})`);
   ok(String(await withdraw(MEM2, id(33))).includes('Not your suggestion'), '197→180: and still refuses a former member’s suggestion');
 }
+
+// ---- Round 6 (Codex review of f32a26e7)
+// Storage delete policy: RESTRICTIVE, only with the user's live claim and
+// nothing linking the file; other buckets untouched.
+const putObj = (name, bucket = 'song-files', owner = ADMIN) => q(`INSERT INTO storage.objects (bucket_id, name, owner) VALUES ($1, $2, $3)`, [bucket, name, owner]);
+const delAs = (user, name, bucket = 'song-files') => as(user, () => q(`DELETE FROM storage.objects WHERE bucket_id = $2 AND name = $1`, [name, bucket]).then((r) => r.affectedRows, (e) => `error: ${e.message}`));
+const pol = (await qs(`SELECT permissive FROM pg_policies WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = 'bw_song_files_delete_claimed'`)).rows[0];
+ok(pol && pol.permissive === 'RESTRICTIVE', 'the claim policy is RESTRICTIVE (the permissive delete policy stays as is)');
+const Z1 = `${BAND}/audio/r6-z1.mp3`, Z2 = `${BAND}/audio/r6-z2.mp3`, Z3 = `${BAND}/audio/r6-z3.mp3`;
+for (const z of [Z1, Z2, Z3]) await putObj(z);
+ok((await delAs(ADMIN, Z1)) === 0, 'an admin deleting without a claim is refused');
+await claimDel(ADMIN, [`sb://song-files/${Z1}`]);
+ok((await delAs(ADMIN, Z1)) === 1, 'a delete with the user’s live claim works');
+await db.exec(`UPDATE song_file_removals SET claimed_at = now() - interval '11 minutes' WHERE path = '${Z1}'`).catch(() => undefined);
+ok((await delAs(ADMIN, Z1)) === 0, 'a late delete after the claim lapsed is refused');
+await claimDel(ADMIN, [`sb://song-files/${Z2}`]);
+await db.exec(`ALTER TABLE songs DISABLE TRIGGER songs_file_not_removed;
+  INSERT INTO songs VALUES ('${id(70)}','${BAND}','Linked again','ready','sb://song-files/${Z2}',NULL);
+  ALTER TABLE songs ENABLE TRIGGER songs_file_not_removed`).catch(() => undefined);
+ok((await delAs(ADMIN, Z2)) === 0, 'a file linked again is refused, even with a claim');
+await claimDel(ADMIN2, [`sb://song-files/${Z3}`]);
+ok((await delAs(ADMIN, Z3)) === 0, 'another user’s claim does not count');
+ok((await delAs(ADMIN2, Z3)) === 1, 'the claimer may delete it');
+await putObj(`${MEM}/notes/own.pdf`, 'personal-files', MEM);
+ok((await delAs(MEM, `${MEM}/notes/own.pdf`, 'personal-files')) === 1, 'personal-files deletes work as before');
+ok((await delAs(MEM2, `${MEM}/notes/own.pdf`, 'personal-files')) === 0, 'and only by their owner');
+// The sweep's own claim (adoption 'deleting' by this admin) allows its delete; nobody else's.
+const SW = sug(MEM, 'audio/r6-sweep.mp3');
+await putObj(SW);
+await db.exec(`INSERT INTO song_file_adoptions (band_id, song_id, field, from_path, to_path, state, deleting_by, deleting_at)
+  VALUES ('${BAND}','${id(71)}','audio_url','${SW}','${BAND}/audio/${id(71)}-r6-sweep.mp3','deleting','${ADMIN}', now())`);
+ok((await delAs(ADMIN2, SW)) === 0 && (await delAs(ADMIN, SW)) === 1, 'a sweep claim lets only its admin delete');
+// Links stay refused a while past the delete window (15 vs 10 minutes), so a
+// delete that started in time can't race a link.
+const Z4 = `${BAND}/audio/r6-z4.mp3`;
+await putObj(Z4);
+await claimDel(ADMIN, [`sb://song-files/${Z4}`]);
+await db.exec(`UPDATE song_file_removals SET claimed_at = now() - interval '12 minutes' WHERE path = '${Z4}'`).catch(() => undefined);
+ok(String(await asCommit(ADMIN, `INSERT INTO songs VALUES ('${id(72)}','${BAND}','Z4 at 12 min','ready','sb://song-files/${Z4}',NULL) RETURNING 1 AS v`)).includes('BW_FILE_REMOVED'),
+  'past the delete window, links are still refused for a while');
+await db.exec(`UPDATE song_file_removals SET claimed_at = now() - interval '16 minutes' WHERE path = '${Z4}'`).catch(() => undefined);
+ok((await asCommit(ADMIN, `INSERT INTO songs VALUES ('${id(73)}','${BAND}','Z4 at 16 min','ready','sb://song-files/${Z4}',NULL) RETURNING 1 AS v`)) === 1, 'then allowed');
+
+// Blocker 1: someone not in the band learns nothing: 42501 before any file check.
+const FORMER = id(8);
+const formerUsed = await codeOf(FORMER, `INSERT INTO songs VALUES ('${id(74)}','${BAND}','Former used','suggested','sb://song-files/${O}',NULL)`);
+const formerRemoved = await codeOf(FORMER, `INSERT INTO songs VALUES ('${id(75)}','${BAND}','Former removed','suggested','sb://song-files/${C}',NULL)`);
+const formerFree = await codeOf(FORMER, `INSERT INTO songs VALUES ('${id(76)}','${BAND}','Former free','suggested','sb://song-files/${BAND}/audio/free.mp3',NULL)`);
+ok(formerUsed === '42501' && formerRemoved === '42501' && formerFree === '42501', `a non-member gets 42501 whatever the file (${formerUsed}, ${formerRemoved}, ${formerFree})`);
+
+// Minor: a band's records go with the band.
+const B3 = id(9);
+await db.exec(`INSERT INTO bands VALUES ('${B3}');
+  INSERT INTO song_file_adoptions (band_id, song_id, field, from_path, state) VALUES ('${B3}','${id(77)}','audio_url','${B3}/suggestions/x/audio/y.mp3','repointed')`);
+await db.exec(`INSERT INTO song_file_removals (path, band_id, claimed_by) VALUES ('${B3}/audio/z.mp3','${B3}','${ADMIN}')`).catch(() => undefined);
+await db.exec(`DELETE FROM bands WHERE id = '${B3}'`).catch(() => undefined);
+ok((await qs(`SELECT count(*)::int AS n FROM song_file_adoptions WHERE band_id = $1`, [B3])).rows[0]?.n === 0
+  && (await qs(`SELECT count(*)::int AS n FROM song_file_removals WHERE band_id = $1`, [B3])).rows[0]?.n === 0, 'deleting a band deletes its file records');
+
+// ---- Claude review of f32a26e7 (MINORs)
+// 6: the folder check holds for admins too.
+const XA = `${OTHER_BAND}/audio/x-admin.mp3`;
+await putObj(XA, 'song-files', STRANGER);
+const adminCross = await codeOf(ADMIN, `INSERT INTO songs VALUES ('${id(80)}','${BAND}','Admin cross','ready','sb://song-files/${XA}',NULL)`);
+ok(adminCross === '42501', `an admin can't link another band's file either (${adminCross})`);
+ok((await codeOf(ADMIN, `INSERT INTO songs VALUES ('${id(81)}','${BAND}','Admin own','ready','sb://song-files/${O}',NULL)`)) === 'ok', 'an admin still links a file of the band');
+
+// 3: a file not in Storage can't be linked (never uploaded, or deleted).
+ok((await codeOf(ADMIN, `INSERT INTO songs VALUES ('${id(82)}','${BAND}','Ghost','ready','sb://song-files/${BAND}/audio/never-uploaded.mp3',NULL)`)) === 'BWF02',
+  'a file that is not in Storage is refused (BWF02)');
+
+// 4: a lapsed delete claim nothing uses is swept, so nothing stays orphaned.
+const R7 = `${BAND}/audio/r7-lapsed.mp3`;
+const R7used = `${BAND}/audio/r7-lapsed-used.mp3`;
+const R7fresh = `${BAND}/audio/r7-fresh.mp3`;
+await putObj(R7); await putObj(R7used); await putObj(R7fresh);
+await db.exec(`INSERT INTO songs VALUES ('${id(83)}','${BAND}','Uses R7used','ready','sb://song-files/${R7used}',NULL)`);
+await db.exec(`INSERT INTO song_file_removals (path, band_id, claimed_by, claimed_at) VALUES
+  ('${R7}','${BAND}','${MEM2}', now() - interval '11 minutes'),
+  ('${R7used}','${BAND}','${MEM2}', now() - interval '11 minutes'),
+  ('${R7fresh}','${BAND}','${MEM2}', now() - interval '2 minutes')`).catch(() => undefined);
+const list7 = await sweep(ADMIN);
+ok(Array.isArray(list7) && list7.includes(R7) && !list7.includes(R7used) && !list7.includes(R7fresh),
+  `the sweep lists a lapsed delete claim nothing uses, not a used or fresh one (${Array.isArray(list7) ? list7.filter((p) => p.includes('r7')).length : list7})`);
+const c7 = await claim(ADMIN, R7);
+ok(c7 && c7.ok === true && (await qs(`SELECT claimed_by FROM song_file_removals WHERE path = $1`, [R7])).rows[0]?.claimed_by === ADMIN,
+  `its sweep claim takes it over for this admin (${JSON.stringify(c7)})`);
+ok((await claim(ADMIN2, R7fresh))?.ok !== true, 'a fresh claim of someone else is not taken over');
+ok((await delAs(ADMIN, R7)) === 1, 'then its delete goes through');
+ok((await doneSweep(ADMIN, [R7])) >= 1 && (await qs(`SELECT 1 FROM song_file_removals WHERE path = $1`, [R7])).rows.length === 0, 'and done closes the claim');
+
+// 1: reject takes file keys first, then band keys (the suggestion's own file
+// check comes after the claim). Keys logged in a rolled-back transaction.
+const LO = `${BAND}/suggestions/${MEM}/audio/lock-order.mp3`;
+await putObj(LO, 'song-files', MEM);
+await db.exec(`ALTER TABLE songs DISABLE TRIGGER songs_file_not_removed;
+  INSERT INTO songs VALUES ('${id(84)}','${BAND}','Lock order','suggested','sb://song-files/${LO}',NULL);
+  ALTER TABLE songs ENABLE TRIGGER songs_file_not_removed;
+  INSERT INTO song_suggestions (id, band_id, song_id, kind, created_by) VALUES ('${id(85)}','${BAND}','${id(84)}','new_song','${MEM}')`);
+const keyLog = await (async () => {
+  await db.exec(`BEGIN;
+    CREATE TABLE public.key_log (seq serial, kind text);
+    GRANT ALL ON public.key_log TO authenticated; GRANT USAGE ON SEQUENCE public.key_log_seq_seq TO authenticated;
+    CREATE OR REPLACE FUNCTION public.bw_song_file_lock_key(p_path text) RETURNS bigint LANGUAGE plpgsql VOLATILE SET search_path TO 'public' AS $f$
+      BEGIN INSERT INTO public.key_log (kind) VALUES ('file'); RETURN hashtextextended('bw:song-file:' || coalesce(p_path, ''), 0); END $f$;
+    CREATE OR REPLACE FUNCTION public.bw_song_file_band_key(p_band_id uuid) RETURNS bigint LANGUAGE plpgsql VOLATILE SET search_path TO 'public' AS $f$
+      BEGIN INSERT INTO public.key_log (kind) VALUES ('band'); RETURN hashtextextended('bw:song-file-band:' || coalesce(p_band_id::text, ''), 0); END $f$;
+    SELECT set_config('request.jwt.claims', '{"sub":"${ADMIN}","role":"authenticated"}', true); SET LOCAL ROLE authenticated;`);
+  try {
+    await q(`SELECT public.bw_review_song_suggestion($1, 'reject', $2)`, [id(85), `duplicate of ${BAND}/audio/o-band-take.mp3`]);
+    await db.exec('RESET ROLE');
+    return (await q(`SELECT kind FROM public.key_log ORDER BY seq`)).rows.map((r) => r.kind);
+  } catch (e) { return `error: ${e.message}`; } finally { await db.exec('ROLLBACK'); }
+})();
+ok(Array.isArray(keyLog) && keyLog.includes('file') && keyLog.includes('band') && keyLog.lastIndexOf('file') < keyLog.indexOf('band'),
+  `reject: all file keys before any band key (${Array.isArray(keyLog) ? keyLog.join(',') : keyLog})`);
 
 console.log(fails ? `\n${fails} FAILED` : '\nALL OK');
 process.exit(fails ? 1 : 0);
