@@ -112,6 +112,13 @@ export const REJECTED_PREFIX = 'bw:rehearsal_notes_rejected:';
 export type RejectedNote = RehearsalNote & { spaceFull?: boolean };
 
 /**
+ * One refused version of a note: the same note refused again with other
+ * words is another entry, never written over (#296 round 6). Only Remove
+ * takes one away.
+ */
+export const rejectedKey = (n: RehearsalNote): string => JSON.stringify([n.id, n.body ?? null, n.section ?? null, n.preset ?? null, n.songId ?? null]);
+
+/**
  * Refused changes no storage could take (this visit only), by the change
  * itself, not the note: a later real edit of the note still goes out.
  */
@@ -130,10 +137,10 @@ const readStoredRejected = (userId: string): RehearsalNote[] => {
 export function readRejected(userId: string | null | undefined): RejectedNote[] {
   if (!userId) return [];
   const out: RejectedNote[] = readStoredRejected(userId);
-  const seen = new Set(out.map((n) => n.id));
+  const seen = new Set(out.map(rejectedKey));
   const spaceFull = (n: RehearsalNote) => {
-    if (seen.has(n.id)) return;
-    seen.add(n.id);
+    if (seen.has(rejectedKey(n))) return;
+    seen.add(rejectedKey(n));
     out.push({ ...n, spaceFull: true });
   };
   for (const op of readAllOps(userId)) if (op.kind === 'save' && isRefused(userId, op)) spaceFull(op.note);
@@ -154,13 +161,16 @@ function writeRejected(userId: string, notes: RehearsalNote[]): boolean {
   return ok;
 }
 
-export function dismissRejected(userId: string, id: string) {
+/** Remove (the person's choice): one entry by its rejectedKey, or every entry of a note by its id. */
+export function dismissRejected(userId: string, keyOrId: string) {
+  const byKey = readRejected(userId).some((n) => rejectedKey(n) === keyOrId);
+  const match = (n: RehearsalNote) => (byKey ? rejectedKey(n) === keyOrId : n.id === keyOrId);
   const ops = readAllOps(userId);
-  const left = ops.filter((o) => !(o.kind === 'save' && o.note.id === id && isRefused(userId, o)));
+  const left = ops.filter((o) => !(o.kind === 'save' && match(o.note) && isRefused(userId, o)));
   const here = refusedHere.get(userId);
-  for (const [sig, n] of here ?? []) if (n.id === id) here!.delete(sig);
+  for (const [sig, n] of here ?? []) if (match(n)) here!.delete(sig);
   if (left.length !== ops.length) writeOutbox(userId, left);
-  writeRejected(userId, readStoredRejected(userId).filter((n) => n.id !== id));
+  writeRejected(userId, readStoredRejected(userId).filter((n) => !match(n)));
 }
 
 /**
@@ -265,8 +275,8 @@ export function flushOutbox(userId: string, api: OutboxApi) {
         if (op.kind === 'save') {
           // The copy first, checked; only then the original goes (#296 round 4).
           const kept =
-            writeRejected(userId, [...readStoredRejected(userId).filter((n) => n.id !== op.note.id), op.note]) &&
-            readStoredRejected(userId).some((n) => n.id === op.note.id && n.body === op.note.body);
+            writeRejected(userId, [...readStoredRejected(userId).filter((n) => rejectedKey(n) !== rejectedKey(op.note)), op.note]) &&
+            readStoredRejected(userId).some((n) => rejectedKey(n) === rejectedKey(op.note));
           if (!kept) {
             if (!refusedHere.has(userId)) refusedHere.set(userId, new Map());
             refusedHere.get(userId)!.set(same, op.note);
@@ -275,8 +285,9 @@ export function flushOutbox(userId: string, api: OutboxApi) {
           }
         }
       } else {
+        // A refused version of this note stays until the person removes it,
+        // whatever was saved since (#296 round 6).
         sent++;
-        if (op.kind === 'save' && readStoredRejected(userId).some((n) => n.id === op.note.id)) dismissRejected(userId, op.note.id);
       }
       writeOutbox(userId, readAllOps(userId).filter((o) => JSON.stringify(o) !== same));
     }

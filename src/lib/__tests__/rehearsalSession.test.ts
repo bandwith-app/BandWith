@@ -417,3 +417,54 @@ describe('#296 round 5: older builds and open pauses', () => {
     expect(sessionStatus(mergeSessions(ended, { ...startSession(T0), pauses: undefined }, { cutoff: T0 + 40 * MIN }))).toBe('ended');
   });
 });
+
+describe('#296 round 6: open pauses and untimed paused time', () => {
+  const M = 60_000;
+  const CTX6 = { bandId: 'b', eventId: 'e', date: '2026-11-19' };
+
+  it('Codex r7 #4: our Pause saved but its answer lost, then an older build resumed 5 min later: one closed pause, live, 5 min (never 10)', () => {
+    const paused = pauseSession(startSession(0), 10 * M);
+    // The server: the older build read our pause and resumed at 15 (196 carries pauses: []).
+    const savedPauses = fromRow({ ...toRow(paused, CTX6, 3, 10 * M), paused_at: null, paused_ms: 5 * M })!;
+    // ... and the same, saved before 196 carried anything (no pause times at all).
+    const savedNoArray = fromRow({ ...toRow(paused, CTX6, 3, 10 * M), paused_at: null, paused_ms: 5 * M, summary: { v: 1, durationS: 0, played: [], total: 3 } })!;
+    for (const saved of [savedPauses, savedNoArray]) {
+      const m = mergeSessions(paused, saved, 15 * M + 500);
+      expect(sessionStatus(m)).toBe('live');
+      expect(m.pausedMs).toBe(5 * M);
+      expect(m.pauses).toEqual([[10 * M, 15 * M]]);
+      // A later pause and resume add only themselves.
+      const later = resumeSession(pauseSession(m, 20 * M), 22 * M);
+      expect(later.pausedMs).toBe(7 * M);
+    }
+  });
+
+  it('Codex r7 #4: an older build’s untimed paused time from before our pause (we knew it too) does not close it', () => {
+    const mine: SessionState = { ...pauseSession(startSession(0), 30 * M), pausedMs: 7 * M, pauses: undefined };
+    const saved: SessionState = { ...startSession(0), pausedMs: 7 * M, pauses: undefined };
+    const m = mergeSessions(mine, saved, 25 * M);
+    expect(sessionStatus(m)).toBe('paused');
+    expect(m.pausedMs).toBe(7 * M);
+  });
+
+  it('Claude r5 #2: our copy built from an older build (0:10–0:17, 7 min, no times) + a new admin’s [[40,45]]: 12', () => {
+    const mine: SessionState = { ...startSession(0), pausedMs: 7 * M, pauses: undefined, untimedUntil: 20 * M };
+    const theirs: SessionState = { ...startSession(0), pausedMs: 5 * M, pauses: [[40 * M, 45 * M]] };
+    const m = mergeSessions(mine, theirs, { cutoff: 50 * M });
+    expect(m.pausedMs).toBe(12 * M);
+    // Merged again: still 12.
+    expect(mergeSessions(m, theirs, { cutoff: 51 * M }).pausedMs).toBe(12 * M);
+    expect(mergeSessions(theirs, m, { cutoff: 51 * M }).pausedMs).toBe(12 * M);
+  });
+
+  it('Claude r5 #3: our open pause came from an older build’s Pause: its Resume closes it whatever our paused time', () => {
+    // Ours: the new admin's pause 20–25, then the older build's Pause at 30 (it never knew 20–25; its paused time 0).
+    const mine: SessionState = { ...startSession(0), pausedMs: 5 * M, pauses: [[20 * M, 25 * M]], pausedAt: 30 * M };
+    const theirs: SessionState = { ...startSession(0), pausedMs: 3 * M, pauses: undefined };
+    expect(oldBuildResume(mine, theirs, 34 * M)).toBeNull();
+    const r = oldBuildResume(mine, theirs, 34 * M, 0)!;
+    expect(sessionStatus(r)).toBe('live');
+    expect(r.pausedMs).toBe(8 * M);
+    expect(r.pauses).toEqual([[20 * M, 25 * M], [30 * M, 33 * M]]);
+  });
+});

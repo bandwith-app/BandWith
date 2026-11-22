@@ -246,7 +246,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
 
     initializeAuth();
-    // A sign-out whose recordings deletion didn't finish (app closed, 3 s budget): finished now.
+    // A sign-out whose recordings deletion didn't finish (app closed, 3 s budget): finished now;
+    // then the older builds' recordings move into the signed-in account's folder (#296 round 6).
     void import('./regiaAudio').then((m) => m.finishPendingAudioCleanup()).catch(() => {});
 
     const {
@@ -258,7 +259,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // The initial state is initializeAuth's: offline, the library reports no
       // session here although the stored one is still valid.
       if (event === 'INITIAL_SESSION' && !session) return;
-      if (event === 'SIGNED_IN') setAuthError(null);
+      if (event === 'SIGNED_IN') {
+        setAuthError(null);
+        // Older builds' Stage recordings left unclaimed (no session at the first launch): maybe another account's, deleted (#296 round 6).
+        void import('./regiaAudio').then((m) => m.legacyAudioSignedIn()).catch(() => {});
+      }
 
       setSession(session);
       setUser(session?.user ?? null);

@@ -1,5 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { rejectedKey } from '@/lib/rehearsalNotesOutbox';
 import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 
 vi.mock('@/lib/haptics', () => ({
@@ -205,7 +206,8 @@ describe('Live mode on a rehearsal: notes (A2)', () => {
     expect(within(list).getByText("These notes weren't saved. Copy what you need, then remove them.")).toBeInTheDocument();
     expect(within(list).getByText('Paper Boats · Tempo · Count the outro in four')).toBeInTheDocument();
     fireEvent.click(within(list).getByRole('button', { name: 'Remove note: Paper Boats · Tempo · Count the outro in four' }));
-    expect(dismissRejected).toHaveBeenCalledWith('n9');
+    // One entry per refused version: removed by its key (#296 round 6).
+    expect(dismissRejected).toHaveBeenCalledWith(rejectedKey(refused));
   });
 
   it('#296 round 3: the refused notes read as a status (not an alert), each button names its note', () => {

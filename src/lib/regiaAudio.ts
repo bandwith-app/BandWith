@@ -16,13 +16,20 @@
  *   and is not counted as ready.
  * - Sign-out removes them all, downloads still on their way included
  *   (clearDownloadedAudio): a band's private recordings never stay on a
- *   shared laptop for the next person (audit 06 #2).
+ *   shared laptop for the next person (audit 06 #2). Only the folders of the
+ *   accounts that downloaded here go, never the whole place: a slow cleanup
+ *   can't take what the next account downloads (#296 round 6), and a new
+ *   download waits for a cleanup still running.
+ * - Copies of older builds (one shared folder, no owner) move into the folder
+ *   of the account signed in at the first launch of this build (the session
+ *   they were downloaded under); they are deleted only by a sign-out or a
+ *   sign-in of an account that may be another one (#296 round 6).
  */
 import { Capacitor } from '@capacitor/core';
 import { playableAudioUrl, resolveSongFileUrl } from './services/songFiles';
 import { sessionUserId } from './sessionUser';
 
-/** Older builds' folder (one for everybody, no owner): never read, deleted (#296 round 5). */
+/** Older builds' folder (one for everybody, no owner): moved to its account at the first launch (#296 round 6). */
 const DIR = 'regia-audio';
 /**
  * One folder per account (`<ROOT>/<user id>/<file>`), and on the web one key
@@ -98,19 +105,13 @@ const nativeUri = async (owner: string, key: string): Promise<string | null> => 
   }
 };
 
-/**
- * Copies in the old places, never used again: the shared folder of builds
- * before per-account folders, Documents (iOS builds up to 11-20) and Library
- * (test builds of the first fix). Not moved into anyone's folder (whose they
- * are can't be known, and moving could hand one account's recordings to
- * another): deleted, at the first download here and at every cleanup.
- * True when they are all gone.
- */
-const removeLegacy = async (): Promise<boolean> => {
-  const { Filesystem, Directory } = await fs();
-  const dirs = Capacitor.getPlatform?.() === 'ios' ? [Directory.LibraryNoCloud, Directory.Documents, Directory.Library] : [Directory.LibraryNoCloud];
-  return (await Promise.all(dirs.map((d) => removeNative(DIR, d)))).every(Boolean);
+/** The older builds' places: the shared folder, and on iOS Documents (builds up to 11-20) and Library (test builds). */
+const legacyDirs = async (): Promise<string[]> => {
+  const { Directory } = await fs();
+  return Capacitor.getPlatform?.() === 'ios' ? [Directory.LibraryNoCloud, Directory.Documents, Directory.Library] : [Directory.LibraryNoCloud];
 };
+/** Deletes the older builds' copies. True when they are all gone. */
+const removeLegacy = async (): Promise<boolean> => (await Promise.all((await legacyDirs()).map((d) => removeNative(DIR, d)))).every(Boolean);
 /** rmdir, then checked: true only if the folder is really gone (not just "nothing to delete"). */
 const removeNative = async (path: string, directory: string): Promise<boolean> => {
   const { Filesystem } = await fs();
@@ -120,11 +121,18 @@ const removeNative = async (path: string, directory: string): Promise<boolean> =
     () => true,
   );
 };
-let leftoversCleared = false;
-const clearLeftovers = async () => {
-  if (leftoversCleared) return;
-  leftoversCleared = true;
-  await removeLegacy().catch(() => undefined);
+/** The older builds' copy of one song, if there is one (read only, see readLegacy). */
+const legacyNativeUri = async (key: string): Promise<string | null> => {
+  const { Filesystem } = await fs();
+  for (const directory of await legacyDirs()) {
+    try {
+      const st = await Filesystem.stat({ path: `${DIR}/${key}`, directory: directory as never });
+      if (st.size > 0) return st.uri;
+    } catch {
+      /* not there */
+    }
+  }
+  return null;
 };
 
 /** Where a song file can be fetched from (a signed URL for band files, Drive links made direct). */
@@ -172,18 +180,31 @@ const fromBase64 = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCode
  * nothing is ever downloaded without a session, #296 round 5).
  */
 const readOwner = async (): Promise<string | null> => (await sessionUserId()) ?? store.get(OWNER_KEY);
+/**
+ * The older builds' copies are read only while nobody can own them yet: this
+ * build first launched with no session (it expired offline) and nobody has
+ * signed in since. Then the old build would have played them too.
+ */
+const readLegacy = () => store.get(LEGACY_KEY) === 'unclaimed';
 
 /** Which of `refs` are already on this device (the signed-in account's). */
 export async function cachedAudio(refs: string[]): Promise<Set<string>> {
   const out = new Set<string>();
   const native = Capacitor.isNativePlatform();
   const owner = await readOwner();
-  if (!owner) return out;
+  const legacy = !owner && readLegacy();
+  if (!owner && !legacy) return out;
   await Promise.all(
     [...new Set(refs)].map(async (ref) => {
       try {
         const key = await audioKey(ref);
-        const has = native ? !!(await nativeUri(owner, key)) : !!(await idb('readonly', (s) => s.getKey(webKey(owner, key))));
+        const has = owner
+          ? native
+            ? !!(await nativeUri(owner, key))
+            : !!(await idb('readonly', (s) => s.getKey(webKey(owner, key))))
+          : native
+            ? !!(await legacyNativeUri(key))
+            : !!(await idb('readonly', (s) => s.getKey(key)));
         if (has) out.add(ref);
       } catch {
         /* storage blocked: not cached */
@@ -275,8 +296,12 @@ export function audioSession(): () => boolean {
  * closed): marked, and finished at the next launch (finishPendingAudioCleanup).
  */
 const PENDING_KEY = 'bw-regia-audio:cleanup-pending';
-/** The account the downloads on this device belong to (the one a pending deletion is for). */
+/** The account that downloaded here last (read only with its session expired offline). */
 const OWNER_KEY = 'bw-regia-audio:owner';
+/** Every account with a folder here (a sign-out deletes these, and only these). */
+const OWNERS_KEY = 'bw-regia-audio:owners';
+/** The older builds' copies: 'done' (moved or deleted), 'unclaimed' (first launch had no session). */
+const LEGACY_KEY = 'bw-regia-audio:legacy';
 const store = {
   get: (k: string): string | null => {
     try {
@@ -294,89 +319,162 @@ const store = {
     }
   },
 };
+const readList = (k: string): string[] => {
+  try {
+    const v: unknown = JSON.parse(store.get(k) || '[]');
+    return Array.isArray(v) ? v.filter((u): u is string => typeof u === 'string') : [];
+  } catch {
+    return [];
+  }
+};
+const writeList = (k: string, list: string[]) => store.set(k, list.length ? JSON.stringify([...new Set(list)]) : null);
+const addOwner = (owner: string) => writeList(OWNERS_KEY, [...readList(OWNERS_KEY), owner]);
+
 /**
- * The accounts whose recordings a cleanup still has to delete (#296 round 5),
- * and whether the older builds' shared copies are still there. Read from the
+ * The accounts whose recordings a cleanup still has to delete, and whether
+ * the older builds' copies still have to go (a sign-out's). Read from the
  * round-4 format ({ user }) and the first one ('1') too.
  */
 interface Pending {
   users: string[];
+  legacy: boolean;
 }
 const readPending = (): Pending | null => {
   const v = store.get(PENDING_KEY);
   if (!v) return null;
   try {
-    const p = JSON.parse(v) as { users?: unknown; user?: unknown } | number;
-    if (!p || typeof p !== 'object') return { users: [] };
+    const p = JSON.parse(v) as { users?: unknown; user?: unknown; legacy?: unknown } | number;
+    if (!p || typeof p !== 'object') return { users: [], legacy: true };
     const users = Array.isArray(p.users) ? p.users.filter((u): u is string => typeof u === 'string') : [];
     if (typeof p.user === 'string') users.push(p.user);
-    return { users: [...new Set(users)] };
+    return { users: [...new Set(users)], legacy: p.legacy !== false };
   } catch {
-    return { users: [] };
+    return { users: [], legacy: true };
   }
 };
-const writePending = (p: Pending | null) => store.set(PENDING_KEY, p ? JSON.stringify({ users: [...new Set(p.users)] }) : null);
+const writePending = (p: Pending | null) =>
+  store.set(PENDING_KEY, p && (p.users.length || p.legacy) ? JSON.stringify({ users: [...new Set(p.users)], legacy: p.legacy }) : null);
 /** One more account to delete (a download that couldn't be deleted after its session ended). */
-const addPending = (owner: string | null) => writePending({ users: [...(readPending()?.users ?? []), ...(owner ? [owner] : [])] });
+const addPending = (owner: string | null, legacy = false) => {
+  const p = readPending();
+  writePending({ users: [...(p?.users ?? []), ...(owner ? [owner] : [])], legacy: legacy || !!p?.legacy });
+};
+/** A cleanup is done with `tried`: what is left of it stays pending, anything marked meanwhile too. */
+const settlePending = (tried: Pending, left: Pending) => {
+  const now = readPending();
+  writePending({
+    users: [...(now?.users ?? []).filter((u) => !tried.users.includes(u)), ...left.users],
+    legacy: left.legacy || (!!now?.legacy && !tried.legacy),
+  });
+  if (tried.legacy && !left.legacy) store.set(LEGACY_KEY, 'done');
+};
 
 /**
- * Deletes recordings and says what is left to delete. `me`: who is signed in
- * now (null: nobody, so everything goes); otherwise only `users`' folders go,
- * never `me`'s, and never another account's. The older builds' shared copies
- * go in both cases. Every deletion is checked; an error keeps it pending.
+ * Cleanups and legacy moves, one at a time; a download waits for the one
+ * running (#296 round 6: a slow sign-out cleanup never meets a new download).
  */
-async function purge(users: string[], me: string | null): Promise<Pending | null> {
+let busy: Promise<unknown> = Promise.resolve();
+const exclusive = <T>(run: () => Promise<T>): Promise<T> => {
+  const next = busy.then(run, run);
+  busy = next.catch(() => undefined);
+  return next;
+};
+
+/**
+ * Deletes `users`' recordings (never `me`'s, the account signed in now) and,
+ * with `legacy`, the older builds' copies; says what is left. Only those
+ * folders or keys: never the whole place, so nothing another account put
+ * there meanwhile goes. Every deletion is checked; an error keeps it pending.
+ */
+async function purge({ users, legacy }: Pending, me: string | null): Promise<Pending> {
   const others = users.filter((u) => u !== me);
   if (Capacitor.isNativePlatform()) {
     try {
       const { Directory } = await fs();
-      const legacyGone = await removeLegacy();
-      let left: string[];
-      if (me === null) left = (await removeNative(ROOT, Directory.LibraryNoCloud)) ? [] : others;
-      else {
-        left = [];
-        for (const u of others) if (!(await removeNative(`${ROOT}/${ownerDir(u)}`, Directory.LibraryNoCloud))) left.push(u);
-      }
-      return left.length || !legacyGone ? { users: left } : null;
+      const legacyLeft = legacy && !(await removeLegacy());
+      const left: string[] = [];
+      for (const u of others) if (!(await removeNative(`${ROOT}/${ownerDir(u)}`, Directory.LibraryNoCloud))) left.push(u);
+      return { users: left, legacy: legacyLeft };
     } catch {
-      return { users: others };
+      return { users: others, legacy };
     }
   }
-  if (typeof indexedDB === 'undefined') return null;
-  if (me === null) {
-    // Nobody signed in: the whole database (never opened here: a device that never was the Regia gets none).
-    return new Promise<Pending | null>((resolve) => {
-      try {
-        const req = indexedDB.deleteDatabase(DB);
-        req.onsuccess = () => resolve(null);
-        // Not deleted (an error), or another tab still has it open: still to do.
-        req.onerror = req.onblocked = () => resolve({ users: others });
-      } catch {
-        resolve({ users: others });
-      }
-    });
-  }
+  if (typeof indexedDB === 'undefined') return { users: [], legacy: false };
   try {
     const prefixes = others.map((u) => `${ownerDir(u)}/`);
     const keys = await idb('readonly', (s) => s.getAllKeys());
     for (const k of keys) {
       const key = String(k);
-      // No owner prefix: an older build's copy (never read): deleted too.
-      if (!key.includes('/') || prefixes.some((p) => key.startsWith(p))) await idb('readwrite', (s) => s.delete(k));
+      // No owner prefix: an older build's copy.
+      if ((legacy && !key.includes('/')) || prefixes.some((p) => key.startsWith(p))) await idb('readwrite', (s) => s.delete(k));
     }
-    return null;
+    return { users: [], legacy: false };
   } catch {
-    return { users: others };
+    return { users: others, legacy };
   }
 }
 
 /**
- * Sign-out: every song file this device downloaded goes (the band's private
- * recordings), and downloads still on their way keep nothing, in other tabs
- * of this browser too. Called once the session has ended (nobody is signed
- * in): the whole folder goes. Marked first, and the mark goes only once the
- * deletion is confirmed; otherwise the next launch finishes it, for the
- * accounts it names only (finishPendingAudioCleanup).
+ * The older builds' copies go to `me`'s folder (the account their session
+ * was, at the first launch of this build). True when nothing is left there.
+ */
+async function adoptLegacy(me: string): Promise<boolean> {
+  if (Capacitor.isNativePlatform()) {
+    const { Filesystem, Directory } = await fs();
+    const dir = `${ROOT}/${ownerDir(me)}`;
+    let all = true;
+    for (const directory of await legacyDirs()) {
+      let names: string[] = [];
+      try {
+        names = (await Filesystem.readdir({ path: DIR, directory: directory as never })).files.map((f) => (typeof f === 'string' ? f : f.name));
+      } catch {
+        continue; // no such folder
+      }
+      if (names.length) {
+        await Filesystem.mkdir({ path: dir, directory: Directory.LibraryNoCloud, recursive: true }).catch(() => undefined);
+        addOwner(me);
+      }
+      for (const name of names) {
+        const to = { path: `${dir}/${name}`, directory: Directory.LibraryNoCloud };
+        const there = await Filesystem.stat(to).then((st) => st.size > 0, () => false);
+        try {
+          if (there) await Filesystem.deleteFile({ path: `${DIR}/${name}`, directory: directory as never });
+          else await Filesystem.rename({ from: `${DIR}/${name}`, directory: directory as never, to: to.path, toDirectory: to.directory });
+        } catch {
+          all = false;
+        }
+      }
+      if (all) all = await removeNative(DIR, directory);
+    }
+    if (all && !store.get(OWNER_KEY)) store.set(OWNER_KEY, me);
+    return all;
+  }
+  if (typeof indexedDB === 'undefined') return true;
+  try {
+    const keys = (await idb('readonly', (s) => s.getAllKeys())).map(String).filter((k) => !k.includes('/'));
+    if (keys.length) addOwner(me);
+    for (const key of keys) {
+      const v = await idb<StoredAudio | undefined>('readonly', (s) => s.get(key) as IDBRequest<StoredAudio | undefined>);
+      if (v?.data && !(await idb('readonly', (s) => s.getKey(webKey(me, key))))) {
+        await idb('readwrite', (s) => s.put({ ...v, owner: me } satisfies StoredAudio, webKey(me, key)));
+      }
+      await idb('readwrite', (s) => s.delete(key));
+    }
+    if (!store.get(OWNER_KEY)) store.set(OWNER_KEY, me);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Sign-out: every song file the accounts here downloaded goes (the band's
+ * private recordings), and downloads still on their way keep nothing, in
+ * other tabs of this browser too. Called once the session has ended. Only
+ * those accounts' folders go (and the older builds' copies), never the whole
+ * place: an account signing in meanwhile keeps what it downloads, and its
+ * downloads wait for this (#296 round 6). Marked first, and the mark goes
+ * only once the deletion is confirmed; otherwise the next launch finishes it.
  */
 export async function clearDownloadedAudio(): Promise<void> {
   stopDownloads();
@@ -390,20 +488,47 @@ export async function clearDownloadedAudio(): Promise<void> {
   } catch {
     /* no other tabs to tell */
   }
-  addPending(store.get(OWNER_KEY));
+  // Synchronously, before anything else can start: who goes.
+  const owners = [...readList(OWNERS_KEY), ...(store.get(OWNER_KEY) ? [store.get(OWNER_KEY)!] : [])];
+  addPending(null, true);
+  for (const u of owners) addPending(u);
+  writeList(OWNERS_KEY, []);
   store.set(OWNER_KEY, null);
-  writePending(await purge(readPending()?.users ?? [], null));
+  const tried = readPending()!;
+  await exclusive(async () => settlePending(tried, await purge(tried, null)));
 }
 
 /**
  * At launch: a sign-out's deletion that didn't finish is finished now, for
- * the accounts it names only: whoever is signed in now keeps theirs (#296
- * round 5: another person's downloads since then are never touched).
+ * the accounts it names only: whoever is signed in now keeps theirs. Then
+ * the older builds' copies move into the signed-in account's folder (the
+ * session they were downloaded under: the update keeps it); with no session
+ * they stay where they are, read only (#296 round 6).
  */
 export async function finishPendingAudioCleanup(): Promise<void> {
-  const pending = readPending();
-  if (!pending) return;
-  writePending(await purge(pending.users, await sessionUserId()));
+  const me = await sessionUserId();
+  await exclusive(async () => {
+    const pending = readPending();
+    if (pending) settlePending(pending, await purge(pending, me));
+    if (store.get(LEGACY_KEY) === 'done') return;
+    if (!me) {
+      store.set(LEGACY_KEY, 'unclaimed');
+      return;
+    }
+    if (await adoptLegacy(me).catch(() => false)) store.set(LEGACY_KEY, 'done');
+  });
+}
+
+/**
+ * A sign-in. The older builds' copies left unclaimed (the first launch had
+ * no session) may be another account's: deleted, never handed to this one.
+ */
+export async function legacyAudioSignedIn(): Promise<void> {
+  await exclusive(async () => {
+    if (store.get(LEGACY_KEY) !== 'unclaimed') return;
+    const tried = { users: [], legacy: true };
+    settlePending(tried, await purge(tried, null));
+  });
 }
 
 async function downloadOnce(ref: string, onProgress: (fraction: number | null) => void): Promise<DownloadResult> {
@@ -413,8 +538,12 @@ async function downloadOnce(ref: string, onProgress: (fraction: number | null) =
   const stale = () => generation !== started || clearedMark() !== mark;
   // The account it is downloaded for: signed out (an expired session too) or someone else by the end, not kept.
   // No session (expired offline): nothing is downloaded (#296 round 5).
+  // A cleanup still running (a sign-out's, a legacy move) first: it never meets this download
+  // (10 s at most: a stuck one can't block the Regia; it only ever deletes other accounts' folders).
+  await Promise.race([busy, new Promise((r) => setTimeout(r, 10_000))]);
   const owner = await sessionUserId();
   if (!owner) return { ok: false, reason: isOnline() ? 'failed' : 'offline' };
+  if (stale()) return { ok: false, reason: 'failed' };
   const gone = async () => stale() || (await sessionUserId()) !== owner;
   let url: string | null = null;
   try {
@@ -426,13 +555,13 @@ async function downloadOnce(ref: string, onProgress: (fraction: number | null) =
   try {
     const key = await audioKey(ref);
     if (Capacitor.isNativePlatform()) {
-      void clearLeftovers();
       const { Filesystem } = await fs();
       const { FileTransfer } = await import('@capacitor/file-transfer');
       const loc = await nativeLoc(owner, key);
       const listener = await FileTransfer.addListener('progress', (p) => {
         if (p.url === url) onProgress(p.lengthComputable && p.contentLength > 0 ? Math.min(1, p.bytes / p.contentLength) : null);
       });
+      addOwner(owner);
       // Make the folder first (Android's download may not): it fails when it's already there, which is fine.
       await Filesystem.mkdir({ path: `${ROOT}/${ownerDir(owner)}`, directory: loc.directory, recursive: true }).catch(() => undefined);
       try {
@@ -486,6 +615,7 @@ async function downloadOnce(ref: string, onProgress: (fraction: number | null) =
     const type = res.headers.get('content-type') || 'audio/mpeg';
     // Bytes, not a Blob: Safari's private windows refuse Blobs in IndexedDB.
     store.set(OWNER_KEY, owner);
+    addOwner(owner);
     await idb('readwrite', (s) => s.put({ type, data, owner } satisfies StoredAudio, webKey(owner, key)));
     if (await gone()) {
       // Signed out while it was being written (another tab): taken back out.
@@ -526,13 +656,14 @@ export async function playableUrl(ref: string): Promise<{ url: string; local: bo
   try {
     const key = await audioKey(ref);
     const owner = await readOwner();
-    if (!owner) {
+    if (!owner && !readLegacy()) {
       /* nobody's copy to read: streamed */
     } else if (Capacitor.isNativePlatform()) {
-      const uri = await nativeUri(owner, key);
+      const uri = owner ? await nativeUri(owner, key) : await legacyNativeUri(key);
       if (uri) return { url: Capacitor.convertFileSrc(uri), local: true };
     } else {
-      const stored = await idb<StoredAudio | undefined>('readonly', (s) => s.get(webKey(owner, key)) as IDBRequest<StoredAudio | undefined>);
+      const at = owner ? webKey(owner, key) : key;
+      const stored = await idb<StoredAudio | undefined>('readonly', (s) => s.get(at) as IDBRequest<StoredAudio | undefined>);
       if (stored?.data) return { url: URL.createObjectURL(new Blob([stored.data], { type: stored.type })), local: true };
     }
   } catch {

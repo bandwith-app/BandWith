@@ -167,6 +167,30 @@ ok(/duplicate key|rehearsal_sessions_occurrence_key/.test(dup), 'a first save ov
   ok(JSON.stringify((await saved()).summary.pauses) === '[]', "a new build's save replaces the pause times");
 }
 
+// #296 round 6: an old build that missed the End can't undo it with its running copy (same or
+// less paused time, no summary.pauses); its real Resume after the End (more paused time) still goes.
+{
+  const start = new Date((await saved()).started_at).toISOString();
+  const withPauses = JSON.stringify({ v: 1, durationS: 900, played: PLAYED, total: 3, pauses: [] });
+  await as(ADMIN_A, () => db.query(
+    `UPDATE rehearsal_sessions SET summary = $1::jsonb, paused_ms = 300000, paused_at = NULL, ended_at = $2 WHERE event_id = $3`,
+    [withPauses, '2026-11-19T19:45:00.000Z', EVENT]));
+  const stale = await upsert(ADMIN_B, { started_at: start, paused_ms: 300000, ended_at: null, summary: summary([...PLAYED, { id: 's3', title: 'Cissy Strut' }]) });
+  const afterStale = await saved();
+  ok(stale.ok && afterStale.ended_at !== null && afterStale.summary.played.length === 2,
+    "an old build's running copy after the End (same paused time) is skipped: the End stays, no error");
+  const less = await upsert(ADMIN_B, { started_at: start, paused_ms: 60000, ended_at: null, summary: summary(PLAYED) });
+  ok(less.ok && (await saved()).ended_at !== null, "an old build's copy with less paused time is skipped too");
+  const realResume = await upsert(ADMIN_B, { started_at: start, paused_ms: 360000, ended_at: null, summary: summary(PLAYED) });
+  const afterResume = await saved();
+  ok(realResume.ok && afterResume.ended_at === null && JSON.stringify(afterResume.summary.pauses) === '[]',
+    "an old build's real Resume after the End (more paused time) goes through, pause times kept");
+  await as(ADMIN_A, () => db.query(`UPDATE rehearsal_sessions SET ended_at = $1 WHERE event_id = $2`, ['2026-11-19T19:50:00.000Z', EVENT]));
+  const newResume = await as(ADMIN_A, () => db.query(
+    `UPDATE rehearsal_sessions SET ended_at = NULL, summary = $1::jsonb WHERE event_id = $2 RETURNING id`, [withPauses, EVENT]));
+  ok(newResume.rows.length === 1 && (await saved()).ended_at === null, "this build's Resume after the End (summary.pauses) goes through");
+}
+
 // Members still cannot write.
 const m = await upsert(MEMBER, { started_at: A_START });
 ok(!!m.error, 'a member cannot write');

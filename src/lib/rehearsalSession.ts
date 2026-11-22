@@ -36,6 +36,12 @@ export interface SessionState {
    * times (missing: none known).
    */
   pauses?: PauseSpan[];
+  /**
+   * The latest moment the paused time held without times (pausedMs minus the
+   * spans) can be from: when the copy it came from was saved or arrived
+   * (#296 round 6). Missing: not known (this device's own). Not saved.
+   */
+  untimedUntil?: number;
 }
 
 export type SessionStatus = 'idle' | 'live' | 'paused' | 'ended';
@@ -261,6 +267,9 @@ export const mergeSessions = (mine: SessionState, saved: SessionState, times?: n
   const same = mine.startedAt === saved.startedAt;
   const both = [mine, saved];
   const other = (s: SessionState) => (s === mine ? saved : mine);
+  // What each copy can know of (#296 round 6, Claude): ours, up to when its untimed paused time
+  // came in (a message from an older build); the other, up to its cutoff.
+  const knownUntil = (s: SessionState) => (s === mine ? mine.untimedUntil : cutoff ?? saved.untimedUntil) ?? Infinity;
   const spans: PauseSpan[] = [...(mine.pauses ?? []), ...(saved.pauses ?? [])];
   if (!same) {
     const [early, late] = mine.startedAt < saved.startedAt ? [mine, saved] : [saved, mine];
@@ -279,8 +288,15 @@ export const mergeSessions = (mine: SessionState, saved: SessionState, times?: n
   const ended =
     lastEnd !== null &&
     both.every((s) => s.endedAt !== null || (same ? runUntil(s) : writtenUntil(s)) <= lastEnd);
+  // Paused time a copy holds with no times: the part not covered by the spans it could have
+  // known (up to what it knows of, #296 round 5).
+  const untimedOf = (s: SessionState, timed: PauseSpan[]) =>
+    (s.pauses ?? []).length ? untimedPauseMs(s) : Math.max(0, s.pausedMs - spanMs(clipSpans(timed, knownUntil(s))));
+  const known = unionSpans(spans);
   // A pause still open on one copy is closed by the other copy's Resume or End after it
-  // (#296 round 4). Still open on the copy that did the newest thing: the session is paused
+  // (#296 round 4), or by more untimed paused time on a running copy written after it (an
+  // older build's Resume of that pause, #296 round 6: closed, never also left open and
+  // counted twice). Still open on the copy that did the newest thing: the session is paused
   // since the earliest pause still open on either (two offline pauses at 19:10 and 19:12: 19:10).
   const newest = ended ? null : both.filter((s) => s.endedAt === null).sort((x, y) => touched(y) - touched(x))[0];
   const stillOpen: number[] = [];
@@ -290,6 +306,8 @@ export const mergeSessions = (mine: SessionState, saved: SessionState, times?: n
     const o = other(s);
     const P = s.pausedAt;
     const closers = [...(o.pauses ?? []).map((p) => p[1]), ...(o.endedAt !== null ? [o.endedAt] : [])].filter((t) => t > P);
+    const more = untimedOf(o, known) - untimedOf(s, known);
+    if (same && o.pausedAt === null && o.endedAt === null && more > 0 && knownUntil(o) > P) closers.push(Math.min(P + more, knownUntil(o)));
     if (closers.length) spans.push([P, Math.min(...closers)]);
     else {
       stillOpen.push(P);
@@ -299,12 +317,11 @@ export const mergeSessions = (mine: SessionState, saved: SessionState, times?: n
   let pausedAt: number | null = newestPaused ? Math.min(...stillOpen) : null;
   const pauses = unionSpans(spans);
   if (pausedAt !== null && pauses.length) pausedAt = Math.max(pausedAt, pauses[pauses.length - 1][1]);
-  // Paused time (#296 round 5, Claude): a copy with no pause times holds every pause it knew
-  // of in pausedMs; the part not covered by the spans it could have known (up to its cutoff)
-  // is added once (the largest), never summed across copies.
-  const untimedOf = (s: SessionState, until: number) =>
-    (s.pauses ?? []).length ? untimedPauseMs(s) : Math.max(0, s.pausedMs - spanMs(clipSpans(pauses, until)));
-  const pausedMs = spanMs(pauses) + Math.max(0, untimedOf(mine, Infinity), untimedOf(saved, cutoff ?? Infinity));
+  // Untimed paused time is added once (the largest), never summed across copies.
+  const uMine = untimedOf(mine, pauses);
+  const uSaved = untimedOf(saved, pauses);
+  const pausedMs = spanMs(pauses) + Math.max(0, uMine, uSaved);
+  const until = uSaved > uMine ? knownUntil(saved) : uMine > 0 ? knownUntil(mine) : Infinity;
   return {
     startedAt: Math.min(mine.startedAt, saved.startedAt),
     pausedMs,
@@ -312,6 +329,7 @@ export const mergeSessions = (mine: SessionState, saved: SessionState, times?: n
     endedAt: ended ? lastEnd : null,
     played: mergePlayed(saved.played, mine.played),
     pauses,
+    ...(Number.isFinite(until) ? { untimedUntil: until } : {}),
   };
 };
 
@@ -326,20 +344,28 @@ const clipSpans = (spans: PauseSpan[], until: number): PauseSpan[] =>
  * and songs are kept, and our open pause (or the time since our End) is
  * closed at its start + the paused time it added (by the time it came in at
  * the latest). Null: not one (a stale copy can't undo an End).
+ *
+ * `base`: our open pause came from that older build's own Pause message,
+ * with this much paused time (#296 round 6, Claude): its running message
+ * closes it whatever our paused time (it never knew our other pauses), at
+ * the pause + what it added (or when it came in).
  */
-export const oldBuildResume = (mine: SessionState, theirs: SessionState, receivedAt: number): SessionState | null => {
+export const oldBuildResume = (mine: SessionState, theirs: SessionState, receivedAt: number, base?: number): SessionState | null => {
   if (mine.startedAt !== theirs.startedAt || theirs.pausedAt !== null || theirs.endedAt !== null) return null;
-  const delta = theirs.pausedMs - mine.pausedMs;
-  const from = mine.pausedAt ?? mine.endedAt;
-  if (delta <= 0 || from === null) return null;
-  const pauses = unionSpans([...(mine.pauses ?? []), ...(theirs.pauses ?? []), [from, Math.max(from, Math.min(from + delta, receivedAt))]]);
+  const from = base === undefined ? (mine.pausedAt ?? mine.endedAt) : mine.pausedAt;
+  const delta = theirs.pausedMs - (base ?? mine.pausedMs);
+  if (from === null || (base === undefined && delta <= 0)) return null;
+  const to = delta > 0 ? Math.min(from + delta, receivedAt) : receivedAt;
+  const pauses = unionSpans([...(mine.pauses ?? []), ...(theirs.pauses ?? []), [from, Math.max(from, to)]]);
+  const pausedMs = base === undefined ? Math.max(theirs.pausedMs, spanMs(pauses)) : spanMs(pauses) + untimedPauseMs(mine);
   return {
     startedAt: mine.startedAt,
-    pausedMs: Math.max(theirs.pausedMs, spanMs(pauses)),
+    pausedMs,
     pausedAt: null,
     endedAt: null,
     played: mergePlayed(mine.played, theirs.played),
     pauses,
+    untimedUntil: receivedAt,
   };
 };
 

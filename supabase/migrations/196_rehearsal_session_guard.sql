@@ -28,7 +28,17 @@
 -- app's paused_ms minus the pause times is exactly what they added. A write
 -- that has summary.pauses (this build) replaces them.
 --
--- Same function as 131 plus that one check. No new columns, grants or
+-- An End stays (#296 round 6): a leader on those builds doesn't hear another
+-- admin's End, and its next save (a song played) upserts its running copy,
+-- which would undo the End for everyone. Skipped when it reopens an ended
+-- session with no summary.pauses (those builds) and no more paused time than
+-- saved. Their real Resume after the End always adds the gap to paused_ms,
+-- so it still goes through; this build always writes summary.pauses. Known
+-- limit: an older build's stale running copy over a Pause can't be told
+-- apart from its real Resume here (both clear paused_at, neither has pause
+-- times), so that one is still written; this build's devices merge it.
+--
+-- Same function as 131 plus these checks. No new columns, grants or
 -- policies. Idempotent.
 
 BEGIN;
@@ -46,6 +56,12 @@ BEGIN
     IF NEW.started_at IS DISTINCT FROM OLD.started_at
        AND NOT (NEW.started_at < OLD.started_at AND COALESCE(jsonb_typeof(NEW.summary -> 'pauses') = 'array', false)) THEN
       -- Another start over a saved session: skipped, the saved one stays.
+      RETURN NULL;
+    END IF;
+    IF OLD.ended_at IS NOT NULL AND NEW.ended_at IS NULL
+       AND COALESCE(jsonb_typeof(NEW.summary -> 'pauses') IS DISTINCT FROM 'array', true)
+       AND NEW.paused_ms <= OLD.paused_ms THEN
+      -- An older build that missed the End saving its running copy: skipped, the End stays.
       RETURN NULL;
     END IF;
     IF jsonb_typeof(OLD.summary -> 'pauses') = 'array'

@@ -77,6 +77,19 @@ const deleteFile = vi.fn(async (o: { path: string; directory: string }) => {
 const rmdir = vi.fn(async (o: { path: string; directory: string; recursive?: boolean }) => {
   for (const k of [...files.keys()]) if (o.recursive && k.startsWith(`${key(o)}/`)) files.delete(k);
 });
+const readdir = vi.fn(async (o: { path: string; directory: string }) => {
+  const at = `${key(o)}/`;
+  const names = [...files.keys()].filter((k) => k.startsWith(at)).map((k) => k.slice(at.length).split('/')[0]);
+  if (!names.length) throw new Error('Folder does not exist');
+  return { files: [...new Set(names)].map((name) => ({ name })) };
+});
+const rename = vi.fn(async (o: { from: string; to: string; directory: string; toDirectory?: string }) => {
+  const from = key({ path: o.from, directory: o.directory });
+  const f = files.get(from);
+  if (!f) throw new Error('File does not exist');
+  files.delete(from);
+  files.set(key({ path: o.to, directory: o.toDirectory ?? o.directory }), f);
+});
 const mkdir = vi.fn(async (o: { path: string; directory: string }) => {
   if (dirs.has(key(o))) throw new Error('Directory exists');
   dirs.add(key(o));
@@ -92,6 +105,8 @@ vi.mock('@capacitor/filesystem', () => ({
     deleteFile: (o: never) => deleteFile(o),
     rmdir: (o: never) => rmdir(o),
     mkdir: (o: never) => mkdir(o),
+    readdir: (o: never) => readdir(o),
+    rename: (o: never) => rename(o),
   },
 }));
 
@@ -118,7 +133,7 @@ vi.mock('../services/songFiles', () => ({
 }));
 
 import authContext from '../AuthContext.tsx?raw';
-import { audioFailureFor, cachedAudio, clearDownloadedAudio, downloadAudio, finishPendingAudioCleanup, looksLikeAudio, playableUrl } from '../regiaAudio';
+import { audioFailureFor, audioKey, cachedAudio, clearDownloadedAudio, downloadAudio, finishPendingAudioCleanup, legacyAudioSignedIn, looksLikeAudio, playableUrl } from '../regiaAudio';
 
 /** A tiny in-memory IndexedDB (jsdom has none): one database, one store, the calls regiaAudio makes. */
 const idbData = new Map<string, Map<IDBValidKey, unknown>>();
@@ -131,9 +146,11 @@ function fakeIndexedDb() {
     }, 0);
     return r;
   };
-  return {
+  const self = {
     failDelete: false,
     blockDelete: false,
+    /** While set, every delete waits for it (a slow cleanup). */
+    gate: null as Promise<void> | null,
     open: (name: string) => {
       const r = {
         result: undefined as unknown,
@@ -151,7 +168,19 @@ function fakeIndexedDb() {
           getKey: (k: IDBValidKey) => req(() => (data.has(k) ? k : undefined)),
           getAllKeys: () => req(() => [...data.keys()]),
           put: (v: unknown, k: IDBValidKey) => req(() => (data.set(k, v), k)),
-          delete: (k: IDBValidKey) => req(() => void data.delete(k)),
+          delete: (k: IDBValidKey) => {
+            if (self.failDelete) {
+              const r = { error: new Error('UnknownError'), onsuccess: null as null | (() => void), onerror: null as null | (() => void) };
+              setTimeout(() => r.onerror?.(), 0);
+              return r;
+            }
+            const r = { result: undefined, error: null, onsuccess: null as null | (() => void), onerror: null };
+            void (self.gate ?? Promise.resolve()).then(() => {
+              data.delete(k);
+              r.onsuccess?.();
+            });
+            return r;
+          },
           clear: () => req(() => void data.clear()),
         };
         r.result = { createObjectStore: () => store, transaction: () => ({ objectStore: () => store }), close: () => {} };
@@ -171,9 +200,15 @@ function fakeIndexedDb() {
         setTimeout(() => r.onerror?.(), 0);
         return r;
       }
-      return req(() => void idbData.delete(name));
+      const r = { error: null, onsuccess: null as null | (() => void), onerror: null };
+      void (this.gate ?? Promise.resolve()).then(() => {
+        idbData.delete(name);
+        r.onsuccess?.();
+      });
+      return r;
     },
   };
+  return self;
 }
 const storedSongs = () => [...idbData.values()].reduce((n, m) => n + m.size, 0);
 
@@ -363,16 +398,19 @@ describe('#296 round 3: nothing of the recordings is left behind', () => {
     localStorage.clear();
     let done!: () => void;
     rmdir.mockImplementationOnce(() => new Promise<void>((r) => (done = r)));
-    void clearDownloadedAudio();
+    const clearing = clearDownloadedAudio();
     await vi.waitFor(() => expect(rmdir).toHaveBeenCalled());
     // The app is closed here: its files still there, the deletion marked.
     expect(localStorage.getItem('bw-regia-audio:cleanup-pending')).not.toBeNull();
     files.set('LIBRARY_NO_CLOUD:regia-audio/song', mp3());
+    // (The stuck call returns, the copy still there: still marked.)
+    done();
+    await clearing;
+    expect(localStorage.getItem('bw-regia-audio:cleanup-pending')).not.toBeNull();
     // Next launch.
     await finishPendingAudioCleanup();
     expect([...files.keys()].filter((k) => k.includes('regia-audio'))).toEqual([]);
     expect(localStorage.getItem('bw-regia-audio:cleanup-pending')).toBeNull();
-    done();
   });
 
   it('round 4: phone: the delete fails: still marked, the recordings go at the next launch', async () => {
@@ -389,12 +427,21 @@ describe('#296 round 3: nothing of the recordings is left behind', () => {
     expect(localStorage.getItem('bw-regia-audio:cleanup-pending')).toBeNull();
   });
 
-  it('round 4: web: the database can not be deleted: still marked for the next launch', async () => {
+  it('round 4: web: the recordings can not be deleted: still marked for the next launch', async () => {
     native.on = false;
     localStorage.clear();
+    idbData.clear();
     const idb = fakeIndexedDb();
-    idb.failDelete = true;
     Object.defineProperty(globalThis, 'indexedDB', { value: idb, configurable: true, writable: true });
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'audio/mpeg' : null) },
+      body: null,
+      arrayBuffer: async () => mp3().buffer,
+    })));
+    expect(await downloadAudio(DRIVE)).toEqual({ ok: true });
+    vi.unstubAllGlobals();
+    idb.failDelete = true;
     await clearDownloadedAudio();
     expect(localStorage.getItem('bw-regia-audio:cleanup-pending')).not.toBeNull();
     idb.failDelete = false;
@@ -402,7 +449,7 @@ describe('#296 round 3: nothing of the recordings is left behind', () => {
     expect(localStorage.getItem('bw-regia-audio:cleanup-pending')).toBeNull();
   });
 
-  it('Claude round 4: web, the database held open by another tab at sign-out: the next launch deletes only the previous account’s recordings', async () => {
+  it('Claude round 4: web, the deletion fails at sign-out: the next launch deletes only the previous account’s recordings', async () => {
     native.on = false;
     localStorage.clear();
     idbData.clear();
@@ -416,12 +463,12 @@ describe('#296 round 3: nothing of the recordings is left behind', () => {
       arrayBuffer: async () => mp3().buffer,
     })));
     expect(await downloadAudio(DRIVE)).toEqual({ ok: true });
-    idb.blockDelete = true;
+    idb.failDelete = true;
     await clearDownloadedAudio();
-    expect(JSON.parse(localStorage.getItem('bw-regia-audio:cleanup-pending')!)).toEqual({ users: ['admin-1'] });
-    // Someone else signs in here and downloads a song (the database was never deleted).
+    expect(JSON.parse(localStorage.getItem('bw-regia-audio:cleanup-pending')!)).toEqual({ users: ['admin-1'], legacy: true });
+    // Someone else signs in here and downloads a song (nothing was deleted).
     auth.user = 'member-2';
-    idb.blockDelete = false;
+    idb.failDelete = false;
     expect(await downloadAudio(OTHER)).toEqual({ ok: true });
     await finishPendingAudioCleanup();
     expect(await cachedAudio([DRIVE, OTHER])).toEqual(new Set([OTHER]));
@@ -463,7 +510,7 @@ describe('#296 round 3: nothing of the recordings is left behind', () => {
     rmdir.mockReset().mockImplementation(async (o: { path: string; directory: string; recursive?: boolean }) => {
       for (const k of [...files.keys()]) if (o.recursive && k.startsWith(`${key(o)}/`)) files.delete(k);
     });
-    expect(JSON.parse(localStorage.getItem('bw-regia-audio:cleanup-pending')!)).toEqual({ users: ['admin-a'] });
+    expect(JSON.parse(localStorage.getItem('bw-regia-audio:cleanup-pending')!)).toEqual({ users: ['admin-a'], legacy: false });
     // B signs in and downloads the same song before the app is closed.
     auth.user = 'member-b';
     expect(await cachedAudio([DRIVE])).toEqual(new Set());
@@ -477,12 +524,9 @@ describe('#296 round 3: nothing of the recordings is left behind', () => {
     expect(localStorage.getItem('bw-regia-audio:cleanup-pending')).toBeNull();
   });
 
-  it('round 5: older builds’ shared copies (no owner) are never read for anyone, and go at the cleanup', async () => {
+  it('older builds’ shared copies go at sign-out', async () => {
     localStorage.clear();
-    const k = (await import('../regiaAudio')).audioKey;
-    files.set(`LIBRARY_NO_CLOUD:regia-audio/${await k(DRIVE)}`, mp3());
-    expect(await cachedAudio([DRIVE])).toEqual(new Set());
-    expect((await playableUrl(DRIVE))?.local).toBe(false);
+    files.set(`LIBRARY_NO_CLOUD:regia-audio/${await audioKey(DRIVE)}`, mp3());
     auth.user = null;
     await clearDownloadedAudio();
     expect([...files.keys()].filter((f) => f.includes('regia-audio'))).toEqual([]);
@@ -501,11 +545,11 @@ describe('#296 round 3: nothing of the recordings is left behind', () => {
     expect(transfer).not.toHaveBeenCalled();
   });
 
-  it('nothing pending: the launch deletes nothing', async () => {
+  it('nothing pending: the launch deletes nothing (an older build’s copy is moved, not deleted)', async () => {
     localStorage.clear();
     files.set('LIBRARY_NO_CLOUD:regia-audio/song', mp3());
     await finishPendingAudioCleanup();
-    expect(files.has('LIBRARY_NO_CLOUD:regia-audio/song')).toBe(true);
+    expect(files.has('LIBRARY_NO_CLOUD:regia-audio-by-owner/admin-1/song')).toBe(true);
   });
 
   it('every sign-out deletes them (an expired or revoked session too), and the launch finishes a pending one', () => {
@@ -513,6 +557,143 @@ describe('#296 round 3: nothing of the recordings is left behind', () => {
     expect(listener).toMatch(/event === 'SIGNED_OUT'\) \{[^}]*import\('\.\/regiaAudio'\)\.then\(\(m\) => m\.clearDownloadedAudio\(\)\)/);
     const mount = authContext.slice(authContext.indexOf('initializeAuth();'), authContext.indexOf('onAuthStateChange'));
     expect(mount).toMatch(/import\('\.\/regiaAudio'\)\.then\(\(m\) => m\.finishPendingAudioCleanup\(\)\)/);
+  });
+});
+
+describe('#296 round 6 (Codex r7 B2): a slow sign-out cleanup never takes the next account’s download', () => {
+  const OTHER = 'https://drive.google.com/file/d/qqq555666777/view';
+  const audioResponse = () => ({
+    ok: true,
+    headers: { get: (h: string) => (h.toLowerCase() === 'content-type' ? 'audio/mpeg' : null) },
+    body: null,
+    arrayBuffer: async () => mp3().buffer,
+  });
+
+  it('phone: A signs out (the deletion is slow), B signs in and downloads: B’s file survives, A’s goes', async () => {
+    localStorage.clear();
+    auth.user = 'admin-a';
+    expect(await downloadAudio(DRIVE)).toEqual({ ok: true });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    rmdir.mockImplementation(async (o: { path: string; directory: string; recursive?: boolean }) => {
+      await gate;
+      for (const k of [...files.keys()]) if (o.recursive && k.startsWith(`${key(o)}/`)) files.delete(k);
+    });
+    auth.user = null;
+    const clearing = clearDownloadedAudio();
+    auth.user = 'member-b';
+    const run = downloadAudio(OTHER);
+    await new Promise((r) => setTimeout(r, 20));
+    release();
+    await clearing;
+    expect(await run).toEqual({ ok: true });
+    rmdir.mockReset().mockImplementation(async (o: { path: string; directory: string; recursive?: boolean }) => {
+      for (const k of [...files.keys()]) if (o.recursive && k.startsWith(`${key(o)}/`)) files.delete(k);
+    });
+    expect(await cachedAudio([OTHER])).toEqual(new Set([OTHER]));
+    expect([...files.keys()].some((k) => k.includes('/admin-a/'))).toBe(false);
+    expect(localStorage.getItem('bw-regia-audio:cleanup-pending')).toBeNull();
+  });
+
+  it('web: the same, in one browser', async () => {
+    native.on = false;
+    localStorage.clear();
+    idbData.clear();
+    const idb = fakeIndexedDb();
+    Object.defineProperty(globalThis, 'indexedDB', { value: idb, configurable: true, writable: true });
+    vi.stubGlobal('fetch', vi.fn(async () => audioResponse()));
+    auth.user = 'admin-a';
+    expect(await downloadAudio(DRIVE)).toEqual({ ok: true });
+    let release!: () => void;
+    idb.gate = new Promise<void>((r) => (release = r));
+    auth.user = null;
+    const clearing = clearDownloadedAudio();
+    auth.user = 'member-b';
+    const run = downloadAudio(OTHER);
+    await new Promise((r) => setTimeout(r, 20));
+    release();
+    await clearing;
+    expect(await run).toEqual({ ok: true });
+    idb.gate = null;
+    expect(await cachedAudio([DRIVE, OTHER])).toEqual(new Set([OTHER]));
+    auth.user = 'admin-a';
+    expect(await cachedAudio([DRIVE, OTHER])).toEqual(new Set());
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('#296 round 6 (Codex r7 B3): after the update, the older build’s songs are still there', () => {
+  it('phone: the first launch moves them into the signed-in account’s folder; offline at the gig they are found', async () => {
+    localStorage.clear();
+    const k = await audioKey(DRIVE);
+    files.set(`LIBRARY_NO_CLOUD:regia-audio/${k}`, mp3());
+    await finishPendingAudioCleanup();
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    expect(await cachedAudio([DRIVE])).toEqual(new Set([DRIVE]));
+    expect((await playableUrl(DRIVE))?.local).toBe(true);
+    expect(files.has(`LIBRARY_NO_CLOUD:regia-audio-by-owner/admin-1/${k}`)).toBe(true);
+    expect(files.has(`LIBRARY_NO_CLOUD:regia-audio/${k}`)).toBe(false);
+    // The session expired offline afterwards: still found (read only).
+    auth.user = null;
+    expect(await cachedAudio([DRIVE])).toEqual(new Set([DRIVE]));
+    // Another account never sees them.
+    auth.user = 'member-2';
+    expect(await cachedAudio([DRIVE])).toEqual(new Set());
+  });
+
+  it('iPhone: the copies in Documents and Library are moved too', async () => {
+    localStorage.clear();
+    native.platform = 'ios';
+    const k = await audioKey(DRIVE);
+    files.set(`DOCUMENTS:regia-audio/${k}`, mp3());
+    files.set('LIBRARY:regia-audio/other', mp3());
+    await finishPendingAudioCleanup();
+    expect(await cachedAudio([DRIVE])).toEqual(new Set([DRIVE]));
+    expect([...files.keys()].filter((f) => f.includes(':regia-audio/'))).toEqual([]);
+    expect(files.has('LIBRARY_NO_CLOUD:regia-audio-by-owner/admin-1/other')).toBe(true);
+  });
+
+  it('web: the old keys move to the signed-in account', async () => {
+    native.on = false;
+    localStorage.clear();
+    idbData.clear();
+    Object.defineProperty(globalThis, 'indexedDB', { value: fakeIndexedDb(), configurable: true, writable: true });
+    const k = await audioKey(DRIVE);
+    idbData.set('bw-regia-audio', new Map([[k, { type: 'audio/mpeg', data: mp3().buffer }]]));
+    await finishPendingAudioCleanup();
+    expect([...idbData.get('bw-regia-audio')!.keys()]).toEqual([`admin-1/${k}`]);
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    expect(await cachedAudio([DRIVE])).toEqual(new Set([DRIVE]));
+    expect((await playableUrl(DRIVE))?.local).toBe(true);
+  });
+
+  it('first launch with no session (expired offline): left in place and still found; a sign-in later (maybe someone else) deletes them', async () => {
+    localStorage.clear();
+    const k = await audioKey(DRIVE);
+    files.set(`LIBRARY_NO_CLOUD:regia-audio/${k}`, mp3());
+    auth.user = null;
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    await finishPendingAudioCleanup();
+    expect(files.has(`LIBRARY_NO_CLOUD:regia-audio/${k}`)).toBe(true);
+    expect(await cachedAudio([DRIVE])).toEqual(new Set([DRIVE]));
+    expect((await playableUrl(DRIVE))?.local).toBe(true);
+    auth.user = 'member-2';
+    await legacyAudioSignedIn();
+    expect(files.has(`LIBRARY_NO_CLOUD:regia-audio/${k}`)).toBe(false);
+    expect(await cachedAudio([DRIVE])).toEqual(new Set());
+  });
+
+  it('moved once: a later sign-in deletes nothing', async () => {
+    localStorage.clear();
+    files.set('LIBRARY_NO_CLOUD:regia-audio/song', mp3());
+    await finishPendingAudioCleanup();
+    await legacyAudioSignedIn();
+    expect(files.has('LIBRARY_NO_CLOUD:regia-audio-by-owner/admin-1/song')).toBe(true);
+  });
+
+  it('a sign-in deletes them (AuthContext, SIGNED_IN)', () => {
+    const listener = authContext.slice(authContext.indexOf('onAuthStateChange'), authContext.indexOf('Native OAuth'));
+    expect(listener).toMatch(/event === 'SIGNED_IN'\) \{[^}]*import\('\.\/regiaAudio'\)\.then\(\(m\) => m\.legacyAudioSignedIn\(\)\)/);
   });
 });
 

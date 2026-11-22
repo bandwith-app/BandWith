@@ -122,6 +122,8 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
   const flushing = useRef<Promise<void> | null>(null);
   const flushAgain = useRef(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** The open pause shown came from an older build's Pause message (when, and its paused time then). */
+  const oldPause = useRef<{ at: number; pausedMs: number } | null>(null);
   const ctxRef = useRef({ bandId, eventId, date, total, send, isLeader, key });
   ctxRef.current = { bandId, eventId, date, total, send, isLeader, key };
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -210,12 +212,16 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
       return 'done';
     }
     if (res.rev !== undefined) revRef.current = res.rev;
+    // Saved: told to the band again, on the new revision (#296 round 6): a device that read
+    // the row before this save landed (the 2.5 s refresh) takes this one.
+    const saved = message(stateRef.current);
+    if (saved) c.send?.(saved);
     if (versionRef.current === version) {
       writeLocal(c.key, row, false, revRef.current);
       markUnsaved(false);
     } else writeLocal(c.key, rowOf(stateRef.current), true, revRef.current);
     return 'done';
-  }, [rowOf, markUnsaved, resolveConflict]);
+  }, [rowOf, markUnsaved, resolveConflict, message]);
 
   /** Save the newest state now (leader), one save at a time. The device copy stays "unsaved" until it is. */
   const flush = useCallback(async () => {
@@ -292,7 +298,16 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
     // A change made here meanwhile is newer than what was just read.
     const inMemory = c.isLeader && !!stateRef.current && unsavedRef.current;
     const mine = inMemory ? { state: stateRef.current!, dirty: true } : local;
-    const picked = pickSession(mine, saved?.state ?? null);
+    const savedAt = saved?.rev ? Date.parse(saved.rev) : NaN;
+    const fromServer = saved ? { ...saved.state, untimedUntil: Number.isFinite(savedAt) ? savedAt : Date.now() } : null;
+    let picked = pickSession(mine, fromServer);
+    // An End shown here (another admin's, on the channel) whose save hasn't landed yet: the saved
+    // copy still running is merged, not taken (#296 round 6): it can't undo the End unless it
+    // resumed after it.
+    const shownNow = stateRef.current;
+    if (!mine?.dirty && fromServer && shownNow && sessionStatus(shownNow) === 'ended' && sessionStatus(fromServer) !== 'ended' && shownNow.startedAt === fromServer.startedAt) {
+      picked = mergeSessions(shownNow, fromServer, Number.isFinite(savedAt) ? savedAt : undefined);
+    }
     setState(picked);
     if (mine?.dirty) void flush();
     else {
@@ -310,6 +325,7 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
     saveTimer.current = undefined;
     clearTimeout(refreshTimer.current);
     stateRef.current = null;
+    oldPause.current = null;
     revRef.current = undefined;
     readyRef.current = false;
     setStateRaw(null);
@@ -379,12 +395,28 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
     const c = ctxRef.current;
     const msg = payload as Partial<SessionMessage> | null;
     if (!c.key || !msg || msg.v !== 1 || msg.eventId !== c.eventId || msg.date !== c.date) return;
-    const next = msg.row ? fromRow(msg.row) : null;
-    const mine = stateRef.current;
     const receivedAt = Date.now();
+    const parsed = msg.row ? fromRow(msg.row) : null;
+    // Nothing in it is from after it came in (#296 round 6).
+    const next: SessionState | null = parsed ? { ...parsed, untimedUntil: receivedAt } : null;
+    const mine = stateRef.current;
+    const oldBuild = !('rev' in msg);
     // An older build's Resume (no revision, no pause times, more paused time): a real one,
-    // taken with our pause times kept (#296 round 5).
-    const resumed = !('rev' in msg) && mine && next ? oldBuildResume(mine, next, receivedAt) : null;
+    // taken with our pause times kept (#296 round 5). Our open pause came from that build's
+    // own Pause: its Resume closes it whatever our paused time (#296 round 6).
+    const fromOld = oldPause.current;
+    const base = oldBuild && mine && fromOld && mine.pausedAt === fromOld.at ? fromOld.pausedMs : undefined;
+    const resumed = oldBuild && mine && next ? oldBuildResume(mine, next, receivedAt, base) : null;
+    /** Shown from here on: remembers whether its open pause came from an older build's Pause. */
+    const show = (s: SessionState | null) => {
+      oldPause.current =
+        oldBuild && s && next && s.pausedAt !== null && s.pausedAt === next.pausedAt
+          ? { at: s.pausedAt, pausedMs: next.pausedMs }
+          : s && fromOld && s.pausedAt === fromOld.at
+            ? fromOld
+            : null;
+      setState(s);
+    };
     /** Merged with what this message brings (it can't know of pauses after it came in). */
     const mergeIn = (): SessionState => resumed ?? mergeSessions(mine!, next!, { cutoff: receivedAt });
     /**
@@ -398,9 +430,9 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
       (!mine || !next || (newerRev(msg.rev, revRef.current) && !(sessionStatus(mine) === 'ended' && sessionStatus(next) !== 'ended')));
     if (!c.isLeader) {
       if (takes()) {
-        setState(next);
+        show(next);
         if (typeof msg.rev === 'string') revRef.current = msg.rev;
-      } else setState(mergeIn());
+      } else show(mergeIn());
       return;
     }
     if (unsavedRef.current) {
@@ -410,7 +442,7 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
       const merged = mergeIn();
       if (sameSession(merged, mine)) return;
       versionRef.current += 1;
-      setState(merged);
+      show(merged);
       writeLocal(c.key, rowOf(merged), true, revRef.current);
       void flush();
       return;
@@ -422,7 +454,7 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
       shown = mergeIn();
       if (sameSession(shown, mine)) return;
     }
-    setState(shown);
+    show(shown);
     writeLocal(c.key, shown ? rowOf(shown) : null, false, revRef.current);
     // The other admin saves it a moment later: then read its revision.
     clearTimeout(refreshTimer.current);

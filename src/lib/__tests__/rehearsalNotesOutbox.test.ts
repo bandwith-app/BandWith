@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { addOp, applyOps, clearNoteBackoff, dismissRejected, flushOutbox, queueNoteOp, readOutbox, readRejected, writeOutbox, type NoteOp } from '../rehearsalNotesOutbox';
+import { addOp, applyOps, clearNoteBackoff, dismissRejected, flushOutbox, queueNoteOp, readOutbox, readRejected, rejectedKey, writeOutbox, type NoteOp } from '../rehearsalNotesOutbox';
 import type { RehearsalNote } from '../rehearsalNotes';
 
 const ME = 'user-me';
@@ -254,24 +254,120 @@ describe('#296 round 5: the refused list and account deletion', () => {
     expect(REJECTED_PREFIX).toBe('bw:rehearsal_notes_rejected:');
   });
 
-  it('deleting the account (discardPendingWrites) erases it', async () => {
+});
+
+/**
+ * #296 round 6 (Codex r7 B1): with #292, sign-out keeps the refused list and
+ * only deleting the account erases it. #292 lands first; until then its
+ * rules are copied here as data, from fix/data-loss-audit 0dd8a121:
+ * src/lib/offline/storage.ts (KEEP_ON_SIGN_OUT_PREFIXES, every bw: key but
+ * those goes at sign-out) and src/lib/accountWrites.ts (discardAccountWrites:
+ * the account's bw:…:<uid> keys). Once #292 is on main, the block after this
+ * one runs the real functions.
+ */
+const KEEP_ON_SIGN_OUT_292 = ['bw:live_refused:', 'bw:rehearsal_notes_rejected:', 'bw:chat_outbox:'];
+const signOut292 = () => {
+  const drop: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i)!;
+    if (k.startsWith('bw:') && !KEEP_ON_SIGN_OUT_292.some((p) => k.startsWith(p))) drop.push(k);
+  }
+  drop.forEach((k) => localStorage.removeItem(k));
+};
+const deleteAccount292 = (uid: string) => {
+  const drop: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i)!;
+    if (k.startsWith('bw:') && k.endsWith(`:${uid}`)) drop.push(k);
+  }
+  drop.forEach((k) => localStorage.removeItem(k));
+};
+const refuseOne = async (uid: string, body: string) => {
+  writeOutbox(uid, [{ kind: 'save', note: note('gone', { body, createdBy: uid }), before: [] }]);
+  await flushOutbox(uid, {
+    save: vi.fn(async () => ({ error: { code: '42501', message: 'denied' }, status: 403 })),
+    remove: vi.fn(async () => ({ error: null })),
+    practised: vi.fn(async () => ({ error: null })),
+    ok: vi.fn(async () => ({ error: null })),
+  });
+};
+
+describe('#296 round 6: the refused list with #292’s sign-out', () => {
+  beforeEach(() => {
     localStorage.clear();
     clearNoteBackoff();
-    writeOutbox(ME, [{ kind: 'save', note: note('gone', { body: 'Outro: four bars' }), before: [] }]);
-    await flushOutbox(ME, {
-      save: vi.fn(async () => ({ error: { code: '42501', message: 'denied' }, status: 403 })),
-      remove: vi.fn(async () => ({ error: null })),
-      practised: vi.fn(async () => ({ error: null })),
-      ok: vi.fn(async () => ({ error: null })),
-    });
-    expect(readRejected(ME)).toHaveLength(1);
-    const { clearOfflineCache } = await import('../offline/storage');
-    // The account-deletion call (AuthContext signOut({ discardPendingWrites: true }), #287).
-    await (clearOfflineCache as (prefix?: string, opts?: unknown) => Promise<void>)('bw:', {
-      keepPendingWrites: true,
-      discardPendingWritesOf: ME,
-    });
+  });
+
+  it('its key is in #292’s keep list', async () => {
+    const { REJECTED_PREFIX } = await import('../rehearsalNotesOutbox');
+    expect(KEEP_ON_SIGN_OUT_292).toContain(REJECTED_PREFIX);
+  });
+
+  it('sign-out, then the same account signs in: the refused note is still there; another account never sees it', async () => {
+    await refuseOne(ME, 'Outro: four bars');
+    signOut292();
+    expect(readRejected(ME).map((n) => n.body)).toEqual(['Outro: four bars']);
+    expect(readRejected('someone-else')).toEqual([]);
+  });
+
+  it('deleting the account erases it; other accounts’ lists on the device stay', async () => {
+    await refuseOne(ME, 'Outro: four bars');
+    await refuseOne('other-uid', 'Intro: drums only');
+    deleteAccount292(ME);
     expect(readRejected(ME)).toEqual([]);
+    expect(readRejected('other-uid').map((n) => n.body)).toEqual(['Intro: drums only']);
+  });
+});
+
+// The real functions, once #292 is on this branch's base (skipped before).
+const storage292 = import.meta.glob('../offline/storage.ts', { eager: true }) as Record<string, Record<string, unknown>>;
+const accountWrites292 = import.meta.glob('../accountWrites.ts') as Record<string, () => Promise<Record<string, unknown>>>;
+const has292 = Array.isArray(Object.values(storage292)[0]?.KEEP_ON_SIGN_OUT_PREFIXES) && Object.keys(accountWrites292).length === 1;
+describe.runIf(has292)('#296 round 6: with #292 merged (real clearOfflineCache, discardAccountWrites)', () => {
+  it('sign-out keeps the refused note for the next sign-in; account deletion erases it', async () => {
+    localStorage.clear();
+    clearNoteBackoff();
+    await refuseOne(ME, 'Outro: four bars');
+    const { clearOfflineCache } = Object.values(storage292)[0] as { clearOfflineCache: () => Promise<void> };
+    await clearOfflineCache();
+    expect(readRejected(ME).map((n) => n.body)).toEqual(['Outro: four bars']);
+    const { discardAccountWrites } = (await Object.values(accountWrites292)[0]()) as { discardAccountWrites: (u: string) => Promise<void> };
+    await discardAccountWrites(ME);
+    expect(readRejected(ME)).toEqual([]);
+  });
+});
+
+describe('#296 round 6 (Codex r7 #6): saving other words never deletes a refused version', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    clearNoteBackoff();
+  });
+  const apiBy = (refuse: (n: RehearsalNote) => boolean) => ({
+    save: vi.fn(async (n: RehearsalNote) => (refuse(n) ? { error: { code: '42501', message: 'denied' }, status: 403 } : { error: null })),
+    remove: vi.fn(async () => ({ error: null })),
+    practised: vi.fn(async () => ({ error: null })),
+    ok: vi.fn(async () => ({ error: null })),
+  });
+
+  it('refused, then a new wording of the note is saved: the refused words stay until Remove', async () => {
+    writeOutbox(ME, [{ kind: 'save', note: note('n1', { body: 'first words' }), before: [] }]);
+    await flushOutbox(ME, apiBy((n) => n.body === 'first words'));
+    queueNoteOp(ME, { kind: 'save', note: note('n1', { body: 'second words' }), before: [] });
+    await flushOutbox(ME, apiBy((n) => n.body === 'first words'));
+    expect(readOutbox(ME)).toEqual([]);
+    expect(readRejected(ME).map((n) => n.body)).toEqual(['first words']);
+    dismissRejected(ME, rejectedKey(readRejected(ME)[0]));
+    expect(readRejected(ME)).toEqual([]);
+  });
+
+  it('refused twice with other words: both versions are kept; Remove takes only the one chosen', async () => {
+    writeOutbox(ME, [{ kind: 'save', note: note('n1', { body: 'first words' }), before: [] }]);
+    await flushOutbox(ME, apiBy(() => true));
+    writeOutbox(ME, [{ kind: 'save', note: note('n1', { body: 'second words' }), before: [] }]);
+    await flushOutbox(ME, apiBy(() => true));
+    expect(readRejected(ME).map((n) => n.body)).toEqual(['first words', 'second words']);
+    dismissRejected(ME, rejectedKey(readRejected(ME)[0]));
+    expect(readRejected(ME).map((n) => n.body)).toEqual(['second words']);
   });
 });
 

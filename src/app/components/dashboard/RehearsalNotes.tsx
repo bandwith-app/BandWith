@@ -25,7 +25,7 @@ import {
   type RehearsalNote,
 } from '@/lib/rehearsalNotes';
 import type { RehearsalNotesControls } from '@/app/components/event/useRehearsalNotes';
-import { dismissRejected, OUTBOX_EVENT, readRejected, type RejectedNote } from '@/lib/rehearsalNotesOutbox';
+import { dismissRejected, OUTBOX_EVENT, readRejected, rejectedKey, type RejectedNote } from '@/lib/rehearsalNotesOutbox';
 import type { EarlierNotes } from './FromLastTime';
 
 type T = ReturnType<typeof useT>;
@@ -492,8 +492,10 @@ const RejectedNotesList: React.FC<{ notes: RejectedNote[]; onRemove: (id: string
         {t("These notes weren't saved. Copy what you need, then remove them.")}
       </span>
       <ul className="flex flex-col">
-        {list.map((n) => {
-          const text = rejectedText(n, t);
+        {list.map((note) => {
+          // One entry per refused version (#296 round 6): keyed by it, removed by it.
+          const n = { ...note, id: rejectedKey(note) };
+          const text = rejectedText(note, t);
           const short = text.length > 60 ? `${text.slice(0, 59)}…` : text;
           return (
             <li key={n.id} className={cn('flex flex-col gap-2 py-2 border-b last:border-b-0 min-w-0', dark ? 'border-white/15' : 'border-border')}>

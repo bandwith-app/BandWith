@@ -446,3 +446,65 @@ describe('#296 round 5: an older build’s Resume on the channel', () => {
     expect(result.current.state?.pauses).toEqual([[T0 + 20 * 60_000, T0 + 25 * 60_000]]);
   });
 });
+
+describe('#296 round 6: End on the channel, older builds’ pauses', () => {
+  const M = 60_000;
+  const oldMsg = (state: Parameters<typeof toRow>[0]) => {
+    const row = toRow(state, CTX, 3, Date.now());
+    const { pauses: _drop, ...summary } = row.summary;
+    return { v: 1, eventId: 'event-1', date: '2026-11-19', row: { ...row, summary } };
+  };
+  const newMsg = (state: Parameters<typeof toRow>[0], rev: string) => ({ v: 1, eventId: 'event-1', date: '2026-11-19', row: toRow(state, CTX, 3, Date.now()), rev });
+
+  it('Codex r7 #5: another admin’s End arrives, its save is slow: the 2.5 s refresh doesn’t bring the running session back', async () => {
+    const live = startSession(Date.now() - 30 * M);
+    fetchMock.mockResolvedValue({ state: live, summary: null, rev: 'r1' });
+    const { result, bridge } = setup({ currentSong: null });
+    await waitFor(() => expect(result.current.status).toBe('live'));
+    act(() => bridge.current.receive?.(newMsg(endSession(live, Date.now()), 'r1')));
+    expect(result.current.status).toBe('ended');
+    // The refresh reads the row before the End's save landed.
+    await new Promise((r) => setTimeout(r, 2700));
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(1);
+    expect(result.current.status).toBe('ended');
+  }, 10_000);
+
+  it('Codex r7 #5: a save that lands is told to the band again, on its new revision', async () => {
+    saveMock.mockResolvedValue({ error: null, rev: 'r9' });
+    const { result, send } = setup({ currentSong: null });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    act(() => result.current.start());
+    await waitFor(() => expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ rev: 'r9', row: expect.objectContaining({ ended_at: null }) })));
+  });
+
+  it('Claude r5 #3: member: the new admin paused 20–25, then an older build pauses at 30 and resumes at 33: live, 8 min', async () => {
+    const T0 = Date.now() - 40 * M;
+    const withPause = { ...startSession(T0), pausedMs: 5 * M, pauses: [[T0 + 20 * M, T0 + 25 * M]] as [number, number][] };
+    fetchMock.mockResolvedValue({ state: withPause, summary: null, rev: 'r1' });
+    const { result, bridge } = setup({ isLeader: false, currentSong: null });
+    await waitFor(() => expect(result.current.state?.pausedMs).toBe(5 * M));
+    // The older build never knew of 20–25: its paused time is its own.
+    const now = vi.spyOn(Date, 'now').mockReturnValue(T0 + 30 * M);
+    act(() => bridge.current.receive?.(oldMsg({ ...startSession(T0), pausedAt: T0 + 30 * M, pauses: undefined })));
+    expect(result.current.status).toBe('paused');
+    now.mockReturnValue(T0 + 33 * M + 2000);
+    act(() => bridge.current.receive?.(oldMsg({ ...startSession(T0), pausedMs: 3 * M, pauses: undefined })));
+    now.mockRestore();
+    expect(result.current.status).toBe('live');
+    expect(result.current.state?.pausedMs).toBe(8 * M);
+  });
+
+  it('Claude r5 #2: member: an older build’s 7 min (0:10–0:17), then the new admin’s 0:40–0:45 on an older revision: 12', async () => {
+    const T0 = Date.now() - 60 * M;
+    fetchMock.mockResolvedValue({ state: startSession(T0), summary: null, rev: 'r1' });
+    const { result, bridge } = setup({ isLeader: false, currentSong: null });
+    await waitFor(() => expect(result.current.status).toBe('live'));
+    const now = vi.spyOn(Date, 'now').mockReturnValue(T0 + 20 * M);
+    act(() => bridge.current.receive?.(oldMsg({ ...startSession(T0), pausedMs: 7 * M, pauses: undefined })));
+    expect(result.current.state?.pausedMs).toBe(7 * M);
+    now.mockReturnValue(T0 + 50 * M);
+    act(() => bridge.current.receive?.(newMsg({ ...startSession(T0), pausedMs: 5 * M, pauses: [[T0 + 40 * M, T0 + 45 * M]] }, 'r1')));
+    now.mockRestore();
+    expect(result.current.state?.pausedMs).toBe(12 * M);
+  });
+});
