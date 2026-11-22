@@ -54,9 +54,14 @@ const load = async () => {
   vi.resetModules();
   return import('../pushNotifications');
 };
-const pending = () => JSON.parse(localStorage.getItem('bandwith.push-revoke') || '[]') as { token: string; userId: string; registeredAt: string | null }[];
+const pending = () => JSON.parse(localStorage.getItem('bandwith.push-revoke') || '[]') as { token: string; userId: string; registeredAt: string | null; secrets: string[] }[];
+const remembered = () => JSON.parse(localStorage.getItem('bandwith.push-token') || 'null') as { registeredAt: string | null; secrets: string[] } | null;
+const SAVED = { data: { registered_at: STAMP, secret: null }, error: null };
+/** The secrets the app sent with its stamped saves, in order (both registration listeners save). */
+const sentSecrets = () => h.rpc.mock.calls.filter((c) => c[0] === 'bw_register_push_token_stamped').map((c) => c[1]?.p_secret as string);
+const lastSecret = () => sentSecrets().slice(-1)[0];
 
-describe('sign-out stops pushes (Codex review #287 round 2)', () => {
+describe('sign-out stops pushes (Codex review #287 rounds 2-4)', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.unstubAllEnvs();
@@ -68,32 +73,38 @@ describe('sign-out stops pushes (Codex review #287 round 2)', () => {
     h.from.mockReset();
   });
 
-  // B2: an existing registration from an older build, signed out on a cold
-  // start before the native token callback: no token is known at all.
   it('no token known yet: delivery still stops on the device', async () => {
     const push = await load();
     h.rpc.mockImplementation(offline);
+    h.registerFires = false;
     await push.unregisterPushToken('alice');
     expect(h.unregister).toHaveBeenCalledOnce();
   });
 
-  // B3: the save worked, then the network dropped before a separate read of
-  // the row's stamp. The stamp now comes back with the save itself.
-  it('the registration stamp comes back with the save, so an offline sign-out can queue it', async () => {
+  // Round 4 (B2): the save sends a random secret; an offline sign-out queues
+  // it with the stamp, and the flush presents it.
+  it('the save sends a secret; an offline sign-out queues it and the flush presents it', async () => {
     const push = await load();
-    h.rpc.mockImplementation(async (fn: string) =>
-      fn === 'bw_register_push_token_stamped' ? { data: STAMP, error: null } : fn === 'bw_register_push_token' ? { data: null, error: null } : offline(),
-    );
-    h.from.mockImplementation(() => builder(offline)); // the read-back never arrives
+    h.rpc.mockImplementation(async (fn: string) => (fn === 'bw_register_push_token_stamped' ? SAVED : offline()));
+    h.from.mockImplementation(() => builder(offline));
     expect((await push.subscribeToPush('alice')).success).toBe(true);
+    const secret = lastSecret();
+    expect(secret).toMatch(/^[0-9a-f]{64}$/);
+    expect(h.rpc).toHaveBeenCalledWith('bw_register_push_token_stamped', { p_token: TOKEN, p_platform: 'ios', p_secret: secret });
 
     h.rpc.mockImplementation(offline);
     await push.unregisterPushToken('alice');
-    expect(pending().map((p) => p.registeredAt)).toEqual([STAMP]);
+    expect(pending()).toEqual([expect.objectContaining({ registeredAt: STAMP, secrets: [secret] })]);
     expect(h.unregister).toHaveBeenCalledOnce();
+
+    h.rpc.mockReset();
+    h.rpc.mockResolvedValue({ data: true, error: null });
+    expect(await push.flushQueuedPushRevocations()).toBe(1);
+    expect(h.rpc).toHaveBeenCalledWith('bw_revoke_push_token', { p_token: TOKEN, p_user_id: 'alice', p_registered_at: STAMP, p_secret: secret });
+    expect(pending()).toEqual([]);
   });
 
-  it('a server without the stamped save (older database) still works through the old one', async () => {
+  it('a server without the stamped save (older database) still works through the old one, without a secret', async () => {
     const push = await load();
     h.rpc.mockImplementation(async (fn: string) =>
       fn === 'bw_register_push_token_stamped'
@@ -103,16 +114,12 @@ describe('sign-out stops pushes (Codex review #287 round 2)', () => {
     h.from.mockImplementation(() => builder(async () => ({ data: { updated_at: STAMP }, error: null })));
     expect((await push.subscribeToPush('alice')).success).toBe(true);
     expect(h.rpc).toHaveBeenCalledWith('bw_register_push_token', { p_token: TOKEN, p_platform: 'ios' });
-    expect(JSON.parse(localStorage.getItem('bandwith.push-token') || 'null')?.registeredAt).toBe(STAMP);
+    expect(remembered()).toMatchObject({ registeredAt: STAMP, secrets: [] });
   });
 
-  // Claude review: the fallback update answering "no error" for 0 rows did
-  // not switch anything off.
   it('the fallback update matching no row is not a revocation', async () => {
     const push = await load();
-    h.rpc.mockImplementation(async (fn: string) =>
-      fn === 'bw_register_push_token_stamped' ? { data: STAMP, error: null } : { data: null, error: { message: 'JWT expired' } },
-    );
+    h.rpc.mockImplementation(async (fn: string) => (fn === 'bw_register_push_token_stamped' ? SAVED : { data: null, error: { message: 'JWT expired' } }));
     h.from.mockImplementation(() => builder(async () => ({ data: [], error: null, count: 0 })));
     await push.subscribeToPush('alice');
     await push.unregisterPushToken('alice');
@@ -122,7 +129,7 @@ describe('sign-out stops pushes (Codex review #287 round 2)', () => {
 
   it('online: the server switches it off, the device registration is left alone', async () => {
     const push = await load();
-    h.rpc.mockImplementation(async (fn: string) => (fn === 'bw_register_push_token_stamped' ? { data: STAMP, error: null } : { data: null, error: null }));
+    h.rpc.mockImplementation(async (fn: string) => (fn === 'bw_register_push_token_stamped' ? SAVED : { data: null, error: null }));
     await push.subscribeToPush('alice');
     await push.unregisterPushToken('alice');
     expect(h.rpc).toHaveBeenCalledWith('bw_unregister_push_token', { p_token: TOKEN });
@@ -130,8 +137,6 @@ describe('sign-out stops pushes (Codex review #287 round 2)', () => {
     expect(h.unregister).not.toHaveBeenCalled();
   });
 
-  // Round 3 (B3): Android built without google-services.json never registers;
-  // the plugin's unregister() then crashes on an uninitialised Firebase.
   it('Android without Firebase: sign-out never calls the native unregister', async () => {
     h.platform = 'android';
     vi.stubEnv('VITE_ANDROID_PUSH', '');
@@ -141,78 +146,97 @@ describe('sign-out stops pushes (Codex review #287 round 2)', () => {
     expect(h.unregister).not.toHaveBeenCalled();
   });
 
-  // Round 3 (B4): the first offline start after an upgrade knows no token
-  // and no stamp. The plugin still has the token: the revocation is queued
-  // for that token and account, and sent once online.
-  it('no token remembered: the token comes from the plugin and the revocation waits for the network', async () => {
+  // Round 4 (B4): no token or secret remembered (first offline start after
+  // an upgrade): the token comes from the plugin, and the revocation stays
+  // queued while the server says it is still on for that account.
+  it('no token remembered: queued from the plugin token, and kept while the token is still on', async () => {
     const push = await load();
     h.rpc.mockImplementation(offline);
     await push.unregisterPushToken('alice');
-    expect(pending()).toEqual([expect.objectContaining({ token: TOKEN, userId: 'alice', registeredAt: null })]);
+    expect(pending()).toEqual([expect.objectContaining({ token: TOKEN, userId: 'alice', registeredAt: null, secrets: [] })]);
     expect(h.unregister).toHaveBeenCalledOnce();
     h.rpc.mockReset();
-    h.rpc.mockResolvedValue({ data: true, error: null });
-    expect(await push.flushQueuedPushRevocations()).toBe(1);
-    expect(h.rpc).toHaveBeenCalledWith('bw_revoke_push_token', { p_token: TOKEN, p_user_id: 'alice', p_registered_at: null });
+    h.rpc.mockImplementation(async (fn: string) => ({ data: fn === 'bw_push_token_registered', error: null }));
+    expect(await push.flushQueuedPushRevocations()).toBe(0);
+    expect(h.rpc).toHaveBeenCalledWith('bw_push_token_registered', { p_token: TOKEN, p_user_id: 'alice' });
+    expect(pending()).toHaveLength(1);
+    h.rpc.mockImplementation(async () => ({ data: false, error: null }));
+    await push.flushQueuedPushRevocations();
     expect(pending()).toEqual([]);
   });
 
-  it('a token whose save never got through (offline) is queued too, without a stamp', async () => {
+  // Round 4 (B4): the save's reply was lost. The secret it sent may be the
+  // one the server holds now: it goes into the revocation too.
+  it("a save whose reply was lost: its secret is still tried", async () => {
     const push = await load();
-    h.rpc.mockImplementation(offline);
+    h.rpc.mockImplementation(async (fn: string) => (fn === 'bw_register_push_token_stamped' ? SAVED : offline()));
     h.from.mockImplementation(() => builder(offline));
-    expect((await push.subscribeToPush('alice')).success).toBe(false);
+    await push.subscribeToPush('alice');
+    const first = lastSecret();
+    h.rpc.mockImplementation(offline); // the next save goes out, its reply never comes back
+    await push.subscribeToPush('alice');
+    const second = lastSecret();
+    expect(second && second !== first).toBe(true);
+    expect(remembered()).toMatchObject({ registeredAt: null, secrets: [second, first] });
     await push.unregisterPushToken('alice');
-    expect(pending()).toEqual([expect.objectContaining({ token: TOKEN, userId: 'alice', registeredAt: null })]);
+    expect(pending()).toEqual([expect.objectContaining({ registeredAt: null, secrets: [second, first] })]);
   });
 
-  it('signing in again as the same account drops its own waiting revocation before saving', async () => {
+  // Round 4 (B3): Bob signing in and out offline on the same device must not
+  // wipe Alice's waiting revocation; only a save the server confirmed does.
+  it("Bob's sign-in and offline sign-out keep Alice's revocation until the server confirms Bob's save", async () => {
     const push = await load();
     h.rpc.mockImplementation(offline);
-    await push.unregisterPushToken('alice');
-    expect(pending()).toHaveLength(1);
-    h.listeners = {};
-    const push2 = await load(); // next start
     h.from.mockImplementation(() => builder(offline));
-    await push2.subscribeToPush('bob'); // another account: Alice's revocation still has to go
-    expect(pending()).toHaveLength(1);
-    await push2.subscribeToPush('alice'); // Alice again: nothing to revoke any more
+    await push.unregisterPushToken('alice');
+    expect(pending().map((p) => p.userId)).toEqual(['alice']);
+    await push.subscribeToPush('bob'); // offline: not saved
+    await push.unregisterPushToken('bob');
+    expect(pending().map((p) => p.userId).sort()).toEqual(['alice', 'bob']);
+    h.rpc.mockImplementation(async (fn: string) => (fn === 'bw_register_push_token_stamped' ? SAVED : { data: false, error: null }));
+    await push.subscribeToPush('bob'); // online: the token is Bob's now
     expect(pending()).toEqual([]);
   });
 
-  // Round 3 (MINOR): both registration listeners save the new token; the
-  // replies can come back in either order. The newest stamp is kept.
-  it('two saves of the same token keep the newer stamp, whatever order the replies come in', async () => {
-    const OLDER = '2026-11-22T09:59:58.1234+00:00';
-    const NEWER = '2026-11-22T09:59:58.123456+00:00';
+  // Rounds 3-4: both registration listeners save the token; the saves run
+  // one after the other, so the last answer is the newest registration.
+  it('two saves of the same token run one after the other; the last answer wins', async () => {
+    const NEWER = '2026-11-22T10:00:00.5+00:00';
     const push = await load();
     let n = 0;
+    let inFlight = 0;
+    let overlap = false;
     h.rpc.mockImplementation(async (fn: string) => {
       if (fn !== 'bw_register_push_token_stamped') return { data: null, error: null };
       n += 1;
-      if (n === 1) {
-        await new Promise((r) => setTimeout(r, 20)); // first save, its reply arrives last
-        return { data: OLDER, error: null };
-      }
-      return { data: NEWER, error: null };
+      inFlight += 1;
+      if (inFlight > 1) overlap = true;
+      const mine = n;
+      await new Promise((r) => setTimeout(r, mine === 1 ? 20 : 1));
+      inFlight -= 1;
+      return { data: { registered_at: mine === 1 ? STAMP : NEWER, secret: null }, error: null };
     });
     await push.subscribeToPush('alice');
-    await new Promise((r) => setTimeout(r, 40));
+    await new Promise((r) => setTimeout(r, 60));
     expect(n).toBe(2);
-    expect(JSON.parse(localStorage.getItem('bandwith.push-token') || 'null')?.registeredAt).toBe(NEWER);
+    expect(overlap).toBe(false);
+    expect(remembered()).toMatchObject({ registeredAt: NEWER, secrets: [lastSecret()] });
   });
 
-  // Claude review round 3: iOS keeps the same token. Signed out offline,
-  // then signed in again (still not saved): the later flush must not switch
-  // off the account's own current registration.
-  it('signing in again drops the waiting revocations of that account, even before any save', async () => {
+  // Claude review #287 round 4: tokenFromPlugin's register() also answers
+  // the registration handler of a subscribe still waiting for the old
+  // account; that late save must not switch the token back on.
+  it('a registration answering after sign-out does not save the token for the old account', async () => {
     const push = await load();
     h.rpc.mockImplementation(offline);
+    h.registerFires = false; // subscribe waits for the native token
+    const sub = push.subscribeToPush('alice');
+    await new Promise((r) => setTimeout(r, 5));
+    h.registerFires = true; // sign-out asks the plugin, which answers both listeners
     await push.unregisterPushToken('alice');
-    await push.unregisterPushToken('bob'); // another account's stays
-    push.forgetQueuedPushRevocationsFor('alice');
-    expect(pending().map((p) => p.userId)).toEqual(['bob']);
-    const ctx = (await import('../../AuthContext.tsx?raw')).default;
-    expect(ctx).toMatch(/if \(user\?\.id\) forgetQueuedPushRevocationsFor\(user\.id\)/);
+    h.rpc.mockImplementation(async () => SAVED);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(h.rpc.mock.calls.filter((c) => c[0] === 'bw_register_push_token_stamped')).toHaveLength(0);
+    expect((await sub).success).toBe(false);
   });
 });

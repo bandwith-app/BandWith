@@ -21,6 +21,7 @@ export type AuthErrorKind =
   | 'link_expired'
   | 'beta_full'
   | 'network'
+  | 'recovery_refused'
   | 'unknown';
 
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
@@ -34,6 +35,8 @@ export function authErrorKind(error: unknown): AuthErrorKind {
   const message = str(e.message).toLowerCase();
 
   switch (code) {
+    case 'recovery_not_verified':
+      return 'recovery_refused';
     case 'invalid_credentials':
       return 'invalid_credentials';
     case 'email_not_confirmed':
@@ -77,6 +80,14 @@ export function authErrorKind(error: unknown): AuthErrorKind {
   return 'unknown';
 }
 
+/**
+ * The reset form refused to change the password: this tab can't prove the
+ * account the link signed in, or its session ended (Codex review #287 round 4).
+ */
+export function recoveryRefusedText(): string {
+  return t('This reset link can no longer change your password. Ask for a new link and open it in this browser.');
+}
+
 /** A sentence for the user, in the app's language. Never the server's own text. */
 export function authErrorMessage(error: unknown): string {
   switch (authErrorKind(error)) {
@@ -102,6 +113,8 @@ export function authErrorMessage(error: unknown): string {
       return `${t('BandWith is full for now')}. ${t('Join the waitlist on bandwith.fun. Invited by a band? Sign up with the email the invite was sent to.')}`;
     case 'network':
       return t('Check your connection and try again.');
+    case 'recovery_refused':
+      return recoveryRefusedText();
     default:
       return t('Something went wrong. Please try again.');
   }

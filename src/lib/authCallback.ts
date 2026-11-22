@@ -71,6 +71,8 @@ export function callbackProblemText(problem: AuthCallbackProblem, recovery: bool
   };
 }
 
+export { recoveryRefusedText } from './authErrors';
+
 /** Query flag on the app root: open the welcome flow on this screen (set by the callback error screen). */
 export const AUTH_SCREEN_PARAM = 'bw_screen';
 export type AuthScreenTarget = 'sign-in' | 'forgot-password';

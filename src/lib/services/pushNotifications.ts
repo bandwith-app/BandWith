@@ -11,7 +11,16 @@ import { getActiveChat } from './activeChatTracker';
 import { getLocale } from '@/lib/i18n';
 import { localizePushLabel, pushLanguage } from '@/lib/pushLabels';
 import { LIVE_PACK_REFRESH_EVENT } from '@/lib/livePack';
-import { flushPushRevocations, forgetRevocation, forgetRevocationsOf, rememberPushToken, rememberedPushToken, revokeOnSignOut } from '@/lib/pushRevocation';
+import {
+  beginPushSave,
+  confirmPushSave,
+  flushPushRevocations,
+  forgetRevocation,
+  newRevokeSecret,
+  rememberPushToken,
+  rememberedPushToken,
+  revokeOnSignOut,
+} from '@/lib/pushRevocation';
 
 const revokeStore = (): Storage | null => {
   try {
@@ -28,6 +37,22 @@ let pushUserId: string | null = null;
 let savedToken: string | null = null;
 let savedAt = 0;
 let tokenWatch = false;
+/**
+ * Bumped by every sign-out: a registration answer or a save started for the
+ * session before is stale and saves nothing (Claude review #287 round 4).
+ */
+let pushSession = 0;
+/**
+ * Saves, the sign-out revocation and the flush run one at a time: a save
+ * never interleaves with a revocation of the same token, and two saves of
+ * one token answer in order (Codex/Claude review #287 rounds 3-4).
+ */
+let pushLock: Promise<unknown> = Promise.resolve();
+const exclusive = <T>(fn: () => Promise<T>): Promise<T> => {
+  const run = pushLock.then(fn, fn);
+  pushLock = run.catch(() => undefined);
+  return run;
+};
 
 /**
  * Android hands out a new FCM token now and then (and after an update or a
@@ -39,7 +64,7 @@ const watchTokenChanges = () => {
   tokenWatch = true;
   PushNotifications.addListener('registration', (token) => {
     cachedToken = token.value;
-    if (pushUserId && token.value !== savedToken) void saveTokenToDatabase(pushUserId, token.value);
+    if (pushUserId && token.value !== savedToken) void saveTokenToDatabase(pushUserId, token.value, pushSession);
   }).catch(() => {
     tokenWatch = false;
   });
@@ -122,6 +147,7 @@ export const subscribeToPush = async (userId: string): Promise<{ success: boolea
   }
 
   pushUserId = userId;
+  const session = pushSession;
 
   try {
     console.log('[Push] Starting subscription for user:', userId);
@@ -138,7 +164,7 @@ export const subscribeToPush = async (userId: string): Promise<{ success: boolea
 
     // If we already have a cached token, just save it
     if (cachedToken) {
-      return await saveTokenToDatabase(userId, cachedToken);
+      return await saveTokenToDatabase(userId, cachedToken, session);
     }
 
     // Wait for the token - set up listeners BEFORE calling register
@@ -176,9 +202,15 @@ export const subscribeToPush = async (userId: string): Promise<{ success: boolea
         resolved = true;
         clearTimeout(timeout);
         cleanup();
+        // Signed out meanwhile (the sign-out's own register() answers here
+        // too): saving now would switch the token back on for that account.
+        if (session !== pushSession) {
+          resolve({ success: false, error: new Error('Signed out') });
+          return;
+        }
         cachedToken = token.value;
-        
-        const result = await saveTokenToDatabase(userId, token.value);
+
+        const result = await saveTokenToDatabase(userId, token.value, session);
         resolve(result);
       };
 
@@ -218,17 +250,16 @@ export const subscribeToPush = async (userId: string): Promise<{ success: boolea
 // the token to this account if another account used this device before;
 // the plain upsert is the fallback until the migration is applied.
 /**
- * After a save: no revocation is waiting for this token any more, and the
- * token and its server stamp are remembered for the next sign-out (audit
- * 04 #6, Codex review #287). The stamp is the row's updated_at, so the
- * offline revocation matches exactly this registration. It comes back with
- * the save itself (184, bw_register_push_token_stamped); only an older
- * database needs the separate read, which a dropped connection can lose.
+ * After a save the server confirmed: the token is this account's current
+ * registration, so no revocation waiting for it can apply any more (Codex
+ * review #287 round 4: only now, never at sign-in). The token, its stamp and
+ * the secret the server holds are remembered for the next sign-out. The
+ * stamp comes back with the save (184); only an older database needs the
+ * separate read, and it stores no secret.
  */
-const afterSave = async (userId: string, token: string, stamp: string | null = null) => {
+const afterSave = async (userId: string, token: string, stamp: string | null, secret: string | null) => {
   savedToken = token;
   savedAt = Date.now();
-  // Saved for this account now: no other account's revocation for it either.
   forgetRevocation(revokeStore(), token);
   let registeredAt: string | null = stamp;
   if (!registeredAt) {
@@ -244,64 +275,68 @@ const afterSave = async (userId: string, token: string, stamp: string | null = n
       registeredAt = null;
     }
   }
-  rememberPushToken(revokeStore(), { token, userId, registeredAt });
+  confirmPushSave(revokeStore(), token, userId, secret, registeredAt);
 };
 
 /** The database has no such function yet (migration 184 not applied). */
 const isMissingFunction = (error: { code?: string; message?: string } | null | undefined) =>
   !!error && (error.code === 'PGRST202' || error.code === '42883' || /could not find the function/i.test(error.message ?? ''));
 
-const saveTokenToDatabase = async (userId: string, token: string): Promise<{ success: boolean; error: Error | null }> => {
-  const platform = Capacitor.getPlatform();
-  // This account's own waiting revocation for this token goes before the
-  // save, and a flush already on its way finishes first: a revocation
-  // without a stamp must never land after the new registration (Codex
-  // review #287 round 3).
-  forgetRevocation(revokeStore(), token, userId);
-  await flushing?.catch(() => undefined);
+const saveTokenToDatabase = (userId: string, token: string, session = pushSession): Promise<{ success: boolean; error: Error | null }> =>
+  exclusive(async () => {
+    // Signed out (or someone else signed in) since this save was asked for.
+    if (session !== pushSession || pushUserId !== userId) return { success: false, error: new Error('Signed out') };
+    const platform = Capacitor.getPlatform();
+    // The secret is kept before it goes out: if the answer is lost, the
+    // server may hold it (Codex review #287 round 4).
+    const secret = newRevokeSecret();
+    beginPushSave(revokeStore(), token, userId, secret);
 
-  try {
-    // 184: the same save as bw_register_push_token (046, which older builds
-    // keep calling unchanged), returning the row's stamp in one round trip.
-    const { data: stamp, error: stampedError } = await supabase.rpc('bw_register_push_token_stamped', { p_token: token, p_platform: platform });
-    if (!stampedError) {
-      await afterSave(userId, token, typeof stamp === 'string' ? stamp : null);
+    try {
+      // 184: the same save as bw_register_push_token (046, which older builds
+      // keep calling unchanged), with the revocation secret and the row's
+      // stamp in one round trip.
+      const { data, error: stampedError } = await supabase.rpc('bw_register_push_token_stamped', { p_token: token, p_platform: platform, p_secret: secret });
+      if (!stampedError) {
+        const reply = (data ?? {}) as { registered_at?: unknown; secret?: unknown };
+        const at = typeof reply.registered_at === 'string' ? reply.registered_at : null;
+        await afterSave(userId, token, at, typeof reply.secret === 'string' && reply.secret ? reply.secret : secret);
+        return { success: true, error: null };
+      }
+      if (!isMissingFunction(stampedError)) {
+        console.warn('[Push] Stamped token save failed:', stampedError.message);
+      }
+
+      const { error: rpcError } = await supabase.rpc('bw_register_push_token', { p_token: token, p_platform: platform });
+      if (!rpcError) {
+        await afterSave(userId, token, null, null);
+        return { success: true, error: null };
+      }
+
+      const { error } = await supabase
+        .from('push_tokens')
+        .upsert(
+          {
+            user_id: userId,
+            token,
+            platform,
+            is_active: true,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'token' }
+        );
+
+      if (error) {
+        console.error('[Push] Token save failed:', error.message);
+        return { success: false, error: new Error(error.message) };
+      }
+      await afterSave(userId, token, null, null);
       return { success: true, error: null };
+    } catch (err: any) {
+      console.error('[Push] Save error:', err);
+      return { success: false, error: err };
     }
-    if (!isMissingFunction(stampedError)) {
-      console.warn('[Push] Stamped token save failed:', stampedError.message);
-    }
-
-    const { error: rpcError } = await supabase.rpc('bw_register_push_token', { p_token: token, p_platform: platform });
-    if (!rpcError) {
-      await afterSave(userId, token);
-      return { success: true, error: null };
-    }
-
-    const { error } = await supabase
-      .from('push_tokens')
-      .upsert(
-        {
-          user_id: userId,
-          token,
-          platform,
-          is_active: true,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'token' }
-      );
-
-    if (error) {
-      console.error('[Push] Token save failed:', error.message);
-      return { success: false, error: new Error(error.message) };
-    }
-    await afterSave(userId, token);
-    return { success: true, error: null };
-  } catch (err: any) {
-    console.error('[Push] Save error:', err);
-    return { success: false, error: err };
-  }
-};
+  });
 
 /**
  * Stop pushes to this device for the account that is signing out. Call it
@@ -311,6 +346,7 @@ export const unregisterPushToken = async (userId?: string | null): Promise<void>
   const owner = userId ?? pushUserId ?? '';
   pushUserId = null;
   savedToken = null;
+  pushSession += 1;
   if (!isNative()) return;
   // After an offline cold start the native token may not be back yet: the
   // one last saved for this account is (Codex review #287).
@@ -334,8 +370,9 @@ export const unregisterPushToken = async (userId?: string | null): Promise<void>
     }
     return;
   }
-  const registeredAt = remembered?.token === token ? remembered.registeredAt : null;
-  const outcome = await revokeOnSignOut(token, owner, registeredAt, {
+  const saved = remembered?.token === token ? remembered : null;
+  // After a save already on its way: it can't switch the token back on later.
+  const outcome = await exclusive(() => revokeOnSignOut(token, owner, saved, {
     store: owner ? revokeStore() : null,
     revokeOnServer: async () => {
       const { error } = await supabase.rpc('bw_unregister_push_token', { p_token: token });
@@ -355,7 +392,7 @@ export const unregisterPushToken = async (userId?: string | null): Promise<void>
       cachedToken = null;
       await PushNotifications.unregister();
     },
-  });
+  }));
   if (outcome === 'queued') console.warn('[Push] Server not reached: device unregistered, revocation queued');
 };
 
@@ -393,27 +430,23 @@ const tokenFromPlugin = async (waitMs = 2500): Promise<string | null> => {
   }
 };
 
-/**
- * Someone signed in on this device: their own waiting revocations are
- * dropped at once, before any token save (iOS keeps the same token, and a
- * save may fail offline; Claude review #287 round 3).
- */
-export const forgetQueuedPushRevocationsFor = (userId: string): void => {
-  forgetRevocationsOf(revokeStore(), userId);
-};
-
 /** The flush on its way, if any: a token save waits for it. */
 let flushing: Promise<number> | null = null;
 
 /**
  * Revocations queued by an offline sign-out (audit 04 #6), sent once online.
- * Works signed out: migration 184 needs only the token and its account.
+ * Works signed out: migration 184 takes the token, its account and the
+ * registration's secret.
  */
 export const flushQueuedPushRevocations = async (): Promise<number> => {
   if (!isNative()) return 0;
   if (flushing) return flushing;
-  const run = flushPushRevocations(revokeStore(), async (p) =>
-    supabase.rpc('bw_revoke_push_token', { p_token: p.token, p_user_id: p.userId, p_registered_at: p.registeredAt }),
+  const run = exclusive(() =>
+    flushPushRevocations(revokeStore(), {
+      revoke: async (p, secret) =>
+        supabase.rpc('bw_revoke_push_token', { p_token: p.token, p_user_id: p.userId, p_registered_at: p.registeredAt, p_secret: secret }),
+      registered: async (p) => supabase.rpc('bw_push_token_registered', { p_token: p.token, p_user_id: p.userId }),
+    }),
   );
   flushing = run;
   try {

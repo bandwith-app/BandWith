@@ -2069,6 +2069,7 @@ const dict: Dictionary = {
   "Sign-in didn’t complete": "No se completó el inicio de sesión",
   "Link expired": "Enlace caducado",
   "Open the reset link in the same browser where you asked for it. Ask for a new link and open it there.": "Abre el enlace de restablecimiento en el mismo navegador en el que lo pediste. Pide un enlace nuevo y ábrelo allí.",
+  "This reset link can no longer change your password. Ask for a new link and open it in this browser.": "Este enlace de restablecimiento ya no puede cambiar tu contraseña. Pide un enlace nuevo y ábrelo en este navegador.",
   "This reset link has expired or was already used. Some email apps open links before you do, and that uses them up. Ask for a new link and open it straight away.": "Este enlace de restablecimiento ha caducado o ya se usó. Algunas apps de correo abren los enlaces antes que tú, y eso los gasta. Pide un enlace nuevo y ábrelo enseguida.",
   "Google or Apple sign-in was cancelled, or this link is no longer valid. Sign in again.": "Se canceló el inicio de sesión con Google o Apple, o este enlace ya no es válido. Vuelve a entrar.",
   "Send a new link": "Enviar un enlace nuevo",

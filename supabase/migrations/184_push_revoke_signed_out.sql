@@ -9,42 +9,76 @@
 -- The app now stops delivery on the device and keeps the revocation for when
 -- it is online again, by then without a session. bw_revoke_push_token works
 -- for anon too, and only:
---   * for the exact token and the account that signed out (both known only to
---     that device and the server);
---   * for exactly the registration the device saved: p_registered_at is the
---     row's own updated_at, returned to the app by the save (below).
---     Any newer registration (a new sign-in, by the same or another
---     account) changes updated_at, so a late or replayed call never undoes
---     it. No device clock is compared with the server's (Codex review #287).
---   * p_registered_at NULL (Codex review #287 round 3): the device never
---     learned its stamp (a registration made by an older build, then the
---     first start after the upgrade offline; or a save whose reply was
---     lost). Then the exact token and account must match. The token is the
---     key: only that device and the server hold it (push_tokens is readable
---     by its owner only). The app drops such a revocation before it saves
---     the token again for the same account, and waits for a flush on its
---     way, so it never lands after a new registration from that device.
+--   * for the exact token and the account that signed out;
+--   * signed out (anon): only with the revocation secret of exactly that
+--     registration (Codex review #287 round 4). The device makes a random
+--     secret, keeps it, and sends it with the save
+--     (bw_register_push_token_stamped); the row stores only its sha256.
+--     Token, account and stamp are not enough: a former user of a shared
+--     iPad holds the token and a bandmate's id. Every new registration
+--     rotates the secret; any other change of the registration (a re-save by
+--     046, a move to another account, a switch off) clears it (trigger), so
+--     a replayed call never undoes a newer registration.
+--   * signed in as the row's owner: the own token, with the row's stamp
+--     (push_tokens.updated_at, returned by the save) or without one.
 -- It can only switch a token off, never on, and returns whether it did.
 --
--- bw_register_push_token_stamped (Codex review #287 round 2): the same save
--- as bw_register_push_token (046), returning that updated_at in the same
--- reply. The app read it back with a second request, and a connection lost
--- between the two left it without the stamp, so a later offline sign-out
--- could not be queued.
+-- bw_push_token_registered: whether the token is still on for that account.
+-- A revocation that came back false is kept while it is (the device may have
+-- lost the save's reply), and dropped once the token is off or has moved.
+-- It answers only someone who holds the device token.
 --
--- Older app builds: nothing they call changes (bw_register_push_token keeps
--- its shape and body; the new app falls back to it when this migration is
--- not applied yet). Idempotent.
+-- bw_register_push_token_stamped (Codex review #287 round 2): the same save
+-- as bw_register_push_token (046), storing the secret's hash and returning
+-- the row's updated_at in the same reply.
+--
+-- Older app builds: nothing they call changes (bw_register_push_token and
+-- bw_unregister_push_token keep their shape and body). They never queued a
+-- signed-out revocation. What a registration they made loses: it has no
+-- secret, so a later signed-out revocation of it is refused; signed in, the
+-- owner still switches it off. The new app falls back to 046 when this
+-- migration is not applied yet. Idempotent.
 -- ============================================================================
 
 BEGIN;
 
--- Not live anywhere yet; the parameter name changed.
+ALTER TABLE public.push_tokens ADD COLUMN IF NOT EXISTS revoke_secret_hash text;
+
+-- Any change of the registration that doesn't set a new secret clears it.
+CREATE OR REPLACE FUNCTION public.bw_push_tokens_secret_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF coalesce(current_setting('bw.push_secret_set', true), '') = 'on' THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.revoke_secret_hash IS NOT DISTINCT FROM OLD.revoke_secret_hash
+     AND (NEW.user_id IS DISTINCT FROM OLD.user_id
+          OR NEW.token IS DISTINCT FROM OLD.token
+          OR NEW.is_active IS DISTINCT FROM OLD.is_active
+          OR NEW.updated_at IS DISTINCT FROM OLD.updated_at) THEN
+    NEW.revoke_secret_hash := NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.bw_push_tokens_secret_guard() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS bw_push_tokens_secret_guard ON public.push_tokens;
+CREATE TRIGGER bw_push_tokens_secret_guard
+  BEFORE UPDATE ON public.push_tokens
+  FOR EACH ROW EXECUTE FUNCTION public.bw_push_tokens_secret_guard();
+
+-- Not live anywhere yet: earlier drafts had other parameters.
 DROP FUNCTION IF EXISTS public.bw_revoke_push_token(text, uuid, timestamptz);
+DROP FUNCTION IF EXISTS public.bw_revoke_push_token(text, uuid, timestamptz, text);
 CREATE FUNCTION public.bw_revoke_push_token(
   p_token text,
   p_user_id uuid,
-  p_registered_at timestamptz
+  p_registered_at timestamptz DEFAULT NULL,
+  p_secret text DEFAULT NULL
 )
 RETURNS boolean
 LANGUAGE plpgsql
@@ -52,6 +86,7 @@ SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
 DECLARE
+  v_uid uuid := auth.uid();
   v_count integer;
 BEGIN
   IF p_token IS NULL OR length(p_token) < 16 OR length(p_token) > 4096
@@ -59,24 +94,58 @@ BEGIN
     RETURN false;
   END IF;
 
-  UPDATE public.push_tokens
-     SET is_active = false,
-         updated_at = now()
-   WHERE token = p_token
-     AND user_id = p_user_id
-     AND coalesce(is_active, true)
-     AND (p_registered_at IS NULL OR updated_at = p_registered_at);
+  IF v_uid IS NOT NULL AND v_uid = p_user_id AND p_secret IS NULL THEN
+    -- The owner, signed in: the own token, at that stamp or any.
+    UPDATE public.push_tokens
+       SET is_active = false, updated_at = now()
+     WHERE token = p_token
+       AND user_id = p_user_id
+       AND coalesce(is_active, true)
+       AND (p_registered_at IS NULL OR updated_at = p_registered_at);
+  ELSE
+    -- Anyone else (signed out included): the registration's own secret.
+    IF p_secret IS NULL OR length(p_secret) < 32 OR length(p_secret) > 256 THEN
+      RETURN false;
+    END IF;
+    UPDATE public.push_tokens
+       SET is_active = false, updated_at = now()
+     WHERE token = p_token
+       AND user_id = p_user_id
+       AND coalesce(is_active, true)
+       AND revoke_secret_hash IS NOT NULL
+       AND revoke_secret_hash = encode(sha256(convert_to(p_secret, 'UTF8')), 'hex');
+  END IF;
   GET DIAGNOSTICS v_count = ROW_COUNT;
   RETURN v_count > 0;
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.bw_revoke_push_token(text, uuid, timestamptz) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.bw_revoke_push_token(text, uuid, timestamptz) TO anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.bw_revoke_push_token(text, uuid, timestamptz, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.bw_revoke_push_token(text, uuid, timestamptz, text) TO anon, authenticated, service_role;
 
--- The save of 046's bw_register_push_token, plus the stamp it wrote.
-CREATE OR REPLACE FUNCTION public.bw_register_push_token_stamped(p_token text, p_platform text)
-RETURNS timestamptz
+-- Still on for that account? Only for someone holding the device token.
+CREATE OR REPLACE FUNCTION public.bw_push_token_registered(p_token text, p_user_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT p_token IS NOT NULL AND length(p_token) BETWEEN 16 AND 4096 AND EXISTS (
+    SELECT 1 FROM public.push_tokens
+     WHERE token = p_token AND user_id = p_user_id AND coalesce(is_active, true)
+  );
+$$;
+REVOKE ALL ON FUNCTION public.bw_push_token_registered(text, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.bw_push_token_registered(text, uuid) TO anon, authenticated, service_role;
+
+-- The save of 046's bw_register_push_token, plus the revocation secret's
+-- hash and the stamp it wrote. Not live anywhere yet: the earlier draft
+-- returned only the stamp.
+DROP FUNCTION IF EXISTS public.bw_register_push_token_stamped(text, text);
+DROP FUNCTION IF EXISTS public.bw_register_push_token_stamped(text, text, text);
+CREATE FUNCTION public.bw_register_push_token_stamped(p_token text, p_platform text, p_secret text DEFAULT NULL)
+RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path TO 'public'
@@ -84,24 +153,36 @@ AS $$
 DECLARE
   v_uid uuid := auth.uid();
   v_at timestamptz;
+  v_secret text := p_secret;
+  v_made boolean := false;
 BEGIN
   IF v_uid IS NULL THEN RAISE EXCEPTION 'Not signed in'; END IF;
   IF p_token IS NULL OR length(p_token) < 10 OR length(p_token) > 4096 THEN RAISE EXCEPTION 'Invalid token'; END IF;
   IF p_platform IS NULL OR p_platform NOT IN ('ios', 'android', 'web') THEN RAISE EXCEPTION 'Invalid platform'; END IF;
+  IF v_secret IS NULL THEN
+    v_secret := replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '');
+    v_made := true;
+  ELSIF length(v_secret) < 32 OR length(v_secret) > 256 THEN
+    RAISE EXCEPTION 'Invalid secret';
+  END IF;
 
-  INSERT INTO public.push_tokens (user_id, token, platform, is_active, updated_at)
-  VALUES (v_uid, p_token, p_platform, true, now())
+  PERFORM set_config('bw.push_secret_set', 'on', true);
+  INSERT INTO public.push_tokens (user_id, token, platform, is_active, updated_at, revoke_secret_hash)
+  VALUES (v_uid, p_token, p_platform, true, now(), encode(sha256(convert_to(v_secret, 'UTF8')), 'hex'))
   ON CONFLICT (token) DO UPDATE
     SET user_id = EXCLUDED.user_id,
         platform = EXCLUDED.platform,
         is_active = true,
-        updated_at = now()
+        updated_at = now(),
+        revoke_secret_hash = EXCLUDED.revoke_secret_hash
   RETURNING updated_at INTO v_at;
-  RETURN v_at;
+  PERFORM set_config('bw.push_secret_set', '', true);
+
+  RETURN jsonb_build_object('registered_at', v_at, 'secret', CASE WHEN v_made THEN v_secret END);
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.bw_register_push_token_stamped(text, text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.bw_register_push_token_stamped(text, text) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.bw_register_push_token_stamped(text, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.bw_register_push_token_stamped(text, text, text) TO authenticated, service_role;
 
 COMMIT;

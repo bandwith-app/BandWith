@@ -6,10 +6,13 @@ import {
   callbackProblemText,
   callbackUrlError,
   markLaunchUrlHandled,
+  recoveryRefusedText,
   wasLaunchUrlHandled,
 } from '../authCallback';
 import { setLocalePref } from '../i18n';
+import { authErrorMessage } from '../authErrors';
 import vercelJson from '../../../vercel.json?raw';
+import authCtx from '../AuthContext.tsx?raw';
 
 // The link a tester got (Android Chrome): reset link already used.
 const TESTER_SEARCH =
@@ -49,6 +52,21 @@ describe('auth callback errors', () => {
     expect(callbackProblemText('cancelled', false).title).toBe('Sign-in didn’t complete');
     expect(callbackProblemText('unknown', false).body).toMatch(/Sign in again/);
     expect(callbackProblemText('network', true).body).toBe('Check your connection and try again.');
+  });
+
+  // Codex review #287 round 4: a reset form that can't prove the account says
+  // to ask for a new link, in every language, instead of "open it elsewhere".
+  it('a refused password change says to ask for a new link', async () => {
+    await setLocalePref('en');
+    expect(recoveryRefusedText()).toBe('This reset link can no longer change your password. Ask for a new link and open it in this browser.');
+    for (const l of ['it', 'es', 'fr', 'de', 'pt'] as const) {
+      await setLocalePref(l);
+      expect(recoveryRefusedText()).not.toMatch(/reset link can no longer/);
+    }
+    expect(authCtx).toMatch(/new AuthError\(recoveryRefusedText\(\), 403, 'recovery_not_verified'\)/);
+    // The reset screen shows authErrorMessage(error): it must keep these words.
+    await setLocalePref('en');
+    expect(authErrorMessage({ message: 'x', status: 403, code: 'recovery_not_verified' })).toBe(recoveryRefusedText());
   });
 
   it('translates', () => {

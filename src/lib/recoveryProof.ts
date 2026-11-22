@@ -130,7 +130,9 @@ export function noteRecovery(
   if (!own || own.userId !== userId) return;
   if (accessToken && own.accessToken && accessToken !== own.accessToken) return;
   try {
-    store.setItem(KEY, JSON.stringify({ userId, at: now, link: own.link }));
+    // The session the exchange returned: the password change uses exactly
+    // this token (Codex review #287 round 4), never the shared session.
+    store.setItem(KEY, JSON.stringify({ userId, at: now, link: own.link, token: own.accessToken }));
   } catch {
     /* storage blocked: the reset screen won't open, the link can be asked again */
   }
@@ -179,33 +181,79 @@ export function hasAnyRecoveryProof(store: Store | null = sessionStore(), now = 
   }
 }
 
+/** The `sub` of a JWT (no signature check: the server checks it). */
+function tokenSubject(token: string): string | null {
+  try {
+    const part = token.split('.')[1];
+    if (!part) return null;
+    const b64 = part.replace(/-/g, '+').replace(/_/g, '/');
+    const v = JSON.parse(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4))) as { sub?: unknown };
+    return typeof v.sub === 'string' ? v.sub : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The access token of the session the reset link's exchange returned, while the proof holds. */
+function provenToken(userId: string, store: Store | null, now = Date.now()): string | null {
+  if (!store || !hasRecoveryProof(userId, store, now)) return null;
+  try {
+    const v = JSON.parse(store.getItem(KEY) || 'null') as { token?: unknown } | null;
+    const token = typeof v?.token === 'string' && v.token ? v.token : null;
+    return token && tokenSubject(token) === userId ? token : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * The reset form's password change (Codex review #287 round 3): the auth
- * library changes the password of the session in shared storage, which
- * another tab may have switched to someone else while React still shows the
- * account the link signed in. Right before the change, that stored session
- * must be the proven account; otherwise nothing is changed.
+ * The reset form's password change. Rounds 3 and 4 of Codex review #287: the
+ * auth library changes the password of the session in shared storage, which
+ * another tab can switch to someone else at any moment, even between a check
+ * and the call. So the change carries exactly the session that this tab's
+ * exchange of the reset link returned (kept with the proof), and the shared
+ * session is never read. A proof without that token, or whose token is not
+ * the proven account, changes nothing.
  */
 export async function updatePasswordForProvenAccount<E>(
   newPassword: string,
   expectedUserId: string | null | undefined,
   deps: {
-    sessionUserId: () => Promise<string | null | undefined>;
-    update: (password: string) => Promise<{ error: E | null }>;
+    update: (password: string, accessToken: string) => Promise<{ error: E | null }>;
     store?: Store | null;
   },
 ): Promise<{ error: E | Error | null }> {
   const store = deps.store === undefined ? sessionStore() : deps.store;
-  const refused = () => ({ error: Object.assign(new Error('recovery_not_verified'), { code: 'recovery_not_verified' }) });
-  if (!expectedUserId || !hasRecoveryProof(expectedUserId, store)) return refused();
-  let current: string | null | undefined = null;
-  try {
-    current = await deps.sessionUserId();
-  } catch {
-    current = null;
-  }
-  if (current !== expectedUserId) return refused();
-  return deps.update(newPassword);
+  const token = expectedUserId ? provenToken(expectedUserId, store) : null;
+  if (!token) return { error: Object.assign(new Error('recovery_not_verified'), { code: 'recovery_not_verified' }) };
+  return deps.update(newPassword, token);
+}
+
+/** An auth API refusal, shaped like the library's AuthError (message, status, code). */
+export type PasswordUpdateError = Error & { status?: number; code?: string };
+
+/**
+ * `PUT /auth/v1/user` with one session's access token: the same call
+ * `auth.updateUser` makes, without the shared session.
+ */
+export function passwordUpdateWithToken(baseUrl: string, apiKey: string, doFetch: typeof fetch = fetch.bind(globalThis)) {
+  return async (password: string, accessToken: string): Promise<{ error: PasswordUpdateError | null }> => {
+    try {
+      const res = await doFetch(`${baseUrl.replace(/\/+$/, '')}/auth/v1/user`, {
+        method: 'PUT',
+        headers: { apikey: apiKey, Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      if (res.ok) return { error: null };
+      type Refusal = { msg?: unknown; message?: unknown; error_description?: unknown; code?: unknown; error_code?: unknown };
+      const body = (await res.json().catch(() => null)) as Refusal | null;
+      const message = [body?.msg, body?.message, body?.error_description].find((m) => typeof m === 'string' && m) as string | undefined;
+      const code = [body?.code, body?.error_code].find((c) => typeof c === 'string' && c) as string | undefined;
+      return { error: Object.assign(new Error(message || `Password change failed (${res.status})`), { status: res.status, code }) };
+    } catch (e) {
+      return { error: Object.assign(new Error(e instanceof Error ? e.message : 'Network error'), { code: 'network' }) };
+    }
+  };
 }
 
 export function clearRecoveryProof(store: Store | null = sessionStore()) {
