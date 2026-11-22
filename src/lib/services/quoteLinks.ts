@@ -533,15 +533,29 @@ export const QUOTE_STAGE_ORDER: ClientQuoteStage[] = ['sent', 'viewed', 'discuss
 // ------------------------------------------------------------------ after an edit
 
 /**
+ * 183: the band changed the client of a sent quote, so the server gave the
+ * link a new token (the old client's link stopped working) and put it back
+ * to draft. True until the quote is sent to the new client.
+ */
+export const awaitingNewRecipient = (link: Pick<QuoteLinkRow, 'status'> | null | undefined, activity: QuoteActivity[]) =>
+  !!link && link.status === 'draft' && activity.some((a) => a.kind === 'link_rotated' && a.body === 'recipient_changed');
+
+/**
  * A sent quote was edited: publish the new version on the client's page,
  * with its PDF, in the language the client already got. Returns the new
  * version, or null when the quote has no sent link (nothing to do) or the
- * client already answered.
+ * client already answered. `newRecipient`: the client changed (183), the
+ * quote waits to be sent to the new one.
  */
-export async function republishClientQuote(quote: Quote, bandId: string, bandName: string): Promise<Result<number>> {
+export async function republishClientQuote(
+  quote: Quote,
+  bandId: string,
+  bandName: string,
+): Promise<Result<number> & { newRecipient?: boolean }> {
   const state = await getQuoteLinkState(quote.id);
   if (state.error) return { data: null, error: state.error };
   const link = state.data?.link;
+  if (awaitingNewRecipient(link, state.data?.activity ?? [])) return { data: null, error: null, newRecipient: true };
   if (!link || link.status === 'draft' || link.status === 'accepted') return { data: null, error: null };
   try {
     const [{ getBandPricing }, { generateQuotePdf, uploadQuotePdfForSharing }] = await Promise.all([

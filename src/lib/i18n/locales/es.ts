@@ -4638,6 +4638,8 @@ const dict: Dictionary = {
   "{n} lines have a voice part. They stay on their lines when you edit the words.": "{n} líneas tienen una parte vocal. Se quedan en sus líneas cuando editas la letra.",
   "Tap a word to add a chord or mark who sings it. Drag a chord to move it to another word.": "Toca una palabra para añadir un acorde o marcar quién la canta. Arrastra un acorde para moverlo a otra palabra.",
   "Filled in from each member’s instrument. Change it and save.": "Rellenado según el instrumento de cada miembro. Cámbialo y guarda.",
+  "New client, new link: the old one no longer works. Send the quote to the new client.": "Nuevo cliente, nuevo enlace: el anterior ya no funciona. Envía el presupuesto al nuevo cliente.",
+  "New link for the new client": "Nuevo enlace para el nuevo cliente",
 };
 
 export default dict;

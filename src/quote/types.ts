@@ -137,6 +137,8 @@ export interface QuoteLinkView {
   balance_paid_at?: string | null;
   /** 168: the band recorded the deposit as received (accepted quotes only). */
   deposit_paid?: boolean;
+  /** 183: the amount the band recorded as received (absent before 183 or when not recorded). */
+  deposit_paid_amount?: number | null;
   /** respond: the quote changed since the client loaded it; nothing was recorded. */
   stale?: boolean;
 }
