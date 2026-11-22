@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { X, Users, Link, Check, Plus } from '@/app/components/icons';
 import { HeaderAction, IconButton } from '@/app/components/bw/Screen';
 import { RailCover } from '@/lib/railActions';
+import { useFocusTrap } from '@/lib/focusTrap';
 import { PillButton, PillField, Selector, FormError } from '@/app/components/bw/Form';
 import { userMessage } from '@/lib/userError';
 import { cn } from '@/app/components/ui/utils';
@@ -11,7 +12,6 @@ import { createBand, type Band as BandRecord } from '@/lib/services/bands';
 import { useBand } from '@/lib/BandContext';
 import { useAuth } from '@/lib/AuthContext';
 import { t, useT } from '@/lib/i18n';
-import { useFocusTrap } from '@/lib/focusTrap';
 
 interface CreateBandModalProps {
   isOpen: boolean;
