@@ -141,6 +141,7 @@ const business: AreaText = {
             "Puedes cambiar tu respuesta hasta que se confirme el concierto. La tarjeta también está en ese día de tu calendario.",
           ],
         },
+        { type: "shot", id: "quote-hold-card", caption: "La tarjeta de fecha en reserva en el Inicio de un miembro, ya respondida: el día, la hora, el lugar y las dos respuestas." },
         {
           type: "steps",
           title: "Mira quién está libre (admins)",
@@ -149,6 +150,7 @@ const business: AreaText = {
             "En **Quién está libre**, los miembros aparecen agrupados en **Libres ({count})**, **No pueden ({count})** y **Sin respuesta ({count})**. **En la formación** marca a los que pusiste en el presupuesto.",
           ],
         },
+        { type: "shot", id: "quote-hold-answers", caption: "Quién está libre en el evento del presupuesto: quién está libre, quién no puede y quién aún no ha respondido." },
         {
           type: "list",
           title: "Qué pasa después",

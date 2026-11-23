@@ -142,6 +142,7 @@ const business: AreaText = {
             "Puoi cambiare risposta finché il gig non è confermato. La scheda è anche in quel giorno nel tuo calendario.",
           ],
         },
+        { type: "shot", id: "quote-hold-card", caption: "La scheda della data in sospeso nella Home di un membro, con la risposta data: il giorno, l’orario, il luogo e le due risposte." },
         {
           type: "steps",
           title: "Guarda chi è libero (admin)",
@@ -150,6 +151,7 @@ const business: AreaText = {
             "Sotto **Chi è libero**, i membri sono raggruppati in **Liberi ({count})**, **Non possono ({count})** e **Senza risposta ({count})**. **In formazione** segna quelli che hai messo nel preventivo.",
           ],
         },
+        { type: "shot", id: "quote-hold-answers", caption: "Chi è libero nell’evento del preventivo: chi è libero, chi non può e chi non ha ancora risposto." },
         {
           type: "list",
           title: "Cosa succede dopo",

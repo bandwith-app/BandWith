@@ -150,6 +150,7 @@ const business: AreaModule = {
             'You can change your answer until the gig is confirmed. The card is also on that day in your calendar.',
           ],
         },
+        { type: 'shot', id: 'quote-hold-card', caption: "The hold card on a member's Home, answered: the day, the time, the place and the two answers." },
         {
           type: 'steps',
           title: 'See who is free (admins)',
@@ -158,6 +159,7 @@ const business: AreaModule = {
             'Under **Who\'s free**, members are grouped as **Free ({count})**, **Can\'t ({count})** and **No answer yet ({count})**. **On the lineup** marks the ones you put on the quote.',
           ],
         },
+        { type: 'shot', id: 'quote-hold-answers', caption: "Who's free on the quote's event: who is free, who can't and who hasn't answered yet." },
         {
           type: 'list',
           title: 'What happens next',
@@ -1148,6 +1150,18 @@ const business: AreaModule = {
     {
       id: 'analytics',
       how: 'Home > scroll to the bottom > View Analytics. Capture the totals, Revenue vs previous period and Monthly breakdown.',
+      role: 'admin',
+      viewport: 'phone',
+    },
+    {
+      id: 'quote-hold-card',
+      how: "Jazz Club Night is still a quote (demo data: The Blue Room, New York, dollars). As a member, open Home, tap I'm free on the card under Possible gigs, then scroll so Possible gigs is at the top.",
+      role: 'member',
+      viewport: 'phone',
+    },
+    {
+      id: 'quote-hold-answers',
+      how: "Give the quote's hold three answers (Marta C. and Sam O. free, Lena P. can't, Jonah R. none). As admin, open Jazz Club Night and scroll to Who's free.",
       role: 'admin',
       viewport: 'phone',
     },

@@ -2064,7 +2064,7 @@ const music: AreaText = {
           tone: "tip",
           text: "Les membres à proximité voient tout de suite le nouvel ordre du leader en Bluetooth, avant qu’il soit enregistré.",
         },
-        { type: "shot", id: "stage-offline-banner", caption: "Le mode scène sans réseau : l’étiquette du contenu et la barre avec les modifications en attente de réseau." },
+        { type: "shot", id: "stage-offline-banner", caption: "Le mode scène sans réseau : l’étiquette du contenu et, dessous, les modifications en attente de réseau." },
       ],
     },
     {
