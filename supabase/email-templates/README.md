@@ -21,11 +21,13 @@ Type: `Neue Haas Grotesk Display Pro` → `Helvetica Neue` → Arial for display
 
 | File | Supabase template | Hero | Variables |
 |---|---|---|---|
-| `confirm-signup.html` | Confirm signup | Lime | `{{ .ConfirmationURL }}` `{{ .Email }}` `{{ .SiteURL }}` |
+| `confirm-signup.html` | Confirm signup | Lime | `{{ .Token }}` `{{ .ConfirmationURL }}` `{{ .Email }}` `{{ .SiteURL }}` |
 | `reset-password.html` | Reset password | Ink | `{{ .ConfirmationURL }}` `{{ .Email }}` `{{ .SiteURL }}` |
 | `magic-link.html` | Magic link | Ink | `{{ .ConfirmationURL }}` `{{ .Email }}` `{{ .SiteURL }}` |
 | `change-email.html` | Change email address | Ink | `{{ .ConfirmationURL }}` `{{ .Email }}` `{{ .NewEmail }}` `{{ .SiteURL }}` |
 | `reauthentication.html` | Reauthentication | Ink | `{{ .Token }}` `{{ .Email }}` `{{ .SiteURL }}` |
+
+**Confirm signup: a code, and the link below it.** The app's "Check your email" step asks for the code (`{{ .Token }}`) and signs the person in with it, so a phone app never hands over to the browser. The link (`{{ .ConfirmationURL }}`) stays in the email as "Or use this link": app versions already installed only know the link. The app asks for exactly `SIGNUP_CODE_LENGTH` digits (`src/lib/signupCode.ts`, 6), so the project's Authentication → Sign In / Providers → Email → **Email OTP length** must be the same number; the same setting sizes the Reauthentication code. A code lasts as long as **Email OTP expiration** (3600 s by default). Subject in the dashboard: `Your BandWith confirmation code`. Auth templates are one language (English) for everyone: Supabase renders them, not `send-email`.
 
 ### App emails (sent by the `send-email` Edge Function via Resend)
 

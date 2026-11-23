@@ -27,7 +27,7 @@ const basics: AreaText = {
             "Toca **Continuar con Google** o **Continuar con Apple** para usar esa cuenta, o rellena el formulario de email que hay debajo de **o con email**.",
             "En el formulario de email, escribe tu **Nombre completo**, tu **Email** y una **Contraseña** de al menos 8 caracteres (la pista dice **Mín. 8 caracteres**).",
             "Toca **Continuar** abajo. Al continuar aceptas los **Términos** y la **Política de privacidad**; los dos se abren desde los enlaces bajo el formulario.",
-            "Si la app muestra **Revisa tu email**, abre el enlace de ese email para confirmar tu dirección (consulta [[confirm-your-email]]).",
+            "Si la app muestra **Revisa tu email**, escribe el código de 6 dígitos de ese email para confirmar tu dirección (consulta [[confirm-your-email]]).",
             "En **¿Qué te trae por aquí?**, elige **Gestionar mi banda** o **Agenda solista** y toca **Continuar** (consulta [[solo-and-band-mode]]).",
           ],
         },
@@ -50,20 +50,20 @@ const basics: AreaText = {
       summary: "Una cuenta nueva con email puede necesitar que confirmes la dirección antes de entrar.",
       roles: ["admin", "member", "deputy"],
       kind: "task",
-      keywords: ["verificación", "enlace de confirmación", "email de activación", "revisa tu email", "confirmar correo"],
+      keywords: ["verificación", "código de confirmación", "código de 6 dígitos", "enlace de confirmación", "email de activación", "revisa tu email", "confirmar correo"],
       related: ["create-an-account", "sign-in"],
       body: [
-        { type: "p", text: "Cuando la confirmación por email está activada, la cuenta solo existe cuando abres el enlace que te enviamos. Hasta entonces la app muestra **Revisa tu email**." },
+        { type: "p", text: "Cuando la confirmación por email está activada, la cuenta solo existe cuando confirmas la dirección con el código de 6 dígitos que te enviamos por email. Hasta entonces la app muestra **Revisa tu email**." },
         {
           type: "steps",
           items: [
-            "Abre el email de BandWith en el mismo dispositivo donde creaste la cuenta.",
-            "Toca el enlace. La app se abre y termina de crear tu cuenta.",
-            "Si la app sigue en **Revisa tu email**, toca **Ya lo confirmé: iniciar sesión**.",
-            "¿No te ha llegado? Mira en la carpeta de spam y toca **Enviar el email de nuevo**. El botón cambia a **Email enviado de nuevo**.",
+            "Abre el email de BandWith y busca el código de 6 dígitos.",
+            "Vuelve a la app y escríbelo en **Código de confirmación**. Con el sexto dígito se comprueba solo (o toca **Verificar**) y la app sigue con tu cuenta nueva.",
+            "¿Has usado el enlace del email? Si la app sigue en **Revisa tu email**, toca **Ya lo confirmé: iniciar sesión**.",
+            "¿No te ha llegado? Mira en la carpeta de spam y toca **Enviar un código nuevo**. El botón cambia a **Código nuevo enviado** y el código anterior deja de funcionar.",
           ],
         },
-        { type: "note", tone: "tip", text: "Abre el enlace en el dispositivo donde te registraste. Un enlace abierto en otro dispositivo no puede terminar el registro allí." },
+        { type: "note", tone: "tip", text: "El email también trae un enlace que confirma tu dirección. Ábrelo en el dispositivo donde te registraste: un enlace abierto en otro dispositivo no puede terminar el registro allí." },
       ],
     },
     {
@@ -1285,7 +1285,7 @@ const basics: AreaText = {
 
   faq: [
     { q: "He olvidado mi contraseña. ¿Qué hago?", a: "En la pantalla de acceso, toca **¿Olvidaste la contraseña?** y sigue el enlace que te enviamos por email. El enlace funciona durante una hora. Consulta [[forgot-password]]." },
-    { q: "Me he registrado pero no puedo entrar.", a: "Puede que una cuenta nueva necesite confirmar primero su dirección. Abre el enlace del email en el dispositivo donde creaste la cuenta y luego entra. Consulta [[confirm-your-email]]." },
+    { q: "Me he registrado pero no puedo entrar.", a: "Puede que una cuenta nueva necesite confirmar primero su dirección. En **Revisa tu email**, escribe el código de 6 dígitos del email; o abre el enlace de ese email en el dispositivo donde creaste la cuenta y luego entra. Consulta [[confirm-your-email]]." },
     { q: "Face ID (o la huella) ha dejado de funcionar.", a: "Entra una vez con tu contraseña para reactivar el inicio rápido. Pasa después de cambiar la contraseña o cuando caduca el acceso guardado. Consulta [[quick-sign-in]]." },
     { q: "¿Por qué la app me pide Face ID cada vez que se abre?", a: "Es el bloqueo de la app. En iPhone, iPad y Android lo pide cuando la app se abre después de cerrarla. Desactívalo en **Ajustes y cuenta › Privacidad y cuenta › Bloqueo de la app**. Consulta [[app-lock]]." },
     { q: "¿Cómo me uno a mi banda?", a: "Abre el enlace de invitación del email que te envió tu admin, o toca **Tengo un código de invitación** en la pantalla de bienvenida y pégalo. Consulta [[join-with-an-invite]]." },

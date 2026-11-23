@@ -28,7 +28,7 @@ const basics: AreaText = {
             "Touche **Continuer avec Google** ou **Continuer avec Apple** pour utiliser ce compte, ou remplis le formulaire sous **ou par e-mail**.",
             "Dans le formulaire, saisis ton **Nom complet**, ton **E-mail** et un **Mot de passe** d’au moins 8 caractères (l’indication affiche **8 caractères min.**).",
             "Touche **Continuer** en bas. En continuant, tu acceptes les **Conditions** et la **Politique de confidentialité** ; les deux s’ouvrent depuis les liens sous le formulaire.",
-            "Si l’app affiche **Consulte tes e-mails**, ouvre le lien de cet e-mail pour confirmer ton adresse (voir [[confirm-your-email]]).",
+            "Si l’app affiche **Consulte tes e-mails**, saisis le code à 6 chiffres de cet e-mail pour confirmer ton adresse (voir [[confirm-your-email]]).",
             "Sur **Qu’est-ce qui t’amène ?**, choisis **Gérer mon groupe** ou **Agenda solo** et touche **Continuer** (voir [[solo-and-band-mode]]).",
           ],
         },
@@ -51,20 +51,20 @@ const basics: AreaText = {
       summary: "Un nouveau compte par e-mail peut demander de confirmer l’adresse avant la connexion.",
       roles: ["admin", "member", "deputy"],
       kind: "task",
-      keywords: ["vérification", "lien de confirmation", "e-mail d’activation", "consulte tes e-mails", "confirmer l’adresse"],
+      keywords: ["vérification", "code de confirmation", "code à 6 chiffres", "lien de confirmation", "e-mail d’activation", "consulte tes e-mails", "confirmer l’adresse"],
       related: ["create-an-account", "sign-in"],
       body: [
-        { type: "p", text: "Quand la confirmation par e-mail est activée, le compte n’existe qu’une fois le lien envoyé ouvert. En attendant, l’app affiche **Consulte tes e-mails**." },
+        { type: "p", text: "Quand la confirmation par e-mail est activée, le compte n’existe qu’une fois l’adresse confirmée avec le code à 6 chiffres que nous t’envoyons par e-mail. En attendant, l’app affiche **Consulte tes e-mails**." },
         {
           type: "steps",
           items: [
-            "Ouvre l’e-mail de BandWith sur l’appareil où tu as créé le compte.",
-            "Touche le lien qu’il contient. L’app s’ouvre et termine la création de ton compte.",
-            "Si l’app reste sur **Consulte tes e-mails**, touche **C’est confirmé : se connecter**.",
-            "Pas d’e-mail ? Regarde dans tes spams, puis touche **Renvoyer l’e-mail**. Le bouton devient **E-mail renvoyé**.",
+            "Ouvre l’e-mail de BandWith et repère le code à 6 chiffres.",
+            "Reviens dans l’app et saisis-le dans **Code de confirmation**. Au sixième chiffre, la vérification se lance toute seule (ou touche **Vérifier**) et l’app continue avec ton nouveau compte.",
+            "Tu as utilisé le lien de l’e-mail ? Si l’app reste sur **Consulte tes e-mails**, touche **C’est confirmé : se connecter**.",
+            "Pas d’e-mail ? Regarde dans tes spams, puis touche **Envoyer un nouveau code**. Le bouton devient **Nouveau code envoyé** et le code précédent ne fonctionne plus.",
           ],
         },
-        { type: "note", tone: "tip", text: "Ouvre le lien sur l’appareil où tu t’es inscrit. Un lien ouvert sur un autre appareil ne peut pas y terminer l’inscription." },
+        { type: "note", tone: "tip", text: "L’e-mail contient aussi un lien qui confirme ton adresse. Ouvre-le sur l’appareil où tu t’es inscrit : un lien ouvert sur un autre appareil ne peut pas y terminer l’inscription." },
       ],
     },
     {
@@ -1296,7 +1296,7 @@ const basics: AreaText = {
 
   faq: [
     { q: "J’ai oublié mon mot de passe. Que faire ?", a: "Sur l’écran de connexion, touche **Mot de passe oublié ?** et suis le lien envoyé par e-mail. Le lien reste valable une heure. Voir [[forgot-password]]." },
-    { q: "Je me suis inscrit mais je n’arrive pas à me connecter.", a: "Un nouveau compte peut devoir confirmer son adresse d’abord. Ouvre le lien de l’e-mail sur l’appareil où tu as créé le compte, puis connecte-toi. Voir [[confirm-your-email]]." },
+    { q: "Je me suis inscrit mais je n’arrive pas à me connecter.", a: "Un nouveau compte peut devoir confirmer son adresse d’abord. Sur **Consulte tes e-mails**, saisis le code à 6 chiffres reçu par e-mail ; ou ouvre le lien de cet e-mail sur l’appareil où tu as créé le compte, puis connecte-toi. Voir [[confirm-your-email]]." },
     { q: "Face ID (ou l’empreinte) ne marche plus.", a: "Connecte-toi une fois avec ton mot de passe pour réactiver la connexion rapide. Cela arrive après un changement de mot de passe ou quand la connexion enregistrée expire. Voir [[quick-sign-in]]." },
     { q: "Pourquoi l’app demande-t-elle Face ID à chaque démarrage ?", a: "C’est le verrouillage de l’app. Sur iPhone, iPad et Android, il se déclenche quand l’app démarre après avoir été fermée. Désactive-le dans **Réglages et compte › Confidentialité et compte › Verrouillage de l’app**. Voir [[app-lock]]." },
     { q: "Comment rejoindre mon groupe ?", a: "Ouvre le lien d’invitation de l’e-mail envoyé par l’admin de ton groupe, ou touche **J’ai un code d’invitation** sur l’écran d’accueil et colle le code. Voir [[join-with-an-invite]]." },
