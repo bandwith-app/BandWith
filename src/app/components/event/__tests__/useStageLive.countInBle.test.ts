@@ -18,7 +18,7 @@ import { renderHook, act, render, screen, fireEvent, cleanup } from '@testing-li
  * depends on how fast the machine is.
  */
 type Handler = { type: string; event: string; cb: (msg: unknown) => void };
-const phones: { key: string; topic: string; stage: boolean; handlers: Handler[]; meta: unknown }[] = [];
+const phones: { key: string; topic: string; stage: boolean; handlers: Handler[]; meta: unknown; status?: (s: string) => void }[] = [];
 let lastKey = '';
 const net = vi.hoisted(() => ({ up: true }));
 const presence = (p: { handlers: Handler[] }, event: string, msg: unknown) =>
@@ -27,7 +27,7 @@ vi.mock('@/lib/supabase', () => ({
   supabase: {
     channel: (topic: string, opts: { config: { presence?: { key: string } } }) => {
       if (opts.config.presence) lastKey = opts.config.presence.key;
-      const phone = { key: lastKey, topic, stage: !!opts.config.presence, handlers: [] as Handler[], meta: null as unknown };
+      const phone: (typeof phones)[number] = { key: lastKey, topic, stage: !!opts.config.presence, handlers: [] as Handler[], meta: null as unknown };
       phones.push(phone);
       const ch = {
         on(type: string, filter: { event: string }, cb: (msg: unknown) => void) {
@@ -35,6 +35,7 @@ vi.mock('@/lib/supabase', () => ({
           return ch;
         },
         subscribe(cb: (s: string) => void) {
+          phone.status = cb;
           cb(net.up ? 'SUBSCRIBED' : 'CHANNEL_ERROR');
           return ch;
         },
@@ -169,6 +170,7 @@ import { useStageLive, BLE_LEADER_GONE_MS } from '../useStageLive';
 import { StageCountInOverlay, useCountInUi } from '@/app/components/dashboard/StageCountIn';
 import { COUNTIN_EVENT, COUNTIN_LEAD_MS, GO_MS, countInAt, countInPlan, parseCountInBle, startCountIn, stopCountIn, type CountInState } from '@/lib/countIn';
 import { nowMs } from '@/lib/stageClick';
+import { nextSeq } from '@/lib/stageLive';
 import { meterOf } from '@/lib/meter';
 
 const SONGS = [
@@ -180,8 +182,11 @@ const phone = (isLeader: boolean) =>
 type Phone = ReturnType<typeof phone>;
 const id = (p: Phone) => p.result.current.clientId;
 /** 4/4 at 120: 4 3 2 1 GO, half a second apart; the count starts 1.5 s after the tap. */
-const tap = (leader: Phone, ahead = 0, songId = 'row-1') =>
-  startCountIn({ from: id(leader), songId, bpm: 120, meter: meterOf('4/4'), now: nowMs() + ahead, prev: leader.result.current.countIn.state });
+const tap = (leader: Phone, ahead = 0, songId = 'row-1') => ({
+  ...startCountIn({ from: id(leader), songId, bpm: 120, meter: meterOf('4/4'), now: nowMs() + ahead }),
+  // Its seq comes from the leader's clock too, like its start.
+  seq: nextSeq(leader.result.current.countIn.state?.seq, Date.now() + ahead),
+});
 const start = (leader: Phone, ahead = 0, songId = 'row-1') => {
   const c = tap(leader, ahead, songId);
   act(() => leader.result.current.countIn.set(c));
@@ -549,16 +554,22 @@ describe('count-in: internet and Bluetooth together', () => {
     expect(member.result.current.countIn.state?.on).toBe(false);
   });
 
-  it('Bluetooth for the click switched off mid-count (ble_live): a phone online keeps counting on the same beat', () => {
+  it('Bluetooth for the click switched off mid-count (ble_live): a phone online keeps the very count it had (a countdown it hid stays hidden)', () => {
     const leader = phone(true);
     const member = phone(false);
     setClock(measured(leader));
-    const on = start(leader);
+    start(leader);
+    const shown = member.result.current.countIn.state!;
+    const led = leader.result.current.countIn.state!;
     pass(COUNTIN_LEAD_MS + 600);
     act(() => air.switchOff());
-    expect(member.result.current.countIn.state).toMatchObject({ on: true, startAt: on.startAt });
-    expect(leader.result.current.countIn.state).toMatchObject({ on: true, startAt: on.startAt });
+    // Told "stopped" over Bluetooth: the channel's count is the channel's. Not sent again either: the same state, the same seq.
+    expect(member.result.current.countIn.state).toBe(shown);
+    expect(leader.result.current.countIn.state).toBe(led);
     expect(showing(member)).toBe('3');
+    // The leader's own Stop still ends it, on the channel.
+    act(() => leader.result.current.countIn.set(stopCountIn(leader.result.current.countIn.state!)));
+    expect(member.result.current.countIn.state?.on).toBe(false);
   });
 });
 
@@ -656,5 +667,95 @@ describe('count-in over Bluetooth: "Hide on this phone" keeps working', () => {
     start(leader, 1500);
     frame();
     expect(screen.getByRole('dialog', { name: 'Count-in' })).toBeTruthy();
+  });
+});
+
+describe('count-in over Bluetooth: what a phone with the band key cannot do', () => {
+  /** A count-in frame as a phone on the link could make it (the band key is every member's). */
+  const forged = (from: string, seq: number, over: Record<string, unknown> = {}) => ({ from, songId: 'row-1', q: seq, o: 1, b: 120, t: '4/4', a: nowMs() + 1500, ...over });
+  const overBle = (payload: unknown) => act(() => air.members.forEach((m) => deliver(m, 'countin', payload)));
+  const dropChannel = (p: Phone) => act(() => phones.filter((x) => x.key === id(p)).forEach((x) => x.status?.('CHANNEL_ERROR')));
+
+  it('a Stop over Bluetooth during a count the channel brought (this phone online) stops nothing', () => {
+    net.up = true;
+    const leader = phone(true);
+    const member = phone(false);
+    setClock(measured(leader));
+    const on = start(leader);
+    const shown = member.result.current.countIn.state!;
+    pass(COUNTIN_LEAD_MS + 600);
+    overBle(forged(id(leader), on.seq + 1, { o: 0, a: on.startAt }));
+    expect(member.result.current.countIn.state).toBe(shown);
+    expect(showing(member)).toBe('3');
+  });
+
+  it('nor does another start over Bluetooth take its place while it counts', () => {
+    net.up = true;
+    const leader = phone(true);
+    const member = phone(false);
+    setClock(measured(leader));
+    const on = start(leader);
+    const shown = member.result.current.countIn.state!;
+    pass(COUNTIN_LEAD_MS + 600);
+    overBle(forged(id(leader), on.seq + 2, { b: 60 }));
+    expect(member.result.current.countIn.state).toBe(shown);
+    // Once that count has played out, the leader's next one over Bluetooth is taken (its phone may be offline by then).
+    pass(4000);
+    overBle(forged(id(leader), on.seq + 80, { b: 60 }));
+    expect(member.result.current.countIn.state).toMatchObject({ on: true, bpm: 60 });
+  });
+
+  it('off the channel: a Stop only ends a count this same link served', () => {
+    net.up = true;
+    const leader = phone(true);
+    const member = phone(false);
+    setClock(measured(leader));
+    // The channel brought it; the phone linked over Bluetooth never served it.
+    air.linked = false;
+    const on = start(leader);
+    air.linked = true;
+    dropChannel(member);
+    overBle(forged(id(leader), on.seq + 1, { o: 0, a: on.startAt }));
+    expect(member.result.current.countIn.state?.on).toBe(true);
+    // Served by the link too (the leader's own phone): now its Stop counts, the band having lost the internet mid-count.
+    overBle(air.latest.get('countin'));
+    expect(member.result.current.countIn.state?.on).toBe(true);
+    overBle(forged(id(leader), on.seq + 1, { o: 0, a: on.startAt }));
+    expect(member.result.current.countIn.state?.on).toBe(false);
+  });
+
+  it('a Stop in another leader’s name ends nothing', () => {
+    const leader = phone(true);
+    const member = phone(false);
+    setClock(measured(leader));
+    const on = start(leader);
+    overBle(forged('someone-else', on.seq + 1, { o: 0 }));
+    expect(member.result.current.countIn.state?.on).toBe(true);
+  });
+
+  it('a Stop with nothing counting is not kept: it cannot stand in the way of the next real count', () => {
+    net.up = true;
+    const leader = phone(true);
+    const member = phone(false);
+    setClock(measured(leader));
+    const ahead = Math.floor((Date.now() - Date.UTC(2024, 0, 1)) / 100) + 200;
+    overBle(forged(id(leader), ahead, { o: 0 }));
+    expect(member.result.current.countIn.state).toBeNull();
+    // The leader's count, a moment later, with its real (lower) seq.
+    const on = start(leader);
+    expect(on.seq).toBeLessThan(ahead);
+    expect(member.result.current.countIn.state).toMatchObject({ on: true, seq: on.seq });
+  });
+
+  it('a seq no clock of that leader could have made (it would beat every count that follows) is dropped', () => {
+    const leader = phone(true);
+    const member = phone(false);
+    setClock(measured(leader));
+    overBle(forged(id(leader), 0xffffffff));
+    expect(member.result.current.countIn.state).toBeNull();
+    overBle(forged(id(leader), Math.floor((Date.now() - Date.UTC(2024, 0, 1)) / 100) + 301));
+    expect(member.result.current.countIn.state).toBeNull();
+    const on = start(leader);
+    expect(member.result.current.countIn.state).toMatchObject({ on: true, seq: on.seq });
   });
 });

@@ -39,6 +39,10 @@ const ble = vi.hoisted(() => ({
   noPair: false,
   /** The phone linked signs with a pair that is not the gig's. */
   impostor: false,
+  /** Only its first N reads of the signed state fail the check (a read caught mid-update), then it is the leader's. */
+  badStateReads: 0,
+  /** Its clock answers are not the leader's: 'unsigned' (another pair), 'old' (the leader's, recorded 10 minutes ago). */
+  clock: 'live' as 'live' | 'unsigned' | 'old',
 }));
 
 vi.mock('@capacitor-community/bluetooth-le', () => ({
@@ -69,7 +73,10 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
       if (char === STAGE_BLE_CLOCK_CHARACTERISTIC) {
         if (ble.noPair) throw new Error('Characteristic not found.');
         await new Promise((r) => setTimeout(r, 5));
-        const frame = await encodeClock(nowMs() + AHEAD_MS, SIGNER.private);
+        const frame =
+          ble.clock === 'unsigned'
+            ? await encodeClock(nowMs() + AHEAD_MS, IMPOSTOR.private)
+            : await encodeClock(nowMs() + AHEAD_MS - (ble.clock === 'old' ? 10 * 60_000 : 0), SIGNER.private);
         await new Promise((r) => setTimeout(r, 5));
         return new DataView(frame.buffer);
       }
@@ -81,7 +88,8 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
       const signed = char === STAGE_BLE_SIGNED_CHARACTERISTIC;
       if (char !== STAGE_BLE_CHARACTERISTIC && !signed) return new DataView(new ArrayBuffer(0));
       const state = { seq: 3, from: 'lead', songId: 'b2', order: null };
-      const bytes = signed ? (await encodeSignedState(state, IDS, (ble.impostor ? IMPOSTOR : SIGNER).private))! : (await encodeStageState(state, IDS, KEY))!;
+      const bad = ble.impostor || (signed && ble.badStateReads-- > 0);
+      const bytes = signed ? (await encodeSignedState(state, IDS, (bad ? IMPOSTOR : SIGNER).private))! : (await encodeStageState(state, IDS, KEY))!;
       return new DataView(bytes.buffer);
     }),
     write: vi.fn(async () => {
@@ -143,6 +151,8 @@ beforeEach(async () => {
   ble.live = { seq: 1, events: {} };
   ble.noPair = false;
   ble.impostor = false;
+  ble.badStateReads = 0;
+  ble.clock = 'live';
   vi.clearAllMocks();
   __resetAppFlagsForTest(null);
   forgetScanStarts();
@@ -235,17 +245,54 @@ describe('useStageBle: the count-in on the live frame (member)', () => {
     renderHook(() => useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: false, onState: () => {}, onLive }));
   const countIns = (onLive: ReturnType<typeof vi.fn>) => onLive.mock.calls.filter(([e]) => e === 'countin');
 
-  it("from a phone whose admin signature was checked: handed on as the leader's, on connecting (mid-count) and on every change", async () => {
+  /** The count-ins handed on as the leader's (checked), in order. */
+  const checked = (onLive: ReturnType<typeof vi.fn>) => countIns(onLive).filter(([, , signed]) => signed === true);
+
+  it("from a phone checked as an admin's on this link (its signed state and its signed clock): handed on as the leader's, on connecting (mid-count) and on every change", async () => {
     ble.live = { seq: 3, events: { countin: wire } };
     const onLive = vi.fn();
     const { unmount } = member(onLive);
-    await waitFor(() => expect(countIns(onLive)).toHaveLength(1));
-    expect(countIns(onLive)[0]).toEqual(['countin', wire, true]);
+    await waitFor(() => expect(checked(onLive)).toHaveLength(1), { timeout: 3000 });
+    expect(checked(onLive)[0]).toEqual(['countin', wire, true]);
+    // Read on linking, before the clock was checked: handed on as not checked, then read again.
+    expect(countIns(onLive)[0]).toEqual(['countin', wire, false]);
     const stop = countInBleWire(stopCountIn(count));
     ble.live = { seq: 4, events: { countin: stop } };
     await act(async () => ble.notify.get(STAGE_BLE_LIVE_CHARACTERISTIC)!(new DataView(new ArrayBuffer(4))));
-    await waitFor(() => expect(countIns(onLive)).toHaveLength(2));
-    expect(countIns(onLive)[1]).toEqual(['countin', stop, true]);
+    await waitFor(() => expect(checked(onLive)).toHaveLength(2));
+    expect(checked(onLive)[1]).toEqual(['countin', stop, true]);
+    unmount();
+  });
+
+  it('the first read of the signed state fails its check (caught mid-update): once a later read passes, the count-in is read again and handed on as checked', async () => {
+    ble.badStateReads = 1;
+    ble.live = { seq: 3, events: { countin: wire } };
+    const onLive = vi.fn();
+    const { unmount } = member(onLive);
+    await waitFor(() => expect(checked(onLive)).toHaveLength(1), { timeout: 4000 });
+    expect(checked(onLive)[0]).toEqual(['countin', wire, true]);
+    unmount();
+  });
+
+  it("a signed state alone is not enough (a recorded one can be played back, the idle one for ever): with no clock answer signed by the admins, never as checked", async () => {
+    ble.clock = 'unsigned';
+    ble.live = { seq: 3, events: { countin: wire } };
+    const onLive = vi.fn();
+    const { unmount } = member(onLive);
+    await settle(1500);
+    expect(countIns(onLive).length).toBeGreaterThan(0);
+    expect(checked(onLive)).toEqual([]);
+    unmount();
+  });
+
+  it('nor with clock answers that are the admins’ but recorded long ago (more than 5 minutes off now)', async () => {
+    ble.clock = 'old';
+    ble.live = { seq: 3, events: { countin: wire } };
+    const onLive = vi.fn();
+    const { unmount } = member(onLive);
+    await settle(1500);
+    expect(countIns(onLive).length).toBeGreaterThan(0);
+    expect(checked(onLive)).toEqual([]);
     unmount();
   });
 
@@ -253,13 +300,13 @@ describe('useStageBle: the count-in on the live frame (member)', () => {
     ble.live = { seq: 3, events: { countin: wire } };
     const onLive = vi.fn();
     const { result, unmount } = member(onLive);
-    await waitFor(() => expect(countIns(onLive)).toHaveLength(1));
+    await waitFor(() => expect(checked(onLive)).toHaveLength(1), { timeout: 3000 });
     // Tied to the count-in's leader, so useStageLive's pickClock takes it for this count.
     await waitFor(() => expect(result.current.clock?.from).toBe('lead'), { timeout: 3000 });
     // The same bound as the click's test: a 10 ms round trip, the measure within 15 ms.
     await waitFor(() => expect(Math.abs(result.current.clock!.sample!.offset - AHEAD_MS)).toBeLessThan(15), { timeout: 3000 });
     // Every count then falls at startAt + its time - offset on this phone: off by that measure and nothing else.
-    const state = parseCountInBle(countIns(onLive)[0][1])!;
+    const state = parseCountInBle(checked(onLive)[0][1])!;
     const error = Math.abs(state.startAt - result.current.clock!.sample!.offset - (count.startAt - AHEAD_MS));
     expect(error).toBeLessThan(15);
     unmount();
