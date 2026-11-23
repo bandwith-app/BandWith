@@ -148,9 +148,9 @@ export const AccountCreation: React.FC<AccountCreationProps> = ({
         }
       }
 
+      // The session is all the next steps need: the password stays in this form.
       setAccountData({
         email,
-        password,
         authMethod: 'email',
       });
 
@@ -178,10 +178,13 @@ export const AccountCreation: React.FC<AccountCreationProps> = ({
         total={total}
         onBack={() => { setConfirmEmail(null); setError(null); }}
         onVerified={() => {
-          setAccountData({ email, password, authMethod: 'email' });
+          setAccountData({ email, authMethod: 'email' });
           onComplete();
         }}
         onSignIn={onSignIn}
+        // The phone app came back from the email's link with an error (effect above).
+        linkError={error}
+        onLinkErrorShown={() => setError(null)}
       />
     );
   }

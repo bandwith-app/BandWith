@@ -119,9 +119,9 @@ interface OnboardingState {
   joinedEarly: boolean;
 
   // Collected data
+  // (Never the password: signing up or verifying the code returns the session.)
   accountData: {
     email: string;
-    password?: string;
     authMethod?: 'email' | 'google' | 'apple';
   } | null;
 

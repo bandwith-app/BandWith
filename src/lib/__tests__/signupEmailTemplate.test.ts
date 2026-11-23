@@ -40,7 +40,8 @@ describe('Confirm signup email', () => {
   it('keeps the confirmation link below the code, as a button and as a link to paste', () => {
     expect(html).toContain(`href="${LINK}"`);
     expect(count(html, LINK)).toBeGreaterThanOrEqual(3); // button, fallback href, fallback text
-    expect(html).toContain('Or use this link');
+    expect(html).toContain('Confirm with this link');
+    expect(html).not.toContain('Or use this link');
     expect(html.indexOf(TOKEN)).toBeGreaterThan(-1);
     expect(html.indexOf(TOKEN)).toBeLessThan(html.indexOf(`href="${LINK}"`));
   });

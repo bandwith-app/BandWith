@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { ArrowUpRight } from '@/app/components/icons';
 import { supabase, getAuthCallbackUrl } from '@/lib/supabase';
 import { authErrorMessage } from '@/lib/authErrors';
+import { callbackProblemText } from '@/lib/authCallback';
 import {
   SIGNUP_CODE_LENGTH,
   SIGNUP_CODE_OTP_TYPE,
@@ -25,6 +26,13 @@ interface ConfirmEmailCodeProps {
   onVerified: () => void;
   /** Confirmed through the link in the email instead: the sign-in screen. */
   onSignIn?: () => void;
+  /**
+   * The phone app came back from the email's link with an error (the link had
+   * expired, was already used…): said here, where a new code can be sent.
+   */
+  linkError?: string | null;
+  /** The link error is on screen: the parent can drop its copy. */
+  onLinkErrorShown?: () => void;
 }
 
 /**
@@ -36,8 +44,18 @@ interface ConfirmEmailCodeProps {
  * Laptop pose the title holds the Display and the code and buttons lie on the
  * Deck, nothing across the fold.
  */
-export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({ email, step, total, onBack, onVerified, onSignIn }) => {
+export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({
+  email,
+  step,
+  total,
+  onBack,
+  onVerified,
+  onSignIn,
+  linkError,
+  onLinkErrorShown,
+}) => {
   const t = useT();
+  const hintId = useId();
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -56,6 +74,24 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({ email, step,
   /** When the last code went out: the sign-up itself, then each "Send a new code". */
   const [sentAt, setSentAt] = useState(() => Date.now());
   const [resend, setResend] = useState<'idle' | 'sending' | 'sent'>('idle');
+  // Checking a code and sending a new one never overlap: a new code makes the
+  // one being checked worthless, and would empty the field under its answer.
+  const resendingRef = useRef(false);
+
+  // A dead link from the email (any callback problem that isn't its own
+  // sentence): on this screen the way out is a new code.
+  useEffect(() => {
+    if (!linkError) return;
+    setCodeError(null);
+    setError(
+      linkError === callbackProblemText('link_expired', false).body
+        ? t('This link has expired or was already used. Ask for a new one.')
+        : linkError,
+    );
+    onLinkErrorShown?.();
+    // Only when a new error arrives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkError]);
 
   // "New code sent" rests for a minute (Supabase sends one a minute), then offers another.
   useEffect(() => {
@@ -72,7 +108,7 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({ email, step,
   };
 
   const verify = async (token: string) => {
-    if (verifyingRef.current || token.length !== SIGNUP_CODE_LENGTH) return;
+    if (verifyingRef.current || resendingRef.current || token.length !== SIGNUP_CODE_LENGTH) return;
     verifyingRef.current = true;
     setVerifying(true);
     setError(null);
@@ -112,14 +148,21 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({ email, step,
   };
 
   const handleResend = async () => {
-    if (resend !== 'idle') return;
+    if (resend !== 'idle' || verifyingRef.current || resendingRef.current) return;
+    resendingRef.current = true;
     setResend('sending');
     setError(null);
-    const { error: resendError } = await supabase.auth.resend({
-      type: 'signup',
-      email,
-      options: { emailRedirectTo: getAuthCallbackUrl() },
-    });
+    let resendError: unknown = null;
+    try {
+      ({ error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+        options: { emailRedirectTo: getAuthCallbackUrl() },
+      }));
+    } catch (err) {
+      resendError = err;
+    }
+    resendingRef.current = false;
     if (!mountedRef.current) return;
     if (resendError) {
       setError(authErrorMessage(resendError));
@@ -163,6 +206,7 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({ email, step,
         className="flex-1 flex flex-col px-4 pt-5 pb-6 gap-5"
       >
         {error && <FormError>{error}</FormError>}
+        <div className="flex flex-col gap-2">
         <PillField
           label={t('Confirmation code')}
           type="text"
@@ -178,24 +222,30 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({ email, step,
           spellCheck={false}
           enterKeyHint="done"
           placeholder={'0'.repeat(SIGNUP_CODE_LENGTH)}
-          readOnly={verifying}
-          error={codeError}
-          hint={t('No email? Check your spam folder.')}
+          readOnly={verifying || resend === 'sending'}
+          // A refusal is about the digits in the field: never on an empty one.
+          error={code ? codeError : null}
+          // The last digit sends the code and the screen changes: said before it happens.
+          aria-describedby={hintId}
           inputClassName="text-center text-[24px] tracking-[0.3em] tabular-nums placeholder:tracking-[0.3em]"
           autoFocus
         />
+        <p id={hintId} className="text-[14px] leading-[1.4] text-muted-foreground">
+          {t('The code is checked as soon as you enter the last digit.')} {t('No email? Check your spam folder.')}
+        </p>
+        </div>
       </form>
       <div className="shrink-0 px-4 pt-3 flex flex-col gap-3" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}>
         <PillButton
           type="submit"
           form="confirm-email-code-form"
           loading={verifying}
-          disabled={code.length !== SIGNUP_CODE_LENGTH}
+          disabled={code.length !== SIGNUP_CODE_LENGTH || resend === 'sending'}
           trailingIcon={<ArrowUpRight className="w-5 h-5" />}
         >
           {t('Verify')}
         </PillButton>
-        <PillButton variant="ghost" size="md" onClick={handleResend} loading={resend === 'sending'} disabled={resend === 'sent'}>
+        <PillButton variant="ghost" size="md" onClick={handleResend} loading={resend === 'sending'} disabled={resend === 'sent' || verifying}>
           {resend === 'sent' ? t('New code sent') : t('Send a new code')}
         </PillButton>
         {onSignIn && (

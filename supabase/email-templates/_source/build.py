@@ -150,7 +150,7 @@ def confirm_signup(variant="lime"):
         [
             hero(variant, "Confirm your email", "One code<br>and you&rsquo;re in.",
                  "Enter this code in BandWith to confirm this address and finish setting up &mdash; gigs, rehearsals and your whole band in one calendar.",
-                 "Or use this link", "{{ .ConfirmationURL }}", code_box("{{ .Token }}")),
+                 "Confirm with this link", "{{ .ConfirmationURL }}", code_box("{{ .Token }}")),
             info_card([
                 fallback_link("{{ .ConfirmationURL }}"),
                 info_block("Not you?",
