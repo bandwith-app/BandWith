@@ -52,8 +52,10 @@ describe('docs/flags.md says which kill switches the app reads', () => {
 });
 
 describe('the release PGlite suites read a release migration from the checkout first', () => {
-  // The four that only knew the PR branch (#299 check: 4 of 22 failed with no branch refs).
-  for (const suite of ['chat_member_left_integrated', 'chat_participants_guard', 'money_fixes', 'rehearsal_poll_privacy_publish']) {
+  // The four that only knew the PR branch (#299 check: 4 of 22 failed with no
+  // branch refs), and chat_audit, which fell back to a pinned older commit of
+  // 175 and so passed on a copy that isn't main's.
+  for (const suite of ['chat_member_left_integrated', 'chat_participants_guard', 'money_fixes', 'rehearsal_poll_privacy_publish', 'chat_audit']) {
     it(`${suite}: the checkout is tried before any origin/<branch>`, () => {
       const code = read(`supabase/tests/${suite}.pglite.mjs`)
         .split('\n')

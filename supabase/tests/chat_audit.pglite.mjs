@@ -12,10 +12,11 @@
 //   node chat_audit.pglite.mjs <repo> /dev/null     # before: FAILs expected
 //
 // 193 needs 175 first (hard order, Codex #291 r4 B1/B2): its three objects
-// are taken by name from the real 175 (BW_175_REF, origin/fix/security-audit
-// or d9971705); none found: SKIP with a warning.
+// are taken by name from the real 175: BW_175_REF when given, else the file
+// on the checkout (the release is on main), else origin/fix/security-audit
+// or d9971705; none found: SKIP with a warning.
 import { PGlite } from '@electric-sql/pglite';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const REPO = process.argv[2];
@@ -24,6 +25,11 @@ const MIGS = process.argv[3]
   : ['192_chat_notification_purge.sql', '193_one_chat_per_gig.sql'].map((n) => `${REPO}/supabase/migrations/${n}`);
 const migFile = (n) => readFileSync(`${REPO}/supabase/migrations/${n}`, 'utf8');
 const M175 = (() => {
+  const here = `${REPO}/supabase/migrations/175_security_audit_access.sql`;
+  if (!process.env.BW_175_REF && existsSync(here)) {
+    console.log('using 175 from the checkout');
+    return readFileSync(here, 'utf8');
+  }
   for (const ref of [process.env.BW_175_REF, 'origin/fix/security-audit', 'd9971705'].filter(Boolean)) {
     try {
       const sql = execFileSync('git', ['-C', REPO, 'show', `${ref}:supabase/migrations/175_security_audit_access.sql`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
@@ -31,7 +37,7 @@ const M175 = (() => {
       return sql;
     } catch { /* next */ }
   }
-  console.log('SKIP: 175 not found (fetch origin/fix/security-audit or set BW_175_REF); 193 needs it first');
+  console.log('SKIP: 175 not on the checkout nor on its branch (fetch origin/fix/security-audit or set BW_175_REF); 193 needs it first');
   process.exit(0);
 })();
 // A function by name: its CREATE (or the DO block that writes it) and the
