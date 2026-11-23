@@ -3,7 +3,7 @@ import type { ChannelPage } from './types';
 export const page: ChannelPage = {
   slug: 'money',
   title: 'Fees & payouts',
-  description: 'Every musician has a fee on every gig, or Fee TBD until it’s set. After the show, Home lists who the band still owes. Admins see the band’s numbers; members see only their own fee.',
+  description: 'Every musician has a fee on every gig, or Fee TBD until it’s set. After the show, Home lists who is still owed. Members see only their own fee.',
   ogTitle: 'Fees & payouts · Everyone knows what they’re owed.',
   hero: {
     heading: { lines: ['Everyone knows', 'what they’re owed.'], em: 'owed.' },

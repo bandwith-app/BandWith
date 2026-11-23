@@ -6,7 +6,8 @@
 
 /* Capacity line (hero, Get page) */
 .cap-line { display: inline-flex; align-items: center; gap: 10px; margin: 22px 0 0; padding: 8px 14px; border-radius: 99px; border: 1px solid var(--line); font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: var(--track-mono); text-transform: uppercase; color: var(--fg-2); }
-.cap-line__led { width: 7px; height: 7px; border-radius: 2px; background: var(--lime); box-shadow: 0 0 10px var(--lime); }
+/* flex: none: the LED keeps its square when the notice wraps to several lines (a phone, a closed beta in Italian). */
+.cap-line__led { flex: none; width: 7px; height: 7px; border-radius: 2px; background: var(--lime); box-shadow: 0 0 10px var(--lime); }
 .cap-line.is-full .cap-line__led { background: var(--personal); box-shadow: 0 0 10px var(--personal); }
 
 /* Small pill tags */

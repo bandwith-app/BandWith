@@ -3,7 +3,10 @@
 Static multi-page site (Vite + TypeScript, no React), separate from the app.
 English (default, at `/`), Italian (`/it/`) and Spanish (`/es/`); the Academy
 (the guide, six languages) stays in the app at `/academy/` and opens in the
-page's language.
+page's language, on its static pages: `/academy/<lang>/` and
+`/academy/<lang>/a/<id>/` (`academyArticle` in `src/content/site.ts`; never
+the bare `/academy/` shell or a `#/a/<id>` fragment, which search engines
+don't index).
 
 ```bash
 pnpm dev:site      # http://127.0.0.1:5180
@@ -45,7 +48,8 @@ rack and the footer are generated from that list.
   `/es/<path>`: `site/it/**` and `site/es/**` are generated stubs (gitignored,
   written by `vite.config.ts`) and `tools/i18n.ts` turns the English HTML into
   the translated page: `<html lang>`, canonical, `hreflang` alternates,
-  `og:locale`, site links under the prefix, Academy links with `?lang=`.
+  `og:locale`, site links under the prefix, Academy links on the guide's
+  static page in that language (`/academy/en/…` → `/academy/it/…`).
 - Translations: `src/i18n/dict/it.json`, `es.json` (English text → translation,
   units and placeholders explained in `src/i18n/translate.ts`), plus
   `dict/live.ts` for the capacity counter and the waitlist. On `/it/` and
@@ -77,10 +81,16 @@ Everything comes from `tools/seo.ts` at build time, so it can't drift from the p
   (`og:image`, Twitter `summary_large_image`) and one Schema.org JSON-LD graph:
   Organization, WebSite, SoftwareApplication (iOS, iPadOS, Android, Web, free
   in beta, no ratings), the WebPage, a BreadcrumbList on channel, Get and FAQ
-  pages, and FAQPage built from the Q&A the page shows.
+  pages, and FAQPage built from the Q&A the page shows, on `/faq/` and
+  `/get/` only (`FAQ_SCHEMA`): every question is marked up on one URL. The
+  home and channel pages show their questions without the markup, because
+  `/faq/` already carries all of them.
+- **Meta descriptions**: 160 characters at most, in every language
+  (`test/seo.test.ts`); they also feed llms.txt and the share text.
 - **Q&A** (`src/content/answers.ts`, rendered by `answersRender.ts`): the
-  "What is BandWith?" definition and FAQ on the home page, 3–4 questions at the
-  end of each channel page, and `/faq/` with all of them. Plain text, the
+  "What is BandWith?" definition and FAQ on the home page, 3–5 questions at the
+  end of each channel page, and `/faq/` with all of them (the Get page keeps
+  its own "Before you sign up", linked from `/faq/`). Plain text, the
   question as people ask it, an answer that stands alone. Every string needs
   its IT and ES key, like the rest of the copy.
 - **Files next to the pages** (written into `dist` by `vite.config.ts`):
@@ -112,6 +122,11 @@ https://bandwith.fun (manual release only).
   `capacity.ts` turns the `[data-cap-beta]` labels back to "Private beta",
   shows the hero's notice (`data-cap-line="closed"`) and `pages/get.ts` moves
   the counter back under the headline, above the waitlist.
+- The waitlist ("Tonight's show is full") and the lines for invited people
+  are written `hidden` in the page (`data-cap-show="closed|invites|full"`);
+  `capacity.ts` shows the ones the state needs. While the beta is open they
+  are out of the page for readers, crawlers and `llms-full.txt` (which also
+  skips them by name, `SKIP` in `tools/seo.ts`).
 - The Get page puts the visitor's own door first (TestFlight on iPhone and
   iPad, the APK on Android, the web app anywhere else): `src/core/device.ts`,
   run inline right after the doors (`<!--@door-order-->`), before the first
@@ -125,5 +140,9 @@ https://bandwith.fun (manual release only).
 `site/test/*.test.ts` run with the app's vitest (`pnpm test:run`): channel
 list, Academy links and captures exist, the Stage demo rules, the
 languages, and search (`seo.test.ts`: JSON-LD, hreflang, sitemap, robots,
-llms.txt, share cards, 404). `pnpm e2e:site` (Playwright, desktop Chromium + iPhone WebKit) runs
-`e2e/site/`: the language suggestion and the translated scripts.
+llms.txt, share cards, 404). `coverage.test.ts` lists what the app does and
+the words the site uses for it, and what the app stopped doing: add a row
+with every release. `pnpm e2e:site` (Playwright, desktop Chromium + iPhone WebKit) runs
+`e2e/site/`: the language suggestion, the translated scripts, the Get page's
+doors and `release-fixes.spec.ts` (the Stage and Money demos, the closed-beta
+blocks, narrow phones).

@@ -3,7 +3,7 @@ import type { ChannelPage } from './types';
 export const page: ChannelPage = {
   slug: 'privacy',
   title: 'Privacy by role',
-  description: 'Admins see the whole deal. Members see their own fee and the logistics. Deputies see only their request, and the street address after a yes. The server enforces it.',
+  description: 'Admins see the whole deal. Members see their own fee and the logistics. Deputies see only their request, and the address after a yes. The server enforces it.',
   ogTitle: 'Privacy by role · Everyone sees their part.',
   hero: {
     heading: { lines: ['Everyone sees', 'their part.'], em: 'part.' },
@@ -51,9 +51,12 @@ export const page: ChannelPage = {
       { icon: 'shield', title: 'Enforced by the server', body: 'Money, quote prices, contracts and other people’s fees are protected by the database, not only hidden in the app. A member’s phone never receives them.', wide: true },
       { icon: 'refresh', title: 'New role, fresh copy', body: 'When a role changes, the phone drops what it kept of the band and loads it again. A former admin no longer keeps the client and prices on the phone.' },
       { icon: 'message-circle', title: 'Who can message whom', body: 'Admins write to anyone in the band. Members write directly only to admins, and talk to each other in the band or gig chat. Deputies are in no chat.' },
-      { icon: 'eye-off', title: 'Statistics only with a yes', body: 'In the iPhone and Android apps, Anonymous usage statistics stays off until you say yes. It counts which screens are used, never your songs, gigs or messages, and nothing for ads.' },
+      { icon: 'zap', title: 'Error reports you can switch off', body: 'When something breaks, the app sends the error: its message and trace, the screen, the app version and the platform. No name, email or account id, and it’s deleted after 14 days. It’s on by default: switch it off on each device in Settings › Privacy & account › Send crash reports.', wide: true },
+      { icon: 'eye-off', title: 'Statistics only with a yes', body: 'In the iPhone and Android apps, Anonymous usage statistics stays off until you say yes. It counts which screens are used, never your songs, gigs or messages, and nothing for ads. Crash details from the phone apps go to Firebase Crashlytics only with that yes.' },
       { icon: 'lock', title: 'App lock', body: 'Face ID, fingerprint or the device passcode when BandWith starts again after being closed. On by default on iPhone, iPad and Android.' },
       { icon: 'download', title: 'Export, or delete', body: 'Export my data saves a JSON copy of your profile, bands, personal gigs and gig answers. Delete account removes your profile, personal gigs and direct messages for good; your band, gig and group chat messages stay, shown as from a Former member. The only admin of a band makes someone else admin first.', wide: true },
+      { icon: 'calendar', title: 'A hold, not the quote', body: 'While a gig is still a quote, members see only Possible gig – keep the date free, with the day, time and place. The client, the fee and the notes stay with the admins.' },
+      { icon: 'download', title: 'Offline copies stay yours', body: 'Setlists kept for no signal hold lyrics, chords and your own notes, never fees or contracts. They stay on your device only, and are removed the day after the gig.' },
     ],
   },
   learn: [

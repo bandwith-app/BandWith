@@ -3,7 +3,7 @@ import type { ChannelPage } from './types';
 export const page: ChannelPage = {
   slug: 'quotes-contracts',
   title: 'Quotes & contracts',
-  description: 'Price a show in three steps and send it by WhatsApp, text or email. The client accepts, declines or asks on a personal page, with no account. An accepted quote becomes the gig, and the contract follows.',
+  description: 'Price a show in three steps and send it by WhatsApp, text or email. The client accepts on a personal page, with no account, and the quote becomes the gig.',
   ogTitle: 'Quotes & contracts · Quotes the client confirms with a tap.',
   hero: {
     heading: { lines: ['Send the quote.', 'Get a yes.'], em: 'yes.' },
@@ -34,11 +34,11 @@ export const page: ChannelPage = {
   },
   roles: {
     heading: { lines: ['Admins make the deal.', 'Members play it.'] },
-    lead: 'Quotes and contracts hold the client and the price, so they stay with admins, in the app and in the database. Members hear about a quote only when you ask the lineup.',
+    lead: 'Quotes and contracts hold the client and the price, so they stay with admins, in the app and in the database. While a gig is still a quote, members get only a hold on its date.',
     rows: [
       { what: 'Creates, edits and sends quotes', admin: true, member: false, deputy: false },
       { what: 'Sees the client, the quote total and every fee', admin: true, member: false, deputy: false },
-      { what: 'Gets an availability check before the client says yes', admin: { dash: 'Asks' }, member: 'With their own fee', deputy: false },
+      { what: 'Gets a hold on the date before the client says yes', admin: { dash: 'Sees who’s free' }, member: 'Day, time and place', deputy: false },
       { what: 'Sees the gig once it’s confirmed', admin: true, member: 'With their own fee', deputy: 'Their request only' },
       { what: 'Creates, sends and signs off contracts and riders', admin: true, member: false, deputy: false },
       { what: 'Asks for the final balance, marks it paid', admin: true, member: false, deputy: false },
@@ -50,7 +50,7 @@ export const page: ChannelPage = {
       { icon: 'globe', title: 'In the client’s language', body: 'EN, IT, ES, FR, DE or PT for the PDF, the message and the client’s page. Your app stays in yours, and the choice is remembered for that client on this device.', wide: true },
       { icon: 'calendar', title: 'The date is held', body: 'Saving a quote puts a tentative event on its date in the admins’ calendar while you wait.' },
       { icon: 'eye-off', title: 'Fees stay inside', body: 'The client sees the lineup as one line, never what each musician earns.' },
-      { icon: 'users', title: 'Ask the lineup first', body: 'Turn on Ask the lineup now and each musician gets an availability check with their own fee.' },
+      { icon: 'users', title: 'The band keeps it free', body: 'Every member gets a card, Possible gig – keep the date free, with the day, time and place, and answers I’m free or I can’t. No client, no fee.' },
       { icon: 'refresh', title: 'Edit after sending', body: 'The client’s page switches to the new version. Send the update tells them.' },
       { icon: 'lock', title: 'A yes, then a signature', body: 'Accepting records the typed name, the time and the version the client saw. It isn’t a legal signature: the contract PDF ends with two signature lines, and you tap Mark as signed when it comes back.', wide: true },
       { icon: 'wallet', title: 'Then the final balance', body: 'On the gig made from an accepted quote, FINAL BALANCE works out what’s left: the total, minus the deposit, minus other payments. Pick the due date and the ways to pay, then send it by email, WhatsApp or link.', wide: true },

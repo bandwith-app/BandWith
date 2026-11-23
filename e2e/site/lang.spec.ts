@@ -167,7 +167,10 @@ test.describe('language switcher and pages', () => {
       // Site links stay in the language; the Guide opens in it.
       await expect(page.locator(`a.btn[href="/${lang}/get/"]`).first()).toBeAttached();
       await expect(page.locator('a[href="/get/"]')).toHaveCount(0);
-      await expect(page.locator('a[href^="https://app.bandwith.fun/academy/"]').first()).toHaveAttribute('href', new RegExp(`lang=${lang}`));
+      // The Guide opens on its static page in the same language (never the app shell or a #/a/ fragment).
+      const guide = await page.locator('a[href^="https://app.bandwith.fun/academy"]').evaluateAll((els) => els.map((a) => a.getAttribute('href') ?? ''));
+      expect(guide.length).toBeGreaterThan(2);
+      expect(guide.filter((h) => !new RegExp(`^https://app\\.bandwith\\.fun/academy/${lang}/(a/[a-z0-9-]+/)?$`).test(h))).toEqual([]);
     });
 
     test(`/${lang}/get/: the waitlist answers in the page's language`, async ({ page }) => {

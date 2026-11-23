@@ -3,7 +3,7 @@ import type { ChannelPage } from './types';
 export const page: ChannelPage = {
   slug: 'people',
   title: 'Members, deputies & gear',
-  description: 'Invite the band by name, email, link or code. When someone can’t play, ask a deputy: they answer in one tap, no account needed. Track the gear and pack it into kits.',
+  description: 'Invite the band by name, email, link or code. When someone can’t play, ask a deputy: they answer in one tap, no account. And keep track of the gear.',
   ogTitle: 'Members, deputies & gear · Who plays. Who covers.',
   hero: {
     heading: { lines: ['Who plays.', 'Who covers.'], em: 'covers.' },

@@ -139,7 +139,7 @@ function details(page: ChannelPage, bone: boolean) {
   );
 }
 
-const WORDS = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight'];
+const WORDS = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
 function learn(page: ChannelPage, bone: boolean) {
   const n = page.learn.length;
   const items = page.learn.map((l) =>
