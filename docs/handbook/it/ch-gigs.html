@@ -335,7 +335,7 @@
   <ol class="steps">
     <li><b class="ui">Technical rider</b>: <b class="ui">CREATE RIDER</b> se il gig non ne ha.</li>
     <li><b class="ui">Stage plot</b> → <b class="ui">EDIT</b>. Sotto la pianta, la prima fila di chip (<b class="ui">Add a musician</b>) aggiunge uno strumento: voce, chitarra, basso, tastiere, batteria, percussioni, sax o tromba. La seconda (<b class="ui">Add gear</b>) aggiunge <b class="ui">Other musician</b>, una spia, una cassa o una DI box. Tenendo premuto un punto vuoto compaiono le stesse scelte proprio lì.</li>
-    <li>Tenere premuto un elemento finché si solleva, poi trascinarlo e rilasciarlo; uno scorrimento rapido continua a far scorrere la pagina. Un tocco su un elemento ne cambia sigla e didascalia o lo rimuove. Impostare <b class="ui">Layout name</b>, <b class="ui">Stage width (m)</b>, <b class="ui">Stage depth (m)</b> e toccare <b class="ui">SAVE PLOT</b>. <b class="ui">+ NEW LAYOUT</b> e <b class="ui">DELETE LAYOUT</b> gestiscono più disposizioni.</li>
+    <li>Tenere premuto un elemento finché si solleva, poi trascinarlo e rilasciarlo; uno scorrimento rapido continua a far scorrere la pagina. Un tocco su un elemento ne cambia sigla e didascalia o lo rimuove. Con la tastiera: Tab per arrivare a un elemento, Invio per modificarlo, frecce per spostarlo. Impostare <b class="ui">Layout name</b>, <b class="ui">Stage width (m)</b>, <b class="ui">Stage depth (m)</b> e toccare <b class="ui">SAVE PLOT</b>. <b class="ui">+ NEW LAYOUT</b> e <b class="ui">DELETE LAYOUT</b> gestiscono più disposizioni.</li>
     <li>Il salvataggio della pianta compila da solo l'input list: ogni strumento aggiunge i suoi canali abituali nell'ordine del mixer (batteria: Kick, Snare, OH L e OH R; basso: un canale DI; una DI box: la propria linea). Togliendo un elemento si tolgono i suoi canali.</li>
     <li>Accanto a <b class="ui">Input list</b>, <b class="ui">EDIT LIST</b> per le rifiniture: <b class="ui">ADD CHANNEL</b>, modificare <b class="ui">SOURCE</b>, <b class="ui">MIC / DI</b> e <b class="ui">Who</b>, trascinare per riordinare, <b class="ui">SAVE LIST</b>. Le modifiche restano anche quando si salva di nuovo la pianta. <b class="ui">BUILD FROM LINEUP</b> nell'editor riparte dagli strumenti della formazione.</li>
     <li>Senza canali, <b class="ui">BUILD FROM LINEUP</b> sotto <b class="ui">Input list</b> crea l'elenco. Se poi la formazione cambia, l'elenco propone <b class="ui">UPDATE FROM LINEUP</b> o <b class="ui">KEEP THIS LIST</b>; se l'elenco era stato modificato a mano, BandWith chiede prima (<b class="ui">Rebuild the input list?</b>), perché quelle modifiche verrebbero sostituite.</li>
@@ -357,7 +357,7 @@
   <ol class="steps">
     <li>L'admin tocca <b class="ui">FEE &amp; PAYOUTS</b> sulla scheda del compenso (su iPad, scheda <b class="ui">MONEY</b>).</li>
     <li>Il pannello <b class="ui">Admin only</b> mostra <b class="ui">Band fee</b>, <b class="ui">PAYOUTS DUE · {count}</b> con l'importo ancora dovuto e <b class="ui">MUSICIANS · {paid} OF {total} PAID</b>.</li>
-    <li>L'interruttore tondo <b class="ui">{name} paid</b> segna un musicista pagato o no; <b class="ui">MARK ALL AS PAID</b> segna tutti.</li>
+    <li>L'interruttore tondo <b class="ui">{name} paid</b> segna un musicista pagato o no; <b class="ui">MARK ALL AS PAID</b> segna tutti i musicisti che hanno confermato, hanno un compenso e non sono ancora pagati.</li>
     <li>La matita <b class="ui">Edit fee</b> cambia i compensi, <b class="ui">Fee to be discussed (TBD)</b> o l'extra della band.</li>
   </ol>
   <ul>
@@ -383,7 +383,7 @@
     <li>Rifiutando: <b class="ui">You dropped out of this event.</b>, avviso a tutti gli admin della band che serve un sostituto, gig rimosso dal proprio calendario.</li>
   </ul>
   <aside class="note privacy">L'invito mostra solo il compenso del destinatario (o <b class="ui">to be discussed</b>); l'elenco della formazione mostra nomi, strumenti e risposte, mai compensi.</aside>
-  <p>Un preventivo può chiedere la disponibilità per una data: <b class="ui">Availability check</b> · <b class="ui">Are you free?</b> con <b class="ui">I’M FREE</b> e <b class="ui">NOT FREE</b>. La risposta riguarda solo la data; il gig arriva quando l'admin lo conferma.</p>
+  <p>Un preventivo può chiedere di tenere libera una data: nella Home, la scheda <b class="ui">Possible gig – keep the date free</b> mostra il giorno, l'orario e il luogo, con <b class="ui">I'm free</b> e <b class="ui">I can't</b>. La risposta riguarda solo la data; il gig arriva quando l'admin lo conferma (vedi <a data-ref="ask-lineup-availability">Data in sospeso: chi è libero prima del sì del cliente</a>).</p>
 
   <h3 id="art-drop-out-of-a-gig" data-roles="member">Ritirarsi da un gig</h3>
   <ol class="steps">
@@ -441,7 +441,7 @@
   </table>
   <div class="roles">
     <div data-role="admin">Tutti gli eventi della band e tutti i campi. In una band in cui è solo membro, ne vede i gig da membro.</div>
-    <div data-role="member">Solo i gig in cui è in formazione e che non ha rifiutato. Mai i preventivi: gli arrivano solo come verifica di disponibilità e diventano gig in calendario quando l'admin li conferma.</div>
+    <div data-role="member">Solo i gig in cui è in formazione e che non ha rifiutato. Mai i preventivi: gli arrivano solo come scheda che chiede di tenere libera la data e diventano gig in calendario quando l'admin li conferma.</div>
     <div data-role="deputy">Solo la propria richiesta: logistica, ruolo, compenso offerto (<a data-ref="deputies-on-a-gig">cosa vede un sostituto</a>).</div>
   </div>
   <p>Nella pagina di un membro della band, <b class="ui">Next for {name}</b> elenca i suoi prossimi eventi con giorno, inizio, parte e risposta: solo logistica, mai compensi o cliente.</p>

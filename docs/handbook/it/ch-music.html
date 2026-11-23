@@ -73,11 +73,9 @@
       <tr><td><b class="ui">Duration</b></td><td>Minuti e secondi in due caselle (min : sec). Serve per i totali delle setlist.</td></tr>
       <tr><td><b class="ui">BPM</b></td><td>Tempo, fino a 3 cifre. Lo usa il click dello Stage mode.</td></tr>
       <tr><td><b class="ui">Key</b></td><td>Testo libero, ad es. C maj. Compare nell'elenco, sul palco e nel controllo di trasposizione del lettore.</td></tr>
-      <!-- <draft live-tempo> -->
       <tr><td><b class="ui">Time signature</b></td><td>4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 o 7/8. Lo usano il click e il count-in. Se non è scelto, quello della griglia accordi, altrimenti 4/4 (vedi <a data-ref="song-live-settings">Preparare un brano per il count-in</a>).</td></tr>
-      <tr><td><b class="ui">Count-in</b></td><td><b class="ui">1 bar</b> o <b class="ui">2 bars</b>, e quanti movimenti prima parte il brano (<b class="ui">Starts on the downbeat</b> se nessuno).</td></tr>
+      <tr><td><b class="ui">Count-in</b></td><td><b class="ui">1 bar</b> o <b class="ui">2 bars</b>, e il movimento su cui entra la band: <b class="ui">Starts on beat 1</b>, a meno che non lo si sposti con − e +.</td></tr>
       <tr><td><b class="ui">Played with a backing track</b></td><td>Sul palco il brano non ha count-in: è la base a far partire la band.</td></tr>
-      <!-- </draft> -->
       <tr><td><b class="ui">Tap</b>, <b class="ui">BPM from the recording</b>, ÷2 / ×2</td><td>Strumenti sotto BPM per trovare il tempo (vedi <a data-ref="transpose-and-tempo">Trasporre e trovare il tempo</a>).</td></tr>
       <tr><td><b class="ui">Transpose for the band</b></td><td>Sposta tonalità, accordi della partitura e accordi nel testo per tutti. Compare solo se c'è qualcosa da trasporre.</td></tr>
       <tr><td><b class="ui">Genre</b></td><td>Etichette scelte tra i generi della band, oppure una nuova con il chip tratteggiato <b class="ui">Genre</b> e poi <b class="ui">Add genre</b>. I generi filtrano la libreria quando si compone una setlist.</td></tr>
@@ -88,7 +86,7 @@
       <tr><td><b class="ui">Sheet music</b></td><td>Link a un PDF o a uno spartito online, al posto della partitura caricata; deve iniziare con https://.</td></tr>
       <tr><td><b class="ui">Chords</b></td><td>Link a una pagina di accordi, salvato nelle note del brano come “Chords: &lt;link&gt;”; deve iniziare con https://.</td></tr>
       <tr><td><b class="ui">Notes</b></td><td>Note della band sul brano: idee di arrangiamento, cambi di tonalità.</td></tr>
-      <tr><td><b class="ui">Lyrics · text, Markdown or JSON</b></td><td>Il testo del brano, eventualmente con gli accordi in linea (vedi <a data-ref="lyrics-and-chords-format">Come si scrivono testi e accordi</a>). <b class="ui">Paste or import lyrics</b>, sotto la casella, apre il foglio di importazione sulla scheda Lyrics.</td></tr>
+      <tr><td><b class="ui">Lyrics · text, Markdown or JSON</b></td><td>Il testo del brano, eventualmente con gli accordi in linea (vedi <a data-ref="lyrics-and-chords-format">Come si scrivono testi e accordi</a>). <b class="ui">Paste or import lyrics</b>, sotto la casella, apre il foglio di importazione sulla scheda Lyrics. Un testo oltre i 20.000 caratteri non si può salvare: il modulo lo dice e conserva il testo finché non lo si accorcia. Se qualcun altro ha cambiato il testo durante la modifica, il modulo chiede: <b class="ui">Load the latest version</b> (le proprie modifiche vanno perse) o <b class="ui">Save mine instead</b>.</td></tr>
     </tbody>
   </table>
   <aside class="note privacy">Registrazioni e partiture caricate sono conservate in modo privato per la band: solo i membri della band possono aprirle.</aside>
@@ -262,7 +260,7 @@
     <li><b class="ui">“The chords sound in …, the song is in ….”</b> compare quando gli accordi non corrispondono alla tonalità del brano, con un pulsante per trasporli.</li>
   </ul>
   <p>L'editor richiede un testo: se manca, invita ad aggiungerlo prima in Edit song. Dopo il salvataggio la band riceve una push che segnala il cambio degli accordi.</p>
-  <aside class="note tip">Uscendo con modifiche non salvate compare <b class="ui">“Save your changes?”</b> con <b class="ui">Save changes</b>, <b class="ui">Discard</b> e <b class="ui">Keep editing</b>.</aside>
+  <aside class="note tip">Uscendo con modifiche non salvate compare <b class="ui">“Save your changes?”</b> con <b class="ui">Save changes</b>, <b class="ui">Discard</b> e <b class="ui">Keep editing</b>. Se qualcun altro ha salvato lo stesso testo durante la modifica, l'editor lo dice e conserva le modifiche: <b class="ui">Load the latest version</b> mostra le sue (le proprie vanno perse), <b class="ui">Save mine instead</b> salva le proprie sopra le sue.</aside>
   <div class="roles">
     <div data-role="admin">Modifica gli accordi della band per tutti.</div>
     <div data-role="member">Non ha l'editor degli accordi; propone una correzione con <b class="ui">Suggest a change</b> (vedi <a data-ref="suggest-a-change-to-a-song">Suggerire una modifica</a>).</div>
@@ -557,7 +555,7 @@
     <li>Se il brano è cambiato dopo il suggerimento, la schermata avvisa che il confronto è con la versione attuale.</li>
     <li>Una nota per la band viene aggiunta alle note del brano.</li>
     <li>Un suggerimento che include una partitura di accordi sostituisce anche quella del brano.</li>
-    <li>I suggerimenti esaminati restano su <b class="ui">Reviewed</b>.</li>
+    <li>I suggerimenti esaminati restano su <b class="ui">Reviewed</b>. Un elenco lungo mostra prima i più recenti: <b class="ui">Load older suggestions</b>, in fondo, carica gli altri.</li>
   </ul>
   <div class="devnote" data-devices="tablet,duoBook,duoLand">I suggerimenti si aprono nel secondo pannello, accanto al Repertoire.</div>
 
@@ -835,33 +833,29 @@
   </table>
   <ul>
     <li>Il click è solo visivo, senza suono, e non blocca i tocchi sullo schermo.</li>
-    <!-- <draft live-tempo> -->
     <li>I battiti per battuta derivano dal <b class="ui">Time signature</b> del brano, altrimenti dalla griglia accordi, altrimenti 4/4. In 6/8 e 12/8 lampeggia sui movimenti puntati. Per l'attacco della band vedi <a data-ref="count-in">Contare l'attacco della band</a>.</li>
-    <!-- </draft> -->
     <li>Un brano senza BPM non può avviare il click (<b class="ui">No BPM for this song</b>); il BPM si aggiunge nel modulo del brano.</li>
     <li>Passando a un altro brano, il click del brano precedente si nasconde.</li>
     <li>I telefoni restano allineati entro circa 20–40 ms: adatto a un count-in e come riferimento di tempo, non come click in-ear.</li>
-    <li>Il click della band richiede internet: non viene trasmesso via Bluetooth.</li>
+    <li>Senza internet il click del leader arriva comunque ai telefoni collegati al suo via Bluetooth, nelle app per iPhone, iPad e Android. In Stage mode una riga dice allora <b class="ui">Connected to the leader's phone</b>. Se il leader resta fuori portata per più di 10 secondi, il click si ferma sul proprio telefono; riparte a tempo quando il leader torna a portata. Sul web il click della band richiede internet (vedi <a data-ref="stage-bluetooth-sync">Stage mode senza internet (Bluetooth)</a>).</li>
   </ul>
 
-  <!-- <draft live-tempo> Scritto dal piano (§4, §6) e dalla PR #272 prima di D1, B2 e B4: da verificare sull'interfaccia finale. -->
   <h2>Count-in e Follow the tempo</h2>
 
   <h3 id="art-song-live-settings" data-roles="admin">Preparare un brano per il count-in</h3>
-  <aside class="note draft">Scritto prima che la funzione fosse finita, partendo dal piano. Verificare ogni etichetta sull’app prima di farci affidamento.</aside>
-  <p>Un brano riceve il tempo in chiave (metro), la durata del count-in, un'eventuale anacrusi e l'indicazione se lo fa partire una base.</p>
+  <p>Un brano riceve il tempo in chiave (metro), la durata del count-in, il movimento su cui entra la band e l'indicazione se lo fa partire una base.</p>
   <ol class="steps">
     <li>Dal menu del brano si tocca <b class="ui">Edit</b> e poi <b class="ui">Next</b> fino a <b class="ui">Details · optional</b>.</li>
     <li>Sotto <b class="ui">BPM</b> e <b class="ui">Key</b> si sceglie il <b class="ui">Time signature</b>: 4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 o 7/8.</li>
     <li>In <b class="ui">Count-in</b> si sceglie <b class="ui">1 bar</b> o <b class="ui">2 bars</b>. Due battute servono ai brani lenti: la prima conta a metà tempo.</li>
-    <li>Se il brano parte prima del primo movimento della battuta, si tocca + finché indica quanti movimenti prima (<b class="ui">Starts 2 beats early</b>); − torna a <b class="ui">Starts on the downbeat</b>.</li>
+    <li>La riga sotto dice dove entra la band. <b class="ui">Starts on beat 1</b> è il primo movimento della battuta. Se il brano parte prima, si tocca − (<b class="ui">One beat earlier</b>): in 4/4, <b class="ui">Starts on beat 4</b> è un movimento prima della battuta. + (<b class="ui">One beat later</b>) torna indietro.</li>
     <li>Se è una base a far partire la band, si attiva <b class="ui">Played with a backing track</b>: sul palco il brano non ha count-in.</li>
     <li>Si tocca <b class="ui">Save now</b>.</li>
   </ol>
   <ul>
     <li>Senza un metro scelto il brano usa quello della griglia accordi (<b class="ui">From the chord chart.</b>), altrimenti 4/4.</li>
-    <li>Il click e il count-in seguono il metro: 6/8 e 12/8 si contano a movimenti puntati, come li contano i musicisti.</li>
-    <li>Il <b class="ui">BPM</b> è il movimento che si conta: la semiminima in 4/4, 3/4 o 5/8, il movimento puntato in 6/8, 9/8 e 12/8.</li>
+    <li>Il click e il count-in seguono il metro: 6/8, 9/8 e 12/8 si contano a movimenti puntati, come li contano i musicisti.</li>
+    <li>Il <b class="ui">BPM</b> è il movimento che si conta: le semiminime in 4/4, 3/4, 5/8 o 7/8, i movimenti puntati in 6/8, 9/8 e 12/8. Nei tempi in ottavi il modulo lo indica sotto il metro. Un brano che prende il 6/8 dalla griglia accordi, senza un metro scelto qui, tiene il BPM su ogni croma.</li>
   </ul>
   <div class="roles">
     <div data-role="admin">Imposta metro, count-in e base per la band.</div>
@@ -870,14 +864,13 @@
   <!-- SCREENSHOT PLACEHOLDER: song-live-fields@phone (integrated pass) -->
 
   <h3 id="art-count-in" data-roles="admin,member">Contare l'attacco della band</h3>
-  <aside class="note draft">Scritto prima che la funzione fosse finita, partendo dal piano. Verificare ogni etichetta sull’app prima di farci affidamento.</aside>
   <p>Il leader tocca Count in e su ogni telefono parte lo stesso conto alla rovescia nel tempo del brano, fino al GO in cui entra la band.</p>
   <ol class="steps">
     <li>Nello Stage o nel Live mode si va sul brano.</li>
-    <li>Si tocca <b class="ui">Count in</b>.</li>
+    <li>Si tocca <b class="ui">Count in</b>, accanto al pulsante del click.</li>
     <li>Dopo 1,5 secondi ogni telefono in Stage mode mostra a tutto schermo il conto alla rovescia nel tempo del brano: un grande numero su ogni movimento e un anello che si riempie battuta dopo battuta.</li>
     <li>La band entra sul <b class="ui">GO</b>; il conto sparisce da solo.</li>
-    <li>Per fermarlo prima della fine si tocca <b class="ui">Stop</b>: si ferma su tutti i telefoni.</li>
+    <li>Per fermarlo prima della fine si tocca <b class="ui">Stop the count-in</b>: si ferma su tutti i telefoni.</li>
   </ol>
   <table class="grid">
     <thead><tr><th>Metro</th><th>Cosa mostra il conto</th></tr></thead>
@@ -891,53 +884,55 @@
     </tbody>
   </table>
   <ul>
-    <li>Con <b class="ui">2 bars</b> sul brano, la prima battuta conta a metà tempo (“1 — 2 —”) e la seconda a tempo.</li>
-    <li>Un brano che parte qualche movimento prima chiude il conto con il <b class="ui">GO</b> sulla sua prima nota, non sull'1.</li>
-    <li>La band sceglie la direzione: conto alla rovescia (4 3 2 1, il predefinito) o conteggio classico (1 2 3 4).</li>
-    <li>Con <b class="ui">Follow the tempo</b> attivo, il brano parte sul <b class="ui">GO</b>; un click già avviato prosegue a tempo.</li>
-    <li>Facoltativi su ogni telefono: vibrazione a ogni movimento (più forte sul primo) e conteggio a voce o click in cuffia, mai dall'altoparlante del telefono se non lo si sceglie.</li>
-    <li>Un brano con <b class="ui">Played with a backing track</b> non ha il pulsante <b class="ui">Count in</b>; l'admin può comunque avviarlo dal menu del brano. Mentre la regia suona l'audio del brano, il count-in non viene proposto.</li>
-    <li>Un telefono che riceve il messaggio in ritardo entra nel conto sul movimento giusto. Senza segnale il count-in arriva ai telefoni vicini via Bluetooth. I telefoni restano allineati entro circa 20–40 ms.</li>
+    <li>Con <b class="ui">2 bars</b> sul brano, la prima battuta conta a metà tempo e la seconda a tempo.</li>
+    <li>Un brano che parte prima del movimento 1 (ad esempio <b class="ui">Starts on beat 4</b>) ha il <b class="ui">GO</b> sulla sua prima nota, non sull'1.</li>
+    <li>La band conta alla rovescia (4 3 2 1, il predefinito) o in avanti (1 2 3 4). Lo sceglie il leader sotto <b class="ui">For the whole band</b> nelle opzioni del count-in, e ogni telefono della band conta così.</li>
+    <li>Con <b class="ui">Follow the tempo</b> attivo, il brano inizia a scorrere dalla battuta 1, quando finisce il conto; un click già avviato prosegue a tempo.</li>
+    <li>Ogni telefono ha le sue opzioni: in Stage mode le apre <b class="ui">Count-in</b>, sulla stessa riga di <b class="ui">Setlist</b>. <b class="ui">Vibrate on every beat</b> è più forte sul primo movimento della battuta. <b class="ui">Sound in headphones</b> vale <b class="ui">Off</b> o <b class="ui">Click</b>: il click suona solo in cuffia o negli in-ear, a meno che non sia attivo <b class="ui">Also through the phone’s speaker</b> (in un browser serve quell'interruttore per sentirlo).</li>
+    <li>Un brano con <b class="ui">Played with a backing track</b> non ha il pulsante <b class="ui">Count in</b>, e nemmeno un brano che la regia sta suonando. Il leader può comunque contare l'attacco: apre le opzioni del count-in e tocca <b class="ui">Count in anyway</b>. Un brano senza BPM non può avere il count-in.</li>
+    <li>Un telefono che riceve il messaggio in ritardo entra nel conto sul movimento giusto. I telefoni restano allineati entro circa 20–40 ms. Un membro può chiudere il conto sul proprio schermo con <b class="ui">Hide on this phone</b>.</li>
+    <li>Il conto alla rovescia richiede internet: non viene trasmesso via Bluetooth. Senza segnale lo mostra solo il telefono del leader. I telefoni collegati via Bluetooth ricevono comunque il click, se il leader lo ha avviato, e Follow the tempo dalla battuta 1.</li>
   </ul>
   <div class="roles">
-    <div data-role="admin">Avvia e ferma il count-in per tutta la band.</div>
-    <div data-role="member">Lo vede sul proprio telefono e sceglie vibrazione o cuffia per il proprio dispositivo.</div>
+    <div data-role="admin">Avvia e ferma il count-in per tutta la band, e sceglie se la band conta alla rovescia o in avanti.</div>
+    <div data-role="member">Lo vede sul proprio telefono, può nasconderlo lì, e sceglie vibrazione o click in cuffia per il proprio dispositivo.</div>
   </div>
   <!-- SCREENSHOT PLACEHOLDER: stage-count-in@phone (integrated pass) -->
 
   <h3 id="art-follow-the-tempo" data-roles="admin,member">Seguire il tempo</h3>
-  <aside class="note draft">Scritto prima che la funzione fosse finita, partendo dal piano. Verificare ogni etichetta sull’app prima di farci affidamento.</aside>
-  <p>Una volta attivo, la griglia, la struttura o il testo si muovono con il brano, a tempo con il telefono del leader.</p>
+  <p>Una volta attivo, la griglia accordi o il testo si muovono con il brano, a tempo con il telefono del leader.</p>
   <ol class="steps">
-    <li>Nello Stage o nel Live mode si aprono le scelte di vista della scheda del brano (dove si sceglie <b class="ui">Lyrics &amp; chords</b> o <b class="ui">Chord chart</b>).</li>
-    <li>Si attiva <b class="ui">Follow the tempo</b>. È spento di serie e vale su quel dispositivo.</li>
-    <li>Quando il leader fa partire il brano con <b class="ui">Count in</b> o con il click, lo schermo si muove con lui.</li>
+    <li>Nello Stage o nel Live mode si apre la scheda del brano (<b class="ui">Lyrics</b>, <b class="ui">Lyrics &amp; chords</b> o <b class="ui">Chord chart</b>).</li>
+    <li>Si tocca <b class="ui">Follow the tempo</b>, accanto alle scelte di vista. È spento di serie e vale su quel dispositivo.</li>
+    <li>La riga sopra il brano dice <b class="ui">Starts when the leader starts the song</b>. Quando il leader avvia, lo schermo si muove con la band.</li>
   </ol>
   <table class="grid">
     <thead><tr><th>Vista</th><th>Cosa si muove</th></tr></thead>
     <tbody>
-      <tr><td><b class="ui">Chord chart</b></td><td>Si illumina la battuta corrente e la griglia scorre per tenerla in vista.</td></tr>
-      <tr><td>Struttura</td><td>Si evidenzia la sezione corrente; una striscia in alto dice cosa viene dopo (“Next: Bridge in 4 bars”).</td></tr>
-      <tr><td><b class="ui">Lyrics &amp; chords</b>, <b class="ui">Lyrics</b>, <b class="ui">Song only</b></td><td>Si evidenzia la riga corrente e il testo scorre morbido. Senza la temporizzazione delle righe avanza sezione per sezione.</td></tr>
+      <tr><td><b class="ui">Chord chart</b></td><td>Si illumina la battuta corrente e la griglia scorre per tenerla in vista. In un brano senza griglia battuta per battuta si illumina la sezione corrente.</td></tr>
+      <tr><td><b class="ui">Lyrics &amp; chords</b>, <b class="ui">Lyrics</b></td><td>Si evidenzia la riga corrente e il testo scorre per tenerla in vista. Le righe sono distribuite sulle battute della loro sezione, quindi una riga può accendersi un po' prima o un po' dopo.</td></tr>
+      <tr><td><b class="ui">Song only</b></td><td>Lo stesso, a tutto schermo.</td></tr>
       <tr><td>Spia da palco</td><td>Un grande conto alla rovescia verso la sezione successiva (“Chorus in 4”).</td></tr>
     </tbody>
   </table>
   <p class="steps-title">Guidarlo</p>
   <ol class="steps">
-    <li>Si fa partire il brano con <b class="ui">Count in</b> o con il click: la battuta 1 parte su ogni telefono nello stesso istante.</li>
-    <li>Se la band suona una parte più lunga o più corta, si tocca la sezione, la battuta o la riga in cui si è: tutti saltano lì.</li>
-    <li><b class="ui">Hold</b> ripete la sezione corrente (un vamp, un assolo) finché non lo si tocca di nuovo.</li>
+    <li>Si attiva <b class="ui">Follow the tempo</b> anche sul proprio telefono. La riga sopra il brano dice <b class="ui">The band follows when you start</b>, con accanto i pulsanti del leader.</li>
+    <li><b class="ui">Start</b>: la battuta 1 parte su ogni telefono nello stesso istante. Anche <b class="ui">Count in</b> lo avvia, dalla battuta 1 quando finisce il conto.</li>
+    <li>Se la band suona una parte più lunga o più corta, si tocca la battuta, la riga o la sezione in cui si è: tutti saltano lì.</li>
+    <li><b class="ui">Hold</b> ripete la sezione corrente (un vamp, un assolo); <b class="ui">Let go</b> fa proseguire.</li>
+    <li>Su una corona il brano aspetta e la riga dice <b class="ui">Waiting for the leader</b>: si tocca <b class="ui">Go on</b>.</li>
     <li><b class="ui">Stop</b> lo termina; passare a un altro brano lo ferma comunque.</li>
   </ol>
   <ul>
     <li>Solo il leader sposta il punto della band; i membri accendono o spengono la vista sul proprio telefono.</li>
-    <li>Per seguire il tempo un brano ha bisogno del BPM (“Add a BPM to follow this song”).</li>
-    <li>Ritornelli, finali alternativi, D.C., D.S., segno e coda della griglia vengono svolti in ordine. Una corona attende il tocco del leader.</li>
-    <li>Per seguire riga per riga l'admin imposta nel brano la temporizzazione delle righe con <b class="ui">Sync lines</b>: battendo il tempo sulla registrazione o indicando le battute di ogni riga.</li>
-    <li>In prova <b class="ui">Play at 80%</b> rallenta insieme click e scorrimento; il BPM del brano resta lo stesso.</li>
+    <li>Per seguire il tempo un brano ha bisogno del BPM e di una griglia accordi o di un testo. Senza BPM l'interruttore è spento e dice “Add a BPM to follow this song”.</li>
+    <li>La riga sopra il brano dice cosa viene dopo (“Next: Bridge in 4 bars”).</li>
+    <li>Ritornelli, finali alternativi, D.C., D.S., segno e coda della griglia vengono svolti in ordine.</li>
+    <li>Dopo uno scorrimento a mano, il brano resta dove lo si è messo per qualche secondo, poi riprende a seguire.</li>
+    <li>Senza internet il punto del leader arriva comunque ai telefoni collegati via Bluetooth, nelle app per iPhone, iPad e Android.</li>
   </ul>
   <!-- SCREENSHOT PLACEHOLDER: stage-follow-tempo@phone (integrated pass) -->
-  <!-- </draft> -->
 
   <h3 id="art-stage-manager" data-roles="admin,member">Suonare l’audio dei brani dalla regia</h3>
   <p>Il portatile o il tablet di un admin, collegato al mixer, fa da regia (nell’app in inglese <i>Stage manager</i>): è l’unico dispositivo che suona l’audio dei brani. Quando suona un brano, tutti gli schermi in Stage mode passano a quel brano, anche fuori dall’ordine della scaletta. I telefoni dei membri non suonano mai.</p>
@@ -987,7 +982,7 @@
   <div class="devnote" data-devices="web">Su un portatile nel browser, l’audio lo tiene il browser: va usato sempre lo stesso browser, senza cancellarne i dati prima del gig. Anche i link di Google Drive si scaricano, se il file è condiviso come “Chiunque abbia il link”.</div>
 
   <h3 id="art-stage-bluetooth-sync" data-roles="admin,member">Stage mode senza internet (Bluetooth)</h3>
-  <p>Nelle app per iPhone, iPad e Android il telefono dell'admin trasmette anche via Bluetooth il brano corrente e l'ordine. I telefoni dei membri nelle vicinanze li ricevono senza abbinamento e senza internet.</p>
+  <p>Nelle app per iPhone, iPad e Android il telefono dell'admin trasmette anche via Bluetooth il brano corrente, l'ordine, il click e il punto del brano (Follow the tempo). I telefoni dei membri nelle vicinanze li ricevono senza abbinamento e senza internet. Fa eccezione il count-in: richiede internet.</p>
   <p class="steps-title">Preparazione prima del gig</p>
   <ol class="steps">
     <li>Tutti hanno la setlist sul telefono: con un sì al download (vedi <a data-ref="live-mode-offline">Stage e Live mode senza segnale</a>) o aprendo il gig una volta online. La chiave Bluetooth del gig arriva con lei.</li>
@@ -1108,6 +1103,7 @@
   <ul>
     <li>Appena torna il segnale, quando si riapre l'app e ogni 30 secondi finché qualcosa è in attesa.</li>
     <li>Chiudere l'app non perde nulla: parte alla prossima apertura con segnale.</li>
+    <li>Una nota di prova che il server rifiuta non viene buttata via. Il Live mode dice <b class="ui">A note wasn't saved</b>, e le parole della nota sono elencate nelle note della prova e in Settings › <b class="ui">Offline &amp; live</b>, con <b class="ui">Copy</b> e <b class="ui">Remove</b>.</li>
   </ul>
   <aside class="note tip">I membri vicini vedono subito il nuovo ordine del leader via Bluetooth, prima ancora che sia salvato.</aside>
   <!-- SCREENSHOT PLACEHOLDER: stage-offline-banner@phone (integrated pass) -->
@@ -1142,9 +1138,7 @@
     <dd>Viene eliminato con i file allegati e il membro riceve una push con la motivazione, se indicata.</dd>
     <dt>Perché sul web il forum di iReal Pro non si apre dentro l'app?</dt>
     <dd>Il forum non può essere mostrato dentro una pagina web, quindi si apre in una finestra a parte. Lì si copia un link e si tocca <b class="ui">Paste link</b>, oppure si trascina il link sulla casella.</dd>
-    <!-- <draft live-tempo> -->
     <dt>Perché su un brano manca il pulsante Count in?</dt>
-    <dd>Il brano è impostato come <b class="ui">Played with a backing track</b>: è la base a far partire la band. L'admin può comunque avviare un count-in dal menu del brano.</dd>
-    <!-- </draft> -->
+    <dd>Il brano è impostato come <b class="ui">Played with a backing track</b>, oppure lo sta suonando la regia. Il leader può comunque contare l'attacco: apre le opzioni del count-in e tocca <b class="ui">Count in anyway</b>. Un brano senza BPM non può avere il count-in.</dd>
   </dl>
 </section>

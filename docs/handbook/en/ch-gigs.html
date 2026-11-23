@@ -335,7 +335,7 @@
   <ol class="steps">
     <li><b class="ui">Technical rider</b>: <b class="ui">CREATE RIDER</b> if the gig has none.</li>
     <li><b class="ui">Stage plot</b> → <b class="ui">EDIT</b>. Under the plot, the first row of chips (<b class="ui">Add a musician</b>) adds an instrument: vocals, guitar, bass, keys, drums, percussion, sax or trumpet. The second (<b class="ui">Add gear</b>) adds <b class="ui">Other musician</b>, a wedge, a speaker or a DI box. Holding an empty spot gives the same choices right there.</li>
-    <li>Hold an item until it lifts, then drag it and let go; a quick swipe still scrolls the page. A tap on an item changes its short code and caption, or removes it. Set <b class="ui">Layout name</b>, <b class="ui">Stage width (m)</b> and <b class="ui">Stage depth (m)</b> and tap <b class="ui">SAVE PLOT</b>. <b class="ui">+ NEW LAYOUT</b> and <b class="ui">DELETE LAYOUT</b> manage several layouts.</li>
+    <li>Hold an item until it lifts, then drag it and let go; a quick swipe still scrolls the page. A tap on an item changes its short code and caption, or removes it. With a keyboard: Tab to an item, Enter to edit it, arrow keys to move it. Set <b class="ui">Layout name</b>, <b class="ui">Stage width (m)</b> and <b class="ui">Stage depth (m)</b> and tap <b class="ui">SAVE PLOT</b>. <b class="ui">+ NEW LAYOUT</b> and <b class="ui">DELETE LAYOUT</b> manage several layouts.</li>
     <li>Saving the plot fills the input list for you: each instrument adds its usual channels in desk order (drums: Kick, Snare, OH L and OH R; bass: one DI channel; a DI box: its own line). Removing an item removes its channels.</li>
     <li>Next to <b class="ui">Input list</b>, <b class="ui">EDIT LIST</b> to fine-tune: <b class="ui">ADD CHANNEL</b>, change <b class="ui">SOURCE</b>, <b class="ui">MIC / DI</b> and <b class="ui">Who</b>, drag to reorder, <b class="ui">SAVE LIST</b>. These changes stay when the plot is saved again. <b class="ui">BUILD FROM LINEUP</b> in the editor starts again from the lineup’s instruments.</li>
     <li>With no channels yet, <b class="ui">BUILD FROM LINEUP</b> under <b class="ui">Input list</b> creates the list. If the lineup changes later, the list offers <b class="ui">UPDATE FROM LINEUP</b> or <b class="ui">KEEP THIS LIST</b>; if the list was edited by hand, BandWith asks first (<b class="ui">Rebuild the input list?</b>), because those changes would be replaced.</li>
@@ -357,7 +357,7 @@
   <ol class="steps">
     <li>The admin taps <b class="ui">FEE &amp; PAYOUTS</b> on the fee card (on iPad, the <b class="ui">MONEY</b> tab).</li>
     <li>The <b class="ui">Admin only</b> sheet shows the <b class="ui">Band fee</b>, <b class="ui">PAYOUTS DUE · {count}</b> with the amount still owed, and <b class="ui">MUSICIANS · {paid} OF {total} PAID</b>.</li>
-    <li>The round <b class="ui">{name} paid</b> switch marks a musician paid or not; <b class="ui">MARK ALL AS PAID</b> marks everyone.</li>
+    <li>The round <b class="ui">{name} paid</b> switch marks a musician paid or not; <b class="ui">MARK ALL AS PAID</b> marks every musician who confirmed, has a fee and is not paid yet.</li>
     <li>The pencil (<b class="ui">Edit fee</b>) changes the fees, <b class="ui">Fee to be discussed (TBD)</b> or the extra band fee.</li>
   </ol>
   <ul>
@@ -383,7 +383,7 @@
     <li>Declining: <b class="ui">You dropped out of this event.</b>, a notice to every admin of the band that a replacement is needed, and the gig leaves your calendar.</li>
   </ul>
   <aside class="note privacy">The invitation shows only the recipient’s own fee (or <b class="ui">to be discussed</b>); the lineup list shows names, instruments and answers, never fees.</aside>
-  <p>A quote can ask about your availability for a date: <b class="ui">Availability check</b> · <b class="ui">Are you free?</b> with <b class="ui">I’M FREE</b> and <b class="ui">NOT FREE</b>. The answer is about the date only; the gig arrives when the admin confirms it.</p>
+  <p>A quote can ask you to keep a date free: on Home, the card <b class="ui">Possible gig – keep the date free</b> shows the day, the time and the place, with <b class="ui">I'm free</b> and <b class="ui">I can't</b>. The answer is about the date only; the gig arrives when the admin confirms it (see <a data-ref="ask-lineup-availability">Date on hold: who is free before the client says yes</a>).</p>
 
   <h3 id="art-drop-out-of-a-gig" data-roles="member">Drop out of a gig</h3>
   <ol class="steps">
@@ -441,7 +441,7 @@
   </table>
   <div class="roles">
     <div data-role="admin">Every event of the band and every field. In a band where they are only a member, they see its gigs as a member.</div>
-    <div data-role="member">Only the gigs they are on and have not declined. Never quotes: a quote only reaches them as an availability check, and becomes a gig on their calendar when the admin confirms it.</div>
+    <div data-role="member">Only the gigs they are on and have not declined. Never quotes: a quote only reaches them as a card asking them to keep the date free, and becomes a gig on their calendar when the admin confirms it.</div>
     <div data-role="deputy">Only their own request: logistics, role, fee offered (<a data-ref="deputies-on-a-gig">what a deputy sees</a>).</div>
   </div>
   <p>On a band member’s page, <b class="ui">Next for {name}</b> lists their next events with the day, start, part and answer: logistics only, never a fee or client.</p>

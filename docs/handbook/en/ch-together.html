@@ -53,8 +53,8 @@
   <aside class="note tip">Past rehearsals are edited the same way, also on an iPad. Members see the page without the pencils and without <b class="ui">EDIT</b>.</aside>
 
   <h3 id="art-delete-a-rehearsal" data-roles="admin">Delete (cancel) a rehearsal</h3>
-  <p>On the rehearsal, tap <b class="ui">DELETE</b> (under <b class="ui">REHEARSAL CHAT</b>), then <b class="ui">Confirm delete</b>, or <b class="ui">CANCEL</b> to keep it.</p>
-  <aside class="note warning">Deleting cannot be undone. A recurring rehearsal is one event, so deleting it removes every date of the series.</aside>
+  <p>On the rehearsal, tap <b class="ui">DELETE</b> (under <b class="ui">REHEARSAL CHAT</b>), then <b class="ui">Confirm delete</b>, or <b class="ui">CANCEL</b> to keep it. A rehearsal that repeats asks which dates instead: <b class="ui">Delete this date</b> removes only the date you opened, <b class="ui">Delete the whole series</b> removes every date with its notes.</p>
+  <aside class="note warning">Deleting a rehearsal or a whole series cannot be undone. One deleted date can come back: an admin opens the series and taps <b class="ui">RESTORE</b> next to it under <b class="ui">Deleted dates</b>.</aside>
   <p>The people on the rehearsal get <b class="ui">Rehearsal cancelled</b> with a push. If they open it from an old notification, they see <b class="ui">Rehearsal cancelled</b> and a note that an admin removed it.</p>
 
   <h3 id="art-rehearsal-drafts" data-roles="admin">Save a rehearsal as a draft</h3>
@@ -79,7 +79,7 @@
       <tr><td><b class="ui">Monthly</b></td><td><b class="ui">MONTHLY</b></td></tr>
     </tbody>
   </table>
-  <aside class="note warning">All dates of a series share the same rehearsal: one roster, one answer per member, one setlist. Editing or deleting it changes every date.</aside>
+  <aside class="note warning">All dates of a series share the same rehearsal: one roster, one answer per member, one setlist. Editing it changes every date. Two things can be done to one date alone: deleting it (<b class="ui">Delete this date</b>, see <a data-ref="delete-a-rehearsal">Delete (cancel) a rehearsal</a>) and moving it: when you change the date, <b class="ui">Move which dates?</b> offers <b class="ui">Only this date</b> or <b class="ui">The whole series</b>.</aside>
 
   <h2>The rehearsal page and answers</h2>
 
@@ -267,7 +267,7 @@
     <li>In band and event chats each message shows the sender, with <b class="ui"> · Admin</b> for admins.</li>
     <li>The latest 50 messages load; for older ones, scroll up and tap <b class="ui">Load earlier messages</b>.</li>
     <li>Plain text only: no attachments or photos, reactions, editing or deleting single messages.</li>
-    <li>Without a connection the message is not sent and goes back into the composer with <b class="ui">Message not sent. Check your connection and try again.</b>, ready to send again once online.</li>
+    <li>Without a connection the message stays in the chat marked <b class="ui">Waiting for connection</b> and is sent by itself once back online, also if the chat is closed. A message that could not be sent says <b class="ui">Not sent</b>, with <b class="ui">Try again</b> and <b class="ui">Delete</b>.</li>
   </ul>
   <div class="devnote" data-devices="duoLaptop">In Laptop pose the messages fill the top screen and the composer opens on the bottom one.</div>
 
