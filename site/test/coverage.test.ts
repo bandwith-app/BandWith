@@ -38,7 +38,7 @@ const FEATURES: [string, string, RegExp[]][] = [
   ['live without signal: say yes once (#267, #269)', 'stage', [/next 7 days/, /Download and keep it automatic/, /Settings › Offline & live/]],
   ['who is ready offline, Remind (#269)', 'stage', [/Offline: 4 of 5 members ready/, /Remind/]],
   ['changes wait for signal (#270, #271)', 'devices', [/changes waiting for signal/, /Settings › Offline & live/, /next 7 days/, /Wi-Fi only/]],
-  ['count-in (#290)', 'stage', [/Count in/, /full-screen countdown/, /Vibrate on every beat/, /Sound in headphones/, /only the leader’s phone shows the countdown/]],
+  ['count-in (#290), over Bluetooth too (#311)', 'stage', [/Count in/, /full-screen countdown/, /Vibrate on every beat/, /Sound in headphones/, /reaches the phone apps over Bluetooth, on the same beat/, /in a browser it needs the internet/]],
   ['follow the tempo (#272, #276)', 'stage', [/Follow the tempo/, /Next: Bridge in 4 bars/, /Hold to repeat a section/, /needs a BPM/]],
   ['voice parts (#264, #266)', 'songs', [/Lead, 2nd voice, Backing, All or Spoken/, /Highlight my part/, /who sings what/]],
   ['voice parts on stage (#264)', 'stage', [/Highlight my part/, /who sings what/]],
@@ -51,10 +51,12 @@ const FEATURES: [string, string, RegExp[]][] = [
 
 /** What the app no longer does (or never did): these words must not come back. */
 const GONE: [string, RegExp][] = [
-  ['the click needs the internet (#274)', /needs the internet|isn’t sent over Bluetooth/],
+  // ("in a browser it needs the internet" is true of the count-in and stays.)
+  ['the click needs the internet (#274)', /click needs the internet|BPM, and needs the internet|isn’t sent over Bluetooth/],
   ['open the gig once while online is the whole story (#267)', /Open the gig once while online/],
   ['Ask the lineup now switch (#294)', /Ask the lineup|availability check|when you ask the lineup/],
   ['a strip that syncs (#271)', /wait in a strip|sync when the connection comes back/],
+  ['the count-in needs a connection (#311)', /count-in needs a connection|only the leader’s phone shows|Only the count-in needs/],
 ];
 
 describe('the site covers the app', () => {
@@ -97,6 +99,7 @@ describe('the site covers the app', () => {
     expect(HOME_ANSWERS.map((x) => x.a).join(' ')).toMatch(/setlists of your next 7 days/);
     expect(a('stage')).toMatch(/next 7 days/);
     expect(a('stage')).toMatch(/taps Count in/);
+    expect(a('stage')).toMatch(/Stop the count-in ends it on every phone/);
     expect(a('stage')).toMatch(/Follow the tempo/);
     expect(a('songs')).toMatch(/Highlight my part/);
     expect(a('quotes-contracts')).toMatch(/Possible gig – keep the date free/);

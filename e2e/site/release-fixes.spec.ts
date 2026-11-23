@@ -4,7 +4,7 @@ import { expect, test, type Browser, type Page } from '@playwright/test';
  * What the site shows after the 11-22 release, in a real browser:
  * - the Stage demo: the click keeps flashing on the phone apps without
  *   internet (Bluetooth), never on the web app; Count in shows on every phone
- *   with a connection and on the leader's phone only without one;
+ *   with a connection, and without one on the phone apps (Bluetooth, PR #311);
  * - the Money demo writes its log in the page's language for any order of taps;
  * - the Get page keeps the closed-beta blocks out of the page while open
  *   spots are left, and shows the right ones when they are gone;
@@ -37,7 +37,7 @@ async function open(browser: Browser, url: string, o: { width?: number; height?:
 
 test.beforeEach(({}, info) => { test.skip(info.project.name !== 'site-desktop', 'each test opens its own screen'); });
 
-test.describe('Stage demo: the click over Bluetooth, the count-in over the internet', () => {
+test.describe('Stage demo: the click and the count-in over Bluetooth', () => {
   const phone = (page: Page, who: string) => page.locator(who === 'leo' ? '[data-sd-leader] .sdp' : `[data-sd-member="${who}"] .sdp`);
 
   test('without the venue Wi‑Fi the click still starts, and flashes on the phone apps only', async ({ browser }) => {
@@ -45,9 +45,9 @@ test.describe('Stage demo: the click over Bluetooth, the count-in over the inter
     const demo = page.locator('[data-stage-demo]');
     await demo.scrollIntoViewIfNeeded();
     await demo.locator('[data-sd-wifi]').click();
-    await expect(demo.locator('[data-sd-note]')).toContainText('keep the click, over Bluetooth');
-    await expect(demo.locator('[data-sd-note]')).toContainText('The count-in needs a connection');
-    await expect(demo.locator('[data-sd-note]')).not.toContainText('needs the internet');
+    await expect(demo.locator('[data-sd-note]')).toContainText('with the click and the count-in, over Bluetooth');
+    await expect(demo.locator('[data-sd-note]')).toContainText('The web app has no Bluetooth');
+    await expect(demo.locator('[data-sd-note]')).not.toContainText(/click needs the internet|needs a connection|only the leader/);
     const click = demo.locator('[data-act="click"]');
     await expect(click).toBeEnabled();
     await click.click();
@@ -64,7 +64,7 @@ test.describe('Stage demo: the click over Bluetooth, the count-in over the inter
     await page.context().close();
   });
 
-  test('Count in: on every phone with a connection, on the leader’s only without one', async ({ browser }) => {
+  test('Count in: on every phone with a connection, on the phone apps over Bluetooth without one', async ({ browser }) => {
     const page = await open(browser, '/features/stage/');
     const demo = page.locator('[data-stage-demo]');
     await demo.scrollIntoViewIfNeeded();
@@ -77,11 +77,25 @@ test.describe('Stage demo: the click over Bluetooth, the count-in over the inter
     await expect(demo.locator('[data-sd-count]')).toHaveCount(0, { timeout: 6000 });
     await expect(count).toHaveAttribute('aria-pressed', 'false');
 
+    // No internet: Leo, Sara (iPhone) and Nico (Android) count together; Tom's web app shows nothing.
     await demo.locator('[data-sd-wifi]').click();
     await count.click();
-    await expect(demo.locator('[data-sd-count]')).toHaveCount(1);
-    await expect(phone(page, 'leo').locator('[data-sd-count]')).toHaveCount(1);
-    await expect(demo.locator('[data-sd-log] li').first()).toContainText('only Leo’s phone shows it');
+    await expect(demo.locator('[data-sd-count]')).toHaveCount(3);
+    for (const who of ['leo', 'sara', 'nico']) await expect(phone(page, who).locator('[data-sd-count]'), who).toHaveCount(1);
+    await expect(phone(page, 'tom').locator('[data-sd-count]')).toHaveCount(0);
+    await expect(demo.locator('[data-sd-log] li').first()).toContainText('over Bluetooth · the web app misses it');
+    // The count-in never starts the click by itself.
+    await expect(demo.locator('[data-act="click"]')).toHaveAttribute('aria-pressed', 'false');
+    // Count in again stops it on every phone.
+    await count.click();
+    await expect(demo.locator('[data-sd-count]')).toHaveCount(0);
+    // Wi‑Fi back in the middle of a count: the web app joins on the beat the others are on.
+    await count.click();
+    await expect(demo.locator('[data-sd-count]')).toHaveCount(3);
+    await demo.locator('[data-sd-wifi]').click();
+    await expect(demo.locator('[data-sd-count]')).toHaveCount(4);
+    const shown = await demo.locator('[data-sd-count] b').allTextContents();
+    expect(new Set(shown).size, shown.join(' ')).toBe(1);
     // Another song ends it.
     await demo.locator('[data-act="next"]').click();
     await expect(demo.locator('[data-sd-count]')).toHaveCount(0);
@@ -97,11 +111,11 @@ test.describe('Stage demo: the click over Bluetooth, the count-in over the inter
       await demo.locator('[data-sd-wifi]').click();
       await demo.locator('[data-act="click"]').click();
       await demo.locator('[data-act="count"]').click();
-      await expect(demo.locator('[data-sd-count] .is-go')).toHaveText(lang === 'it' ? 'Via' : 'Ya', { timeout: 6000 });
+      await expect(demo.locator('[data-sd-count] .is-go').first()).toHaveText(lang === 'it' ? 'Via' : 'Ya', { timeout: 6000 });
       await expect(demo.locator('[data-sd-count]')).toHaveCount(0, { timeout: 6000 });
       const misses = await page.evaluate(() => [...((window as unknown as { __bwI18nMisses?: Set<string> }).__bwI18nMisses ?? [])]);
       expect(misses).toEqual([]);
-      await expect(demo).not.toContainText(/Bluetooth · the web app|Count-in|needs a connection/);
+      await expect(demo).not.toContainText(/Bluetooth · the web app|Count-in|needs a connection|has no Bluetooth/);
       await page.context().close();
     });
   }

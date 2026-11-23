@@ -72,26 +72,38 @@ describe('Stage demo rules', () => {
     expect(leaderStep(s, 1).click).toBe(false);
   });
 
-  // The count-in goes over the internet only (useStageLive: setCountIn sends on the channel, never blePublishLive).
-  it('the count-in shows on every phone with a connection, only on the leader’s without one', () => {
+  // The count-in travels over Bluetooth too (PR #311, useStageLive.setCountIn: blePublishLive(COUNTIN_EVENT, countInBleWire(state))).
+  it('the count-in shows on every phone with a connection, and without one on the phone apps over Bluetooth', () => {
     let s = toggleCountIn(initialState());
     expect(s.count).toBe(true);
-    expect(countInReaches(s)).toBe(true);
+    for (const id of ['sara', 'nico', 'tom']) expect(countInReaches(s, m(s, id)), id).toBe(true);
     expect(countInSeen(s)).toBe(3);
     s = toggleCountIn(setOnline(initialState(), false));
     expect(s.count).toBe(true); // the leader's own phone counts
-    expect(countInReaches(s)).toBe(false);
-    expect(countInSeen(s)).toBe(0);
+    expect(countInReaches(s, m(s, 'sara'))).toBe(true); // iPhone app, over Bluetooth
+    expect(countInReaches(s, m(s, 'nico'))).toBe(true); // Android app, over Bluetooth
+    expect(countInReaches(s, m(s, 'tom'))).toBe(false); // in a browser the count-in needs the internet
+    expect(countInSeen(s)).toBe(2);
+    // No count running: nobody shows one.
+    expect(countInReaches(initialState(), m(s, 'sara'))).toBe(false);
   });
 
-  it('a count-in ends at Go, on Count in again, with another song and when the connection changes', () => {
+  it('a count-in ends at Go, on Count in again and with another song; losing the Wi‑Fi does not end it', () => {
     const s = toggleCountIn(initialState());
     expect(endCountIn(s).count).toBe(false);
     expect(toggleCountIn(s).count).toBe(false);
     expect(leaderStep(s, 1).count).toBe(false);
-    expect(setOnline(s, false).count).toBe(false);
+    // The venue Wi‑Fi drops mid-count: Bluetooth carries it on for the phone apps.
+    const off = setOnline(s, false);
+    expect(off.count).toBe(true);
+    expect(countInSeen(off)).toBe(2);
     const idle = initialState();
     expect(endCountIn(idle)).toBe(idle);
+  });
+
+  it('the count-in never starts the click by itself', () => {
+    expect(toggleCountIn(initialState()).click).toBe(false);
+    expect(toggleCountIn(toggleClick(initialState())).click).toBe(true);
   });
 });
 
@@ -109,13 +121,21 @@ describe('what the site says about the click and the count-in', () => {
     expect(copy).not.toMatch(/click (della band |visivo )?ha bisogno di internet|non viene inviato via Bluetooth|clic (de la banda |visual )?necesita internet|no se envía por Bluetooth/i);
   });
 
-  it('says the click reaches nearby phones over Bluetooth, and that the count-in needs a connection', () => {
+  it('says the click and the count-in reach the phone apps over Bluetooth, and that a browser needs the internet', () => {
     const text = JSON.stringify(stage);
     expect(text).toMatch(/With no internet it reaches the phone apps nearby over Bluetooth/);
     expect(text).toMatch(/same click over Bluetooth/);
-    expect(text).toMatch(/With no connection only the leader’s phone shows the countdown/);
+    expect(text).toMatch(/With no internet it reaches the phone apps over Bluetooth, on the same beat; in a browser it needs the internet/);
     const faq = ANSWERS.stage.map((x) => x.a).join(' ');
-    expect(faq).toMatch(/same visual click over Bluetooth/);
-    expect(faq).toMatch(/with no signal only the leader’s phone shows it/);
+    expect(faq).toMatch(/the same count-in and the same visual click over Bluetooth/);
+    expect(faq).toMatch(/With no internet it reaches the iPhone and Android apps over Bluetooth/);
+    expect(faq).toMatch(/in a browser it needs the internet/);
+  });
+
+  // Since PR #311 the count-in is sent over Bluetooth: the site no longer says it needs a connection.
+  it('never says the count-in needs a connection, or that only the leader’s phone shows it offline', () => {
+    expect(copy).not.toMatch(/count-in needs a connection|only the leader’s phone shows|only Leo’s phone shows|Only the count-in needs/i);
+    expect(copy).not.toMatch(/lo mostra solo il telefono del leader|solo il telefono di Leo|Solo il conteggio ha bisogno/i);
+    expect(copy).not.toMatch(/solo (la muestra|aparece en) el (teléfono|móvil) del líder|solo la muestra el teléfono de Leo|Solo la cuenta de entrada necesita/i);
   });
 });
