@@ -33,18 +33,27 @@
  * safe: the member writes 8 random bytes, the leader signs t1 with them.
  *
  * Live characteristic (read + notify). The leader's newest state of each live
- * event, the same payloads as on the Realtime channel ('click', 'playhead',
- * and D1's 'countin'), so a member that connects or reconnects mid-song reads
+ * event: 'click' and 'playhead' as on the Realtime channel, 'countin' in its
+ * short form (countIn.ts `countInBleWire`: the channel's would not fit next to
+ * the other two), so a member that connects or reconnects mid-song reads
  * where the band is and lands on the right beat:
  *   [0] version (3)  [1] type 3
  *   [2..5]   frame seq (subscribers are notified with just these 4 bytes,
  *            then read, as for the state)
  *   then JSON: { f?: from, s?: songId, <event>: payload… }; `from` and
- *            `songId`, when every payload has the same, are sent once
+ *            `songId` are sent once for the payloads that share them (one
+ *            with another value keeps its own)
  *   [last 8] HMAC-SHA256(key, everything before), truncated
  * At most 512 bytes (a characteristic value's limit). Each payload is then
- * checked by the same parser as on the Realtime channel, and the newest seq
- * wins, so a state that arrives both ways is applied once.
+ * checked by its parser (the Realtime channel's; the count-in's reads both
+ * forms), and the newest seq wins, so a state that arrives both ways is
+ * applied once. States the leader sets in one turn go out as one frame
+ * (useStageBle `publishLive`). The frame is checked with the band key, which
+ * every member has: it says "someone in the band", not "an admin". What ties
+ * it to the leader is the link it is read over (the phone whose signed state
+ * this phone follows); the count-in is only taken from a phone whose
+ * signature was checked on that link (useStageBle `onLive`), and is shown on
+ * the leader's signed clock.
  *
  * Then the NTP-style maths of the Realtime click (clockSample / bestSample).
  */
@@ -132,13 +141,21 @@ export async function encodeLive(seq: number, events: LiveEvents, keyB64: string
     { ...(events[k] as Record<string, unknown>) },
   ]);
   const body: Record<string, unknown> = {};
-  // `from` and `songId` once, when every payload has the same.
+  // `from` and `songId` once: the value most payloads share (all of them, usually). A payload
+  // with another value keeps its own (a click left on another song while the next one is counted
+  // in), and readers, released apps included, give the shared one only to a payload with none.
+  // Never when a payload has no such field: it would be given the others'.
   for (const [field, short] of [['from', 'f'], ['songId', 's']] as const) {
-    const values = new Set(payloads.map(([, p]) => JSON.stringify(p[field])));
-    if (payloads.length && values.size === 1 && payloads[0][1][field] !== undefined) {
-      body[short] = payloads[0][1][field];
-      payloads.forEach(([, p]) => delete p[field]);
-    }
+    if (!payloads.length || payloads.some(([, p]) => p[field] === undefined)) continue;
+    const counts = new Map<string, number>();
+    for (const [, p] of payloads) counts.set(JSON.stringify(p[field]), (counts.get(JSON.stringify(p[field])) ?? 0) + 1);
+    const [top, n] = [...counts].sort((a, b) => b[1] - a[1])[0];
+    // Shared by all, or by more than one: sending it once is then shorter.
+    if (n < payloads.length && n < 2) continue;
+    body[short] = JSON.parse(top);
+    payloads.forEach(([, p]) => {
+      if (JSON.stringify(p[field]) === top) delete p[field];
+    });
   }
   for (const [k, p] of payloads) body[k] = p;
   const json = utf8.encode(JSON.stringify(body));
