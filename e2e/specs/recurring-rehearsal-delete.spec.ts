@@ -59,6 +59,9 @@ async function plannerRows(app: App, day: string) {
   // The Planner lies over the Calendar (which has a "Next month" of its own).
   const planner = app.page.locator('.bw-fold-split').last();
   const month = planner.getByRole('heading', { name: date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), exact: true });
+  // isVisible() does not wait. On a slow machine the Planner's month was not
+  // drawn yet, so the loop walked three months on and this month was never found.
+  await expect(planner.getByRole('heading', { name: /^\p{L}+ \d{4}$/u }).first()).toBeVisible();
   for (let i = 0; i < 3 && !(await month.isVisible()); i++) {
     await planner.getByRole('button', { name: app.t('Next month'), exact: true }).click();
     await app.settle();
