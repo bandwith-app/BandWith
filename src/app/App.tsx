@@ -8,6 +8,7 @@ import { Capacitor } from "@capacitor/core";
 import { App as CapacitorApp } from "@capacitor/app";
 import { isOpenedFileUrl, receiveChartFile } from '@/lib/chartInbox';
 import { inviteTokenFromUrl } from "@/lib/services/invitations";
+import { START_PARAM, dropUrlParams } from "@/lib/authCallback";
 import { useOnboarding } from "@/lib/OnboardingContext";
 import {
   claimPendingDeputyToken,
@@ -134,9 +135,18 @@ export default function App() {
     if (url.searchParams.has('invite') || url.searchParams.has('deputy')) {
       url.searchParams.delete('invite');
       url.searchParams.delete('deputy');
+      // An invite wins over the site's "Create your account" flag.
+      url.searchParams.delete(START_PARAM);
       window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
     }
   }, []);
+
+  // Signed in, the site's "Create your account" link (/?start=signup) has
+  // nothing to open: drop the flag, so signing out later (it reloads the
+  // page) starts on Welcome. Signed out, the onboarding reads it first.
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) dropUrlParams([START_PARAM]);
+  }, [authLoading, isAuthenticated]);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;

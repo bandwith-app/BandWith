@@ -233,7 +233,7 @@ export const AccountCreation: React.FC<AccountCreationProps> = ({
         <div className="flex flex-col px-4 pt-2 gap-5">
           <Kicker overline={t('Account')} title={isJoiner ? t('Join band') : t('Create account')} />
           <p className="text-[16px] leading-[1.45] tracking-[-0.003em] text-muted-foreground -mt-1">
-            {isJoiner ? t('One step to join the crew.') : t("Let's get you set up in seconds.")}
+            {isJoiner ? t('One step to join the crew.') : t('Your account first, then your band. About two minutes.')}
           </p>
 
           {/* OAuth */}

@@ -2091,7 +2091,7 @@ const dict: Dictionary = {
   "Terms": "Términos",
   "Account": "Cuenta",
   "One step to join the crew.": "Un paso y estás en el equipo.",
-  "Let's get you set up in seconds.": "Te dejamos listo en segundos.",
+  "Your account first, then your band. About two minutes.": "Primero tu cuenta, luego tu banda. Unos dos minutos.",
   "or with email": "o con email",
   "Your name": "Tu nombre",
   "Min 8 characters": "Mín. 8 caracteres",

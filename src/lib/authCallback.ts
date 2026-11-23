@@ -76,10 +76,34 @@ export { recoveryRefusedText } from './authErrors';
 /** Query flag on the app root: open the welcome flow on this screen (set by the callback error screen). */
 export const AUTH_SCREEN_PARAM = 'bw_screen';
 export type AuthScreenTarget = 'sign-in' | 'forgot-password';
+/**
+ * Query flag on the app root, set by the site's "Create your account" /
+ * "Sign up" buttons (`/?start=signup&src=…`): open on the Create account form.
+ */
+export const START_PARAM = 'start';
+/** Links that already say where to go (a band invite, a deputy request): they win over `start`. */
+const INVITE_LINK_PARAMS = ['invite', 'deputy'];
 
-export function authScreenFromUrl(search: string): AuthScreenTarget | null {
-  const v = new URLSearchParams(search).get(AUTH_SCREEN_PARAM);
-  return v === 'sign-in' || v === 'forgot-password' ? v : null;
+/**
+ * The screen the address asks the signed-out flow to open on, or null for
+ * the normal start (Welcome). `bw_screen` first; then `start=signup`, unless
+ * the link is an invite.
+ */
+export function authScreenFromUrl(search: string): AuthScreenTarget | 'sign-up' | null {
+  const p = new URLSearchParams(search);
+  const v = p.get(AUTH_SCREEN_PARAM);
+  if (v === 'sign-in' || v === 'forgot-password') return v;
+  if (p.get(START_PARAM) === 'signup' && !INVITE_LINK_PARAMS.some((name) => p.has(name))) return 'sign-up';
+  return null;
+}
+
+/** Takes used-up flags off the address bar (same history entry), so a refresh or Back opens the normal start. */
+export function dropUrlParams(names: string[]): void {
+  if (typeof window === 'undefined') return;
+  const url = new URL(window.location.href);
+  if (!names.some((name) => url.searchParams.has(name))) return;
+  for (const name of names) url.searchParams.delete(name);
+  window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
 }
 
 /** Address of the app root opened on `screen`. */
