@@ -35,7 +35,7 @@ const basics: AreaModule = {
             "Tap **Continue with Google** or **Continue with Apple** to use that account, or fill in the email form below **or with email**.",
             "For the email form, type your **Full name**, your **Email** and a **Password** of at least 8 characters (the hint says **Min 8 characters**).",
             "Tap **Continue** at the bottom. Continuing means you accept the **Terms** and the **Privacy Policy**; both open from the links under the form.",
-            "If the app shows **Check your email**, open the link in that email to confirm your address (see [[confirm-your-email]]).",
+            "If the app shows **Check your email**, type the 6-digit code from that email to confirm your address (see [[confirm-your-email]]).",
             "On **What brings you here?**, pick **Manage my band** or **Solo schedule** and tap **Continue** (see [[solo-and-band-mode]]).",
           ],
         },
@@ -58,20 +58,20 @@ const basics: AreaModule = {
       summary: "A new email account can need its address confirmed before you can sign in.",
       roles: ["admin", "member", "deputy"],
       kind: "task",
-      keywords: ["verification", "confirm link", "activation email", "check your email"],
+      keywords: ["verification", "confirmation code", "6-digit code", "confirm link", "activation email", "check your email"],
       related: ["create-an-account", "sign-in"],
       body: [
-        { type: "p", text: "When email confirmation is on, the account exists only once you open the link we send. Until then the app shows **Check your email**." },
+        { type: "p", text: "When email confirmation is on, the account exists only once you confirm the address with the 6-digit code we email you. Until then the app shows **Check your email**." },
         {
           type: "steps",
           items: [
-            "Open the email from BandWith on the same device where you created the account.",
-            "Tap the link in it. The app opens and finishes creating your account.",
-            "If the app is still on **Check your email**, tap **I’ve confirmed it: sign in**.",
-            "No email? Look in your spam folder, then tap **Send the email again**. The button changes to **Email sent again**.",
+            "Open the email from BandWith and find the 6-digit code.",
+            "Back in the app, type it in **Confirmation code**. The sixth digit checks it on its own (or tap **Verify**), and the app goes on with your new account.",
+            "Used the link in the email instead? If the app is still on **Check your email**, tap **I’ve confirmed it: sign in**.",
+            "No email? Look in your spam folder, then tap **Send a new code**. The button changes to **New code sent**, and the code sent before stops working.",
           ],
         },
-        { type: "note", tone: "tip", text: "Open the link on the device where you signed up. A link opened on another device can't finish the sign-up there." },
+        { type: "note", tone: "tip", text: "The email also has a link that confirms your address. Open it on the device where you signed up: a link opened on another device can't finish the sign-up there." },
       ],
     },
     {
@@ -1303,7 +1303,7 @@ const basics: AreaModule = {
 
   faq: [
     { q: "I forgot my password. What do I do?", a: "On the sign-in screen, tap **Forgot password?** and follow the link we email you. The link works for one hour. See [[forgot-password]]." },
-    { q: "I signed up but can't sign in.", a: "A new account may need its address confirmed first. Open the link in the email on the device where you created the account, then sign in. See [[confirm-your-email]]." },
+    { q: "I signed up but can't sign in.", a: "A new account may need its address confirmed first. On **Check your email**, type the 6-digit code from the email; or open the link in that email on the device where you created the account, then sign in. See [[confirm-your-email]]." },
     { q: "Face ID (or fingerprint) stopped working.", a: "Sign in with your password once to turn quick sign-in back on. This happens after a password change or when the saved sign-in expires. See [[quick-sign-in]]." },
     { q: "Why does the app ask for Face ID every time it starts?", a: "That is app lock. On iPhone, iPad and Android it asks when the app starts after being closed. Turn it off in **Settings & account › Privacy & account › App lock**. See [[app-lock]]." },
     { q: "How do I join my band?", a: "Open the invite link from the email your band admin sent, or tap **I have an invite code** on the welcome screen and paste it. See [[join-with-an-invite]]." },

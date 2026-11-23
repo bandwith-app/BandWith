@@ -713,6 +713,29 @@ const signInDemo = async () => {
   return { data: { user: DEMO_USER, session: makeSession() }, error: null };
 };
 
+/**
+ * Email confirmation in the demo, off unless localStorage
+ * bw-demo-confirm-email = 1 (the e2e suite's sign-up spec): Create account
+ * then gives no session, as with confirmation on, and "Check your email"
+ * takes the code below; any other code is refused the way Supabase refuses
+ * a wrong or expired one.
+ */
+const CONFIRM_EMAIL_KEY = 'bw-demo-confirm-email';
+export const DEMO_SIGNUP_CODE = '482913';
+const confirmEmailOn = () => readLS(CONFIRM_EMAIL_KEY) === '1';
+const signUpDemo = async () =>
+  confirmEmailOn()
+    ? // (identities not empty: an empty list means "this address already has an account".)
+      { data: { user: { ...DEMO_USER, email_confirmed_at: null, identities: [{ provider: 'email' }] }, session: null }, error: null }
+    : signInDemo();
+const verifyOtpDemo = async (params?: { token?: string }) =>
+  confirmEmailOn() && params?.token !== DEMO_SIGNUP_CODE
+    ? {
+        data: { user: null, session: null },
+        error: { name: 'AuthApiError', status: 403, code: 'otp_expired', message: 'Token has expired or is invalid' },
+      }
+    : signInDemo();
+
 const auth = {
   getSession: async () => ({ data: { session: isSignedIn() ? makeSession() : null }, error: null }),
   getUser: async () => ({ data: { user: isSignedIn() ? DEMO_USER : null }, error: null }),
@@ -723,7 +746,8 @@ const auth = {
   },
   // Any email/password opens the demo account.
   signInWithPassword: async () => signInDemo(),
-  signUp: async () => signInDemo(),
+  signUp: signUpDemo,
+  resend: async () => ({ data: { user: null, session: null }, error: null }),
   signInWithOAuth: async () => {
     await signInDemo();
     return { data: { provider: 'demo', url: null }, error: null };
@@ -743,7 +767,7 @@ const auth = {
   },
   exchangeCodeForSession: async () => signInDemo(),
   setSession: async () => signInDemo(),
-  verifyOtp: async () => signInDemo(),
+  verifyOtp: verifyOtpDemo,
 };
 
 // ---------------------------------------------------- realtime / storage --

@@ -28,7 +28,7 @@ const basics: AreaText = {
             "Tippe auf **Weiter mit Google** oder **Weiter mit Apple**, um dieses Konto zu nutzen, oder füll das E-Mail-Formular unter **oder mit E-Mail** aus.",
             "Füll im E-Mail-Formular **Vollständiger Name**, **E-Mail** und **Passwort** aus; das Passwort braucht mindestens 8 Zeichen (der Hinweis lautet **Mind. 8 Zeichen**).",
             "Tippe unten auf **Weiter**. Damit akzeptierst du die **Nutzungsbedingungen** und die **Datenschutzerklärung**; beide öffnest du über die Links unter dem Formular.",
-            "Zeigt die App **Sieh in dein Postfach**, öffne den Link in dieser E-Mail, um deine Adresse zu bestätigen (siehe [[confirm-your-email]]).",
+            "Zeigt die App **Sieh in dein Postfach**, gib den 6-stelligen Code aus dieser E-Mail ein, um deine Adresse zu bestätigen (siehe [[confirm-your-email]]).",
             "Wähle bei **Was führt dich her?** entweder **Meine Band verwalten** oder **Solo-Kalender** und tippe auf **Weiter** (siehe [[solo-and-band-mode]]).",
           ],
         },
@@ -51,20 +51,20 @@ const basics: AreaText = {
       summary: "Bei einem neuen E-Mail-Konto musst du die Adresse eventuell bestätigen, bevor du dich anmelden kannst.",
       roles: ["admin", "member", "deputy"],
       kind: "task",
-      keywords: ["Bestätigung", "Bestätigungslink", "Aktivierungsmail", "E-Mail prüfen", "verifizieren"],
+      keywords: ["Bestätigung", "Bestätigungscode", "6-stelliger Code", "Bestätigungslink", "Aktivierungsmail", "E-Mail prüfen", "verifizieren"],
       related: ["create-an-account", "sign-in"],
       body: [
-        { type: "p", text: "Ist die E-Mail-Bestätigung aktiv, entsteht das Konto erst, wenn du den Link öffnest, den wir dir schicken. Bis dahin zeigt die App **Sieh in dein Postfach**." },
+        { type: "p", text: "Ist die E-Mail-Bestätigung aktiv, entsteht das Konto erst, wenn du die Adresse mit dem 6-stelligen Code bestätigst, den wir dir per E-Mail schicken. Bis dahin zeigt die App **Sieh in dein Postfach**." },
         {
           type: "steps",
           items: [
-            "Öffne die E-Mail von BandWith auf dem Gerät, auf dem du das Konto erstellt hast.",
-            "Tippe auf den Link darin. Die App öffnet sich und schließt das Erstellen deines Kontos ab.",
-            "Steht die App noch auf **Sieh in dein Postfach**, tippe auf **Bestätigt: anmelden**.",
-            "Keine E-Mail da? Schau im Spam-Ordner nach und tippe dann auf **E-Mail erneut senden**. Der Button wechselt zu **E-Mail erneut gesendet**.",
+            "Öffne die E-Mail von BandWith und such den 6-stelligen Code.",
+            "Geh zurück in die App und gib ihn bei **Bestätigungscode** ein. Mit der sechsten Ziffer wird er von selbst geprüft (oder tippe auf **Bestätigen**), und die App macht mit deinem neuen Konto weiter.",
+            "Hast du stattdessen den Link in der E-Mail benutzt? Steht die App noch auf **Sieh in dein Postfach**, tippe auf **Bestätigt: anmelden**.",
+            "Keine E-Mail da? Schau im Spam-Ordner nach und tippe dann auf **Neuen Code senden**. Der Button wechselt zu **Neuer Code gesendet**, und der vorherige Code gilt nicht mehr.",
           ],
         },
-        { type: "note", tone: "tip", text: "Öffne den Link auf dem Gerät, auf dem du dich registriert hast. Auf einem anderen Gerät lässt sich die Registrierung damit nicht abschließen." },
+        { type: "note", tone: "tip", text: "Die E-Mail enthält auch einen Link, der deine Adresse bestätigt. Öffne ihn auf dem Gerät, auf dem du dich registriert hast: Auf einem anderen Gerät lässt sich die Registrierung damit nicht abschließen." },
       ],
     },
     {
@@ -1296,7 +1296,7 @@ const basics: AreaText = {
 
   faq: [
     { q: "Ich habe mein Passwort vergessen. Was tun?", a: "Tippe auf dem Anmeldebildschirm auf **Passwort vergessen?** und folge dem Link, den wir dir per E-Mail schicken. Der Link gilt eine Stunde lang. Siehe [[forgot-password]]." },
-    { q: "Ich habe mich registriert, kann mich aber nicht anmelden.", a: "Bei einem neuen Konto muss eventuell erst die Adresse bestätigt werden. Öffne den Link in der E-Mail auf dem Gerät, auf dem du das Konto erstellt hast, und melde dich dann an. Siehe [[confirm-your-email]]." },
+    { q: "Ich habe mich registriert, kann mich aber nicht anmelden.", a: "Bei einem neuen Konto muss eventuell erst die Adresse bestätigt werden. Gib bei **Sieh in dein Postfach** den 6-stelligen Code aus der E-Mail ein; oder öffne den Link in dieser E-Mail auf dem Gerät, auf dem du das Konto erstellt hast, und melde dich dann an. Siehe [[confirm-your-email]]." },
     { q: "Face ID (oder Fingerabdruck) funktioniert nicht mehr.", a: "Melde dich einmal mit deinem Passwort an, um die Schnellanmeldung wieder einzuschalten. Das passiert nach einer Passwortänderung oder wenn die gespeicherte Anmeldung abläuft. Siehe [[quick-sign-in]]." },
     { q: "Warum fragt die App bei jedem Start nach Face ID?", a: "Das ist die App-Sperre. Auf iPhone, iPad und Android fragt sie, wenn die App nach dem Schließen neu startet. Ausschalten kannst du sie unter **Einstellungen & Konto › Datenschutz & Konto › App-Sperre**. Siehe [[app-lock]]." },
     { q: "Wie trete ich meiner Band bei?", a: "Öffne den Einladungslink aus der E-Mail deines Band-Admins oder tippe auf dem Willkommensbildschirm auf **Ich habe einen Einladungscode** und füge den Code ein. Siehe [[join-with-an-invite]]." },
