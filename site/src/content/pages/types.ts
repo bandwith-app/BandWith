@@ -5,8 +5,9 @@
  *
  * Writing rules (all pages):
  * - English only, short sentences, the band's own words. Facts come from the
- *   Academy articles (academy/content/*.ts); on-screen labels are written as
- *   the English UI shows them.
+ *   app's code and the Academy articles (academy/content/*.ts); on-screen
+ *   labels are written as the English UI shows them (src/lib/i18n), and in
+ *   the dictionaries as the Italian and Spanish UI shows them.
  * - Demo data is the Academy's: band Velvet Static, gig "Client A — Wedding"
  *   at Villa Necchi, Via Mozart 14, Milan, Sat 21 Nov 2026 (load-in 15:00,
  *   soundcheck 16:30, show 20:30). Band: Leo M. (admin, bass), Sara (vocals),
@@ -49,7 +50,7 @@ export type ChannelPage = {
   slug: string;
   /** <title> is `${title} · BandWith`. */
   title: string;
-  /** Meta description, 1–2 sentences. */
+  /** Meta description, 1–3 short sentences, 160 characters at most (in Italian and Spanish too). */
   description: string;
   ogTitle: string;
   hero: {

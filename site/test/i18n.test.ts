@@ -60,7 +60,7 @@ const NOT_SENTENCES = new Set([
   'Leo cancelled the request · Ivo reads', '12 Oct,', 'Accepted by', 'Client opens the link · Leo’s quote moves to', 'Leo taps',
   'Message sent · Leo’s quote moves to', 'Leo taps Lock in on', 'Rehearsal locked in for', 'Sara can make', 'Sara takes back',
   'Key of', 'Original key,', 'Your screen is back in', 'Your screen: key of', 'Beta 52', 'We’ll write to', 'You’re', 'You’re already',
-  'Leo →', '14px sans-serif', 'BPM on every online phone', 's phone (admin) and Ivo M.',
+  'Leo →', '14px sans-serif', 'BPM on every phone', 'BPM over Bluetooth · the web app misses it', 's phone (admin) and Ivo M.',
 ]);
 
 describe('text written by scripts', () => {
@@ -207,8 +207,15 @@ describe('paths and links', () => {
     expect(localizeHref('/get/#waitlist', 'it')).toBe('/it/get/#waitlist');
     expect(localizeHref('/#rack', 'es')).toBe('/es/#rack');
     expect(localizeHref('/shots/x@phone.webp', 'it')).toBe('/shots/x@phone.webp');
-    expect(localizeHref('https://app.bandwith.fun/academy/#/a/stage-mode', 'it')).toBe('https://app.bandwith.fun/academy/?lang=it#/a/stage-mode');
-    expect(localizeHref('https://app.bandwith.fun/academy/', 'es')).toBe('https://app.bandwith.fun/academy/?lang=es');
+    // The Academy's static pages, in the page's language (the bare /academy/ is the app shell, noindex).
+    expect(localizeHref('https://app.bandwith.fun/academy/en/a/stage-mode/', 'it')).toBe('https://app.bandwith.fun/academy/it/a/stage-mode/');
+    expect(localizeHref('https://app.bandwith.fun/academy/en/a/count-in/', 'es')).toBe('https://app.bandwith.fun/academy/es/a/count-in/');
+    expect(localizeHref('https://app.bandwith.fun/academy/en/', 'es')).toBe('https://app.bandwith.fun/academy/es/');
+    expect(localizeHref('https://app.bandwith.fun/academy/', 'it')).toBe('https://app.bandwith.fun/academy/it/');
+    expect(localizeHref('https://app.bandwith.fun/academy/en/a/stage-mode/', 'en')).toBe('https://app.bandwith.fun/academy/en/a/stage-mode/');
+    // Already in a language, or not a page of the guide: untouched.
+    expect(localizeHref('https://app.bandwith.fun/academy/it/a/stage-mode/', 'es')).toBe('https://app.bandwith.fun/academy/it/a/stage-mode/');
+    expect(localizeHref('https://app.bandwith.fun/academy/llms.txt', 'it')).toBe('https://app.bandwith.fun/academy/llms.txt');
     expect(localizeHref('https://app.bandwith.fun/?start=signup', 'it')).toBe('https://app.bandwith.fun/?start=signup');
     expect(localizeHref('/get/', 'en')).toBe('/get/');
     // The privacy policy exists in Italian and Spanish; the terms are English only.

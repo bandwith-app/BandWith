@@ -13,9 +13,11 @@ import path from 'path';
 import { PAGES, englishPage } from '../tools/pages';
 import { finalizePage, pagePath } from '../tools/i18n';
 import { LANGS, SITE_ORIGIN, pathIn, type Lang } from '../src/i18n/langs';
-import { INDEXED, NOT_FOUND, robotsTxt, sitemapXml, llmsTxt, llmsFullTxt, hostingConfig, AI_CRAWLERS } from '../tools/seo';
+import { INDEXED, NOT_FOUND, FAQ_SCHEMA, OFFER_AVAILABILITY, SAME_AS, robotsTxt, sitemapXml, llmsTxt, llmsFullTxt, hostingConfig, AI_CRAWLERS } from '../tools/seo';
 import { ANSWERS, DEFINITION, HOME_ANSWERS } from '../src/content/answers';
 import { CHANNELS } from '../src/content/features';
+import { academyArticle, ACADEMY_GUIDE } from '../src/content/site';
+import { BY_ID } from '../../academy/content';
 
 const SITE = path.resolve(__dirname, '..');
 const words = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
@@ -113,9 +115,8 @@ describe('every built page', () => {
         expect(b.doc.querySelector('meta[property="og:site_name"]')?.getAttribute('content')).toBe('BandWith');
         const desc = b.doc.querySelector('meta[name="description"]')?.getAttribute('content') ?? '';
         expect(desc.length, desc).toBeGreaterThan(70);
-        // Google shows about 155 characters; the page descriptions (content/pages) get trimmed
-        // after the copy update, until then this only stops them growing.
-        expect(desc.length, desc).toBeLessThanOrEqual(230);
+        // Google shows about 155–160 characters: every page says its piece inside that, in every language.
+        expect(desc.length, desc).toBeLessThanOrEqual(160);
       });
 
       test('JSON-LD parses and describes this page', () => {
@@ -137,14 +138,26 @@ describe('every built page', () => {
         for (const r of refs) expect(ids.has(r.slice(7, -1)), r).toBe(true);
       });
 
-      test('the FAQ in JSON-LD is the Q&A the page shows', () => {
+      test('FAQPage markup: on /faq/ and /get/ it is the Q&A the page shows, elsewhere there is none', () => {
         const shown = [...b.doc.querySelectorAll('.faq__list details')].map((d) => ({
           q: d.querySelector('summary')!.textContent!.replace(/\s+/g, ' ').trim(),
           a: d.querySelector('summary')!.nextElementSibling!.textContent!.replace(/\s+/g, ' ').trim(),
         }));
         const faq = ofType(graph(b.doc), 'FAQPage')[0] as { mainEntity?: { name: string; acceptedAnswer: { text: string } }[] } | undefined;
-        if (!shown.length) { expect(faq).toBeUndefined(); return; }
+        if (!FAQ_SCHEMA.includes(b.rel)) { expect(faq).toBeUndefined(); return; }
+        expect(shown.length).toBeGreaterThan(0);
         expect(faq?.mainEntity?.map((q) => ({ q: q.name, a: q.acceptedAnswer.text }))).toEqual(shown);
+      });
+
+      test('Guide links are the Academy’s static pages in this language, to articles that exist', () => {
+        const hrefs = [...b.doc.querySelectorAll('a[href*="app.bandwith.fun/academy"]')].map((a) => a.getAttribute('href')!);
+        expect(hrefs.length).toBeGreaterThanOrEqual(3); // the nav, the menu and the footer at least
+        const re = new RegExp(`^https://app\\.bandwith\\.fun/academy/${b.lang}/(?:a/([a-z0-9-]+)/)?$`);
+        for (const h of hrefs) {
+          const m = re.exec(h);
+          expect(m, `${b.url} → ${h}`).not.toBeNull();
+          if (m?.[1]) expect(BY_ID.has(m[1]), h).toBe(true);
+        }
       });
     });
   }
@@ -159,6 +172,47 @@ describe('every built page', () => {
       expect(app.aggregateRating).toBeUndefined();
       expect(app.review).toBeUndefined();
       expect((app.featureList as string[]).length).toBe(CHANNELS.length);
+    }
+  });
+
+  test('every question carries FAQPage markup on one URL only, and /faq/ has all of the site’s answers', () => {
+    for (const lang of LANGS) {
+      const seen = new Map<string, string>();
+      for (const b of BUILT.filter((x) => x.lang === lang)) {
+        const faq = ofType(graph(b.doc), 'FAQPage')[0] as { mainEntity?: { name: string }[] } | undefined;
+        for (const q of faq?.mainEntity ?? []) {
+          expect(seen.get(q.name), `${q.name}: ${seen.get(q.name)} and ${b.url}`).toBeUndefined();
+          seen.set(q.name, b.url);
+        }
+      }
+      const all = [...HOME_ANSWERS, ...Object.values(ANSWERS).flat()].length;
+      expect([...seen.values()].filter((u) => u.endsWith('/faq/')).length, lang).toBe(all);
+      expect([...seen.values()].filter((u) => u.endsWith('/get/')).length, lang).toBeGreaterThanOrEqual(5);
+    }
+    const faq = ofType(graph(byUrl.get(`${SITE_ORIGIN}/faq/`)!.doc), 'FAQPage')[0] as { mainEntity: { name: string }[] };
+    expect(faq.mainEntity.map((q) => q.name).sort()).toEqual([...HOME_ANSWERS, ...Object.values(ANSWERS).flat()].map((x) => x.q).sort());
+  });
+
+  test('the offer: free, limited availability while the beta’s spots are capped; no invented profiles', () => {
+    expect(OFFER_AVAILABILITY).toBe('https://schema.org/LimitedAvailability');
+    for (const b of BUILT.filter((x) => x.rel === 'index.html')) {
+      const [app] = ofType(graph(b.doc), 'SoftwareApplication') as Node[];
+      expect((app.offers as { availability: string }).availability).toBe(OFFER_AVAILABILITY);
+      // sameAs only with a real official profile (none in the repo yet).
+      expect(SAME_AS).toEqual([]);
+      expect(ofType(graph(b.doc), 'Organization')[0].sameAs).toBeUndefined();
+    }
+  });
+
+  test('the Get page keeps the closed-beta blocks out of the page until the count says so', () => {
+    for (const b of BUILT.filter((x) => x.rel === 'get/index.html')) {
+      const hidden = (sel: string) => [...b.doc.querySelectorAll(sel)].map((el) => el.hasAttribute('hidden'));
+      expect(hidden('#waitlist'), b.url).toEqual([true]);
+      expect(hidden('.full__inv-open, .full__inv-shut'), b.url).toEqual([true, true]);
+      expect(hidden('.gdoors__inv'), b.url).toEqual([true]);
+      expect(b.doc.querySelector('#waitlist')?.getAttribute('data-cap-show')).toBe('closed');
+      // The doors themselves are always there.
+      expect(b.doc.querySelector('[data-doors]')?.closest('[hidden]')).toBeNull();
     }
   });
 
@@ -251,6 +305,23 @@ describe('llms.txt', () => {
     }
     expect(full).toContain(DEFINITION);
     expect(full).not.toMatch(/undefined|\[object Object\]|<[a-z]/);
+  });
+  test('the full text leaves out what only a closed beta shows, and says nothing the app stopped doing', () => {
+    const full = llmsFullTxt(INDEXED.map((rel) => ({ rel, html: finalizePage(englishPage(rel), rel, 'en') })));
+    expect(full).not.toMatch(/Tonight’s show is full|Sold out tonight|Every open spot is taken|Your spot is kept|kept for band invites are taken too|Your door is still open/);
+    expect(full).not.toMatch(/click needs the internet|isn’t sent over Bluetooth|Ask the lineup now|Open the gig once while online/);
+    // The Get page itself is still there, with its doors and its questions.
+    expect(full).toContain('Pick the door that fits your phone.');
+    expect(full).toContain('### Do I need TestFlight on iPhone?');
+    // What the release added.
+    for (const words of ['Follow the tempo', 'Count in', 'next 7 days', 'Highlight my part', 'Possible gig – keep the date free', 'Send crash reports', 'Delete this date']) {
+      expect(full, words).toContain(words);
+    }
+  });
+  test('Guide links: the article helper and the home point at static English pages', () => {
+    expect(academyArticle('count-in')).toBe('https://app.bandwith.fun/academy/en/a/count-in/');
+    expect(ACADEMY_GUIDE).toBe('https://app.bandwith.fun/academy/en/');
+    expect(llmsTxt()).not.toContain('/academy/#/');
   });
   test('no plan prices or payment providers', () => {
     expect(txt + llmsFullTxt([])).not.toMatch(/Paddle|Stripe|Maestro|€\s?\d/);

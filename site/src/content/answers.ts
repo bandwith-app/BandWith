@@ -3,8 +3,9 @@
  *
  * - DEFINITION: what BandWith is, in one paragraph (home page, llms.txt, JSON-LD).
  * - HOME_ANSWERS: the home page FAQ. ANSWERS[slug]: the Q&A under each channel page.
- * - The /faq/ page gathers all of them; each page's FAQPage JSON-LD is built from
- *   the Q&A it shows (tools/seo.ts), so markup and page never disagree.
+ * - The /faq/ page gathers all of them and carries their FAQPage JSON-LD, built
+ *   from the Q&A it shows (tools/seo.ts), so markup and page never disagree and
+ *   no question is marked up on two URLs (the Get page marks up its own).
  *
  * Rules: the question as people ask it, ending in "?"; the answer stands alone
  * (names BandWith or the feature, no "see above"), 15–80 words, plain text,
@@ -41,7 +42,7 @@ export const HOME_ANSWERS: QA[] = [
   },
   {
     q: 'Does BandWith work without internet at the venue?',
-    a: 'Yes. BandWith keeps the bands, gigs and setlists you last loaded on the device. In Stage mode the leader’s phone keeps the whole band on the same song over Bluetooth, with no pairing, when the venue has no signal.',
+    a: 'Yes. BandWith keeps the bands, gigs and setlists you last loaded on the device, and the phone apps download the setlists of your next 7 days once you say yes. In Stage mode the leader’s phone keeps the whole band on the same song and the same click over Bluetooth, with no pairing, when the venue has no signal.',
   },
   {
     q: 'Which languages is BandWith in?',
@@ -77,6 +78,10 @@ export const ANSWERS: Record<string, QA[]> = {
       q: 'Does the client see what each musician earns?',
       a: 'No. On the quote the client sees the lineup as one line and the total, never each musician’s fee. Quotes and contracts stay with the band’s admins in BandWith.',
     },
+    {
+      q: 'Do band members know about a gig before the client confirms?',
+      a: 'They see a hold, not the quote. When an admin saves a quote in BandWith, every member gets a card on Home, Possible gig – keep the date free, with the day, time and place, and answers I’m free or I can’t. No client and no fee. If the quote falls through, they’re told the date is free again.',
+    },
   ],
   money: [
     {
@@ -103,7 +108,7 @@ export const ANSWERS: Record<string, QA[]> = {
     },
     {
       q: 'Can rehearsals repeat every week?',
-      a: 'Yes. A BandWith rehearsal can repeat weekly, every two weeks or monthly, with one roster and one answer for the whole series, shown in the calendar about four months ahead.',
+      a: 'Yes. A BandWith rehearsal can repeat weekly, every two weeks or monthly, with one roster and one answer for the whole series, shown in the calendar about four months ahead. An admin can delete one date or the whole series.',
     },
   ],
   chat: [
@@ -137,6 +142,10 @@ export const ANSWERS: Record<string, QA[]> = {
       q: 'Where do the band’s lyrics and chords live?',
       a: 'In the BandWith repertoire: one library with each song’s key, tempo, lyrics with chords and recordings. Every active member can read it, and changes to the band’s songs go through the admins.',
     },
+    {
+      q: 'Can the lyrics show who sings which line?',
+      a: 'Yes. In BandWith an admin marks a line, or a few words, as Lead, 2nd voice, Backing, All or Spoken, and says who sings what. Each part looks different in the lyrics, and with Highlight my part every singer sees their own lines bright and the rest dimmed, in the reader and on stage.',
+    },
   ],
   stage: [
     {
@@ -145,11 +154,19 @@ export const ANSWERS: Record<string, QA[]> = {
     },
     {
       q: 'Does Stage mode work without internet?',
-      a: 'Yes. Open the gig once while online and the setlist and charts stay on the phone. With no signal, the leader’s phone keeps the band on the same song over Bluetooth, with no pairing. The visual click needs the internet.',
+      a: 'Yes. Say yes once and the BandWith phone apps keep the setlists of your next 7 days on the phone, with lyrics, chords and your notes. With no signal, the leader’s phone keeps the band on the same song and the same visual click over Bluetooth, with no pairing. Only the count-in needs a connection to reach the other phones.',
     },
     {
       q: 'Is the Stage mode click an audible metronome?',
-      a: 'No. The BandWith click is visual only: a glow flashes around the edge of every phone on the beat, brighter on one, for a count-in and a tempo reference. It isn’t meant for in-ear monitors.',
+      a: 'No. The BandWith click is visual only: a glow flashes around the edge of every phone on the beat, brighter on one, as a tempo reference. It isn’t meant for in-ear monitors. To start a song there is the count-in, which can add a click sound in headphones.',
+    },
+    {
+      q: 'How does the band count in a song?',
+      a: 'In BandWith’s Stage mode the leader taps Count in and every phone shows the same full-screen countdown, one or two bars in the song’s meter, then GO. Each player can add vibration or a click in headphones on their own phone. It needs a connection: with no signal only the leader’s phone shows it.',
+    },
+    {
+      q: 'Can every phone follow the song bar by bar?',
+      a: 'Yes. Turn on Follow the tempo in BandWith’s Stage mode: when the leader taps Start, the bar, the lyric line or the section being played is lit on every phone that follows, and a strip says what comes next. The leader can repeat a section or stop. The song needs a BPM.',
     },
   ],
   'stage-plot-rider': [
@@ -197,6 +214,10 @@ export const ANSWERS: Record<string, QA[]> = {
       q: 'Can I export or delete my data?',
       a: 'Yes. In Privacy & account, Export my data saves a JSON copy of your profile, bands, personal gigs and gig answers, and Delete account removes your profile, personal gigs and direct messages for good. Your messages in band, gig and group chats stay, shown as from a Former member.',
     },
+    {
+      q: 'Does BandWith send crash reports?',
+      a: 'Yes, unless you switch it off. When something breaks, BandWith sends the error message, its trace, the screen, the app version and the platform, with no name, email or account id, and deletes it after 14 days. Turn it off on each device in Settings › Privacy & account › Send crash reports. Crash details from the phone apps go to Firebase Crashlytics only if you accepted Anonymous usage statistics.',
+    },
   ],
   devices: [
     {
@@ -209,7 +230,7 @@ export const ANSWERS: Record<string, QA[]> = {
     },
     {
       q: 'What can the phone apps do that the web can’t?',
-      a: 'The BandWith phone apps add push notifications, Face ID or fingerprint, app lock and Bluetooth sync in Stage mode. The web app has the same data and roles, without those.',
+      a: 'The BandWith phone apps add push notifications, Face ID or fingerprint, app lock, setlists downloaded ahead for gigs with no signal, and Bluetooth sync in Stage mode. The web app has the same data and roles, without those.',
     },
   ],
 };

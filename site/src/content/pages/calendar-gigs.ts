@@ -3,7 +3,7 @@ import type { ChannelPage } from './types';
 export const page: ChannelPage = {
   slug: 'calendar-gigs',
   title: 'Calendar & gigs',
-  description: 'One month grid for the band’s gigs, rehearsals and quotes. A three-step wizard books the gig, and every musician gets the date, the call times and their own fee.',
+  description: 'One month grid for the band’s gigs, rehearsals and quotes. Book a gig in three steps: every musician gets the date, the call times and their own fee.',
   ogTitle: 'Calendar & gigs · Every date, every call time.',
   hero: {
     heading: { lines: ['Every date.', 'Every call time.'], em: 'time.' },

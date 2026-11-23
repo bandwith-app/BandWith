@@ -45,12 +45,17 @@ describe('channel pages', () => {
         expect(p.flow.steps.length).toBeGreaterThanOrEqual(3);
         expect(p.flow.steps.length).toBeLessThanOrEqual(4);
         expect(p.roles.rows.length).toBeGreaterThanOrEqual(4);
-        // Two or three full rows of the four-column bento: a wide tile takes two columns.
-        expect([6, 9]).toContain(p.details.items.length);
+        // Two to four full rows of the four-column bento: a wide tile takes two columns.
         const rows: number[] = [];
         let used = 0;
         for (const x of p.details.items) { used += x.wide ? 2 : 1; if (used >= 4) { rows.push(used); used = 0; } }
         expect({ rows, left: used }, 'every row of the bento is full').toEqual({ rows: rows.map(() => 4), left: 0 });
+        expect(rows.length).toBeGreaterThanOrEqual(2);
+        expect(rows.length).toBeLessThanOrEqual(4);
+        // "Learn it" counts its articles in words, two columns: an even number, ten at most.
+        expect(p.learn.length % 2, 'learn list fills its two columns').toBe(0);
+        expect(p.learn.length).toBeLessThanOrEqual(10);
+        expect(new Set(p.learn.map((l) => l.id)).size, 'no article twice').toBe(p.learn.length);
         if (p.demo) expect(DEMOS[p.demo.kind]?.() ?? '', `demo ${p.demo.kind}`).not.toBe('');
       });
 

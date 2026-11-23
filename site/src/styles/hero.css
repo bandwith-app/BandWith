@@ -25,7 +25,9 @@
 .hero__title em { font-style: normal; color: var(--lime); }
 .hero__lead { max-width: 31em; margin: 28px 0 0; font-size: clamp(17px, 1.35vw, 20px); line-height: 1.45; color: var(--fg-2); }
 .hero__cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 34px; }
-.hero__cap { margin-top: 22px; padding: 0; border: 0; color: var(--fg-dim); }
+.hero__cap { margin-top: 22px; padding: 0; border: 0; color: var(--fg-dim); align-items: flex-start; line-height: 1.5; }
+/* On the first line of the notice, not in the middle of three. */
+.hero__cap .cap-line__led { margin-top: calc((1.5em - 7px) / 2); }
 
 /* Right: the screen the latest notification opens. */
 .hero__screen {

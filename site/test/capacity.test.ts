@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'fs';
 import path from 'path';
-import { fromStatus, capText, meterCells, keptForInvites, meterLabel, capLineShown } from '../src/core/capacity';
+import { fromStatus, capText, meterCells, keptForInvites, meterLabel, capLineShown, capBlockShown } from '../src/core/capacity';
 import { HOME_ANSWERS } from '../src/content/answers';
 import { llmsTxt } from '../tools/seo';
 import { it as IT } from '../src/i18n/dict/it';
@@ -61,6 +61,35 @@ describe('beta counter', () => {
     expect(fromStatus({ cap: 0 })).toBeNull();
     expect(fromStatus({ cap: 300, state: 'weird', public_left: -3 })!.state).toBe('open');
     expect(fromStatus({ cap: 300, state: 'weird', public_left: -3 })!.publicLeft).toBe(0);
+  });
+});
+
+describe('closed-beta blocks on the Get page', () => {
+  it('the waitlist and the lines for invited people show only once open spots are gone', () => {
+    const open = fromStatus(status(10))!;
+    const invites = fromStatus(status(255))!;
+    const full = fromStatus(status(300))!;
+    // Open, or no answer from the counter: nothing of the closed state is on the page.
+    for (const when of ['closed', 'invites', 'full']) {
+      expect(capBlockShown(open, when), when).toBe(false);
+      expect(capBlockShown(null, when), when).toBe(false);
+    }
+    expect(capBlockShown(invites, 'closed')).toBe(true);
+    expect(capBlockShown(invites, 'invites')).toBe(true);
+    expect(capBlockShown(invites, 'full')).toBe(false);
+    expect(capBlockShown(full, 'closed')).toBe(true);
+    expect(capBlockShown(full, 'invites')).toBe(false);
+    expect(capBlockShown(full, 'full')).toBe(true);
+  });
+
+  it('are written hidden in the page, each with the state that shows it', () => {
+    const html = read('get/index.html');
+    expect(html).toMatch(/<section class="full" id="waitlist"[^>]*data-cap-show="closed" hidden>/);
+    expect(html).toMatch(/class="full__inv-open" data-cap-show="invites" hidden>/);
+    expect(html).toMatch(/class="full__inv-shut" data-cap-show="full" hidden>/);
+    expect(html).toMatch(/class="wrap gdoors__inv mono" data-cap-show="invites" hidden>/);
+    // Shown by the script (core/capacity.ts), never by a stylesheet rule that a reader without CSS would miss.
+    expect(read('src/styles/get.css')).not.toMatch(/\.full\s*\{[^}]*display:\s*none/);
   });
 });
 
