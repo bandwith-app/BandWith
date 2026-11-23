@@ -7,7 +7,8 @@ import { escapeRe, SEED, systemBack } from '../support/flows';
  * when it closes, on every device and Duo posture.
  */
 
-const urgent = (app: App) => app.page.getByRole('alert').filter({ hasText: app.t('Urgent') });
+// (#298 makes the pop-up a modal alert dialog: role alertdialog.)
+const urgent = (app: App) => app.page.getByRole('alertdialog').filter({ hasText: app.t('Urgent') });
 
 /**
  * The suite closes the pop-up whenever it is in the way, also while the app
@@ -131,13 +132,13 @@ test('@smoke an urgent item that arrives while a sheet is open never flashes ove
         if (!document.getElementById('e2e-sheet')) return;
         for (const r of records) {
           for (const n of Array.from(r.addedNodes)) {
-            if (n instanceof Element && (n.matches('[role="alert"]') || n.querySelector('[role="alert"]'))) w.__urgentOverSheet += 1;
+            if (n instanceof Element && (n.matches('[role="alertdialog"]') || n.querySelector('[role="alertdialog"]'))) w.__urgentOverSheet += 1;
           }
         }
       }).observe(document.body, { childList: true, subtree: true });
       // When the pop-up card shows up at all (to tell "it waited" from "it came late").
       new MutationObserver(() => {
-        if (!w.__urgentAt && document.querySelector('[role="alert"] [aria-label="Dismiss alert"]')) w.__urgentAt = performance.now();
+        if (!w.__urgentAt && document.querySelector('[role="alertdialog"] [aria-label="Dismiss alert"]')) w.__urgentAt = performance.now();
       }).observe(document.body, { childList: true, subtree: true });
     };
     document.addEventListener('DOMContentLoaded', put);
