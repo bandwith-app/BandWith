@@ -2064,7 +2064,7 @@ const music: AreaText = {
           tone: "tip",
           text: "Mitglieder in der Nähe sehen die neue Reihenfolge des Leaders sofort per Bluetooth, noch bevor sie gespeichert ist.",
         },
-        { type: "shot", id: "stage-offline-banner", caption: "Der Bühnenmodus ohne Empfang: der Inhalts-Hinweis und die Leiste mit den Änderungen, die auf Empfang warten." },
+        { type: "shot", id: "stage-offline-banner", caption: "Der Bühnenmodus ohne Empfang: der Inhalts-Hinweis und darunter die Änderungen, die auf Empfang warten." },
       ],
     },
     {
