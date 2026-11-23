@@ -172,13 +172,13 @@ const together: AreaText = {
           items: [
             "Abra o ensaio.",
             "Toque em **EXCLUIR**, abaixo de **CHAT DO ENSAIO**.",
-            "Toque em **Sim, excluir**, ou em **CANCELAR** para mantê-lo.",
+            "Toque em **Sim, excluir**, ou em **CANCELAR** para mantê-lo. Um ensaio que se repete pergunta, em vez disso, quais datas: **Excluir esta data** remove só a data que você abriu, **Excluir toda a série** remove todas as datas com as notas delas.",
           ],
         },
         {
           type: "note",
           tone: "warning",
-          text: "A exclusão não pode ser desfeita. Um ensaio recorrente é um único evento, então excluí-lo remove todas as datas da série.",
+          text: "A exclusão de um ensaio ou de uma série inteira não pode ser desfeita. Uma única data excluída pode voltar: um admin abre a série e toca em **RESTAURAR** ao lado dela, em **Datas excluídas**.",
         },
         {
           type: "p",
@@ -245,7 +245,7 @@ const together: AreaText = {
         {
           type: "note",
           tone: "warning",
-          text: "Todas as datas de uma série compartilham o mesmo ensaio: um elenco, uma resposta por membro, uma setlist. Editar ou excluir muda todas as datas.",
+          text: "Todas as datas de uma série compartilham o mesmo ensaio: um elenco, uma resposta por membro, uma setlist. Editar muda todas as datas. Duas coisas podem ser feitas com uma data só: excluí-la (**Excluir esta data**, veja [[delete-a-rehearsal]]) e movê-la: ao mudar a data, **Quais datas mover?** oferece **Só esta data** ou **A série inteira**.",
         },
       ],
     },
@@ -770,7 +770,7 @@ const together: AreaText = {
             "Nas conversas da banda e dos eventos, cada mensagem mostra o nome de quem enviou, com “ · Admin” para os admins.",
             "A conversa carrega as 50 mensagens mais recentes. Role para cima e toque em **Carregar mensagens anteriores** para ver mais.",
             "As mensagens são só texto: não há anexos, reações, edição nem exclusão de mensagens isoladas.",
-            "Sem conexão, a mensagem não é enviada e volta para o campo de texto com “Mensagem não enviada. Verifique sua conexão e tente de novo.” Envie de novo quando estiver online.",
+            "Sem conexão, a mensagem fica na conversa marcada como **Aguardando conexão** e é enviada sozinha quando você volta a ficar online, mesmo que feche a conversa. Uma mensagem que não pôde ser enviada diz **Não enviada**: toque em **Tentar de novo** ou **Excluir**.",
             "Uma menção fica destacada para todos, mas não envia uma notificação extra: todos na conversa já são avisados de cada mensagem.",
           ],
         },

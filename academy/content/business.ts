@@ -133,30 +133,48 @@ const business: AreaModule = {
     },
     {
       id: 'ask-lineup-availability',
-      title: 'Ask the lineup before the client says yes',
-      summary: 'Check which musicians are free on the date while the quote is still open.',
+      title: 'Date on hold: who is free before the client says yes',
+      summary: 'While a gig is still a quote, every member gets a card asking them to keep the date free, and answers on it.',
       roles: ['admin', 'member'],
       kind: 'task',
-      keywords: ['availability check', 'rsvp', 'are you available', 'hold the date', 'tentative'],
+      keywords: ['date on hold', 'possible gig', 'keep the date free', 'hold card', "who's free", 'availability check', 'are you available', 'hold the date', 'tentative'],
       related: ['create-a-quote', 'quote-to-gig', 'quote-drafts'],
       body: [
+        { type: 'p', text: 'There is nothing to turn on. When you save a new quote with a date, as a draft too, every member of the band who is not an admin is asked to keep that date free. Step 3 of a new quote says so under **Lineup availability**.' },
         {
           type: 'steps',
+          title: 'Answer a hold (members)',
           items: [
-            'In step 3 of a new quote, turn on **Ask the lineup now** (under **Lineup availability**). On iPad the switch is under the live PDF: "Check who is free before you send".',
-            'Save the quote with **Save & share**, or close it and choose **Save draft**. Either way the musicians are asked.',
-            'Follow the answers on the quote\'s calendar event: it shows "Availability: {free} of {total} free" and a list you can open.',
+            'Open Home. Under **Possible gigs**, the card **Possible gig – keep the date free** shows the day, the time and the place. You also get a notification and a push; tapping it opens the same card.',
+            'Tap **I\'m free** or **I can\'t**.',
+            'You can change your answer until the gig is confirmed. The card is also on that day in your calendar.',
           ],
         },
-        { type: 'p', text: 'The toast confirms it, for example "Quote Q-2026-0014 saved · availability asked to 4". With the switch off, musicians are asked only when the quote becomes a gig.' },
+        {
+          type: 'steps',
+          title: 'See who is free (admins)',
+          items: [
+            'Open the quote\'s event in the calendar, or the quote itself.',
+            'Under **Who\'s free**, members are grouped as **Free ({count})**, **Can\'t ({count})** and **No answer yet ({count})**. **On the lineup** marks the ones you put on the quote.',
+          ],
+        },
+        {
+          type: 'list',
+          title: 'What happens next',
+          items: [
+            'If the day or the time changes, members get “Possible gig – new details” and answer again: their earlier answers are cleared. A new place alone keeps the answers.',
+            'When you confirm the gig, the musicians on its lineup get the gig like any other. Members who are not on it are told **The date is free again**.',
+            'Members are also told **The date is free again** when the client declines, the quote expires, or you cancel or delete it.',
+          ],
+        },
         {
           type: 'roles',
           rows: [
-            { role: 'admin', text: 'Turns the check on when creating the quote (not when editing one) and sees every answer.' },
-            { role: 'member', text: 'Gets an "Availability check" notification for the date, with their own fee, and answers it like any RSVP. The quote itself, the client and the total stay hidden, and the event is not on their calendar until it is confirmed as a gig.' },
+            { role: 'admin', text: 'Is not asked: admins see the quote itself. Sees every answer under **Who\'s free**.' },
+            { role: 'member', text: 'Sees only the day, the time and the place. The client, the fee, the notes, the rider and the quote\'s chat stay with the admins until the gig is confirmed.' },
           ],
         },
-        { type: 'note', tone: 'privacy', text: "Each musician sees only their own fee in the availability check, never the quote total or the others' fees." },
+        { type: 'note', tone: 'privacy', text: 'A hold card never shows a fee, the client or the quote total. Saying you are free is not accepting a gig.' },
       ],
     },
     {
@@ -178,7 +196,7 @@ const business: AreaModule = {
           ],
         },
         { type: 'p', text: 'On iPad, **Save draft** is in the composer header.' },
-        { type: 'note', tone: 'privacy', text: "\"Saved as a draft quote that members can't see.\" In the calendar a draft quote shows **HIDDEN FROM MEMBERS**. Only if you turned on **Ask the lineup now** do the musicians get the availability check." },
+        { type: 'note', tone: 'privacy', text: "A draft quote is not sent to the client, and members can't open it. They only get the card asking them to keep the date free, with the day, the time and the place. See [[ask-lineup-availability]]." },
       ],
     },
     {
@@ -814,7 +832,7 @@ const business: AreaModule = {
             'On Home, find **Action center** > **Payouts ({count})** and tap **Review payouts** on the gig. You can also open the gig and tap **FEE & PAYOUTS**.',
             'The **Fee & payouts** sheet shows the **Band fee**, **PAYOUTS DUE · {count}** with the amount, and each musician with their fee and **PAID** or **PENDING**.',
             'Tap the round toggle next to a musician to mark them paid, or tap it again to undo.',
-            'Or tap **MARK ALL AS PAID** to mark everyone still unpaid.',
+            'Or tap **MARK ALL AS PAID**. It marks the musicians who are owed: those who confirmed, have a fee above zero and are not paid yet. Musicians who have not confirmed stay as they are.',
           ],
         },
         { type: 'p', text: 'Analytics has the same list with **MARK ALL AS PAID** per gig, see [[analytics]]. A paid musician leaves the list at once.' },
@@ -866,7 +884,7 @@ const business: AreaModule = {
           type: 'table',
           head: ['Topic', 'Admin', 'Member or deputy'],
           rows: [
-            ['Quotes', 'Everything', 'Nothing. Only an availability check with their own fee, if asked'],
+            ['Quotes', 'Everything', 'Nothing. Members only get a card asking them to keep the date free: day, time and place, no fee'],
             ['Gig fee', '**Band fee**, every musician\'s fee, band fund, deposit', '**Your fee** only'],
             ['Payouts', 'Everyone owed', 'Their own payout and **PAID** / **PENDING**'],
             ['Contracts and riders', 'Everything', 'Nothing'],
@@ -1064,7 +1082,7 @@ const business: AreaModule = {
   ],
 
   faq: [
-    { q: 'Can members see a quote or its total?', a: 'No. Quotes are admin-only in the app and in the database. A member only gets an availability check, with their own fee, if you turn on Ask the lineup now.', roles: ['admin', 'member'] },
+    { q: 'Can members see a quote or its total?', a: 'No. Quotes are admin-only in the app and in the database. While a gig is still a quote, members only get a card asking them to keep the date free, with the day, the time and the place.', roles: ['admin', 'member'] },
     { q: 'Does the client need an account to accept?', a: 'No. The personal link opens a web page where they type their name, tick the box and tap Accept the quote.', roles: ['admin'] },
     { q: 'Is an accepted quote a signed contract?', a: 'No. It records the name, date and version the client accepted. For a signature, prepare a contract from the accepted quote.', roles: ['admin'] },
     { q: 'The client accepted. Why is the gig not on the calendar yet?', a: 'A yes on the client page does not confirm the gig by itself. Open the quote and tap Create gig from quote, or tap CONFIRM AS GIG on the quote event.', roles: ['admin'] },
@@ -1083,7 +1101,7 @@ const business: AreaModule = {
     { term: 'Tentative event', definition: "The calendar event a quote creates. Only admins see it until it is confirmed as a gig.", see: 'quote-to-gig' },
     { term: 'Client link', definition: 'The personal web link where the client accepts, declines or writes about a quote, without an account.', see: 'client-quote-page' },
     { term: 'Version', definition: 'Each edit of a sent quote publishes a new version on the client page; an acceptance is tied to the version the client saw.', see: 'client-confirmation' },
-    { term: 'Availability check', definition: 'An RSVP sent to the lineup before the client confirms, marked as not confirmed yet.', see: 'ask-lineup-availability' },
+    { term: 'Date on hold', definition: 'A date members are asked to keep free while a gig is still a quote. They see the day, the time and the place, and answer I\'m free or I can\'t.', see: 'ask-lineup-availability' },
     { term: 'Pricing sheet', definition: 'Pricing & services: the band\'s rates, packages, add-ons, travel, sound, tax and branding that new quotes start from.', see: 'pricing-sheet' },
     { term: 'Band fund', definition: 'An optional fixed amount or percentage added on top of musician fees for band savings, gear or agency commission.', see: 'pricing-sheet' },
     { term: 'Flat packages', definition: 'Pricing model with a fixed price per formation (Solo, Duo, Trio, Full band…), instead of a fee per musician.', see: 'pricing-sheet' },

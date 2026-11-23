@@ -829,7 +829,7 @@ const people: AreaText = {
             ["Besetzung und Antworten eines Gigs", "Alle, mit Gagen und Auszahlungen", "Wer spielt und die Antworten, ohne Gagen"],
             ["Eigene Gage", "Ja", "Ja: die eigene Gage pro Gig, bezahlt oder nicht, die Standardgage und das eigene **Bezahlt · {year}**"],
             ["Gagen anderer", "Ja, für jedes Mitglied und jede Vertretung", "Nein"],
-            ["Angebote und Angebotssummen", "Ja: erstellen, senden und alle sehen", "Nein. Die Verfügbarkeitsprüfung eines Angebots zeigt nur das Datum"],
+            ["Angebote und Angebotssummen", "Ja: erstellen, senden und alle sehen", "Nein. Ein Angebot bittet sie nur, sich den Termin freizuhalten, und zeigt Tag, Uhrzeit und Ort"],
             ["Bandfinanzen, Zahlungen und Statistiken", "Ja", "Nein. Nur die eigenen Einnahmen"],
             ["Preise, Bank- und Steuerangaben", "Ja", "Nein"],
             ["Setlists", "Erstellen, bearbeiten, Gigs zuordnen", "Nur lesen"],
@@ -862,7 +862,7 @@ const people: AreaText = {
 
   faq: [
     { q: "Sehen Mitglieder, was die anderen bekommen?", a: "Nein. Ein Mitglied sieht nur die eigene Gage bei jedem Gig und die eigenen Jahressummen. Admins sehen die aller." },
-    { q: "Wie verlasse ich eine Band?", a: "Tippe bei **Bandmitglieder** in deiner eigenen Zeile auf **⋯** und dann auf **Band verlassen**. Ein Admin kann gehen, solange die Band einen weiteren Admin hat. Siehe [[leave-a-band]].", roles: ["admin", "member"] },
+    { q: "Wie verlasse ich eine Band?", a: "Tippe bei **Bandmitglieder** in deiner eigenen Zeile auf **⋯**, dann auf **Band verlassen** und bestätige. Ein Admin kann gehen, solange die Band einen weiteren Admin hat. Siehe [[leave-a-band]].", roles: ["admin", "member"] },
     { q: "Warum kann ich den letzten Admin nicht entfernen?", a: "Jede Band braucht mindestens einen Admin. Mach zuerst jemand anderen zum Admin und ändere oder entferne dann den ersten.", roles: ["admin"] },
     { q: "Wie lange gilt eine Einladung?", a: "7 Tage. Die eingeladene Adresse bekommt eine Erinnerung, wenn noch 2 Tage übrig sind. Lädst du dieselbe Adresse noch einmal ein, wird sie verlängert.", roles: ["admin"] },
     { q: "Die eingeladene Person sagt, die Einladung funktioniert nicht.", a: "Sie muss sich mit genau der E-Mail-Adresse anmelden, die du eingeladen hast. Ist die Einladung abgelaufen, lade sie noch einmal ein.", roles: ["admin"] },

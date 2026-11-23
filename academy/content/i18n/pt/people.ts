@@ -829,7 +829,7 @@ const people: AreaText = {
             ['Formação e respostas do show', 'Todos, com cachês e pagamentos', 'Quem toca e as respostas, sem cachês'],
             ['Próprio cachê', 'Sim', 'Sim: o cachê por show, pago ou não, o cachê padrão e o próprio **Pago · {year}**'],
             ['Cachês dos outros', 'Sim, de todos os membros e substitutos', 'Não'],
-            ['Orçamentos e totais', 'Sim: criar, enviar e ver todos', 'Não. A verificação de disponibilidade de um orçamento mostra só a data'],
+            ['Orçamentos e totais', 'Sim: criar, enviar e ver todos', 'Não. Um orçamento só pede que deixem a data livre, mostrando o dia, a hora e o local'],
             ['Finanças, pagamentos e análises da banda', 'Sim', 'Não. Só os próprios ganhos'],
             ['Preços, dados bancários e fiscais', 'Sim', 'Não'],
             ['Setlists', 'Criar, editar, anexar aos shows', 'Só leitura'],
@@ -862,7 +862,7 @@ const people: AreaText = {
 
   faq: [
     { q: 'Os membros podem ver quanto os outros recebem?', a: 'Não. Um membro vê só o próprio cachê em cada show e os próprios totais do ano. Os admins veem os de todos.' },
-    { q: 'Como saio de uma banda?', a: 'Em **Membros da banda**, toque em **⋯** na sua própria linha e depois em **Sair da banda**. Um admin pode sair enquanto a banda tiver outro admin. Veja [[leave-a-band]].', roles: ['admin', 'member'] },
+    { q: 'Como saio de uma banda?', a: 'Em **Membros da banda**, toque em **⋯** na sua própria linha, depois em **Sair da banda** e confirme. Um admin pode sair enquanto a banda tiver outro admin. Veja [[leave-a-band]].', roles: ['admin', 'member'] },
     { q: 'Por que não consigo remover o último admin?', a: 'Toda banda precisa de pelo menos um admin. Primeiro torne outra pessoa admin, depois mude ou remova o primeiro.', roles: ['admin'] },
     { q: 'Por quanto tempo um convite vale?', a: '7 dias. O endereço convidado recebe um lembrete quando faltam 2 dias. Convidar o mesmo endereço de novo renova o convite.', roles: ['admin'] },
     { q: 'A pessoa que convidei diz que o convite não funciona.', a: 'Ela precisa entrar com exatamente o endereço de e-mail que você convidou. Se o convite expirou, convide de novo.', roles: ['admin'] },
