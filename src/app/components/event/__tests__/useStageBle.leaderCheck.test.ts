@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { watchCrypto, pass } from './stageTestTime';
 import { renderHook, waitFor } from '@testing-library/react';
 import { encodeSignedState, encodeStageState, toBase64, STAGE_BLE_CHARACTERISTIC, STAGE_BLE_SIGNED_CHARACTERISTIC } from '@/lib/stageBle';
 import { generateSigner } from '@/lib/stageSign';
@@ -12,6 +13,7 @@ if (!globalThis.crypto?.subtle) {
   const { webcrypto } = (await import(/* @vite-ignore */ nodeCrypto)) as { webcrypto: Crypto };
   Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true });
 }
+watchCrypto();
 
 const KEY = toBase64(new Uint8Array(32).map((_, i) => i * 5));
 const IDS = ['a1', 'b2', 'c3'];
@@ -157,7 +159,7 @@ const { useStageBle, LEADER_CHECK_MS, forgetSignedLeaders, forgetScanStarts, SIG
 
 /** Moves app time on in small steps until the check holds (up to 30 s of app time). */
 const untilTrue = async (check: () => boolean) => {
-  for (let i = 0; i < 120 && !check(); i++) await vi.advanceTimersByTimeAsync(250);
+  for (let i = 0; i < 120 && !check(); i++) await pass(250);
   expect(check()).toBe(true);
 };
 const lead = (id: string, seq: number, songId: string): StageLiveState => ({ seq, from: id, songId, order: null });
@@ -191,7 +193,7 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     const first = member();
     await waitFor(() => expect(air.connected).toEqual(new Set(['admin-b'])));
     // The 30 s look starts its 2 s scan…
-    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 500);
+    await pass(LEADER_CHECK_MS + 500);
     expect(air.log.filter((l) => l === 'scan').length).toBe(2);
     // …and Stage is closed and opened again meanwhile; admin B has gone.
     first.unmount();
@@ -201,10 +203,10 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     // Steps of app time, not a wait on the wall clock (flaky on a busy Mac: Claude on #280).
     await untilTrue(() => second.result.current.status === 'searching');
     // The old look's timer ends here: it must not stop the new search.
-    await vi.advanceTimersByTimeAsync(3000);
+    await pass(3000);
     // Admin A opens Stage now.
     appear('admin-a', lead('a', 9, 'c3'));
-    await vi.advanceTimersByTimeAsync(20_000);
+    await pass(20_000);
     await untilTrue(() => onState.mock.calls.some(([st]) => (st as StageLiveState).from === 'a'));
     second.unmount();
   });
@@ -216,7 +218,7 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     // The radio ended the scan on its own (iOS does in the background, Android after 30 min).
     air.scanCb = null;
     air.devices.set('admin-a', { state: lead('a', 2, 'b2'), advertising: true });
-    await vi.advanceTimersByTimeAsync(20_000);
+    await pass(20_000);
     await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a' })));
     m.unmount();
   });
@@ -228,7 +230,7 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'x' })));
     appear('admin-y', lead('y', 11, 'b2'));
     appear('admin-z', lead('z', 50, 'c3'));
-    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 5000);
+    await pass(LEADER_CHECK_MS + 5000);
     await waitFor(() => expect(air.connected).toEqual(new Set(['admin-z'])));
     expect(onState).not.toHaveBeenCalledWith(expect.objectContaining({ from: 'y' }));
     m.unmount();
@@ -239,7 +241,7 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     const m = member();
     await waitFor(() => expect(air.connected).toEqual(new Set(['admin-b'])));
     appear('admin-a', lead('a', 9, 'c3'));
-    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 5000);
+    await pass(LEADER_CHECK_MS + 5000);
     await waitFor(() => expect(air.connected).toEqual(new Set(['admin-a'])));
     const a = air.log.filter((l) => l.endsWith(':admin-a'));
     // probe connect, its disconnect done, then the link.
@@ -260,14 +262,14 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
       .mocked(BleClient.startNotifications)
       .mock.calls.filter((c) => c[2] === STAGE_BLE_CHARACTERISTIC)
       .pop()![3] as (v: DataView) => void;
-    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 1500);
+    await pass(LEADER_CHECK_MS + 1500);
     notify(new DataView(new ArrayBuffer(4)));
     const probeConnects: number[] = [];
     const before = air.log.length;
-    await vi.advanceTimersByTimeAsync(1000);
+    await pass(1000);
     expect(air.pendingReads).toBe(1);
     expect(air.log.slice(before).filter((l) => l === 'connect:admin-a')).toEqual(probeConnects);
-    await vi.advanceTimersByTimeAsync(8000);
+    await pass(8000);
     // Once the read is done, the look goes on, with a short connect.
     await waitFor(() => expect(air.log.includes('connect:admin-a')).toBe(true));
     expect(Math.max(...air.connectTimeouts.slice(1))).toBeLessThanOrEqual(2000);
@@ -279,7 +281,7 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     const m = member();
     await waitFor(() => expect(air.connected).toEqual(new Set(['admin-b'])));
     appear('admin-c', null);
-    await vi.advanceTimersByTimeAsync(120_000);
+    await pass(120_000);
     // Every 4 s would be ~20 probes in 2 minutes.
     expect(air.log.filter((l) => l === 'connect:admin-c').length).toBeLessThanOrEqual(6);
     m.unmount();
@@ -297,9 +299,9 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     air.goodbyes.get('admin-b')!();
     vi.setSystemTime(Date.now() + SIGNED_TRUST_MS + 1000);
     appear('admin-a', lead('a', 9, 'c3'));
-    await vi.advanceTimersByTimeAsync(5000);
+    await pass(5000);
     await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a' })));
-    await vi.advanceTimersByTimeAsync(1000);
+    await pass(1000);
     expect(m.result.current.clock).toBeNull();
     m.unmount();
   });
@@ -308,13 +310,13 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     appear('admin-b', lead('b', 3, 'a1'), { clockAhead: 0 });
     const m = member();
     await waitFor(() => expect(air.connected).toEqual(new Set(['admin-b'])));
-    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 500);
+    await pass(LEADER_CHECK_MS + 500);
     // A look first reads the signed leader again (real-time crypto), then scans.
     await waitFor(() => expect(air.scanCb).not.toBeNull());
     // The link drops mid-look (B is still there, advertising).
     air.connected.delete('admin-b');
     air.goodbyes.get('admin-b')!();
-    await vi.advanceTimersByTimeAsync(15_000);
+    await pass(15_000);
     await waitFor(() => expect(m.result.current.status).toBe('connected'));
     expect(air.log.filter((l) => l === 'connect:admin-b').length).toBe(2);
     m.unmount();
@@ -327,7 +329,7 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     await waitFor(() => expect(air.log).toContain('scan-refused'));
     expect(m.result.current.status).not.toBe('bt-off');
     appear('admin-a', lead('a', 2, 'b2'));
-    await vi.advanceTimersByTimeAsync(5000);
+    await pass(5000);
     await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a' })));
     m.unmount();
   });
@@ -338,7 +340,7 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     await waitFor(() => expect(air.connected).toEqual(new Set(['admin-b'])));
     air.devices.set('admin-a', { state: lead('a', 5, 'x9'), advertising: true, ids: ['a1', 'b2', 'c3', 'x9'] });
     air.scanCb?.({ device: { deviceId: 'admin-a' } });
-    await vi.advanceTimersByTimeAsync(10_000);
+    await pass(10_000);
     await waitFor(() => expect(air.connected).toEqual(new Set(['admin-a'])));
     await waitFor(() => expect(m.result.current.status).toBe('outdated'));
     m.unmount();
@@ -351,7 +353,7 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     const m = member();
     await waitFor(() => expect(air.connected).toEqual(new Set(['admin-b'])));
     appear('admin-a', lead('a', 1, 'c3'));
-    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 5000);
+    await pass(LEADER_CHECK_MS + 5000);
     const probeReads = vi.mocked(BleClient.read).mock.calls.filter((c) => c[0] === 'admin-a');
     expect(probeReads.length).toBeGreaterThan(0);
     for (const c of probeReads) expect((c[3] as { timeout?: number } | undefined)?.timeout ?? Infinity).toBeLessThanOrEqual(2000);
@@ -364,7 +366,7 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     const m = member(onState);
     await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'b' })));
     appear('forger', lead('x', 0xffffffff, 'c3'));
-    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 5000);
+    await pass(LEADER_CHECK_MS + 5000);
     await new Promise((r) => setTimeout(r, 300));
     expect(onState).not.toHaveBeenCalledWith(expect.objectContaining({ from: 'x' }));
     expect(air.connected).toEqual(new Set(['admin-b']));
@@ -387,17 +389,17 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     await waitFor(() => expect(air.connected).toEqual(new Set(['admin-b'])));
     // Admin A's reads are slow: the probe of A is still under way when B drops and the search links to A.
     air.devices.set('admin-a', { state: lead('a', 9, 'c3'), advertising: true, readMs: 6000 });
-    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 2200);
+    await pass(LEADER_CHECK_MS + 2200);
     expect(air.log).toContain('connect:admin-a');
     air.devices.delete('admin-b');
     air.connected.delete('admin-b');
     air.goodbyes.get('admin-b')!();
-    await vi.advanceTimersByTimeAsync(4_000);
+    await pass(4_000);
     await waitFor(() => expect(air.log.filter((l) => l === 'connect:admin-a').length).toBe(2));
     // The probe's slow read ends after the link to A: its "let go" must not cut that link.
-    await vi.advanceTimersByTimeAsync(8_000);
+    await pass(8_000);
     await new Promise((r) => setTimeout(r, 800));
-    await vi.advanceTimersByTimeAsync(1_000);
+    await pass(1_000);
     const linked = air.log.lastIndexOf('connect:admin-a');
     expect(air.log.slice(linked)).not.toContain('disconnect:admin-a');
     expect(air.connected.has('admin-a')).toBe(true);
@@ -410,10 +412,10 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     await waitFor(() => expect(air.connected).toEqual(new Set(['admin-b'])));
     appear('admin-a', lead('a', 1, 'c3'));
     // A count-in asks for a burst just as the look's scan ends.
-    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 1800);
+    await pass(LEADER_CHECK_MS + 1800);
     air.clockReadsAt = [];
     m.result.current.burst();
-    await vi.advanceTimersByTimeAsync(10_000);
+    await pass(10_000);
     const burstEnd = Math.max(...air.clockReadsAt);
     const burstStart = Math.min(...air.clockReadsAt);
     expect(air.clockReadsAt.length).toBeGreaterThanOrEqual(6);
@@ -432,7 +434,7 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     air.devices.set('admin-b-2', { state: lead('b', 4, 'a1'), advertising: true });
     air.devices.get('admin-b')!.state = lead('b', 4, 'a1');
     for (let look = 0; look < 3; look++) {
-      await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 3000);
+      await pass(LEADER_CHECK_MS + 3000);
       await new Promise((r) => setTimeout(r, 400));
     }
     expect(air.log.filter((l) => l === 'connect:admin-b-2').length).toBe(1);
@@ -451,7 +453,7 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
       air.scanCb = () => {};
       return real(o, cb);
     });
-    for (let i = 0; i < 12; i++) await vi.advanceTimersByTimeAsync(5_000);
+    for (let i = 0; i < 12; i++) await pass(5_000);
     const starts = air.scansAt;
     expect(starts.length).toBeGreaterThan(2);
     for (const t of starts) expect(starts.filter((u) => u >= t && u < t + 30_000).length).toBeLessThanOrEqual(4);
@@ -466,7 +468,7 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     const m = member(onState);
     await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a' })));
     appear('admin-b', lead('b', 20, 'x9'), { ids: [...IDS, 'x9'] });
-    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 5000);
+    await pass(LEADER_CHECK_MS + 5000);
     await waitFor(() => expect(air.connected).toEqual(new Set(['admin-b'])));
     await waitFor(() => expect(m.result.current.status).toBe('outdated'));
     m.unmount();
@@ -478,7 +480,7 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     const m = member(onState);
     await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a' })));
     appear('admin-b', lead('b', 10, 'x9'), { ids: [...IDS, 'x9'] });
-    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 5000);
+    await pass(LEADER_CHECK_MS + 5000);
     await waitFor(() => expect(air.log).toContain('disconnected:admin-b'));
     await waitFor(() => expect(air.connected).toEqual(new Set(['admin-a'])));
     // Following (an admin on a band-key app here: the "update" line), not told to get the setlist.
@@ -495,7 +497,7 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     appear('admin-b', lead('b', 4, 'x9'), { ids });
     const links = () => air.log.filter((l) => l === 'connect:admin-b').length;
     for (let i = 0; i < 4; i++) {
-      await vi.advanceTimersByTimeAsync(10_000);
+      await pass(10_000);
       expect(air.connected.has('admin-a')).toBe(true);
     }
     // Probed, never linked: each look's probe connects and lets go.
@@ -511,7 +513,7 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     await waitFor(() => expect(air.connected).toEqual(new Set(['admin-b'])));
     appear('admin-a', lead('a', 1, 'c3'));
     vi.mocked(BleClient.disconnect).mockClear();
-    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 5000);
+    await pass(LEADER_CHECK_MS + 5000);
     await waitFor(() => expect(air.letGoTimeouts.some((l) => l.id === 'admin-a')).toBe(true));
     for (const l of air.letGoTimeouts) expect(l.timeout ?? Infinity).toBeLessThanOrEqual(1000);
     expect(vi.mocked(BleClient.disconnect).mock.calls.filter((c) => c[0] === 'admin-a')).toEqual([]);
@@ -523,7 +525,7 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     const m = member(onState);
     await waitFor(() => expect(air.connected).toEqual(new Set(['admin-b'])));
     air.devices.set('admin-b-2', { state: lead('b', 5, 'b2'), advertising: true });
-    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 3000);
+    await pass(LEADER_CHECK_MS + 3000);
     await new Promise((r) => setTimeout(r, 400));
     await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'b', seq: 5 })));
     expect(air.connected.has('admin-b-2')).toBe(true);
@@ -548,7 +550,7 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     await waitFor(() => expect(air.connected).toEqual(new Set(['admin-idle'])));
     const ahead = 4 * 60_000;
     appear('admin-a', lead('a', nextSeq(null, Date.now() + ahead), 'b2'), { clockAhead: ahead });
-    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 5000);
+    await pass(LEADER_CHECK_MS + 5000);
     // A phone with a clock here signs (this app).
     await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ from: 'a' }), true), { timeout: 4000 });
     m.unmount();
@@ -583,10 +585,10 @@ describe('useStageBle: looking for the admin who leads (review of #280)', () => 
     await waitFor(() => expect(air.connected).toEqual(new Set(['admin-b'])));
     air.slowLetGo.add('admin-a');
     appear('admin-a', lead('a', 9, 'c3'));
-    await vi.advanceTimersByTimeAsync(LEADER_CHECK_MS + 5000);
+    await pass(LEADER_CHECK_MS + 5000);
     // Crypto runs in real time: wait for the probe, then its late end (2 s).
     await waitFor(() => expect(air.log).toContain('late-goodbye:admin-a'), { timeout: 6000 });
-    await vi.advanceTimersByTimeAsync(3000);
+    await pass(3000);
     expect(air.connected).toEqual(new Set(['admin-a']));
     // The old link ended before the new one began, not after.
     const a = air.log.filter((l) => l.endsWith(':admin-a'));
