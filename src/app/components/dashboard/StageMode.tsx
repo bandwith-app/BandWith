@@ -535,6 +535,8 @@ export const StageMode: React.FC<StageModeProps> = ({
       ref={stageRef}
       role="dialog"
       aria-modal="true"
+      // The floor wedge (Laptop pose) lies over this dialog: it tells it from a sheet on top by this.
+      data-bw-stage=""
       aria-label={rehearsal ? t('Live mode: {title}', { title }) : t('Stage mode: {title}', { title })}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}

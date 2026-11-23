@@ -97,6 +97,11 @@ describe('Stage mode count-in (plan §6)', () => {
     expect(countIn.set).toHaveBeenCalledWith(expect.objectContaining({ on: true, songId: 'r2', bpm: 99 }));
   });
 
+  it('marks its dialog data-bw-stage: the floor wedge over it tells it from a sheet on top', () => {
+    stage(live().controls);
+    expect(screen.getByRole('dialog', { name: 'Stage mode: Gig' }).hasAttribute('data-bw-stage')).toBe(true);
+  });
+
   it('no Count in without a BPM, nor for a member', () => {
     stage(live({ index: 2 }).controls);
     expect(screen.queryByRole('button', { name: 'Count in the band' })).toBeNull();

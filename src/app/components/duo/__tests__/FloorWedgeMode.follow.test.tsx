@@ -124,6 +124,8 @@ describe('Laptop pose: Follow the tempo on the floor wedge', () => {
     expect(row).not.toBeNull();
     expect(within(row as HTMLElement).getByRole('button', { name: 'Transpose up a semitone' })).toBeInTheDocument();
     expect(within(deck).getAllByRole('button', { name: 'Start' })).toHaveLength(1);
+    // On a narrow Laptop pose (320 px) the two don't fit side by side: the row wraps, Stop is never cut.
+    expect((row as HTMLElement).className).toContain('flex-wrap');
   });
 
   it('with the lyrics off, the leader’s buttons keep a row of their own', () => {
@@ -143,5 +145,29 @@ describe('Laptop pose: changes kept on this phone', () => {
     const display = screen.getByRole('region', { name: 'Now playing' });
     fireEvent.click(within(display).getByRole('button', { name: /1 change wasn’t saved/ }));
     expect(screen.getByRole('dialog')).toHaveTextContent('Watch the drummer before the bridge');
+  });
+
+  it('keys pressed in a sheet on top are the sheet’s own: Space on Copy never moves the band’s setlist', () => {
+    keepRefused('u-1', { kind: 'note', id: 'n1', songId: 's1', anchor: { type: 'song' }, body: 'Watch the drummer before the bridge' } as never);
+    tabletop();
+    const onIndexChange = vi.fn();
+    render(<FloorWedgeMode songs={songs} userId="u-1" onIndexChange={onIndexChange} onClose={vi.fn()} />);
+    fireEvent.click(within(screen.getByRole('region', { name: 'Now playing' })).getByRole('button', { name: /1 change wasn’t saved/ }));
+    const copy = within(screen.getByRole('dialog')).getByRole('button', { name: 'Copy' });
+    // Not cancelled (the button gets its Space), and the song stays.
+    expect(fireEvent.keyDown(copy, { key: ' ' })).toBe(true);
+    fireEvent.keyDown(copy, { key: 'ArrowRight' });
+    expect(onIndexChange).not.toHaveBeenCalled();
+
+    // Stage mode's own dialog lies under the wedge: focus resting there still turns the page (a pedal).
+    const stage = document.createElement('div');
+    stage.setAttribute('role', 'dialog');
+    stage.setAttribute('data-bw-stage', '');
+    const inside = document.createElement('button');
+    stage.appendChild(inside);
+    document.body.appendChild(stage);
+    expect(fireEvent.keyDown(inside, { key: ' ' })).toBe(false);
+    expect(onIndexChange).toHaveBeenCalledWith(1);
+    stage.remove();
   });
 });

@@ -199,6 +199,12 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      // A sheet or dialog on top of the wedge (Not saved, Count-in, a note): its
+      // keys are its own. Space on its Copy button must press Copy, never move
+      // the band to the next song. Stage mode's own dialog (data-bw-stage) lies
+      // under the wedge: focus resting there still turns the page.
+      const layer = el?.closest?.('[role="dialog"], [role="alertdialog"], [aria-modal="true"]');
+      if (layer && !layer.hasAttribute('data-bw-stage')) return;
       if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(e.key)) {
         e.preventDefault();
         go(1);
@@ -600,9 +606,10 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
           {/* The leader's Start / Hold / Stop share this row: with a row of their own the Deck
               was taller than the fold's lower half, and the rail covered the pads' edge. */}
           {(hasChords || (tempo.leader && tempo.shown)) && (
-            <div data-deck-row="song-tools" className="flex items-center justify-between gap-3 min-w-0">
+            <div data-deck-row="song-tools" className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 min-w-0">
               {hasChords ? <TransposeControl tone="stage" semitones={semitones} onChange={setSemitones} songKey={songKey} /> : <span />}
-              <FollowLeaderButtons follow={tempo} accent="var(--accent)" big />
+              {/* Too narrow for both (a 320 px Laptop pose): the buttons take the next line, at the end. */}
+              <FollowLeaderButtons follow={tempo} accent="var(--accent)" big className="ml-auto" />
             </div>
           )}
           {mine && <MyNotesBar />}
