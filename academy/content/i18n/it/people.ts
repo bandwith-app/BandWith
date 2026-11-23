@@ -829,7 +829,7 @@ const people: AreaText = {
             ["Formazione del gig e risposte", "Tutti, con compensi e pagamenti", "Chi suona e le risposte, senza compensi"],
             ["Il proprio compenso", "Sì", "Sì: il compenso per gig, pagato o no, il compenso abituale e il proprio **Pagato · {year}**"],
             ["Compensi degli altri", "Sì, per ogni membro e sostituto", "No"],
-            ["Preventivi e totali dei preventivi", "Sì: crea, invia e vede tutto", "No. Il controllo di disponibilità di un preventivo mostra solo la data"],
+            ["Preventivi e totali dei preventivi", "Sì: crea, invia e vede tutto", "No. Un preventivo chiede loro solo di tenere libera la data, mostrando il giorno, l’orario e il luogo"],
             ["Finanze, pagamenti e statistiche della band", "Sì", "No. Solo i propri guadagni"],
             ["Prezzi, dati bancari e fiscali", "Sì", "No"],
             ["Scalette", "Crea, modifica, collega ai gig", "Sola lettura"],
@@ -862,7 +862,7 @@ const people: AreaText = {
 
   faq: [
     { q: "I membri vedono quanto vengono pagati gli altri?", a: "No. Un membro vede solo il proprio compenso su ogni gig e i propri totali annuali. Gli admin vedono quelli di tutti." },
-    { q: "Come esco da una band?", a: "In **Membri della band**, tocca **⋯** sulla tua riga, poi **Esci dalla band**. Un admin può uscire se la band ha un altro admin. Vedi [[leave-a-band]].", roles: ["admin", "member"] },
+    { q: "Come esco da una band?", a: "In **Membri della band**, tocca **⋯** sulla tua riga, poi **Esci dalla band** e conferma. Un admin può uscire se la band ha un altro admin. Vedi [[leave-a-band]].", roles: ["admin", "member"] },
     { q: "Perché non posso rimuovere l’ultimo admin?", a: "Ogni band ha bisogno di almeno un admin. Prima rendi admin qualcun altro, poi cambia o rimuovi il primo.", roles: ["admin"] },
     { q: "Per quanto tempo vale un invito?", a: "7 giorni. L’indirizzo invitato riceve un promemoria quando mancano 2 giorni. Invitare di nuovo lo stesso indirizzo lo rinnova.", roles: ["admin"] },
     { q: "La persona che ho invitato dice che l’invito non funziona.", a: "Deve accedere con esattamente l’indirizzo email che hai invitato. Se l’invito è scaduto, invitala di nuovo.", roles: ["admin"] },

@@ -125,30 +125,48 @@ const business: AreaText = {
     },
     {
       id: "ask-lineup-availability",
-      title: "Die Besetzung fragen, bevor der Kunde zusagt",
-      summary: "Prüfe, welche Musiker an dem Datum frei sind, solange das Angebot noch offen ist.",
+      title: "Termin freihalten: wer Zeit hat, bevor der Kunde zusagt",
+      summary: "Solange ein Gig noch ein Angebot ist, bekommt jedes Mitglied eine Karte mit der Bitte, sich den Termin freizuhalten, und antwortet darauf.",
       roles: ["admin", "member"],
       kind: "task",
-      keywords: ["Verfügbarkeitsabfrage", "Antwort", "bist du verfügbar", "Termin reservieren", "vorläufig", "RSVP"],
+      keywords: ["Termin freihalten", "möglicher Gig", "wer Zeit hat", "Verfügbarkeitsabfrage", "bist du verfügbar", "Termin reservieren", "vorläufig", "RSVP"],
       related: ["create-a-quote", "quote-to-gig", "quote-drafts"],
       body: [
+        { type: "p", text: "Es gibt nichts einzuschalten. Wenn du ein neues Angebot mit Datum speicherst, auch als Entwurf, wird jedes Mitglied der Band, das kein Admin ist, gebeten, sich diesen Termin freizuhalten. Schritt 3 eines neuen Angebots sagt das unter **Verfügbarkeit der Besetzung**." },
         {
           type: "steps",
+          title: "Auf einen freizuhaltenden Termin antworten (Mitglieder)",
           items: [
-            "Schalte in Schritt 3 eines neuen Angebots **Besetzung jetzt fragen** ein (unter **Verfügbarkeit der Besetzung**). Auf dem iPad sitzt der Schalter unter dem Live-PDF: „Prüfe vor dem Senden, wer frei ist“.",
-            "Speichere das Angebot mit **Speichern & teilen** oder schließ es und wähle **Entwurf speichern**. In beiden Fällen werden die Musiker gefragt.",
-            "Verfolge die Antworten am Kalendertermin des Angebots: Er zeigt „Verfügbarkeit: {free} von {total} frei“ und eine Liste, die du öffnen kannst.",
+            "Öffne Start. Unter **Mögliche Gigs** zeigt die Karte **Möglicher Gig – halte dir den Termin frei** den Tag, die Uhrzeit und den Ort. Du bekommst auch eine Mitteilung und eine Push-Mitteilung; ein Tipp darauf öffnet dieselbe Karte.",
+            "Tippe auf **Ich habe Zeit** oder **Ich kann nicht**.",
+            "Du kannst deine Antwort ändern, bis der Gig bestätigt ist. Die Karte steht auch an diesem Tag in deinem Kalender.",
           ],
         },
-        { type: "p", text: "Eine kurze Meldung bestätigt das, zum Beispiel „Angebot Q-2026-0014 gespeichert · Verfügbarkeit bei 4 angefragt“. Ist der Schalter aus, werden die Musiker erst gefragt, wenn das Angebot zum Gig wird." },
+        {
+          type: "steps",
+          title: "Sehen, wer Zeit hat (Admins)",
+          items: [
+            "Öffne den Kalendertermin des Angebots oder das Angebot selbst.",
+            "Unter **Wer Zeit hat** stehen die Mitglieder in den Gruppen **Haben Zeit ({count})**, **Können nicht ({count})** und **Noch keine Antwort ({count})**. **In der Besetzung** markiert die, die du ins Angebot gesetzt hast.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Wie es weitergeht",
+          items: [
+            "Ändern sich Tag oder Uhrzeit, bekommen die Mitglieder „Möglicher Gig – neue Details“ und antworten neu: Ihre früheren Antworten werden gelöscht. Ändert sich nur der Ort, bleiben die Antworten.",
+            "Wenn du den Gig bestätigst, bekommen die Musiker in seiner Besetzung den Gig wie jeden anderen. Mitglieder, die nicht dabei sind, erfahren: **Der Termin ist wieder frei**.",
+            "Mitglieder bekommen **Der Termin ist wieder frei** auch, wenn der Kunde ablehnt, das Angebot abläuft oder du es absagst oder löschst.",
+          ],
+        },
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Schaltet die Abfrage beim Erstellen des Angebots ein (nicht beim Bearbeiten) und sieht jede Antwort." },
-            { role: "member", text: "Bekommt für das Datum die Mitteilung „Verfügbarkeit“ mit der eigenen Gage und antwortet wie auf jede Einladung. Das Angebot selbst, der Kunde und die Summe bleiben verborgen, und der Termin steht erst in seinem Kalender, wenn er als Gig bestätigt ist." },
+            { role: "admin", text: "Wird nicht gefragt: Admins sehen das Angebot selbst. Sieht jede Antwort unter **Wer Zeit hat**." },
+            { role: "member", text: "Sieht nur den Tag, die Uhrzeit und den Ort. Kunde, Gage, Notizen, Rider und der Chat des Angebots bleiben bei den Admins, bis der Gig bestätigt ist." },
           ],
         },
-        { type: "note", tone: "privacy", text: "Jeder Musiker sieht in der Verfügbarkeitsabfrage nur seine eigene Gage, nie die Angebotssumme oder die Gagen der anderen." },
+        { type: "note", tone: "privacy", text: "Eine Karte zum Freihalten zeigt nie eine Gage, den Kunden oder die Angebotssumme. Zu sagen, dass du Zeit hast, heißt nicht, einen Gig anzunehmen." },
       ],
     },
     {
@@ -170,7 +188,7 @@ const business: AreaText = {
           ],
         },
         { type: "p", text: "Auf dem iPad sitzt **Entwurf speichern** in der Kopfzeile des Editors." },
-        { type: "note", tone: "privacy", text: "„Als Angebotsentwurf gespeichert, den Mitglieder nicht sehen.“ Im Kalender zeigt ein Angebotsentwurf **FÜR MITGLIEDER VERBORGEN**. Nur wenn du **Besetzung jetzt fragen** eingeschaltet hast, bekommen die Musiker die Verfügbarkeitsabfrage." },
+        { type: "note", tone: "privacy", text: "Ein Angebotsentwurf wird nicht an den Kunden gesendet, und Mitglieder können ihn nicht öffnen. Sie bekommen nur die Karte mit der Bitte, sich den Termin freizuhalten, mit Tag, Uhrzeit und Ort. Siehe [[ask-lineup-availability]]." },
       ],
     },
     {
@@ -806,7 +824,7 @@ const business: AreaText = {
             "Such auf Start **Zu erledigen** > **Auszahlungen ({count})** und tippe beim Gig auf **Auszahlungen prüfen**. Du kannst auch den Gig öffnen und auf **GAGE & AUSZAHLUNGEN** tippen.",
             "Das Fenster **Gage & Auszahlungen** zeigt die **Band-Gage**, **OFFENE AUSZAHLUNGEN · {count}** mit dem Betrag und jeden Musiker mit Gage und **BEZAHLT** oder **OFFEN**.",
             "Tippe auf den runden Schalter neben einem Musiker, um ihn als bezahlt zu markieren, oder tippe noch einmal, um es rückgängig zu machen.",
-            "Oder tippe auf **ALLE ALS BEZAHLT MARKIEREN**, um alle noch Unbezahlten zu markieren.",
+            "Oder tippe auf **ALLE ALS BEZAHLT MARKIEREN**. Das markiert die Musiker, denen etwas zusteht: die zugesagt haben, eine Gage über null haben und noch nicht bezahlt sind. Wer nicht zugesagt hat, bleibt, wie er ist.",
           ],
         },
         { type: "p", text: "Die Statistiken haben dieselbe Liste mit **ALLE ALS BEZAHLT MARKIEREN** pro Gig, siehe [[analytics]]. Ein bezahlter Musiker verschwindet sofort aus der Liste." },
@@ -858,7 +876,7 @@ const business: AreaText = {
           type: "table",
           head: ["Thema", "Admin", "Mitglied oder Vertretung"],
           rows: [
-            ["Angebote", "Alles", "Nichts. Nur eine Verfügbarkeitsabfrage mit der eigenen Gage, falls gefragt"],
+            ["Angebote", "Alles", "Nichts. Mitglieder bekommen nur eine Karte mit der Bitte, sich den Termin freizuhalten: Tag, Uhrzeit und Ort, keine Gage"],
             ["Gage des Gigs", "**Band-Gage**, die Gage jedes Musikers, Bandkasse, Anzahlung", "Nur **Deine Gage**"],
             ["Auszahlungen", "Alle, denen etwas zusteht", "Die eigene Auszahlung und **BEZAHLT** / **OFFEN**"],
             ["Verträge und Rider", "Alles", "Nichts"],
@@ -1056,7 +1074,7 @@ const business: AreaText = {
   ],
 
   faq: [
-    { q: "Können Mitglieder ein Angebot oder seine Summe sehen?", a: "Nein. Angebote gibt es in der App und in der Datenbank nur für Admins. Ein Mitglied bekommt nur eine Verfügbarkeitsabfrage mit der eigenen Gage, wenn du „Besetzung jetzt fragen“ einschaltest.", roles: ["admin", "member"] },
+    { q: "Können Mitglieder ein Angebot oder seine Summe sehen?", a: "Nein. Angebote gibt es in der App und in der Datenbank nur für Admins. Solange ein Gig noch ein Angebot ist, bekommen Mitglieder nur eine Karte mit der Bitte, sich den Termin freizuhalten, mit Tag, Uhrzeit und Ort.", roles: ["admin", "member"] },
     { q: "Braucht der Kunde ein Konto, um anzunehmen?", a: "Nein. Der persönliche Link öffnet eine Webseite, auf der er seinen Namen eingibt, das Kästchen anhakt und auf „Angebot annehmen“ tippt.", roles: ["admin"] },
     { q: "Ist ein angenommenes Angebot ein unterschriebener Vertrag?", a: "Nein. Es hält Name, Datum und Version fest, die der Kunde angenommen hat. Für eine Unterschrift bereite aus dem angenommenen Angebot einen Vertrag vor.", roles: ["admin"] },
     { q: "Der Kunde hat angenommen. Warum steht der Gig noch nicht im Kalender?", a: "Eine Zusage auf der Kundenseite bestätigt den Gig nicht von selbst. Öffne das Angebot und tippe auf „Gig aus dem Angebot erstellen“ oder tippe am Termin des Angebots auf GIG BESTÄTIGEN.", roles: ["admin"] },
@@ -1075,7 +1093,7 @@ const business: AreaText = {
     { term: "Vorläufiger Termin", definition: "Der Kalendertermin, den ein Angebot erstellt. Nur Admins sehen ihn, bis er als Gig bestätigt ist.", see: "quote-to-gig" },
     { term: "Kundenlink", definition: "Der persönliche Web-Link, über den der Kunde ein Angebot ohne Konto annimmt, ablehnt oder dazu schreibt.", see: "client-quote-page" },
     { term: "Version", definition: "Jede Bearbeitung eines verschickten Angebots veröffentlicht eine neue Version auf der Kundenseite; eine Annahme gilt für die Version, die der Kunde gesehen hat.", see: "client-confirmation" },
-    { term: "Verfügbarkeitsabfrage", definition: "Eine Anfrage an die Besetzung, bevor der Kunde bestätigt, als noch nicht bestätigt markiert.", see: "ask-lineup-availability" },
+    { term: "Termin freihalten", definition: "Ein Termin, den sich Mitglieder freihalten sollen, solange ein Gig noch ein Angebot ist. Sie sehen Tag, Uhrzeit und Ort und antworten „Ich habe Zeit“ oder „Ich kann nicht“.", see: "ask-lineup-availability" },
     { term: "Preisblatt", definition: "Preise & Leistungen: Preise, Pakete, Extras, Anfahrt, Ton, Steuern und Branding der Band, von denen neue Angebote ausgehen.", see: "pricing-sheet" },
     { term: "Bandkasse", definition: "Ein optionaler fester Betrag oder Prozentsatz zusätzlich zu den Musikergagen, für Rücklagen der Band, Equipment oder eine Agenturprovision.", see: "pricing-sheet" },
     { term: "Pauschalpakete", definition: "Preismodell mit einem festen Preis pro Besetzung (Solo, Duo, Trio, Ganze Band…) statt einer Gage pro Musiker.", see: "pricing-sheet" },

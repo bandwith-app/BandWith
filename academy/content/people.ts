@@ -835,7 +835,7 @@ const people: AreaModule = {
             ['Gig lineup and answers', 'Everyone, with fees and payouts', 'Who plays and their answers, without fees'],
             ['Own fee', 'Yes', 'Yes: their fee per gig, paid or not, their default fee, and their own **Paid · {year}**'],
             ['Other people’s fees', 'Yes, for every member and deputy', 'No'],
-            ['Quotes and quote totals', 'Yes: create, send and see all', 'No. A quote’s availability check shows only the date'],
+            ['Quotes and quote totals', 'Yes: create, send and see all', 'No. A quote only asks them to keep the date free, showing the day, the time and the place'],
             ['Band finances, payments and analytics', 'Yes', 'No. Only their own earnings'],
             ['Pricing, bank and tax details', 'Yes', 'No'],
             ['Setlists', 'Create, edit, attach to gigs', 'Read only'],
@@ -868,7 +868,7 @@ const people: AreaModule = {
 
   faq: [
     { q: 'Can members see what the others are paid?', a: 'No. A member sees only their own fee on each gig and their own yearly totals. Admins see everyone’s.' },
-    { q: 'How do I leave a band?', a: 'On **Band members**, tap **⋯** on your own row, then **Leave band**. An admin can leave while the band has another admin. See [[leave-a-band]].', roles: ['admin', 'member'] },
+    { q: 'How do I leave a band?', a: 'On **Band members**, tap **⋯** on your own row, then **Leave band** and confirm. An admin can leave while the band has another admin. See [[leave-a-band]].', roles: ['admin', 'member'] },
     { q: 'Why can’t I remove the last admin?', a: 'Every band needs at least one admin. Make someone else admin first, then change or remove the first one.', roles: ['admin'] },
     { q: 'How long is an invite valid?', a: '7 days. The invited address gets a reminder when 2 days are left. Inviting the same address again renews it.', roles: ['admin'] },
     { q: 'The person I invited says the invite doesn’t work.', a: 'They must sign in with the exact email address you invited. If it expired, invite them again.', roles: ['admin'] },

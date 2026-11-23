@@ -53,8 +53,8 @@
   <aside class="note tip">Le prove passate si modificano allo stesso modo, anche su iPad. I membri vedono la pagina senza matite e senza <b class="ui">EDIT</b>.</aside>
 
   <h3 id="art-delete-a-rehearsal" data-roles="admin">Eliminare (annullare) una prova</h3>
-  <p>Nella prova si tocca <b class="ui">DELETE</b> (sotto <b class="ui">REHEARSAL CHAT</b>), poi <b class="ui">Confirm delete</b>, oppure <b class="ui">CANCEL</b> per tenerla.</p>
-  <aside class="note warning">L'eliminazione è definitiva. Una prova ricorrente è un unico evento: eliminarla rimuove tutte le date della serie.</aside>
+  <p>Nella prova si tocca <b class="ui">DELETE</b> (sotto <b class="ui">REHEARSAL CHAT</b>), poi <b class="ui">Confirm delete</b>, oppure <b class="ui">CANCEL</b> per tenerla. Una prova che si ripete chiede invece quali date: <b class="ui">Delete this date</b> toglie solo la data aperta, <b class="ui">Delete the whole series</b> toglie tutte le date con le loro note.</p>
+  <aside class="note warning">L'eliminazione di una prova o di un'intera serie è definitiva. Una singola data eliminata può tornare: un admin apre la serie e tocca <b class="ui">RESTORE</b> accanto alla data, sotto <b class="ui">Deleted dates</b>.</aside>
   <p>I partecipanti ricevono <b class="ui">Rehearsal cancelled</b> con push. Aprendola da una vecchia notifica vedono <b class="ui">Rehearsal cancelled</b> e l'avviso che un admin l'ha rimossa.</p>
 
   <h3 id="art-rehearsal-drafts" data-roles="admin">Salvare una prova come bozza</h3>
@@ -79,7 +79,7 @@
       <tr><td><b class="ui">Monthly</b></td><td><b class="ui">MONTHLY</b></td></tr>
     </tbody>
   </table>
-  <aside class="note warning">Tutte le date di una serie condividono la stessa prova: un organico, una risposta per membro, una scaletta. Modificarla o eliminarla vale per tutte le date.</aside>
+  <aside class="note warning">Tutte le date di una serie condividono la stessa prova: un organico, una risposta per membro, una scaletta. Modificarla vale per tutte le date. Due cose si possono fare su una sola data: eliminarla (<b class="ui">Delete this date</b>, vedi <a data-ref="delete-a-rehearsal">Eliminare (annullare) una prova</a>) e spostarla: quando si cambia la data, <b class="ui">Move which dates?</b> propone <b class="ui">Only this date</b> o <b class="ui">The whole series</b>.</aside>
 
   <h2>La pagina della prova e le risposte</h2>
 
@@ -267,7 +267,7 @@
     <li>Nelle chat di band ed evento ogni messaggio mostra il mittente, con <b class="ui"> · Admin</b> per gli admin.</li>
     <li>Si caricano gli ultimi 50 messaggi; per i precedenti si scorre in alto e si tocca <b class="ui">Load earlier messages</b>.</li>
     <li>Solo testo: niente allegati o foto, reazioni, modifica o eliminazione di singoli messaggi.</li>
-    <li>Senza connessione il messaggio non parte e torna nel composer con <b class="ui">Message not sent. Check your connection and try again.</b>, pronto da reinviare una volta online.</li>
+    <li>Senza connessione il messaggio resta nella chat con la scritta <b class="ui">Waiting for connection</b> e parte da solo una volta online, anche a chat chiusa. Un messaggio che non è stato possibile inviare riporta <b class="ui">Not sent</b>, con <b class="ui">Try again</b> e <b class="ui">Delete</b>.</li>
   </ul>
   <div class="devnote" data-devices="duoLaptop">In posizione Laptop i messaggi occupano lo schermo superiore e il composer si apre su quello inferiore.</div>
 

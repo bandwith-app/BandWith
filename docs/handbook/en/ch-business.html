@@ -72,18 +72,29 @@
   <p>The totals are worked out the same way on screen, in the PDF, on the client page and in the database: subtotal, minus the discount, plus VAT, then the deposit as a share of the total.</p>
   <aside class="note tip">Once the client accepts, the client page shows how to pay the deposit: your bank details with copy buttons, a reference such as <b class="ui">Q-2026-0014 · Deposit</b>, and your own Stripe payment link if you set one (the PDF prints it too). Before accepting, the page already names the deposit to be paid. When the money arrives, tap <b class="ui">Deposit received</b> on the accepted quote and pick how it came (bank transfer, cash, other): the gig is confirmed (or created from the quote, with its lineup) and the client page says the deposit was received. <b class="ui">PayPal</b> stays switched off.</aside>
 
-  <h3 id="art-ask-lineup-availability" data-roles="admin,member">Ask the lineup before the client says yes</h3>
+  <h3 id="art-ask-lineup-availability" data-roles="admin,member">Date on hold: who is free before the client says yes</h3>
+  <p>There is nothing to turn on. When you save a new quote with a date, as a draft too, every member of the band who is not an admin is asked to keep that date free. Step 3 of a new quote says so under <b class="ui">Lineup availability</b>.</p>
+  <p class="steps-title">Answer a hold (members)</p>
   <ol class="steps">
-    <li>In step 3 of a new quote, turn on <b class="ui">Ask the lineup now</b> (under <b class="ui">Lineup availability</b>). On iPad the switch is under the live PDF: <b class="ui">Check who is free before you send</b>.</li>
-    <li>Save the quote with <b class="ui">Save &amp; share</b>, or close it and choose <b class="ui">Save draft</b>. Either way the musicians are asked.</li>
-    <li>Follow the answers on the quote's calendar event: it shows <b class="ui">Availability: {free} of {total} free</b> and a list you can open.</li>
+    <li>On Home, under <b class="ui">Possible gigs</b>, the card <b class="ui">Possible gig – keep the date free</b> shows the day, the time and the place. A notification and a push arrive too; tapping one opens the same card.</li>
+    <li>Tap <b class="ui">I'm free</b> or <b class="ui">I can't</b>.</li>
+    <li>The answer can be changed until the gig is confirmed. The card is also on that day in the calendar.</li>
   </ol>
-  <p>A toast confirms it, for example <b class="ui">Quote Q-2026-0014 saved · availability asked to 4</b>. With the switch off, musicians are asked only when the quote becomes a gig.</p>
+  <p class="steps-title">See who is free (admins)</p>
+  <ol class="steps">
+    <li>Open the quote's event in the calendar, or the quote itself.</li>
+    <li>Under <b class="ui">Who's free</b>, members are grouped as <b class="ui">Free ({count})</b>, <b class="ui">Can't ({count})</b> and <b class="ui">No answer yet ({count})</b>. <b class="ui">On the lineup</b> marks the ones you put on the quote.</li>
+  </ol>
+  <ul>
+    <li>If the day or the time changes, members get <b class="ui">Possible gig – new details</b> and answer again: their earlier answers are cleared. A new place alone keeps the answers.</li>
+    <li>When you confirm the gig, the musicians on its lineup get the gig like any other. Members who are not on it are told <b class="ui">The date is free again</b>.</li>
+    <li>Members are also told <b class="ui">The date is free again</b> when the client declines, the quote expires, or you cancel or delete it.</li>
+  </ul>
   <div class="roles">
-    <div data-role="admin">Turns the check on when creating the quote (not when editing one) and sees every answer.</div>
-    <div data-role="member">Gets an <b class="ui">Availability check</b> notification for the date, with their own fee, and answers it like any RSVP. The quote itself, the client and the total stay hidden, and the event is not on their calendar until it is confirmed as a gig.</div>
+    <div data-role="admin">Is not asked: admins see the quote itself. Sees every answer under <b class="ui">Who's free</b>.</div>
+    <div data-role="member">Sees only the day, the time and the place. The client, the fee, the notes, the rider and the quote's chat stay with the admins until the gig is confirmed.</div>
   </div>
-  <aside class="note privacy">In the availability check each musician sees only their own fee, never the quote total or the others' fees.</aside>
+  <aside class="note privacy">A hold card never shows a fee, the client or the quote total. Saying you are free is not accepting a gig.</aside>
 
   <h3 id="art-quote-drafts" data-roles="admin">Save a quote as a draft</h3>
   <ol class="steps">
@@ -93,7 +104,7 @@
     <li>When it is ready to go, open it and use <b class="ui">Share quote</b>.</li>
   </ol>
   <div class="devnote" data-devices="tablet">On iPad, <b class="ui">Save draft</b> is in the composer header.</div>
-  <aside class="note privacy">The app confirms <b class="ui">Saved as a draft quote that members can't see.</b> In the calendar a draft quote shows <b class="ui">HIDDEN FROM MEMBERS</b>. The musicians get the availability check only if you turned on <b class="ui">Ask the lineup now</b>.</aside>
+  <aside class="note privacy">A draft quote is not sent to the client, and members can't open it. They only get the card asking them to keep the date free, with the day, the time and the place (see <a data-ref="ask-lineup-availability">Date on hold: who is free before the client says yes</a>).</aside>
 
   <h2>Pricing sheet, branding and client language</h2>
 
@@ -455,7 +466,7 @@
     <li>On Home, under <b class="ui">Action center</b> &gt; <b class="ui">Payouts ({count})</b>, tap <b class="ui">Review payouts</b> on the gig; or open the gig and tap <b class="ui">FEE &amp; PAYOUTS</b>.</li>
     <li>The <b class="ui">Fee &amp; payouts</b> sheet shows the <b class="ui">Band fee</b>, <b class="ui">PAYOUTS DUE · {count}</b> with the amount, and each musician with their fee and <b class="ui">PAID</b> or <b class="ui">PENDING</b>.</li>
     <li>Tap the round toggle next to a musician to mark them paid; tap it again to undo.</li>
-    <li>Or tap <b class="ui">MARK ALL AS PAID</b> to mark everyone still unpaid.</li>
+    <li>Or tap <b class="ui">MARK ALL AS PAID</b>. It marks the musicians who are owed: those who confirmed, have a fee above zero and are not paid yet. Musicians who have not confirmed stay as they are.</li>
   </ol>
   <p>Analytics has the same list with <b class="ui">MARK ALL AS PAID</b> per gig (see <a data-ref="analytics">Analytics</a>). A paid musician leaves the list at once.</p>
   <div class="roles">
@@ -481,7 +492,7 @@
   <table class="grid">
     <thead><tr><th>Topic</th><th>Admin</th><th>Member or deputy</th></tr></thead>
     <tbody>
-      <tr><td>Quotes</td><td>Everything</td><td>Nothing; only an availability check with their own fee, if asked</td></tr>
+      <tr><td>Quotes</td><td>Everything</td><td>Nothing; members only get a card asking them to keep the date free: day, time and place, no fee</td></tr>
       <tr><td>Gig fee</td><td><b class="ui">Band fee</b>, every musician's fee, band fund, deposit</td><td><b class="ui">Your fee</b> only</td></tr>
       <tr><td>Payouts</td><td>Everyone owed</td><td>Their own payout and <b class="ui">PAID</b> / <b class="ui">PENDING</b></td></tr>
       <tr><td>Contracts and riders</td><td>Everything</td><td>Nothing</td></tr>
@@ -591,7 +602,7 @@
   <h2>FAQ</h2>
   <dl class="faq">
     <dt>Can members see a quote or its total?</dt>
-    <dd>No. Quotes are admin-only, in the app and in the database. A member only gets an availability check, with their own fee, if <b class="ui">Ask the lineup now</b> is on.</dd>
+    <dd>No. Quotes are admin-only, in the app and in the database. While a gig is still a quote, members only get a card asking them to keep the date free, with the day, the time and the place.</dd>
     <dt>Does the client need an account to accept?</dt>
     <dd>No. The personal link opens a web page where they type their name, tick the box and tap <b class="ui">Accept the quote</b>.</dd>
     <dt>Is an accepted quote a signed contract?</dt>

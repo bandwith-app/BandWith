@@ -172,13 +172,13 @@ const together: AreaText = {
           items: [
             "Öffne die Probe.",
             "Tippe unter **PROBEN-CHAT** auf **LÖSCHEN**.",
-            "Tippe auf **Ja, löschen** oder auf **ABBRECHEN**, um sie zu behalten.",
+            "Tippe auf **Ja, löschen** oder auf **ABBRECHEN**, um sie zu behalten. Eine Probe, die sich wiederholt, fragt stattdessen, welche Termine: **Diesen Termin löschen** entfernt nur den Termin, den du geöffnet hast, **Ganze Serie löschen** entfernt alle Termine samt ihren Notizen.",
           ],
         },
         {
           type: "note",
           tone: "warning",
-          text: "Löschen lässt sich nicht rückgängig machen. Eine wiederkehrende Probe ist ein einziger Termin; wenn du sie löschst, verschwinden also alle Termine der Serie.",
+          text: "Das Löschen einer Probe oder einer ganzen Serie lässt sich nicht rückgängig machen. Ein einzelner gelöschter Termin kann zurückkommen: Ein Admin öffnet die Serie und tippt unter **Gelöschte Termine** neben dem Termin auf **WIEDERHERSTELLEN**.",
         },
         {
           type: "p",
@@ -245,7 +245,7 @@ const together: AreaText = {
         {
           type: "note",
           tone: "warning",
-          text: "Alle Termine einer Serie gehören zur selben Probe: eine Besetzung, eine Antwort pro Mitglied, eine Setlist. Bearbeiten oder Löschen ändert also jeden Termin.",
+          text: "Alle Termine einer Serie gehören zur selben Probe: eine Besetzung, eine Antwort pro Mitglied, eine Setlist. Bearbeiten ändert also jeden Termin. Zwei Dinge gehen für einen einzelnen Termin: ihn löschen (**Diesen Termin löschen**, siehe [[delete-a-rehearsal]]) und ihn verschieben: Änderst du das Datum, bietet **Welche Termine verschieben?** **Nur diesen Termin** oder **Die ganze Serie** an.",
         },
       ],
     },
@@ -770,7 +770,7 @@ const together: AreaText = {
             "In Band- und Event-Chats zeigt jede Nachricht den Namen des Absenders, bei Admins mit „ · Admin“.",
             "Der Chat lädt die letzten 50 Nachrichten. Scroll nach oben und tippe auf **Frühere Nachrichten laden**, um mehr zu sehen.",
             "Nachrichten sind reiner Text: Es gibt keine Anhänge, keine Reaktionen und kein Bearbeiten oder Löschen einzelner Nachrichten.",
-            "Ohne Verbindung wird die Nachricht nicht gesendet und landet wieder im Eingabefeld, mit „Nachricht nicht gesendet. Prüfe deine Verbindung und versuch es noch mal.“ Sende sie erneut, wenn du online bist.",
+            "Ohne Verbindung bleibt die Nachricht im Chat mit dem Hinweis **Warte auf Verbindung** und wird von selbst gesendet, sobald du wieder online bist, auch wenn du den Chat schließt. Eine Nachricht, die nicht gesendet werden konnte, zeigt **Nicht gesendet**: Tippe auf **Erneut versuchen** oder **Löschen**.",
             "Eine Erwähnung ist für alle hervorgehoben, schickt aber keine zusätzliche Mitteilung: Alle im Chat werden ohnehin über jede Nachricht informiert.",
           ],
         },

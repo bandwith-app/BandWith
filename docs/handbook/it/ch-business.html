@@ -72,18 +72,29 @@
   <p>I totali sono calcolati allo stesso modo a schermo, nel PDF, sulla pagina del cliente e nel database: subtotale, meno lo sconto, più IVA, poi l'acconto come quota del totale.</p>
   <aside class="note tip">Quando il cliente accetta, la sua pagina mostra come pagare l'acconto: le coordinate bancarie con i pulsanti per copiarle, una causale come <b class="ui">Q-2026-0014 · Acconto</b> e il link di pagamento Stripe della band, se impostato (lo stampa anche il PDF). Prima dell'accettazione la pagina indica già l'acconto da pagare. Quando arrivano i soldi, tocca <b class="ui">Deposit received</b> sul preventivo accettato e scegli come sono arrivati (bonifico, contanti, altro): il concerto viene confermato (o creato dal preventivo, con la formazione) e la pagina del cliente dice che l'acconto è arrivato. <b class="ui">PayPal</b> resta disattivato.</aside>
 
-  <h3 id="art-ask-lineup-availability" data-roles="admin,member">Chiedere la disponibilità prima del sì del cliente</h3>
+  <h3 id="art-ask-lineup-availability" data-roles="admin,member">Data in sospeso: chi è libero prima del sì del cliente</h3>
+  <p>Non c'è nulla da attivare. Quando si salva un nuovo preventivo con una data, anche come bozza, a ogni membro della band che non è admin viene chiesto di tenere libera quella data. Il passo 3 di un nuovo preventivo lo dice sotto <b class="ui">Lineup availability</b>.</p>
+  <p class="steps-title">Rispondere a una data in sospeso (membri)</p>
   <ol class="steps">
-    <li>Al passo 3 di un nuovo preventivo, attivare <b class="ui">Ask the lineup now</b> (sotto <b class="ui">Lineup availability</b>). Su iPad l'interruttore è sotto il PDF live: <b class="ui">Check who is free before you send</b>.</li>
-    <li>Salvare con <b class="ui">Save &amp; share</b>, oppure chiudere e scegliere <b class="ui">Save draft</b>: in entrambi i casi i musicisti ricevono la richiesta.</li>
-    <li>Seguire le risposte sull'evento in calendario del preventivo, che indica <b class="ui">Availability: {free} of {total} free</b> con un elenco apribile.</li>
+    <li>Nella Home, sotto <b class="ui">Possible gigs</b>, la scheda <b class="ui">Possible gig – keep the date free</b> mostra il giorno, l'orario e il luogo. Arrivano anche una notifica e una push; toccandole si apre la stessa scheda.</li>
+    <li>Toccare <b class="ui">I'm free</b> o <b class="ui">I can't</b>.</li>
+    <li>La risposta si può cambiare finché il gig non è confermato. La scheda è anche in quel giorno nel calendario.</li>
   </ol>
-  <p>Un avviso conferma l'invio, ad esempio <b class="ui">Quote Q-2026-0014 saved · availability asked to 4</b>. Con l'interruttore spento, i musicisti vengono interpellati solo quando il preventivo diventa un gig.</p>
+  <p class="steps-title">Vedere chi è libero (admin)</p>
+  <ol class="steps">
+    <li>Aprire l'evento del preventivo in calendario, oppure il preventivo stesso.</li>
+    <li>Sotto <b class="ui">Who's free</b> i membri sono raggruppati in <b class="ui">Free ({count})</b>, <b class="ui">Can't ({count})</b> e <b class="ui">No answer yet ({count})</b>. <b class="ui">On the lineup</b> segna quelli inseriti nel preventivo.</li>
+  </ol>
+  <ul>
+    <li>Se cambia il giorno o l'orario, i membri ricevono <b class="ui">Possible gig – new details</b> e rispondono di nuovo: le risposte precedenti vengono cancellate. Se cambia solo il luogo, le risposte restano.</li>
+    <li>Quando si conferma il gig, i musicisti in formazione ricevono il gig come qualsiasi altro. Ai membri che non ne fanno parte arriva <b class="ui">The date is free again</b>.</li>
+    <li><b class="ui">The date is free again</b> arriva ai membri anche quando il cliente rifiuta, il preventivo scade, oppure lo si annulla o lo si elimina.</li>
+  </ul>
   <div class="roles">
-    <div data-role="admin">Attiva la verifica alla creazione del preventivo (non in modifica) e vede tutte le risposte.</div>
-    <div data-role="member">Riceve una notifica <b class="ui">Availability check</b> per la data, con il proprio compenso, e risponde come a qualsiasi RSVP. Preventivo, cliente e totale restano nascosti, e l'evento non compare nel suo calendario finché non è confermato come gig.</div>
+    <div data-role="admin">Non riceve la domanda: gli admin vedono il preventivo. Vede tutte le risposte sotto <b class="ui">Who's free</b>.</div>
+    <div data-role="member">Vede solo il giorno, l'orario e il luogo. Cliente, compenso, note, rider e chat del preventivo restano agli admin finché il gig non è confermato.</div>
   </div>
-  <aside class="note privacy">Nella verifica di disponibilità ogni musicista vede solo il proprio compenso, mai il totale del preventivo né i compensi degli altri.</aside>
+  <aside class="note privacy">Una scheda di data in sospeso non mostra mai un compenso, il cliente o il totale del preventivo. Dire di essere liberi non significa accettare un gig.</aside>
 
   <h3 id="art-quote-drafts" data-roles="admin">Salvare un preventivo come bozza</h3>
   <ol class="steps">
@@ -93,7 +104,7 @@
     <li>Quando è pronta, aprirla e usare <b class="ui">Share quote</b>.</li>
   </ol>
   <div class="devnote" data-devices="tablet">Su iPad <b class="ui">Save draft</b> si trova nell'intestazione del compositore.</div>
-  <aside class="note privacy">L'app conferma <b class="ui">Saved as a draft quote that members can't see.</b> In calendario la bozza riporta <b class="ui">HIDDEN FROM MEMBERS</b>. I musicisti ricevono la verifica di disponibilità solo se è stato attivato <b class="ui">Ask the lineup now</b>.</aside>
+  <aside class="note privacy">Una bozza di preventivo non viene inviata al cliente, e i membri non possono aprirla. Ricevono solo la scheda che chiede di tenere libera la data, con il giorno, l'orario e il luogo (vedi <a data-ref="ask-lineup-availability">Data in sospeso: chi è libero prima del sì del cliente</a>).</aside>
 
   <h2>Listino, intestazione e lingua del cliente</h2>
 
@@ -455,7 +466,7 @@
     <li>Su Home, in <b class="ui">Action center</b> &gt; <b class="ui">Payouts ({count})</b>, toccare <b class="ui">Review payouts</b> sul gig; oppure aprire il gig e toccare <b class="ui">FEE &amp; PAYOUTS</b>.</li>
     <li>Il pannello <b class="ui">Fee &amp; payouts</b> mostra il <b class="ui">Band fee</b>, <b class="ui">PAYOUTS DUE · {count}</b> con l'importo, e ogni musicista con il suo compenso e <b class="ui">PAID</b> o <b class="ui">PENDING</b>.</li>
     <li>Toccare l'interruttore tondo accanto a un musicista per segnarlo pagato; toccarlo di nuovo per annullare.</li>
-    <li>Oppure toccare <b class="ui">MARK ALL AS PAID</b> per segnare tutti quelli non ancora pagati.</li>
+    <li>Oppure toccare <b class="ui">MARK ALL AS PAID</b>. Segna i musicisti che devono essere pagati: quelli che hanno confermato, hanno un compenso sopra zero e non sono ancora pagati. Chi non ha confermato resta com'è.</li>
   </ol>
   <p>Analytics contiene lo stesso elenco con <b class="ui">MARK ALL AS PAID</b> per ogni gig (vedi <a data-ref="analytics">Analytics</a>). Un musicista pagato esce subito dall'elenco.</p>
   <div class="roles">
@@ -481,7 +492,7 @@
   <table class="grid">
     <thead><tr><th>Argomento</th><th>Admin</th><th>Membro o sostituto</th></tr></thead>
     <tbody>
-      <tr><td>Preventivi</td><td>Tutto</td><td>Nulla; solo una verifica di disponibilità con il proprio compenso, se richiesta</td></tr>
+      <tr><td>Preventivi</td><td>Tutto</td><td>Nulla; i membri ricevono solo una scheda che chiede di tenere libera la data: giorno, orario e luogo, nessun compenso</td></tr>
       <tr><td>Compenso del gig</td><td><b class="ui">Band fee</b>, compenso di ogni musicista, fondo band, acconto</td><td>Solo <b class="ui">Your fee</b></td></tr>
       <tr><td>Pagamenti</td><td>Tutti i musicisti da pagare</td><td>Il proprio pagamento e <b class="ui">PAID</b> / <b class="ui">PENDING</b></td></tr>
       <tr><td>Contratti e rider</td><td>Tutto</td><td>Nulla</td></tr>
@@ -591,7 +602,7 @@
   <h2>Domande frequenti</h2>
   <dl class="faq">
     <dt>I membri possono vedere un preventivo o il suo totale?</dt>
-    <dd>No. I preventivi sono riservati agli admin, nell'app e nel database. Un membro riceve solo una verifica di disponibilità con il proprio compenso, se è attivo <b class="ui">Ask the lineup now</b>.</dd>
+    <dd>No. I preventivi sono riservati agli admin, nell'app e nel database. Finché un gig è ancora un preventivo, i membri ricevono solo una scheda che chiede di tenere libera la data, con il giorno, l'orario e il luogo.</dd>
     <dt>Il cliente ha bisogno di un account per accettare?</dt>
     <dd>No. Il link personale apre una pagina web dove scrive il nome, spunta la casella e tocca <b class="ui">Accept the quote</b>.</dd>
     <dt>Un preventivo accettato equivale a un contratto firmato?</dt>

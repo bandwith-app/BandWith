@@ -145,11 +145,9 @@ const music: AreaText = {
             ["**Durée**", "Minutes et secondes dans deux cases (min : s). Sert aux totaux des setlists."],
             ["**BPM**", "Le tempo, jusqu’à 3 chiffres. Le clic du mode scène l’utilise."],
             ["**Tonalité**", "Texte libre, p. ex. Do maj. Affichée dans la liste, sur scène et dans la transposition du lecteur."],
-            // <draft live-tempo>
             ["**Mesure**", "4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 ou 7/8. Le clic et le décompte l’utilisent. Sans choix, celle de la grille d’accords, sinon 4/4. Voir [[song-live-settings]]."],
-            ["**Décompte**", "**1 mesure** ou **2 mesures**, et de combien de temps le morceau commence en avance (**Commence sur le premier temps** s’il n’y en a pas)."],
+            ["**Décompte**", "**1 mesure** ou **2 mesures**, et le temps sur lequel le groupe entre : **Commence sur le temps 1**, sauf si tu le déplaces avec − et +."],
             ["**Joué avec une bande**", "Le morceau n’a pas de décompte sur scène : la bande lance le groupe."],
-            // </draft>
             ["**Tap**, **BPM depuis l’enregistrement**, ÷2 / ×2", "Des outils sous le BPM pour trouver le tempo. Voir [[transpose-and-tempo]]."],
             ["**Transposer pour le groupe**", "Change la tonalité, la grille d’accords et les accords des paroles pour tout le monde. N’apparaît que s’il y a quelque chose à transposer."],
             ["**Genre**", "Des étiquettes à choisir parmi les genres du groupe, ou une nouvelle avec la puce en pointillés **Genre**, puis **Ajouter un genre**. Les genres filtrent la bibliothèque quand tu prépares une setlist."],
@@ -160,7 +158,7 @@ const music: AreaText = {
             ["**Partition**", "Un lien vers un PDF ou une partition en ligne, utilisé à la place d’une grille envoyée. Doit commencer par https://."],
             ["**Accords**", "Un lien vers une page d’accords. Il est enregistré dans les notes du morceau sous la forme « Chords: <lien> ». Doit commencer par https://."],
             ["**Notes**", "Les notes du groupe sur le morceau : idées d’arrangement, changements de tonalité."],
-            ["**Paroles · texte, Markdown ou JSON**", "Les paroles du morceau, avec les accords dans le texte si tu veux. Voir [[lyrics-and-chords-format]]. **Coller ou importer les paroles** sous la zone ouvre la feuille d’import sur son onglet Paroles."],
+            ["**Paroles · texte, Markdown ou JSON**", "Les paroles du morceau, avec les accords dans le texte si tu veux. Voir [[lyrics-and-chords-format]]. **Coller ou importer les paroles** sous la zone ouvre la feuille d’import sur son onglet Paroles. Des paroles de plus de 20 000 caractères ne peuvent pas être enregistrées : le formulaire le dit et garde ton texte jusqu’à ce que tu le raccourcisses. Si quelqu’un d’autre a modifié les paroles pendant que tu les modifiais, le formulaire demande : **Charger la dernière version** (tes modifications sont perdues) ou **Enregistrer la mienne**."],
           ],
         },
         {
@@ -487,7 +485,7 @@ const music: AreaText = {
         {
           type: "note",
           tone: "tip",
-          text: "Si tu quittes sans enregistrer, l’app demande « Enregistrer les modifications ? » avec **Enregistrer**, **Abandonner** et **Continuer à modifier**.",
+          text: "Si tu quittes sans enregistrer, l’app demande « Enregistrer les modifications ? » avec **Enregistrer**, **Abandonner** et **Continuer à modifier**. Si quelqu’un d’autre a enregistré les mêmes paroles pendant que tu les modifiais, l’éditeur le dit et garde tes modifications : touche **Charger la dernière version** pour voir les siennes (les tiennes sont perdues) ou **Enregistrer la mienne** pour enregistrer les tiennes par-dessus.",
         },
         {
           type: "roles",
@@ -1057,7 +1055,7 @@ const music: AreaText = {
             "Si le morceau a changé depuis la suggestion, l’écran prévient que tu compares avec sa version actuelle.",
             "Une note pour le groupe est ajoutée aux notes du morceau.",
             "Une suggestion qui contient une grille d’accords remplace aussi la grille du morceau.",
-            "Les suggestions examinées restent sous **Examinées**.",
+            "Les suggestions examinées restent sous **Examinées**. Une longue liste affiche d’abord les plus récentes : touche **Charger les suggestions plus anciennes** en bas pour voir les autres.",
           ],
         },
         {
@@ -1568,22 +1566,19 @@ const music: AreaText = {
           type: "list",
           items: [
             "Le clic est uniquement visuel : il n’y a pas de son. Il ne bloque pas les touchers à l’écran.",
-            // <draft live-tempo>
             "Le nombre de temps par mesure vient de la **Mesure** du morceau, sinon de sa grille d’accords, sinon 4/4. En 6/8 et 12/8, il clignote sur les temps pointés. Pour décompter le groupe, voir [[count-in]].",
-            // </draft>
             "Un morceau sans BPM ne peut pas lancer de clic (**Pas de BPM pour ce morceau**). Ajoute le BPM dans le formulaire du morceau.",
             "Passer à un autre morceau masque le clic du morceau précédent.",
             "Les téléphones restent synchronisés à environ 20–40 ms près : parfait pour un décompte et une référence de tempo, pas pour un clic dans les oreillettes.",
-            "Le clic du groupe a besoin d’internet : il n’est pas envoyé en Bluetooth.",
+            "Sans internet, le clic du leader arrive quand même aux téléphones reliés au sien en Bluetooth, dans les apps iPhone, iPad et Android. En mode scène, une ligne indique alors **Connecté au téléphone du leader**. Si le leader reste hors de portée plus de 10 secondes, le clic s’arrête sur ton téléphone. Il reprend en mesure quand le leader est de nouveau à portée. Sur le web, le clic du groupe a besoin d’internet. Voir [[stage-bluetooth-sync]].",
           ],
         },
       ],
     },
-    // <draft live-tempo> Written from the plan (§4, §6) and PR #272 before D1, B2 and B4 landed: verify every label against the final UI.
     {
       id: "song-live-settings",
       title: "Préparer un morceau pour le décompte",
-      summary: "Donne à un morceau sa mesure, la durée du décompte, une anacrouse, et indique si une bande le lance.",
+      summary: "Donne à un morceau sa mesure, la durée du décompte, le temps sur lequel le groupe entre, et indique si une bande le lance.",
       roles: ["admin"],
       kind: "task",
       keywords: ["mesure", "signature rythmique", "6/8", "7/8", "décompte", "anacrouse", "levée", "bande", "backing track", "séquence"],
@@ -1595,7 +1590,7 @@ const music: AreaText = {
             "Ouvre le menu du morceau et touche **Modifier**, puis **Suivant** pour arriver à **Détails · optionnel**.",
             "Sous **BPM** et **Tonalité**, choisis la **Mesure** : 4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 ou 7/8.",
             "Sous **Décompte**, choisis **1 mesure** ou **2 mesures**. Deux mesures conviennent aux morceaux lents : la première mesure compte à mi-tempo.",
-            "Si le morceau commence avant le premier temps de la mesure, touche + jusqu’à ce qu’il indique de combien de temps il commence en avance, par exemple **Commence 2 temps avant**. Touche − pour revenir à **Commence sur le premier temps**.",
+            "La ligne en dessous indique où le groupe entre. **Commence sur le temps 1** est le premier temps de la mesure. Si le morceau commence plus tôt, touche − (**Un temps plus tôt**) : en 4/4, **Commence sur le temps 4** est un temps avant la mesure. Touche + (**Un temps plus tard**) pour revenir.",
             "Si une bande lance le groupe, active **Joué avec une bande** : le morceau n’a pas de décompte sur scène.",
             "Touche **Enregistrer maintenant**.",
           ],
@@ -1605,8 +1600,8 @@ const music: AreaText = {
           title: "Bon à savoir",
           items: [
             "Sans mesure choisie, le morceau utilise celle de sa grille d’accords (le formulaire indique **Depuis la grille d’accords.**), sinon 4/4.",
-            "Le clic et le décompte suivent la mesure : 6/8 et 12/8 se comptent en temps pointés, comme les musiciens les comptent.",
-            "Le **BPM** est le temps que tu comptes : la noire en 4/4, 3/4 ou 5/8, la noire pointée en 6/8, 9/8 et 12/8.",
+            "Le clic et le décompte suivent la mesure : 6/8, 9/8 et 12/8 se comptent en temps pointés, comme les musiciens les comptent.",
+            "Le **BPM** est le temps que tu comptes : les noires en 4/4, 3/4, 5/8 ou 7/8, les temps pointés en 6/8, 9/8 et 12/8. Dans les mesures en /8, le formulaire le dit sous la mesure. Un morceau qui prend le 6/8 de sa grille d’accords, sans mesure choisie ici, garde son BPM sur chaque croche.",
           ],
         },
         {
@@ -1616,13 +1611,13 @@ const music: AreaText = {
             { role: "member", text: "Voit le résultat sur scène. Ne peut pas le changer." },
           ],
         },
-        { type: "shot", id: "song-live-fields", caption: "Le formulaire du morceau sous BPM et Tonalité : Mesure, Décompte, l’anacrouse et Joué avec une bande." },
+        { type: "shot", id: "song-live-fields", caption: "Le formulaire du morceau sous BPM et Tonalité : Mesure, Décompte, le temps sur lequel le morceau commence et Joué avec une bande." },
       ],
     },
     {
       id: "count-in",
       title: "Décompter le groupe",
-      summary: "Le leader touche Décompter et chaque téléphone affiche le même compte à rebours au tempo du morceau, puis GO là où le groupe entre.",
+      summary: "Le leader touche Décompte et chaque téléphone affiche le même compte à rebours au tempo du morceau, puis TOP là où le groupe entre.",
       roles: ["admin", "member"],
       kind: "task",
       keywords: ["décompte", "compte à rebours", "compter", "1 2 3 4", "démarrer ensemble", "premier temps", "vibration", "métronome", "count-in"],
@@ -1633,20 +1628,20 @@ const music: AreaText = {
           title: "Lancer le décompte",
           items: [
             "En mode scène ou en mode live, va sur le morceau.",
-            "Touche **Décompter**.",
+            "Touche **Décompte**, à côté du bouton du clic.",
             "Après 1,5 seconde, chaque téléphone en mode scène affiche un compte à rebours plein écran au tempo du morceau : un grand chiffre à chaque temps et un anneau qui se remplit mesure par mesure.",
-            "Le groupe entre sur **GO**. Le compte à rebours disparaît tout seul.",
-            "Pour l’arrêter avant la fin, touche **Arrêter**. Il s’arrête sur tous les téléphones.",
+            "Le groupe entre sur **TOP**. Le compte à rebours disparaît tout seul.",
+            "Pour l’arrêter avant la fin, touche **Arrêter le décompte**. Il s’arrête sur tous les téléphones.",
           ],
         },
         {
           type: "table",
           head: ["Mesure", "Ce qu’affiche le compte à rebours"],
           rows: [
-            ["4/4", "4 3 2 1 GO"],
-            ["3/4", "3 2 1 GO"],
-            ["2/4", "2 1 GO"],
-            ["5/4", "5 4 3 2 1 GO"],
+            ["4/4", "4 3 2 1 TOP"],
+            ["3/4", "3 2 1 TOP"],
+            ["2/4", "2 1 TOP"],
+            ["5/4", "5 4 3 2 1 TOP"],
             ["6/8, 12/8", "Les temps pointés en grands chiffres (2 ou 4), les croches en petits points."],
             ["5/8, 7/8", "Les temps groupés comme dans la grille, par exemple 2+2+3 : court, court, long."],
           ],
@@ -1655,26 +1650,28 @@ const music: AreaText = {
           type: "list",
           title: "Comment il compte",
           items: [
-            "Avec **2 mesures** réglé sur le morceau, la première mesure compte à mi-tempo (« 1 — 2 — ») et la seconde à tempo.",
-            "Un morceau qui commence quelques temps en avance termine le compte à rebours avec **GO** sur sa première note, pas sur 1.",
-            "Le groupe choisit le sens : un compte à rebours (4 3 2 1, par défaut) ou le compte classique (1 2 3 4).",
-            "Si **Suivre le tempo** est activé, le morceau commence à avancer sur **GO**. Si le clic tourne, il continue en mesure.",
+            "Avec **2 mesures** réglé sur le morceau, la première mesure compte à mi-tempo et la seconde à tempo.",
+            "Un morceau qui commence avant le temps 1 (par exemple **Commence sur le temps 4**) a son **TOP** sur sa première note, pas sur 1.",
+            "Le groupe compte à rebours (4 3 2 1, par défaut) ou à l’endroit (1 2 3 4). Le leader le choisit sous **Pour tout le groupe** dans les options du décompte, et chaque téléphone du groupe compte ainsi.",
+            "Si **Suivre le tempo** est activé, le morceau commence à avancer à partir de la mesure 1, à la fin du décompte. Si le clic tourne, il continue en mesure.",
           ],
         },
         {
           type: "list",
           title: "Sur ton téléphone (facultatif)",
           items: [
-            "Une vibration à chaque temps, plus forte sur le premier : pour qui ne peut pas regarder l’écran.",
-            "Un compte parlé ou un clic dans ton casque. Il ne passe jamais par le haut-parleur du téléphone, sauf si tu le choisis.",
+            "En mode scène, touche **Décompte**, sur la même ligne que **Setlist**, pour ouvrir les options. Elles sont gardées sur cet appareil.",
+            "**Vibrer à chaque temps** : plus fort sur le premier temps de la mesure, pour qui ne peut pas regarder l’écran.",
+            "**Son au casque** : **Désactivée** ou **Clic**. Le clic ne passe que dans un casque ou des oreillettes. Pour l’entendre à voix haute, active **Aussi par le haut-parleur du téléphone** ; dans un navigateur, il faut cet interrupteur pour l’entendre.",
           ],
         },
         {
           type: "list",
           title: "Quand il n’y a pas de décompte",
           items: [
-            "Un morceau réglé sur **Joué avec une bande** n’a pas de bouton **Décompter** : la bande lance le groupe. Un admin peut quand même en lancer un depuis le menu du morceau.",
-            "Pendant que la régie lit l’audio du morceau, le décompte n’est pas proposé.",
+            "Un morceau réglé sur **Joué avec une bande** n’a pas de bouton **Décompte** : la bande lance le groupe. Le leader peut quand même décompter : il ouvre les options du décompte et touche **Lancer le décompte quand même**.",
+            "Pendant que la régie lit l’audio du morceau, **Décompte** est masqué de la même façon, et **Lancer le décompte quand même** marche toujours.",
+            "Un morceau sans BPM ne peut pas être décompté.",
           ],
         },
         {
@@ -1682,45 +1679,46 @@ const music: AreaText = {
           title: "Bon à savoir",
           items: [
             "Un téléphone qui reçoit le message en retard rejoint le compte à rebours sur le bon temps.",
-            "Sans réseau, le décompte arrive aux téléphones à proximité en Bluetooth.",
+            "Le compte à rebours a besoin d’internet : il n’est pas envoyé en Bluetooth. Sans réseau, seul le téléphone du leader l’affiche. Les téléphones reliés en Bluetooth reçoivent quand même le clic, si le leader l’a lancé, et Suivre le tempo à partir de la mesure 1.",
             "Les téléphones restent synchronisés à environ 20–40 ms près.",
+            "Un membre peut fermer le compte à rebours sur son propre écran avec **Masquer sur ce téléphone**.",
           ],
         },
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Lance et arrête le décompte pour tout le groupe." },
-            { role: "member", text: "Le voit sur son téléphone et choisit la vibration ou le casque pour son propre appareil." },
+            { role: "admin", text: "Lance et arrête le décompte pour tout le groupe, et choisit si le groupe compte à rebours ou à l’endroit." },
+            { role: "member", text: "Le voit sur son téléphone, peut le masquer là, et choisit la vibration ou un clic au casque pour son propre appareil." },
           ],
         },
-        { type: "shot", id: "stage-count-in", caption: "Le décompte sur chaque téléphone : le numéro du temps, l’anneau et Arrêter." },
+        { type: "shot", id: "stage-count-in", caption: "Le décompte sur chaque téléphone : le numéro du temps, l’anneau et le bouton qui l’arrête." },
       ],
     },
     {
       id: "follow-the-tempo",
       title: "Suivre le tempo",
-      summary: "Active-le et la grille, la structure ou les paroles avancent avec le morceau, calées sur le téléphone du leader.",
+      summary: "Active-le et la grille d’accords ou les paroles avancent avec le morceau, calées sur le téléphone du leader.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["suivre le tempo", "défilement automatique", "tête de lecture", "mesure en cours", "section suivante", "faire défiler les paroles", "tenir", "vamp", "vitesse de répétition"],
+      keywords: ["suivre le tempo", "défilement automatique", "tête de lecture", "mesure en cours", "section suivante", "faire défiler les paroles", "répéter", "vamp", "point d’orgue"],
       related: ["count-in", "song-live-settings", "stage-click", "stage-mode"],
       body: [
         {
           type: "steps",
           title: "L’activer",
           items: [
-            "En mode scène ou en mode live, ouvre les choix de vue de l’onglet du morceau (là où tu choisis **Paroles et accords** ou **Grille d’accords**).",
-            "Active **Suivre le tempo**. C’est désactivé par défaut et gardé sur cet appareil.",
-            "Quand le leader lance le morceau avec **Décompter** ou le clic, ton écran avance avec lui.",
+            "En mode scène ou en mode live, ouvre l’onglet du morceau (**Paroles**, **Paroles et accords** ou **Grille d’accords**).",
+            "Touche **Suivre le tempo**, à côté des choix de vue. C’est désactivé par défaut et gardé sur cet appareil.",
+            "La ligne au-dessus du morceau indique **Démarre quand le leader lance le morceau**. Quand le leader démarre, ton écran avance avec le groupe.",
           ],
         },
         {
           type: "table",
           head: ["Vue", "Ce qui avance"],
           rows: [
-            ["**Grille d’accords**", "La mesure en cours s’allume, et la grille défile pour la garder visible."],
-            ["Structure", "La section en cours est mise en avant. Une bande en haut indique ce qui vient ensuite, par exemple « Ensuite : Pont dans 4 mesures »."],
-            ["**Paroles et accords**, **Paroles**, **Morceau seul**", "La ligne en cours est mise en avant et le texte défile en douceur. Sans minutage des lignes, il avance section par section."],
+            ["**Grille d’accords**", "La mesure en cours s’allume, et la grille défile pour la garder visible. Dans un morceau sans grille mesure par mesure, c’est la section en cours qui s’allume."],
+            ["**Paroles et accords**, **Paroles**", "La ligne en cours est mise en avant et le texte défile pour la garder visible. Les lignes sont réparties sur les mesures de leur section : une ligne peut donc s’allumer un peu tôt ou un peu tard."],
+            ["**Morceau seul**", "La même chose, en plein écran."],
             ["Retour de scène", "Un grand compte à rebours jusqu’à la section suivante, par exemple « Refrain dans 4 »."],
           ],
         },
@@ -1728,9 +1726,11 @@ const music: AreaText = {
           type: "steps",
           title: "Le mener",
           items: [
-            "Lance le morceau avec **Décompter** ou le clic. La mesure 1 démarre sur chaque téléphone au même moment.",
-            "Si le groupe joue une partie plus longue ou plus courte, touche la section, la mesure ou la ligne où vous êtes : tout le monde y saute.",
-            "Touche **Tenir** pour répéter la section en cours (un vamp, un solo) jusqu’à ce que tu le touches de nouveau.",
+            "Active **Suivre le tempo** sur ton téléphone aussi. La ligne au-dessus du morceau indique **Le groupe vous suit quand vous démarrez**, avec les boutons du leader à côté.",
+            "Touche **Démarrer** : la mesure 1 démarre sur chaque téléphone au même moment. **Décompte** le lance aussi, à la mesure 1 à la fin du décompte.",
+            "Si le groupe joue une partie plus longue ou plus courte, touche la mesure, la ligne ou la section où vous êtes : tout le monde y saute.",
+            "Touche **Répéter** pour répéter la section en cours (un vamp, un solo). Touche **Relâcher** pour continuer.",
+            "Sur un point d’orgue, le morceau attend et la ligne indique **En attente du leader** : touche **Continuer**.",
             "Touche **Arrêter** pour finir. Passer à un autre morceau l’arrête aussi.",
           ],
         },
@@ -1739,16 +1739,16 @@ const music: AreaText = {
           title: "Bon à savoir",
           items: [
             "Seul le leader déplace la position du groupe. Les membres activent ou désactivent la vue sur leur propre téléphone.",
-            "Un morceau a besoin d’un BPM pour être suivi. Sans BPM, l’interrupteur indique « Ajoute un BPM pour suivre ce morceau ».",
-            "Les reprises, les fins, D.C., D.S., segno et coda de la grille sont jouées dans l’ordre. Un point d’orgue attend que le leader touche l’écran.",
-            "Pour suivre ligne par ligne, un admin règle le minutage des lignes dans le morceau avec **Synchroniser les lignes** : tape en même temps que l’enregistrement, ou règle les mesures de chaque ligne.",
-            "En répétition, **Jouer à 80 %** ralentit ensemble le clic et le suivi. Le BPM du morceau ne change pas.",
+            "Pour être suivi, un morceau a besoin d’un BPM et d’une grille d’accords ou de paroles. Sans BPM, l’interrupteur est désactivé et indique « Ajoutez un BPM pour suivre ce morceau ».",
+            "La ligne au-dessus du morceau indique ce qui vient ensuite, par exemple « Ensuite : Pont dans 4 mesures ».",
+            "Les reprises, les fins, D.C., D.S., segno et coda de la grille sont jouées dans l’ordre.",
+            "Après un défilement à la main, le morceau reste où tu l’as mis quelques secondes, puis recommence à suivre.",
+            "Sans internet, la position du leader arrive quand même aux téléphones reliés en Bluetooth, dans les apps iPhone, iPad et Android.",
           ],
         },
         { type: "shot", id: "stage-follow-tempo", caption: "Suivre le tempo sur la grille d’accords : la mesure en cours allumée et la section suivante en haut." },
       ],
     },
-    // </draft>
     {
       id: "stage-manager",
       title: "Lire l’audio des morceaux depuis la régie",
@@ -1840,7 +1840,7 @@ const music: AreaText = {
       body: [
         {
           type: "p",
-          text: "Dans les apps iPhone, iPad et Android, le téléphone de l’admin envoie aussi le morceau en cours et l’ordre en Bluetooth. Les téléphones des membres à proximité les reçoivent sans appairage et sans internet.",
+          text: "Dans les apps iPhone, iPad et Android, le téléphone de l’admin envoie aussi en Bluetooth le morceau en cours, l’ordre, le clic et la position dans le morceau (Suivre le tempo). Les téléphones des membres à proximité les reçoivent sans appairage et sans internet. Le décompte fait exception : il a besoin d’internet.",
         },
         {
           type: "steps",
@@ -2056,6 +2056,7 @@ const music: AreaText = {
           items: [
             "Dès que le réseau revient, quand tu rouvres l’app, et toutes les 30 secondes tant que quelque chose attend.",
             "Fermer l’app garde ce qui attend. Ça part la prochaine fois que tu ouvres l’app avec du réseau.",
+            "Une note de répétition que le serveur refuse n’est pas jetée. Le mode live indique **Une note n’a pas été enregistrée**, et le texte de la note est listé dans les notes de la répétition et dans Réglages › Hors ligne et live, avec **Copier** et **Retirer**.",
           ],
         },
         {
@@ -2155,12 +2156,10 @@ const music: AreaText = {
       q: "Pourquoi je ne vois pas le forum iReal Pro dans l’app sur le web ?",
       a: "Le forum ne peut pas s’afficher dans une page web : il s’ouvre dans sa propre fenêtre. Copie un lien là-bas et touche Coller le lien, ou fais glisser le lien sur la zone.",
     },
-    // <draft live-tempo>
     {
-      q: "Pourquoi n’y a-t-il pas de bouton Décompter sur un morceau ?",
-      a: "Le morceau est réglé sur Joué avec une bande : la bande lance le groupe. Un admin peut quand même lancer un décompte depuis le menu du morceau.",
+      q: "Pourquoi n’y a-t-il pas de bouton Décompte sur un morceau ?",
+      a: "Le morceau est réglé sur Joué avec une bande, ou la régie est en train de le lire. Le leader peut quand même décompter le groupe : il ouvre les options du décompte et touche Lancer le décompte quand même. Un morceau sans BPM ne peut pas être décompté.",
     },
-    // </draft>
   ],
 
   glossary: [
@@ -2188,10 +2187,8 @@ const music: AreaText = {
     { term: "Setlist hors ligne", definition: "La copie de la setlist d’un concert ou d’une répétition gardée sur ton téléphone pour quand il n’y a pas de réseau : paroles, accords, parties vocales et tes propres notes.", see: "live-mode-offline" },
     { term: "Partie vocale", definition: "Qui chante une ligne ou quelques mots : Voix principale, Seconde voix, Chœurs, Tous ou Parlé, chacune avec son propre aspect.", see: "voice-parts" },
     { term: "Mettre ma partie en avant", definition: "Un interrupteur sur chaque appareil qui garde bien visibles les lignes que tu chantes et atténue un peu les autres.", see: "highlight-my-part" },
-    // <draft live-tempo>
-    { term: "Décompte", definition: "Le compte à rebours sur chaque téléphone, au tempo et dans la mesure du morceau, qui finit par GO là où le groupe entre.", see: "count-in" },
-    { term: "Suivre le tempo", definition: "Un interrupteur sur chaque appareil qui fait avancer la grille, la structure ou les paroles avec le morceau, calées sur le leader.", see: "follow-the-tempo" },
-    // </draft>
+    { term: "Décompte", definition: "Le compte à rebours sur chaque téléphone, au tempo et dans la mesure du morceau, qui finit par TOP là où le groupe entre.", see: "count-in" },
+    { term: "Suivre le tempo", definition: "Un interrupteur sur chaque appareil qui fait avancer la grille d’accords ou les paroles avec le morceau, calées sur le leader.", see: "follow-the-tempo" },
   ],
 };
 
