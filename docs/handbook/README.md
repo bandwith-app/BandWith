@@ -1,9 +1,9 @@
-# Handbook PDF: BandWith · Features and behaviour
+# Handbook PDF: BandWith · Features and behavior
 
-The handbook of every BandWith feature and behaviour, built as one PDF to attach to an email. One generator makes two editions:
+The handbook of every BandWith feature and behavior, built as one PDF to attach to an email. One generator makes two editions:
 
 - Italian: *BandWith · Funzioni e comportamenti*;
-- English: *BandWith · Features and behaviour*.
+- English: *BandWith · Features and behavior*, in American English. Labels the app shows stay exactly as in the app, even where the app still uses a British spelling (for example `Gig cancelled`).
 
 ## Rebuild
 
@@ -17,7 +17,7 @@ Then build either edition:
 
 ```sh
 docs/handbook/.venv/bin/python docs/handbook/build.py --lang it   # out/BandWith-funzioni-e-comportamenti.pdf
-docs/handbook/.venv/bin/python docs/handbook/build.py --lang en   # out/BandWith-features-and-behaviour.pdf
+docs/handbook/.venv/bin/python docs/handbook/build.py --lang en   # out/BandWith-features-and-behavior.pdf
 ```
 
 `--lang` defaults to `it`. The PDFs are written to `docs/handbook/out/` (git-ignored, don't commit them).
@@ -27,7 +27,7 @@ Check the layout at a glance (4 × 3 pages per sheet). Pass the PDF and an outpu
 
 ```sh
 docs/handbook/.venv/bin/python docs/handbook/contact_sheet.py docs/handbook/out/BandWith-funzioni-e-comportamenti.pdf docs/handbook/out/contact-it
-docs/handbook/.venv/bin/python docs/handbook/contact_sheet.py docs/handbook/out/BandWith-features-and-behaviour.pdf docs/handbook/out/contact-en
+docs/handbook/.venv/bin/python docs/handbook/contact_sheet.py docs/handbook/out/BandWith-features-and-behavior.pdf docs/handbook/out/contact-en
 ```
 
 With no arguments it renders the Italian PDF into `out/contact/`.

@@ -11,14 +11,14 @@
     <li>Type filter: <b class="ui">ALL</b>, <b class="ui">GIGS</b>, <b class="ui">REHEARSALS</b>, <b class="ui">QUOTES</b>, <b class="ui">DRAFTS</b>; the selected one shows how many events it holds (<a data-ref="filter-the-calendar">filters</a>).</li>
     <li>Band filter, above it, only with two or more bands: <b class="ui">All bands</b>, one pill per band, <b class="ui">Personal</b>.</li>
     <li><b class="ui">Rehearsal scheduling ({count})</b>: polls open for votes and proposals waiting for an admin (<a data-ref="rehearsal-polls-explained">rehearsal polls</a>).</li>
-    <li>Grid: <b class="ui">Previous month</b> / <b class="ui">Next month</b> (the arrows at the top left) or a sideways swipe; <b class="ui">Today</b> at the top right when you are on another month. Each day takes the colour of its event, a small number means several events, and today has a ring.</li>
+    <li>Grid: <b class="ui">Previous month</b> / <b class="ui">Next month</b> (the arrows at the top left) or a sideways swipe; <b class="ui">Today</b> at the top right when you are on another month. Each day takes the color of its event, a small number means several events, and today has a ring.</li>
     <li>Legend: <b class="ui">gig</b>, <b class="ui">rehearsal</b>, <b class="ui">quote</b> (admins only), <b class="ui">personal</b>; admins with drafts also see <b class="ui">draft · only you</b> (a dashed, faded square).</li>
     <li><b class="ui">Upcoming</b>: one card per event, soonest first; recurring rehearsals get a card for each of their next dates.</li>
     <li>At the bottom, <b class="ui">{count} past events</b> with the <b class="ui">Past events archive</b> link; <b class="ui">See all</b> next to <b class="ui">Upcoming</b> opens it too.</li>
   </ul>
   <p class="steps-title">The event card</p>
   <ul>
-    <li>Colour and type (<b class="ui">GIG</b>, <b class="ui">REHEARSAL</b>, <b class="ui">QUOTE</b>, <b class="ui">DRAFT</b>, <b class="ui">PERSONAL</b>) and a status chip such as <b class="ui">CONFIRMED</b>, <b class="ui">WEEKLY</b>, <b class="ui">SENT</b> or <b class="ui">DRAFT · ONLY YOU</b>.</li>
+    <li>Color and type (<b class="ui">GIG</b>, <b class="ui">REHEARSAL</b>, <b class="ui">QUOTE</b>, <b class="ui">DRAFT</b>, <b class="ui">PERSONAL</b>) and a status chip such as <b class="ui">CONFIRMED</b>, <b class="ui">WEEKLY</b>, <b class="ui">SENT</b> or <b class="ui">DRAFT · ONLY YOU</b>.</li>
     <li>The band name (if you are in several bands); date, start time, venue and address.</li>
     <li>Two meters: on the left <b class="ui">LINEUP</b> (gigs and quotes) or <b class="ui">GOING</b> (rehearsals); on the right <b class="ui">FEE</b> (admins), <b class="ui">YOUR FEE</b> (members), <b class="ui">QUOTE</b> (quotes) or <b class="ui">LENGTH</b> (rehearsals).</li>
     <li>A warning such as <b class="ui">2 details missing</b> when the venue, date or fee is missing: it opens the <b class="ui">Missing info</b> list, then <b class="ui">Edit</b> opens the event. Admins also see <b class="ui">No end time</b>, <b class="ui">No client info</b> and <b class="ui">No team assigned</b>.</li>
@@ -76,15 +76,15 @@
   <p>When an admin picks a date in the gig wizard, the picker counts how many active members have nothing else on that day, in any of their calendars. Counts only: never who is busy or why.</p>
   <p class="steps-title">The <b class="ui">Event date</b> picker</p>
   <ul>
-    <li>Days run from grey to green: the greener, the more members are free. Legend: <b class="ui">Free in band calendars · {n} members</b>.</li>
+    <li>Days run from gray to green: the greener, the more members are free. Legend: <b class="ui">Free in band calendars · {n} members</b>.</li>
     <li>With a start and end time set, only that window counts (someone busy in the morning is free for the evening); a window past midnight runs into the next day.</li>
     <li>Under the calendar: <b class="ui">{free} of {total} free · no conflicts</b> when everyone is free, otherwise <b class="ui">{free} of {total} free</b>.</li>
-    <li>A day with a band event has a grey dot; if you pick it, the sheet stays open, warns (for example <b class="ui">Dec 12 has a gig</b>) and offers the next free day, one tap away.</li>
+    <li>A day with a band event has a gray dot; if you pick it, the sheet stays open, warns (for example <b class="ui">Dec 12 has a gig</b>) and offers the next free day, one tap away.</li>
     <li>Shortcuts: <b class="ui">Today</b>, <b class="ui">Tomorrow</b>, <b class="ui">Weekend</b>.</li>
   </ul>
   <p class="steps-title">What counts as busy</p>
   <ul>
-    <li>Gigs and rehearsals not declined, in any band, and personal gigs. Cancelled events and quotes don’t count.</li>
+    <li>Gigs and rehearsals not declined, in any band, and personal gigs. Canceled events and quotes don’t count.</li>
     <li>A commitment without an end time counts as three hours from its start.</li>
     <li>When you edit a gig, its own lineup doesn’t count as busy.</li>
     <li>Bands with a single member get no counts.</li>
@@ -169,7 +169,7 @@
     <li><b class="ui">Start time</b> and <b class="ui">End time</b> frame the show; an end earlier than the start means it runs past midnight (21:00–02:00 is one gig that ends the next morning).</li>
     <li>A gig stays upcoming until its day is over or, past midnight, until the show really ends; then it becomes a past gig.</li>
     <li><b class="ui">Load-in (optional)</b> and <b class="ui">Soundcheck (optional)</b> are call times: they appear as <b class="ui">LOAD IN</b> and <b class="ui">SOUNDCHECK</b> on the gig, on the member’s Home card and in Stage mode. Nothing is invented: a time nobody set reads <b class="ui">TBD</b>.</li>
-    <li><b class="ui">Venue / location</b>: pick a suggestion, with one tap even with the keyboard up. A named place fills in the venue and its street; a plain address becomes the venue itself. City, region, postcode and country are filled in too.</li>
+    <li><b class="ui">Venue / location</b>: pick a suggestion, with one tap even with the keyboard up. A named place fills in the venue and its street; a plain address becomes the venue itself. City, region, ZIP code and country are filled in too.</li>
     <li>The search finds venues by name (a club, a hotel, a restaurant) as well as addresses, through Google Maps: picking one fills in its address and its position on the map. Places near the last venue you picked come first. When Google can't be reached, the search uses OpenStreetMap, which finds mostly addresses. The list's header says which one answered: <b class="ui">Google Maps</b> or <b class="ui">OpenStreetMap</b>.</li>
     <li>On the gig, the venue name (or <b class="ui">MAP</b>) opens the maps app; <b class="ui">Logistics &amp; notes</b> has <b class="ui">Copy</b> for the full address and <b class="ui">Maps</b>.</li>
     <li>Leave the venue empty or <b class="ui">TBD</b> when it isn’t known: the card warns <b class="ui">Missing venue</b>.</li>
@@ -252,19 +252,19 @@
     <li>The gig’s own setlist is deleted with it, unless another event uses it; the songs stay in the library.</li>
     <li>A quote the gig came from stays in Quotes as a record, without the link to the gig.</li>
   </ul>
-  <aside class="note warning">Deleting can’t be undone. There is no separate "cancelled" status: deleting is how you call off a gig.</aside>
+  <aside class="note warning">Deleting can’t be undone. There is no separate "canceled" status: deleting is how you call off a gig.</aside>
   <aside class="note tip">If the gig goes back to negotiation, <b class="ui">REVERT TO QUOTE</b> takes it off the musicians’ calendars but keeps their answers (<a data-ref="create-a-quote">quotes</a>).</aside>
   <p>Without a connection the delete fails with <b class="ui">No connection. Try again when you are online.</b> and the gig stays open.</p>
 
   <h2>The gig workspace</h2>
 
   <h3 id="art-gig-workspace" data-roles="admin,member">The gig workspace</h3>
-  <p>Tapping a gig anywhere (calendar, Home, search, a notification) opens its workspace: the top in the gig colour, the content on a sheet below.</p>
+  <p>Tapping a gig anywhere (calendar, Home, search, a notification) opens its workspace: the top in the gig color, the content on a sheet below.</p>
   <figure class="shot" data-shot="gig-workspace-admin" data-device="phone"><figcaption>A gig as the admin sees it: header, call times, readiness and fee.</figcaption></figure>
   <p class="steps-title">The header</p>
   <ul>
     <li>Back on the left. On the right: <b class="ui">Help for this screen</b> (?), the pencil (<b class="ui">Edit title, date &amp; times</b>, admins) and <b class="ui">Open stage mode</b> (play) on upcoming band gigs, filled on the gig day (<a data-ref="stage-mode">Stage mode</a>).</li>
-    <li>Once you scroll, this bar stays pinned at the top, so Back is always in reach: over the header it keeps the gig colour, further down it shows the gig’s title.</li>
+    <li>Once you scroll, this bar stays pinned at the top, so Back is always in reach: over the header it keeps the gig color, further down it shows the gig’s title.</li>
     <li>Chips: <b class="ui">GIG</b> (or <b class="ui">PAST GIG</b>), <b class="ui">CONFIRMED</b>, <b class="ui">INVITE PENDING</b> while your answer is open, the event type (<b class="ui">WEDDING</b>, <b class="ui">CLUB</b>…), the band name.</li>
     <li>The title, the day in large dots, the month; the venue (with <b class="ui">MAP</b> to open maps), the address, the date with start and end time.</li>
     <li>The weather for the date; on a past gig, <b class="ui">ATTENDANCE</b> with the number of members.</li>
@@ -282,7 +282,7 @@
     <li><b class="ui">CLIENT &amp; NOTES</b> (admins) or <b class="ui">NOTES</b>: a tap or <b class="ui">DETAILS</b> opens <b class="ui">Logistics &amp; notes</b> (venue, copy address, client contacts, dress code, setting, guests, notes). There admins have <b class="ui">EDIT</b> to change the client and the notes.</li>
     <li>Actions. Admins: <b class="ui">EVENT CHAT</b>, <b class="ui">REVERT TO QUOTE</b>, <b class="ui">DELETE</b>; everything else is changed in its own section (<a data-ref="edit-a-gig">edit a gig</a>). Members: <b class="ui">DROP OUT</b>, <b class="ui">EVENT CHAT</b> (<a data-ref="event-and-rehearsal-chats">chat</a>).</li>
   </ul>
-  <p>On a past gig the header turns grey with <b class="ui">PAST GIG</b> and <b class="ui">COMPLETED</b>; the actions become <b class="ui">VIEW SETLIST</b> and <b class="ui">EVENT CHAT</b> (admins, and members who accepted), plus <b class="ui">REMOVE FROM ARCHIVE</b> for admins, who still change the gig from its sections. Stage mode, readiness and the find-a-deputy button are gone.</p>
+  <p>On a past gig the header turns gray with <b class="ui">PAST GIG</b> and <b class="ui">COMPLETED</b>; the actions become <b class="ui">VIEW SETLIST</b> and <b class="ui">EVENT CHAT</b> (admins, and members who accepted), plus <b class="ui">REMOVE FROM ARCHIVE</b> for admins, who still change the gig from its sections. Stage mode, readiness and the find-a-deputy button are gone.</p>
   <div class="devnote" data-devices="tablet">Under the time tiles, band gigs get the <b class="ui">OVERVIEW</b>, <b class="ui">SETLIST</b>, <b class="ui">RIDER &amp; STAGE</b> and, for admins, <b class="ui">MONEY</b> tabs; in a wide window the overview runs in two columns. The gig opens beside the calendar.</div>
   <div class="devnote" data-devices="duoClosed">Back and <b class="ui">Open stage mode</b> move into the rail; on the gig day Stage mode is its main action.</div>
   <div class="devnote" data-devices="duoBook,duoLand">The gig opens on the right page; a sheet such as <b class="ui">Fee &amp; payouts</b> takes the right page and the gig moves to the left.</div>
@@ -392,7 +392,7 @@
   </ol>
   <p><b class="ui">You dropped out of this event.</b> appears and the gig leaves the member’s calendar; every active admin of the band and the gig’s creator are notified that a replacement is needed.</p>
   <aside class="note warning">You can’t undo a drop-out yourself: to play after all, an admin has to add the member to the lineup again.</aside>
-  <p><b class="ui">DROP OUT</b> stays greyed out until your own answer has loaded; on a weak connection you see <b class="ui">Could not load your answer. Check your connection.</b></p>
+  <p><b class="ui">DROP OUT</b> stays grayed out until your own answer has loaded; on a weak connection you see <b class="ui">Could not load your answer. Check your connection.</b></p>
 
   <h3 id="art-find-a-deputy" data-roles="admin">Find a deputy for a gig</h3>
   <ol class="steps">
@@ -413,7 +413,7 @@
     <li>The band and the gig title; <b class="ui">Date</b>, <b class="ui">Load-in</b>, <b class="ui">Soundcheck</b>, <b class="ui">Show</b> (start and end), <b class="ui">Venue</b>, <b class="ui">City</b>, <b class="ui">Address</b>; their <b class="ui">Role</b> and the <b class="ui">Fee offered</b>.</li>
     <li><b class="ui">Open in Maps</b>, <b class="ui">Add to calendar</b>, <b class="ui">Google Calendar</b> and <b class="ui">Subscribe to my gigs</b> (a calendar feed of all their deputy gigs).</li>
     <li>In <b class="ui">Can you make it?</b> they answer <b class="ui">Yes</b>, <b class="ui">Not sure yet</b> or <b class="ui">No, I can’t</b>, with an optional <b class="ui">Message to the band</b>. The status becomes <b class="ui">You said yes</b>, <b class="ui">You’ll confirm later</b> or <b class="ui">You said you can’t</b>; <b class="ui">Change your answer</b> changes it.</li>
-    <li>If the date, times or venue change afterwards: <b class="ui">Something changed</b> with the old and new values, and the question <b class="ui">Still OK</b>.</li>
+    <li>If the date, times or venue change afterward: <b class="ui">Something changed</b> with the old and new values, and the question <b class="ui">Still OK</b>.</li>
     <li>Deleted gig: <b class="ui">Gig cancelled</b>; withdrawn request: <b class="ui">Request withdrawn</b>; finished gig: <b class="ui">Gig over</b>.</li>
   </ul>
   <aside class="note privacy">A deputy sees only their own fee and the logistics: never the client, the band fee, other musicians’ fees or the band’s finances.</aside>

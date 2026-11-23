@@ -38,7 +38,7 @@
     <tbody>
       <tr><td>Lineup base</td><td>Step 1, <b class="ui">Lineup formation package</b>. With flat packages you pick <b class="ui">Solo</b>, <b class="ui">Duo</b>, <b class="ui">Trio</b>, <b class="ui">Full band</b> or one of your packages. With per-musician pricing, <b class="ui">Customize</b> adds or removes musicians and lets you type each <b class="ui">Fee for {name}</b>.</td></tr>
       <tr><td>Base fee override</td><td>Drawer <b class="ui">Billing, discounts, VAT &amp; deposit</b>, field <b class="ui">Base fee override</b>: replaces the computed lineup base.</td></tr>
-      <tr><td>Extra sets &amp; add-ons</td><td>Step 1 chips, from your catalogue. Per-person items follow the lineup size; per-km items follow the travel distance.</td></tr>
+      <tr><td>Extra sets &amp; add-ons</td><td>Step 1 chips, from your catalog. Per-person items follow the lineup size; per-km items follow the travel distance.</td></tr>
       <tr><td>Custom line items</td><td>Drawer <b class="ui">Production &amp; travel</b>, <b class="ui">Custom Line Item</b>: <b class="ui">Item name</b>, <b class="ui">Quantity</b> and <b class="ui">Price</b>, then <b class="ui">Add item</b>. <b class="ui">Remove item</b> deletes it.</td></tr>
       <tr><td>Sound &amp; lighting</td><td>Drawer <b class="ui">Production &amp; travel</b>, <b class="ui">Sound &amp; lighting production</b>: <b class="ui">Included in base</b> or <b class="ui">Separate fee</b>, tier <b class="ui">Standard PA</b>, <b class="ui">Pro PA</b> or <b class="ui">Client PA</b>, and the <b class="ui">Production fee</b>.</td></tr>
       <tr><td>Travel</td><td>Step 2 calculates the one-way distance from the band's home base when you pick a venue: the driving distance by road from Google Maps or, when Google can't be reached, an estimate from the straight-line distance. In <b class="ui">Travel &amp; transport</b> choose <b class="ui">Included</b>, <b class="ui">Separate fee</b> or <b class="ui">Client arranged</b>, and adjust the distance or the <b class="ui">Travel fee</b>.</td></tr>
@@ -271,7 +271,7 @@
     <li>Deposit not recorded: the whole total is asked until <b class="ui">Mark deposit received</b> (it asks how it arrived: bank transfer, cash or other).</li>
     <li>No bank details and no Stripe link: only cash, with <b class="ui">Set up payments</b> to the pricing sheet.</li>
     <li>Already asked: unchanged, sending again is <b class="ui">Send a reminder</b>; changed, it is <b class="ui">Send the update</b> and the page follows.</li>
-    <li>Nothing left to pay: no request, only <b class="ui">Mark as paid</b>. Cancelled gig: no button at all.</li>
+    <li>Nothing left to pay: no request, only <b class="ui">Mark as paid</b>. Canceled gig: no button at all.</li>
     <li>No client email: WhatsApp or the link. A Stripe link with a fixed price, a gig in another currency or a due date in the past: said before sending.</li>
   </ul>
   <p><b class="ui">Mark as paid</b> marks the gig paid (payment status <i>paid</i>, the deposit counted as received), so payouts, show readiness and analytics agree. <b class="ui">Undo</b> brings it back to partial or pending. The quote history records every request, reminder, update and payment.</p>
@@ -312,7 +312,7 @@
   <h3 id="art-quotes-overview" data-roles="admin">The Quotes screen</h3>
   <p>This is your sales pipeline: every quote, its status and what it could be worth. On Home, <b class="ui">ACTIVE QUOTES</b> opens <b class="ui">Quotes</b>; the number on Home counts quote events still to come.</p>
   <ul>
-    <li><b class="ui">Pipeline potential</b>: the value of every quote not declined or expired. Below it, one dot column per quote (up to seven): taller means bigger, brighter means closer to a yes (accepted is in the accent colour). Tap a column to see its amount.</li>
+    <li><b class="ui">Pipeline potential</b>: the value of every quote not declined or expired. Below it, one dot column per quote (up to seven): taller means bigger, brighter means closer to a yes (accepted is in the accent color). Tap a column to see its amount.</li>
     <li><b class="ui">All quotes</b>: one card per quote with its title, status tag, number of items and date; tap a card to open it.</li>
     <li><b class="ui">+</b> (<b class="ui">New quote</b>) at the top right starts a quote.</li>
   </ul>
@@ -518,7 +518,7 @@
   <ul>
     <li>Played: band gigs this year, confirmed or completed, that the musician confirmed and that are in the past; their fee counts as earned.</li>
     <li>Coming up: the same, still to come.</li>
-    <li>Rehearsals: past rehearsals they confirmed, not cancelled.</li>
+    <li>Rehearsals: past rehearsals they confirmed, not canceled.</li>
     <li>Declined: every event they said no to. Awaiting reply: upcoming events they have not answered.</li>
     <li>Not paid yet: earned minus what was marked paid.</li>
   </ul>
@@ -572,7 +572,7 @@
   <ol class="steps">
     <li>In a new gig, open the tasks section and tap a list under <b class="ui">Load a to-do list</b>; you can then add or delete tasks.</li>
   </ol>
-  <p>Due dates are worked out from the event date: a task due "7 days before" a gig on 20 June is due on 13 June. Tasks the event already has (same title) are skipped: <b class="ui">"{title}" already has these tasks</b>.</p>
+  <p>Due dates are worked out from the event date: a task due "7 days before" a gig on June 20 is due on June 13. Tasks the event already has (same title) are skipped: <b class="ui">"{title}" already has these tasks</b>.</p>
 
   <h3 id="art-event-tasks" data-roles="admin,member">Tick off an event's tasks</h3>
   <ol class="steps">
