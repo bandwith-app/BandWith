@@ -236,7 +236,10 @@ const CountInOverlay: React.FC<{
     const still = prefersReducedMotion();
     let raf = 0;
     let lastStage = '';
-    const draw = () => {
+    // Where the count is now: its stage, and on a new count its number, bar
+    // line, dots and buzz. Run by every frame and by a timer on each beat (see
+    // below), whichever comes first; the other one finds the count already up.
+    const sync = () => {
       const last = lastRef.current;
       const pos = countInAt(plan, state, wallNow(), offsetRef.current);
       if (pos.stage !== lastStage) {
@@ -246,7 +249,7 @@ const CountInOverlay: React.FC<{
       if (pos.stage === 'done') {
         // Gone from the screen: if it comes back, everything is drawn again.
         lastRef.current = -2;
-        return;
+        return pos;
       }
       // (Right after coming back, the elements show up on the next frame.)
       if (pos.stage === 'before' && last !== -1 && subRef.current) {
@@ -268,6 +271,12 @@ const CountInOverlay: React.FC<{
         }
         if (vibrateRef.current) (e.downbeat || e.go ? haptic.medium : haptic.tap)();
       }
+      return pos;
+    };
+    const draw = () => {
+      const pos = sync();
+      if (pos.stage === 'done') return;
+      const e = pos.event >= 0 ? plan.events[pos.event] : null;
       if (e && numRef.current && !still) {
         const s = 1 + 0.22 * Math.exp(-pos.phase * 6);
         numRef.current.style.transform = `scale(${s.toFixed(3)})`;
@@ -288,7 +297,24 @@ const CountInOverlay: React.FC<{
       raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
+    // The count is the beat, not the frame rate: each number (and its buzz)
+    // also goes up by a timer on its beat. A phone that draws only a frame or
+    // two a second (a heavy chart behind, an old phone) used to skip a number
+    // or buzz it late, with the next frame.
+    const timers = plan.events.map((_, i) => {
+      const arm = (ms: number): number =>
+        window.setTimeout(() => {
+          const pos = sync();
+          // A hair before its beat (timer rounding): once more, right after.
+          if (pos.stage === 'before' || (pos.stage !== 'done' && pos.event < i)) timers[i] = arm(1);
+        }, ms);
+      const wait = state.startAt + plan.events[i].at - offsetRef.current - wallNow();
+      return wait > 0 ? arm(Math.ceil(wait)) : 0;
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+      timers.forEach((id) => window.clearTimeout(id));
+    };
   }, [plan, state, t, offset]);
 
   // The count in headphones, on the shared clock.

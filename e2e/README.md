@@ -41,6 +41,36 @@ Diagrams, states, events and paths: [docs/lifecycles](../docs/lifecycles/README.
 In CI they run in their own job, "E2E lifecycles", beside the E2E shards, which skip
 them (`E2E_SKIP_LIFECYCLES=1`).
 
+## A slow machine, on request
+
+GitHub's runners paint WebKit in software: a Duo or iPad profile gets a frame or two a
+second there, so anything that moves does so in a few big steps, while scripts still
+answer at once. Most timing races of the suite only show up like that. To see one here
+before fixing it (and to prove the fix), slow the page down and repeat the test:
+
+```sh
+E2E_SLOW_FPS=2 pnpm e2e specs/date-on-hold.spec.ts:59 --project=duo-book --repeat-each=15
+E2E_SLOW_FPS=1 pnpm e2e specs/live-tempo.spec.ts -g "two devices" --project=duo-open --repeat-each=15
+E2E_SLOW_CPU=5 pnpm e2e specs/date-on-hold.spec.ts --project=android --repeat-each=15
+```
+
+- `E2E_SLOW_FPS=<n>`: the page draws only `n` frames a second (its animation frames wait).
+- `E2E_SLOW_CPU=<rate>`: about `1/rate` of the CPU for the page. Chromium (`android`) uses
+  the DevTools CPU throttle; WebKit has none, so its main thread is kept busy in bursts
+  (`E2E_SLOW_CPU=5:200` sets the burst in ms).
+
+Both are off unless set (`support/slow.ts`) and are never set in CI. What they showed so
+far, and the rules that came out of it:
+
+- After a tab press the screen before it is still there until its exit has played
+  (`app.tab` waits for the new one, `support/tabs.ts`). The same goes for the steps of a
+  wizard: wait for what the next step shows, not for "the screen stopped moving".
+- One look (`isVisible()`, an `evaluate`) right after an action tells what was there in
+  that instant. Use an assertion that waits (`expect(...)`, `expect.poll`).
+- `locator.scrollIntoViewIfNeeded()` fails ("Element is not attached to the DOM") when the
+  element it found is replaced meanwhile: make sure the screen it belongs to is the one
+  on screen first.
+
 The HTML report goes to `e2e/.report/` (`pnpm exec playwright show-report e2e/.report`),
 traces and screenshots of failed tests to `e2e/.results/`.
 

@@ -1,8 +1,9 @@
 import type { Page } from '@playwright/test';
-import { test, expect, fakeDate, FIXED_NOW, type App } from '../fixtures';
+import { test, expect, closeUrgentPopup, fakeDate, FIXED_NOW, type App } from '../fixtures';
 import { openHub } from '../support/hub';
 import { escapeRe, openEvent, SEED } from '../support/flows';
 import { settle } from '../support/settle';
+import { tabScreenUp, type TabName } from '../support/tabs';
 
 /**
  * Live mode: Follow the tempo and the count-in (plan live-offline-and-tempo
@@ -222,14 +223,15 @@ test.describe('Count-in on two devices, one clock', () => {
 async function secondDevice(app: App): Promise<{ page: Page; other: App }> {
   const page = await app.page.context().newPage();
   await page.addInitScript(fakeDate, FIXED_NOW.getTime() - Date.now());
-  await page.addLocatorHandler(page.getByRole('button', { name: app.t('Dismiss alert'), exact: true }), (b) => b.click());
+  await page.addLocatorHandler(page.getByRole('button', { name: app.t('Dismiss alert'), exact: true }), closeUrgentPopup);
   await page.addLocatorHandler(page.getByRole('button', { name: app.t('Close tour'), exact: true }), (b) => b.click());
   const other = {
     ...app,
     page,
     settle: () => settle(page),
-    tab: async (name: string) => {
+    tab: async (name: TabName) => {
       await page.getByRole('button', { name: app.t(name), exact: true }).first().click();
+      await tabScreenUp(page, app.t, name);
       await settle(page);
     },
     button: (source: string, opts: { exact?: boolean } = {}) =>
