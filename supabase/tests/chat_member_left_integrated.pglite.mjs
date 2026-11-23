@@ -24,7 +24,7 @@
 //   BW_178_REF, origin/feat/date-on-hold; BW_181_REF, origin/fix/event-chat-lineup,
 //   0437db39. None found for one of them: SKIP (exit 0, with a warning).
 import { PGlite } from '@electric-sql/pglite';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const REPO = process.argv[2];
@@ -32,17 +32,22 @@ const MIG193 = process.argv[3] ?? `${REPO}/supabase/migrations/193_one_chat_per_
 const MIG192 = `${REPO}/supabase/migrations/192_chat_notification_purge.sql`;
 const MIG194 = `${REPO}/supabase/migrations/194_chat_notifications_server_only.sql`;
 const show = (ref, path) => execFileSync('git', ['-C', REPO, 'show', `${ref}:${path}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-// The first ref that has the file; none: SKIP with a warning (a clone
-// without those branches can't run the chain).
-function load(label, path, refs) {
-  for (const ref of refs.filter(Boolean)) {
+// An env ref when one is given (failing-first runs), else the file on the
+// checkout (the release is on main), else the first ref that has it. None:
+// SKIP with a warning.
+function load(label, path, [envRef, ...refs]) {
+  if (!envRef && existsSync(`${REPO}/${path}`)) {
+    console.log(`using ${label} from the checkout`);
+    return readFileSync(`${REPO}/${path}`, 'utf8');
+  }
+  for (const ref of [envRef, ...refs].filter(Boolean)) {
     try {
       const sql = show(ref, path);
       console.log(`using ${label} from ${ref}`);
       return sql;
     } catch { /* next */ }
   }
-  console.log(`SKIP: ${label} not found at ${refs.filter(Boolean).join(', ')} (fetch the branch or set the env ref)`);
+  console.log(`SKIP: ${label} not on the checkout nor at ${[envRef, ...refs].filter(Boolean).join(', ')} (fetch the branch or set the env ref)`);
   process.exit(0);
 }
 const M175 = load('175', 'supabase/migrations/175_security_audit_access.sql', [process.env.BW_175_REF, 'origin/fix/security-audit', 'd9971705']);

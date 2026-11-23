@@ -14,7 +14,7 @@
 //   BW_FAKE_NOW=2026-11-23T00:00:00Z node rehearsal_poll_privacy_publish.pglite.mjs <repo>
 //     # 19:00 in New York: the r8 checks run with the real pair (Rome profile, NY device)
 import { PGlite } from '@electric-sql/pglite';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 // BW_FAKE_NOW=<ISO time>: the clock PGlite reads (now()), e.g. 2026-11-23T00:00:00Z
@@ -885,18 +885,23 @@ ok(!!c6?.error && !/belongs to another event/.test(c6.error) && xbRow?.band_id =
 
 // Codex #297 round 3: free-slot counts and a deleted date. The skip_dates
 // line lands in 178 (#294, feat/date-on-hold), not in 195. This check loads
-// bw_band_free_slots as 178 defines it, from origin/feat/date-on-hold, and
-// SKIPs with a warning while that branch, or that line, is not there yet.
+// bw_band_free_slots as 178 defines it: from the checkout (the release is on
+// main), else from origin/feat/date-on-hold (BW_178_REF overrides both), and
+// SKIPs with a warning while 178, or that line, is not there yet.
 const free = async (day) => (await as(ADMIN, () => db.query(`SELECT free_count, total_count FROM public.bw_band_free_slots($1, $2::date, $2::date)`, [BAND_A, day]))).rows[0];
 let fn178 = null;
 try {
-  const src = execFileSync('git', ['-C', REPO, 'show', 'origin/feat/date-on-hold:supabase/migrations/178_date_on_hold.sql'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  const P178 = 'supabase/migrations/178_date_on_hold.sql';
+  const src =
+    !process.env.BW_178_REF && existsSync(`${REPO}/${P178}`)
+      ? readFileSync(`${REPO}/${P178}`, 'utf8')
+      : execFileSync('git', ['-C', REPO, 'show', `${process.env.BW_178_REF || 'origin/feat/date-on-hold'}:${P178}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
   fn178 = src.match(/CREATE OR REPLACE FUNCTION public\.bw_band_free_slots\([\s\S]*?\n\$\$;/)?.[0] ?? null;
 } catch { fn178 = null; }
 if (!fn178) {
-  console.log('SKIP availability: origin/feat/date-on-hold (178) not found; fetch it to run this check');
+  console.log('SKIP availability: 178 not on the checkout nor on origin/feat/date-on-hold; fetch it to run this check');
 } else if (!/skip_dates/.test(fn178)) {
-  console.log('SKIP availability: 178 on origin/feat/date-on-hold has no skip_dates line yet (#294)');
+  console.log('SKIP availability: 178 has no skip_dates line yet (#294)');
 } else {
   // What 178's body needs beyond this file's tables: quote helpers (111, 178) as stubs.
   await db.exec(`

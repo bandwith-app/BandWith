@@ -66,7 +66,7 @@
 // loaded and their checks fail (the bugs as live).
 import { PGlite } from '@electric-sql/pglite';
 import { pageinspect } from '@electric-sql/pglite/contrib/pageinspect';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const REPO = process.argv[2];
 const ONLY = process.argv[3];
@@ -774,18 +774,21 @@ const gig = (E) => q(`SELECT deposit_paid, payment_status FROM events WHERE id =
 {
   // c. 176's pdf_keys trigger (BEFORE INSERT OR UPDATE, no column list) and
   // 180's account-deletion guard (AFTER, WHEN auth.uid() IS NOT NULL) also
-  // fire on the event_removed_at write. Loaded from their own branches.
+  // fire on the event_removed_at write. Loaded from the checkout, or from
+  // their own branches while they are not merged.
   const { execFileSync } = await import('node:child_process');
   const show = (ref, path) => { try { return execFileSync('git', ['-C', process.env.BW_GIT || REPO, 'show', `${ref}:${path}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); } catch { return null; } };
-  const m176 = show(process.env.BW_176_REF || 'origin/fix/security-audit', 'supabase/migrations/176_quote_pdf_gate.sql');
-  const m180 = show(process.env.BW_180_REF || 'origin/fix/account-deletion', 'supabase/migrations/180_account_deletion_safety.sql');
+  // The env ref when one is given, else the file on the checkout (the release is on main), else its branch.
+  const rel = (envRef, branch, path) => (!envRef && existsSync(`${REPO}/${path}`) ? readFileSync(`${REPO}/${path}`, 'utf8') : show(envRef || branch, path));
+  const m176 = rel(process.env.BW_176_REF, 'origin/fix/security-audit', 'supabase/migrations/176_quote_pdf_gate.sql');
+  const m180 = rel(process.env.BW_180_REF, 'origin/fix/account-deletion', 'supabase/migrations/180_account_deletion_safety.sql');
   const cut = (src, from, to) => { const a = src?.indexOf(from) ?? -1; const b = a < 0 ? -1 : src.indexOf(to, a); return a < 0 || b < 0 ? null : src.slice(a, b + to.length); };
   const keys176 = m176 && cut(m176, 'ALTER TABLE public.quote_links', 'EXECUTE FUNCTION public.bw_trg_quote_link_pdf_keys();');
   const guard180 = m180 && cut(m180, 'CREATE OR REPLACE FUNCTION public.bw_trg_deleting_account_writes()', '$$;');
   // The app's admins delete events (as RLS allows them on prod).
   await db.exec(`GRANT SELECT, DELETE ON public.events TO authenticated`);
-  if (!keys176) console.log('SKIP round 11: 176 (pdf keys) not found on its branch');
-  if (!guard180) console.log('SKIP round 11: 180 (account-deletion guard) not found on its branch');
+  if (!keys176) console.log('SKIP round 11: 176 (pdf keys) not found on the checkout nor on its branch');
+  if (!guard180) console.log('SKIP round 11: 180 (account-deletion guard) not found on the checkout nor on its branch');
   if (keys176) {
     await db.exec(keys176);
     // A legacy link: a PDF on the version, no keys, and an odd key document.
