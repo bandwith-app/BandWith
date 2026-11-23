@@ -16,6 +16,8 @@ import { COUNTIN_LEAD_MS, countInPlan, startCountIn, type CountInState } from '@
 import { meterOf } from '@/lib/meter';
 import type { StageRegia } from '@/app/components/event/useStageRegia';
 import { setCountInStyle } from '@/lib/services/countInStyle';
+import { setCountInPrefs } from '@/lib/countInPrefs';
+import { haptic } from '@/lib/haptics';
 
 globalThis.ResizeObserver = class {
   observe() {}
@@ -180,6 +182,41 @@ describe('Stage mode count-in (plan §6)', () => {
     act(() => void vi.advanceTimersByTime(1500));
     expect(num.textContent).toBe('GO');
     expect(num.dataset.at).toBe(beat(4));
+  });
+
+  // CI 11-23 (live-tempo e2e, Duo profiles): the number was written only by
+  // the animation frame, so a screen drawing about one frame a second skipped
+  // a count ("3 2 GO") and buzzed late.
+  it('a phone that draws a frame only now and then still shows, and buzzes, every count on its beat', () => {
+    vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] });
+    // A frame every 2 s: four beats at 120 BPM go by between two of them.
+    const frame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => window.setTimeout(() => cb(performance.now()), 2000));
+    const cancel = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => window.clearTimeout(id));
+    setCountInPrefs({ vibrate: true });
+    vi.mocked(haptic.tap).mockClear();
+    vi.mocked(haptic.medium).mockClear();
+    try {
+      const now = performance.timeOrigin + performance.now();
+      const state = startCountIn({ from: 'leader', songId: 'r1', bpm: 120, meter: meterOf('4/4'), now });
+      render(<StageCountInOverlay state={state} offset={0} title="Harbor Lights" accent="#d4ff3a" canStop={false} onStop={() => {}} />);
+      const num = screen.getByTestId('countin-number');
+      const beat = (i: number) => String(Math.round(state.startAt + countInPlan(state).events[i].at));
+      act(() => void vi.advanceTimersByTime(COUNTIN_LEAD_MS + 20));
+      const shown: string[] = [];
+      for (let i = 0; i < 5; i++) {
+        shown.push(num.textContent ?? '');
+        expect(num.dataset.at).toBe(beat(i));
+        act(() => void vi.advanceTimersByTime(500));
+      }
+      expect(shown).toEqual(['4', '3', '2', '1', 'GO']);
+      // One buzz a count, never two (the frame that comes later finds it up): the bar's first and GO harder.
+      expect(haptic.medium).toHaveBeenCalledTimes(2);
+      expect(haptic.tap).toHaveBeenCalledTimes(3);
+    } finally {
+      setCountInPrefs({ vibrate: false });
+      frame.mockRestore();
+      cancel.mockRestore();
+    }
   });
 
   it('every phone shows the countdown full screen on the shared clock; a member can hide it, the leader stops it', () => {
