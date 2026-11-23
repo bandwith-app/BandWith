@@ -166,3 +166,40 @@ describe('Privacy Policy covers Google Analytics on the website (consent only)',
     }
   });
 });
+
+/**
+ * The app sends error reports by default (Settings › Privacy & account ›
+ * Send crash reports) and, with consent, native crashes to Firebase
+ * Crashlytics. The policy said nothing about either until 11-23.
+ */
+describe('Privacy Policy covers error reports', () => {
+  const LEGAL = path.resolve(SITE, '../public/legal');
+  const policies: Record<string, { file: string; setting: string; days: string; updated: string }> = {
+    en: { file: 'privacy.html', setting: 'Send crash reports', days: '14 days', updated: 'Last updated: 23 November 2026' },
+    it: { file: 'privacy-it.html', setting: 'Invia segnalazioni di errore', days: '14 giorni', updated: 'Ultimo aggiornamento: 23 novembre 2026' },
+    es: { file: 'privacy-es.html', setting: 'Enviar informes de errores', days: '14 días', updated: 'Última actualización: 23 de noviembre de 2026' },
+  };
+
+  for (const [lang, p] of Object.entries(policies)) {
+    it(`${lang}: what is sent, how long it is kept, how to switch it off, and Crashlytics`, () => {
+      const html = readFileSync(path.join(LEGAL, p.file), 'utf8');
+      // The item itself, with the name of the setting as the app shows it in that language.
+      const item = /<li id="error-reports">([\s\S]*?)<\/li>/.exec(html)?.[1] ?? '';
+      expect(item, 'the error-reports item').not.toBe('');
+      expect(item).toContain(p.setting);
+      expect(item).toContain(p.days);
+      expect(item).toContain('Firebase Crashlytics');
+      // Purposes table, processors table and retention list each name it.
+      expect(html.match(/Art\. 6\(1\)\(f\)|art\. 6, par\. 1, lett\. f|art\. 6\.1\.f/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+      expect(html).toMatch(/<tr><td>Google \(Firebase Crashlytics\)<\/td>/);
+      expect(html.split(p.days).length - 1).toBeGreaterThanOrEqual(2);
+      expect(html).toContain(p.updated);
+    });
+  }
+
+  it('the summary no longer says nothing is collected without a yes', () => {
+    const html = readFileSync(path.join(LEGAL, 'privacy.html'), 'utf8');
+    const short = /<strong>In short\.<\/strong>([\s\S]*?)<\/p>/.exec(html)?.[1] ?? '';
+    expect(short).toMatch(/error reports/i);
+  });
+});
