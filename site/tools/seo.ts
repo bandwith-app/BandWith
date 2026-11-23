@@ -226,7 +226,7 @@ export function llmsTxt(): string {
     '',
     `> ${DEFINITION}`,
     '',
-    'BandWith is free while it’s in private beta, with a limited number of spots. Roles decide what each person sees: admins run the deal (client, quote, contract, every fee), members see their gigs and their own fee, deputies see only the requests sent to them. The server enforces it.',
+    'BandWith is free while it’s in beta, with a limited number of spots. Roles decide what each person sees: admins run the deal (client, quote, contract, every fee), members see their gigs and their own fee, deputies see only the requests sent to them. The server enforces it.',
     `The app is at ${APP_URL}.`,
     '',
     '## Pages',

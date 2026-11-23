@@ -3,7 +3,7 @@
   <head>
     <!--#head-->
     <title>Get the beta · BandWith</title>
-    <meta name="description" content="Join the BandWith private beta: sign up on the web, download the Android APK, or install it on iPhone and iPad with TestFlight. Free while in beta, with a limited number of spots." />
+    <meta name="description" content="Join the BandWith open beta: sign up on the web, download the Android APK, or install it on iPhone and iPad with TestFlight. Free while in beta, with a limited number of spots." />
     <meta property="og:title" content="Get the BandWith beta" />
     <meta property="og:description" content="Web, Android or iPhone & iPad. Free while in beta." />
   </head>
@@ -15,19 +15,11 @@
       <!-- ─────────────────────────── HEAD ─────────────────────────── -->
       <section class="gethead" aria-labelledby="get-h">
         <div class="wrap">
-          <p class="label"><span class="led"></span>Private beta · free</p>
+          <p class="label" data-cap-beta="Private beta · free"><span class="led"></span>Open beta · free</p>
           <h1 class="h1 gethead__title" id="get-h" data-split>Get in.</h1>
-          <div class="gethead__grid">
+          <!-- Open: the intro, then the doors. Open spots gone: the counter comes back up here (pages/get.ts). -->
+          <div class="gethead__grid" data-cap-top>
             <p class="lead">Pick the door that fits your phone. The whole band can join through different doors: you all land in the same app.</p>
-            <div class="capblock gethead__cap" data-cap-block>
-              <div class="capblock__nums" aria-hidden="true">
-                <span><b data-cap-num="left">–</b> open spots left</span>
-                <span><b data-cap-num="kept">–</b> kept for band invites</span>
-              </div>
-              <div class="ledm" data-cap-meter data-cells="40"></div>
-              <p class="capblock__line"><span data-cap-line hidden><span data-cap-text></span></span> <a href="#why">Why a limit?</a></p>
-              <p class="capblock__sample mono" data-cap-sample hidden>Preview numbers · <a href="?capacity=open">open</a> · <a href="?capacity=invites">invites only</a> · <a href="?capacity=full">full</a></p>
-            </div>
           </div>
         </div>
       </section>
@@ -57,12 +49,13 @@
       <!-- ─────────────────────────── DOORS ─────────────────────────── -->
       <section class="gdoors" aria-label="Three ways in">
         <p class="wrap gdoors__inv mono">Invited by a band? Your door is still open.</p>
-        <div class="wrap gdoors__grid">
+        <!-- Written web, Android, iPhone; the inline script after the grid puts the visitor's own door first. -->
+        <div class="wrap gdoors__grid" data-doors>
           <!-- WEB -->
           <article class="gdoor" id="web" aria-labelledby="web-h">
             <header class="gdoor__head">
               <span class="door__ico"><svg class="ico" aria-hidden="true"><use href="#i-globe"/></svg></span>
-              <p class="mono gdoor__no">Door 01</p>
+              <p class="mono gdoor__no" data-door-no>Door 01</p>
             </header>
             <h2 class="gdoor__name" id="web-h">Web app</h2>
             <p class="gdoor__line">Create your account in the browser. Nothing to install. Good on a laptop or a tablet.</p>
@@ -79,7 +72,7 @@
           <article class="gdoor" id="android" aria-labelledby="android-h">
             <header class="gdoor__head">
               <span class="door__ico"><svg class="ico" aria-hidden="true"><use href="#i-smartphone"/></svg></span>
-              <p class="mono gdoor__no">Door 02</p>
+              <p class="mono gdoor__no" data-door-no>Door 02</p>
             </header>
             <h2 class="gdoor__name" id="android-h">Android</h2>
             <p class="gdoor__line">The APK downloads straight away. Open it to install, then sign up in the app. Android asks once to allow installs from your browser.</p>
@@ -97,7 +90,7 @@
           <article class="gdoor" id="ios" aria-labelledby="ios-h">
             <header class="gdoor__head">
               <span class="door__ico"><svg class="ico" aria-hidden="true"><use href="#i-smartphone"/></svg></span>
-              <p class="mono gdoor__no">Door 03</p>
+              <p class="mono gdoor__no" data-door-no>Door 03</p>
             </header>
             <h2 class="gdoor__name" id="ios-h">iPhone &amp; iPad</h2>
             <p class="gdoor__line">The beta comes through TestFlight, Apple’s app for testing. The link sets up TestFlight first, then BandWith. Sign up in the app.</p>
@@ -111,6 +104,7 @@
             </div>
           </article>
         </div>
+        <!--@door-order-->
       </section>
 
       <!-- ─────────────────────── WATCH HOW ─────────────────────── -->
@@ -166,6 +160,15 @@
           <div>
             <p class="label">Why a limit?</p>
             <h2 class="h2" id="why-h" data-split>A small room<br />sounds better.</h2>
+            <div class="capblock why__cap" data-cap-block>
+              <div class="capblock__nums" aria-hidden="true">
+                <span><b data-cap-num="left">–</b> open spots left</span>
+                <span><b data-cap-num="kept">–</b> kept for band invites</span>
+              </div>
+              <div class="ledm" data-cap-meter data-cells="40"></div>
+              <p class="capblock__line"><span data-cap-line hidden><span data-cap-text></span></span> <a href="#why">Why a limit?</a></p>
+              <p class="capblock__sample mono" data-cap-sample hidden>Preview numbers · <a href="?capacity=open">open</a> · <a href="?capacity=invites">invites only</a> · <a href="?capacity=full">full</a></p>
+            </div>
           </div>
           <div class="why__copy">
             <p>BandWith runs on free plans while it’s in beta. They’re generous, but they have a ceiling: data sent to phones each month, live connections at the same moment, emails per day.</p>

@@ -73,7 +73,18 @@
 .cns__b { --bg: transparent; --fgc: var(--fg); justify-content: center; border-color: rgba(255, 255, 255, .32); }
 .cns__b:hover { --bg: rgba(255, 255, 255, .08); }
 .cns :focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
-@media (max-width: 640px) { .cns { left: 16px; right: 16px; width: auto; bottom: calc(16px + env(safe-area-inset-bottom)); } }
+.cns__short { display: none; }
+/* Phones: one short run of text and the two buttons, so the card stays out of the page's way. */
+@media (max-width: 640px) {
+  .cns { left: 12px; right: 12px; width: auto; bottom: calc(12px + env(safe-area-inset-bottom)); padding: 12px 14px 14px; border-radius: 22px; font-size: 13px; line-height: 1.35; }
+  .cns__t, .cns__p { display: inline; margin: 0; font: inherit; }
+  .cns__t { font-weight: 600; }
+  .cns__t::after { content: " "; }
+  .cns__long { display: none; }
+  .cns__short { display: inline; }
+  .cns__act { margin-top: 10px; gap: 8px; }
+  .cns__b { min-height: 40px; }
+}
 @media (prefers-reduced-motion: reduce) { .cns { transition: opacity .2s; transform: none; } }
 
 .foot__link { padding: 0; border: 0; background: none; font: inherit; font-size: 15px; color: var(--fg-2); cursor: pointer; text-align: left; }

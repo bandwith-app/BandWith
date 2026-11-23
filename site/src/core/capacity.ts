@@ -11,6 +11,11 @@
  * full (nobody). Anything but open sets html.is-full: the site puts the
  * waitlist first; with invites, the doors stay open for invited people.
  *
+ * Open is what the pages say as written: "Open beta", no spots count in the
+ * home hero, the doors first on the Get page. Anything but open turns the
+ * [data-cap-beta] labels back to "Private beta" and brings the notices back
+ * (the hero's line here, the Get page's counter in pages/get.ts).
+ *
  * Without the RPC the counter stays hidden in production. In dev it shows a
  * sample; `?capacity=open|invites|full` previews a state anywhere.
  */
@@ -98,6 +103,21 @@ export function capText(c: Capacity): string {
   return `${c.publicLeft} of ${c.cap - c.reserved} open spots left · ${keptForInvites(c)} kept for band invites`;
 }
 
+/**
+ * Whether a [data-cap-line] shows. data-cap-line="closed" (the home hero) is
+ * a notice: it stays out while open spots are left, where a count next to
+ * the sign-up button reads as "invite only". The other lines show in every state.
+ */
+export const capLineShown = (c: Capacity | null, only?: string | null): boolean =>
+  !!c && (only !== 'closed' || c.state !== 'open');
+
+/** Writes a label's words, keeping what comes before them (its LED). */
+function setLabel(el: HTMLElement, text: string) {
+  const words = Array.from(el.childNodes).reverse().find((n) => n.nodeType === 3 && n.textContent?.trim());
+  if (words) words.textContent = text;
+  else el.append(text);
+}
+
 /** The LED meter: one class per cell (on = taken, res = kept for invites). */
 export function meterCells(c: Capacity, n: number): string[] {
   const per = c.cap / n;
@@ -119,8 +139,13 @@ export async function renderCapacity() {
   root.classList.toggle('is-full', closed);
   root.classList.toggle('is-invites', c?.state === 'invites');
 
+  // Open spots gone: the beta is private again (the label's attribute holds those words, in English).
+  if (closed) {
+    document.querySelectorAll<HTMLElement>('[data-cap-beta]').forEach((el) => { if (el.dataset.capBeta) setLabel(el, el.dataset.capBeta); });
+  }
+
   document.querySelectorAll<HTMLElement>('[data-cap-line]').forEach((el) => {
-    if (!c) { el.hidden = true; return; }
+    if (!c || !capLineShown(c, el.dataset.capLine)) { el.hidden = true; return; }
     el.hidden = false;
     el.classList.toggle('is-full', closed);
     const t = el.querySelector('[data-cap-text]') ?? el;

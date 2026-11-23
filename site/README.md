@@ -105,7 +105,17 @@ https://bandwith.fun (manual release only).
 - `src/core/capacity.ts` reads totals from the RPC `bw_capacity_status`
   when `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` are set
   (`site/.env`). Without them: sample numbers in dev, hidden in production.
-  `?capacity=full` / `?capacity=open` preview both states.
+  `?capacity=open` / `?capacity=invites` / `?capacity=full` preview each state.
+- Open is what the pages say as written: "Open beta", no spots count in the
+  home hero, and on the Get page the doors right under the headline with the
+  counter next to "Why a limit?". Once only band invites (or nobody) get in,
+  `capacity.ts` turns the `[data-cap-beta]` labels back to "Private beta",
+  shows the hero's notice (`data-cap-line="closed"`) and `pages/get.ts` moves
+  the counter back under the headline, above the waitlist.
+- The Get page puts the visitor's own door first (TestFlight on iPhone and
+  iPad, the APK on Android, the web app anywhere else): `src/core/device.ts`,
+  run inline right after the doors (`<!--@door-order-->`), before the first
+  paint.
 - `src/ui/forms.ts` posts to `VITE_BETA_ENDPOINT` (the `beta` edge function,
   not built yet). Without it: simulated replies in dev, closed forms in
   production (nothing is sent).
