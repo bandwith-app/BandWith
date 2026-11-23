@@ -160,6 +160,8 @@ describe('when to ask', () => {
     expect(analyticsAskBlocked({ urgent: true })).toBe(true);
     expect(analyticsAskBlocked({ rsvp: true })).toBe(true);
     expect(analyticsAskBlocked({ poll: true })).toBe(true);
+    // Never over Stage mode, a sheet or a modal either (the gate: it found the question over Stage).
+    expect(analyticsAskBlocked({ layer: true })).toBe(true);
   });
 });
 

@@ -195,7 +195,7 @@ import { EVENT_PUBLIC_COLUMNS, attachEventPrivate } from "@/lib/services/eventPr
 import { bandFilterOptions, bandToActivateForCreate, filterByBand, matchesBandFilter, normalizeBandFilter } from "@/lib/bandFilter";
 import { visibleEventsFor } from "@/lib/eventVisibility";
 import { installKeyboardDismissOnTouch } from "@/lib/keyboardDismiss";
-import { analyticsAskBlocked, screenNameFor, setAnalyticsConsent, shouldAskAnalyticsConsent, trackScreen, type ScreenOverlay } from "@/lib/appAnalytics";
+import { analyticsAskBlocked, screenNameFor, setAnalyticsConsent, shouldAskAnalyticsConsent, trackScreen, useAnalyticsConsent, type ScreenOverlay } from "@/lib/appAnalytics";
 import { AnalyticsConsentSheet } from "@/app/components/settings/AnalyticsConsentSheet";
 import { useAudioPrefetch } from "@/app/hooks/useAudioPrefetch";
 import { useLivePackPrefetch } from "@/app/hooks/useLivePackPrefetch";
@@ -584,7 +584,11 @@ export default function AuthenticatedApp() {
   const [urgentNotification, setUrgentNotification] = useState<import('@/lib/services/notifications').Notification | null>(null);
   // The urgent pop-up never draws over an open sheet, modal or Stage mode:
   // it waits for it to close (watched only while one is waiting).
-  const layerOpen = useLayerOpen(!!urgentNotification);
+  // The usage-statistics question waits for the same layers (watched only
+  // until it has its answer).
+  const analyticsConsent = useAnalyticsConsent();
+  const askDue = useMemo(() => shouldAskAnalyticsConsent(), [analyticsConsent]);
+  const layerOpen = useLayerOpen(!!urgentNotification || askDue);
   const [rsvpNotification, setRsvpNotification] = useState<import('@/lib/services/notifications').Notification | null>(null);
   const [pollNotification, setPollNotification] = useState<import('@/lib/services/notifications').Notification | null>(null);
   // Typing in a field, or choosing in an open picker: the urgent pop-up waits
@@ -1732,9 +1736,9 @@ export default function AuthenticatedApp() {
 
   // Usage analytics (src/lib/appAnalytics.ts), Android and iOS only: asked
   // once, after the first-run tour and the popups that need an answer, never
-  // over them (one layer at a time).
+  // over them, nor over an open sheet, modal or Stage mode (one layer at a time).
   const [askAnalytics, setAskAnalytics] = useState(false);
-  const askBlocked = analyticsAskBlocked({ tour: showAdminTour, urgent: !!urgentNotification, rsvp: !!rsvpNotification, poll: !!pollNotification });
+  const askBlocked = analyticsAskBlocked({ tour: showAdminTour, urgent: !!urgentNotification, rsvp: !!rsvpNotification, poll: !!pollNotification, layer: layerOpen });
   useEffect(() => {
     if (askBlocked || !shouldAskAnalyticsConsent()) return;
     const timer = window.setTimeout(() => setAskAnalytics(true), 1500);

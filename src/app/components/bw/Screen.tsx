@@ -90,7 +90,8 @@ const PlainIconButton = React.forwardRef<HTMLButtonElement, Omit<IconButtonProps
         'active:scale-[var(--press-scale,0.97)] disabled:opacity-40',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground',
         size === 'md' ? 'w-11 h-11 [&_svg]:w-5 [&_svg]:h-5' : 'w-9 h-9 [&_svg]:w-4 [&_svg]:h-4',
-        size === 'sm' && "after:absolute after:-inset-1 after:content-['']",
+        // 36 px, a 44 px tap: 6 px each way (the hit area starts inside the border; 4 px gave 41).
+        size === 'sm' && "after:absolute after:-inset-1.5 after:content-['']",
         ICON_BTN_STYLE[variant],
         className,
       )}

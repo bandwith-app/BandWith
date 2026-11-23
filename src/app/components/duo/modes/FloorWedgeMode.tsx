@@ -24,6 +24,7 @@ import type { RehearsalSessionControls } from '@/app/components/event/useRehears
 import { formatClock } from '@/lib/rehearsalSession';
 import { followLabel, type StageBleStatus } from '@/lib/stageBleNotice';
 import { StageBleNoticeLine } from '@/app/components/event/StageBleNoticeLine';
+import { WaitingChangesTag } from '@/app/components/event/WaitingChangesTag';
 import { NoteSheetsHost, WedgeNotesPad, useNoteSheets, type LiveNotes } from '@/app/components/dashboard/RehearsalNotes';
 
 /**
@@ -66,6 +67,8 @@ export interface FloorWedgeModeProps {
   title?: string;
   /** The gig's band: my notes on its songs (109), as in Stage mode. */
   bandId?: string;
+  /** Me: "N changes waiting / weren't saved" on the Display (Stage mode's own tag is under the wedge). */
+  userId?: string | null;
   /** e.g. "Set 1". */
   setLabel?: string;
   songsLoading?: boolean;
@@ -133,6 +136,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   rehearsal,
   title,
   bandId,
+  userId,
   setLabel,
   songsLoading,
   initialIndex = 0,
@@ -272,6 +276,12 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
           {elapsed}
         </span>
       </div>
+      {/* Changes kept on this phone (waiting, or not saved): Stage mode's tag is under the wedge. */}
+      {!songOnly && (
+        <div className="bw-fold-clear flex flex-wrap gap-2 empty:hidden">
+          <WaitingChangesTag userId={userId} stage />
+        </div>
+      )}
       {tempo.active && song ? (
         <>
           <p className="bw-fold-clear flex items-baseline gap-2 min-w-0" aria-live="polite">
@@ -587,7 +597,14 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
               </button>
             </span>
           </div>
-          {hasChords && <TransposeControl tone="stage" semitones={semitones} onChange={setSemitones} songKey={songKey} />}
+          {/* The leader's Start / Hold / Stop share this row: with a row of their own the Deck
+              was taller than the fold's lower half, and the rail covered the pads' edge. */}
+          {(hasChords || (tempo.leader && tempo.shown)) && (
+            <div data-deck-row="song-tools" className="flex items-center justify-between gap-3 min-w-0">
+              {hasChords ? <TransposeControl tone="stage" semitones={semitones} onChange={setSemitones} songKey={songKey} /> : <span />}
+              <FollowLeaderButtons follow={tempo} accent="var(--accent)" big />
+            </div>
+          )}
           {mine && <MyNotesBar />}
         </div>
       )}
@@ -599,7 +616,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
           onMark={() => notes.controls.mark({ songId: song?.songId ?? null, songTitle: song?.title ?? null, markedAtS: notes.elapsed() })}
         />
       )}
-      <FollowLeaderButtons follow={tempo} accent="var(--accent)" big className="justify-center" />
+      {!showLyrics && <FollowLeaderButtons follow={tempo} accent="var(--accent)" big className="justify-center" />}
       <div className={cn('grid gap-3 flex-1 min-h-[88px]', click && countIn ? 'grid-cols-[1fr_auto_auto_1fr]' : click || countIn ? 'grid-cols-[1fr_auto_1fr]' : 'grid-cols-2')}>
         <DeckButton
           size="pad"

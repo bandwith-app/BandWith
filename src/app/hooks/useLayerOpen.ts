@@ -12,13 +12,16 @@ const URGENT = '[data-bw-urgent]';
 // The urgent pop-up (`data-bw-urgent`) is what steps aside, never a layer
 // itself: as a modal alert dialog (#298) it would wait on itself and leave
 // in a loop. Nor is anything inside it.
+// Nor is a sheet that steps aside in the same way (`data-bw-yields`: the
+// usage-statistics question, which waits for Stage mode and sheets).
+const YIELDS = '[data-bw-yields]';
 const SELECTOR = ['[role="dialog"]', '[role="alertdialog"]', '[data-modal-open="true"]', '[aria-modal="true"]']
-  .map((s) => `${s}:not(${URGENT})`)
+  .map((s) => `${s}:not(${URGENT}):not(${YIELDS})`)
   .join(', ');
-const WATCHED = ['role', 'hidden', 'data-modal-open', 'aria-modal', 'data-bw-urgent'];
+const WATCHED = ['role', 'hidden', 'data-modal-open', 'aria-modal', 'data-bw-urgent', 'data-bw-yields'];
 
 const shown = (el: Element): boolean => {
-  if (!el.isConnected || el.closest('[hidden]') || el.closest(URGENT)) return false;
+  if (!el.isConnected || el.closest('[hidden]') || el.closest(URGENT) || el.closest(YIELDS)) return false;
   const style = (el as HTMLElement).style;
   return !style || style.display !== 'none';
 };
