@@ -24,6 +24,7 @@ import type { RehearsalSessionControls } from '@/app/components/event/useRehears
 import { formatClock } from '@/lib/rehearsalSession';
 import { followLabel, type StageBleStatus } from '@/lib/stageBleNotice';
 import { StageBleNoticeLine } from '@/app/components/event/StageBleNoticeLine';
+import { WaitingChangesTag } from '@/app/components/event/WaitingChangesTag';
 import { NoteSheetsHost, WedgeNotesPad, useNoteSheets, type LiveNotes } from '@/app/components/dashboard/RehearsalNotes';
 
 /**
@@ -66,6 +67,8 @@ export interface FloorWedgeModeProps {
   title?: string;
   /** The gig's band: my notes on its songs (109), as in Stage mode. */
   bandId?: string;
+  /** Me: "N changes waiting / weren't saved" on the Display (Stage mode's own tag is under the wedge). */
+  userId?: string | null;
   /** e.g. "Set 1". */
   setLabel?: string;
   songsLoading?: boolean;
@@ -133,6 +136,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   rehearsal,
   title,
   bandId,
+  userId,
   setLabel,
   songsLoading,
   initialIndex = 0,
@@ -195,6 +199,12 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      // A sheet or dialog on top of the wedge (Not saved, Count-in, a note): its
+      // keys are its own. Space on its Copy button must press Copy, never move
+      // the band to the next song. Stage mode's own dialog (data-bw-stage) lies
+      // under the wedge: focus resting there still turns the page.
+      const layer = el?.closest?.('[role="dialog"], [role="alertdialog"], [aria-modal="true"]');
+      if (layer && !layer.hasAttribute('data-bw-stage')) return;
       if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(e.key)) {
         e.preventDefault();
         go(1);
@@ -272,6 +282,12 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
           {elapsed}
         </span>
       </div>
+      {/* Changes kept on this phone (waiting, or not saved): Stage mode's tag is under the wedge. */}
+      {!songOnly && (
+        <div className="bw-fold-clear flex flex-wrap gap-2 empty:hidden">
+          <WaitingChangesTag userId={userId} stage />
+        </div>
+      )}
       {tempo.active && song ? (
         <>
           <p className="bw-fold-clear flex items-baseline gap-2 min-w-0" aria-live="polite">
@@ -587,7 +603,15 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
               </button>
             </span>
           </div>
-          {hasChords && <TransposeControl tone="stage" semitones={semitones} onChange={setSemitones} songKey={songKey} />}
+          {/* The leader's Start / Hold / Stop share this row: with a row of their own the Deck
+              was taller than the fold's lower half, and the rail covered the pads' edge. */}
+          {(hasChords || (tempo.leader && tempo.shown)) && (
+            <div data-deck-row="song-tools" className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 min-w-0">
+              {hasChords ? <TransposeControl tone="stage" semitones={semitones} onChange={setSemitones} songKey={songKey} /> : <span />}
+              {/* Too narrow for both (a 320 px Laptop pose): the buttons take the next line, at the end. */}
+              <FollowLeaderButtons follow={tempo} accent="var(--accent)" big className="ml-auto" />
+            </div>
+          )}
           {mine && <MyNotesBar />}
         </div>
       )}
@@ -599,7 +623,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
           onMark={() => notes.controls.mark({ songId: song?.songId ?? null, songTitle: song?.title ?? null, markedAtS: notes.elapsed() })}
         />
       )}
-      <FollowLeaderButtons follow={tempo} accent="var(--accent)" big className="justify-center" />
+      {!showLyrics && <FollowLeaderButtons follow={tempo} accent="var(--accent)" big className="justify-center" />}
       <div className={cn('grid gap-3 flex-1 min-h-[88px]', click && countIn ? 'grid-cols-[1fr_auto_auto_1fr]' : click || countIn ? 'grid-cols-[1fr_auto_1fr]' : 'grid-cols-2')}>
         <DeckButton
           size="pad"

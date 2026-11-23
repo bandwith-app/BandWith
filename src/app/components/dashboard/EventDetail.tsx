@@ -3210,6 +3210,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
           songsLoading={setlistLoading}
           title={event.title}
           bandId={event.band_id ?? undefined}
+          userId={currentUserId}
           lyricsOn={stageSongOpen}
           onLyricsOnChange={setStageSongOpen}
           index={stageLive.index}

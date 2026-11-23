@@ -32,6 +32,11 @@ function useLiveRefused(userId?: string | null): RefusedLiveOp[] {
   return items;
 }
 
+// A 36 px pill that takes a 44 px tap (as the sheet's Close does). 6 px each
+// way, not 4: the hit area starts inside the border, and an outlined pill
+// measured 41 px on the Duo.
+const TAP_44 = "relative after:absolute after:-inset-y-1.5 after:inset-x-0 after:content-['']";
+
 /**
  * "3 changes waiting for signal" (plan §3.5): notes, suggestions and the
  * leader's order made with no signal, kept on this phone until they are
@@ -124,12 +129,13 @@ export const WaitingChangesTag: React.FC<{ userId?: string | null; stage?: boole
                       variant="outline"
                       size="sm"
                       fullWidth={false}
+                      className={TAP_44}
                       onClick={() => void navigator.clipboard?.writeText(words).catch(() => undefined)}
                     >
                       {t('Copy')}
                     </PillButton>
                   )}
-                  <PillButton variant="ghost" size="sm" fullWidth={false} onClick={() => userId && removeRefusedLiveOp(userId, rid)}>
+                  <PillButton variant="ghost" size="sm" fullWidth={false} className={TAP_44} onClick={() => userId && removeRefusedLiveOp(userId, rid)}>
                     {t('Remove')}
                   </PillButton>
                 </div>

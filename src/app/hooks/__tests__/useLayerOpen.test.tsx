@@ -58,6 +58,17 @@ describe('is a sheet, modal or Stage open?', () => {
     expect(anyLayerOpen()).toBe(true);
   });
 
+  it('a sheet that steps aside itself (data-bw-yields, the usage-statistics question) is not a layer either', () => {
+    const ask = document.createElement('div');
+    ask.setAttribute('data-bw-yields', '');
+    ask.setAttribute('role', 'dialog');
+    ask.setAttribute('aria-modal', 'true');
+    document.body.appendChild(ask);
+    expect(anyLayerOpen()).toBe(false);
+    addDialog();
+    expect(anyLayerOpen()).toBe(true);
+  });
+
   it('watching: the urgent pop-up appearing does not make it wait on itself', async () => {
     const { result } = renderHook(() => useLayerOpen());
     const urgent = document.createElement('div');

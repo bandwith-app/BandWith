@@ -25,6 +25,11 @@ describe('AnalyticsConsentSheet', () => {
     expect(onAnswer).toHaveBeenLastCalledWith(true);
   });
 
+  it('marks itself data-bw-yields: it waits for Stage mode and sheets (useLayerOpen), never for itself', () => {
+    render(<AnalyticsConsentSheet open onAnswer={() => {}} onDismiss={() => {}} />);
+    expect(screen.getByRole('dialog', { name: 'Help us improve BandWith?' }).hasAttribute('data-bw-yields')).toBe(true);
+  });
+
   it('closing without an answer is not a no', () => {
     const onAnswer = vi.fn();
     const onDismiss = vi.fn();

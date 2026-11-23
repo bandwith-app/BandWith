@@ -86,4 +86,16 @@ describe('a change that was not saved', () => {
     // Kept without a reason (lock-screen sign-out): no reason line.
     expect(within(sheet).queryAllByText(/^The server didn’t/)).toHaveLength(1);
   });
+
+  it('Copy, Remove and Close take a 44 px tap (36 px buttons, a hit area 6 px past each edge: it starts inside the border)', () => {
+    keepRefused('u-1', note('n1', 'Slower outro'));
+    render(<WaitingChangesTag userId="u-1" />);
+    fireEvent.click(screen.getByRole('button', { name: /1 change wasn’t saved/ }));
+    const sheet = screen.getByRole('dialog');
+    for (const name of ['Copy', 'Remove', 'Close']) {
+      const cls = within(sheet).getByRole('button', { name }).className;
+      expect(cls, name).toContain('relative');
+      expect(cls, name).toMatch(/after:-inset(-y)?-1\.5(\s|$)/);
+    }
+  });
 });

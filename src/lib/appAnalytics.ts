@@ -297,9 +297,13 @@ export const enterScreen = (name: string): (() => void) => {
 export const useAnalyticsConsent = (): AnalyticsConsent | null =>
   useSyncExternalStore(onAnalyticsConsentChange, readAnalyticsConsent, () => null);
 
-/** One layer at a time: the question waits for the first-run tour and for popups that need an answer. */
-export const analyticsAskBlocked = (s: { tour?: boolean; urgent?: boolean; rsvp?: boolean; poll?: boolean }): boolean =>
-  !!(s.tour || s.urgent || s.rsvp || s.poll);
+/**
+ * One layer at a time: the question waits for the first-run tour, for popups
+ * that need an answer, and for an open sheet, modal or Stage mode (`layer`,
+ * useLayerOpen): never over a gig on stage.
+ */
+export const analyticsAskBlocked = (s: { tour?: boolean; urgent?: boolean; rsvp?: boolean; poll?: boolean; layer?: boolean }): boolean =>
+  !!(s.tour || s.urgent || s.rsvp || s.poll || s.layer);
 
 export type ScreenOverlay =
   | 'settings'

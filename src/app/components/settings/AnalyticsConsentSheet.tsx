@@ -43,6 +43,8 @@ export const AnalyticsConsentSheet: React.FC<{
             aria-labelledby="analytics-consent-title"
             aria-describedby="analytics-consent-body"
             data-testid="analytics-consent-sheet"
+            // Not a layer for useLayerOpen: the question waits for Stage mode and sheets, never for itself.
+            data-bw-yields=""
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
