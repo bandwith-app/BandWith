@@ -4123,6 +4123,7 @@ const dict: Dictionary = {
   "Wrong password for {email}.": "Falsches Passwort für {email}.",
   "We sent a {digits}-digit code to {email}. Enter it here to confirm your address and finish creating your account.": "Wir haben einen {digits}-stelligen Code an {email} geschickt. Gib ihn hier ein, um deine Adresse zu bestätigen und dein Konto fertig anzulegen.",
   "Confirmation code": "Bestätigungscode",
+  "The code is checked as soon as you enter the last digit.": "Der Code wird geprüft, sobald du die letzte Ziffer eingibst.",
   "No email? Check your spam folder.": "Keine E-Mail? Sieh im Spam-Ordner nach.",
   "Verify": "Bestätigen",
   "I’ve confirmed it: sign in": "Bestätigt: anmelden",

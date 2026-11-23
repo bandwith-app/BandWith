@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   setAccountData: vi.fn(),
   verifyOtp: vi.fn(),
   resend: vi.fn(),
+  authError: null as string | null,
+  clearAuthError: vi.fn(),
 }));
 
 vi.mock('@/lib/AuthContext', () => ({
@@ -24,8 +26,8 @@ vi.mock('@/lib/AuthContext', () => ({
     signUp: mocks.signUp,
     signInWithGoogle: vi.fn(),
     signInWithApple: vi.fn(),
-    authError: null,
-    clearAuthError: vi.fn(),
+    authError: mocks.authError,
+    clearAuthError: mocks.clearAuthError,
   }),
 }));
 vi.mock('@/lib/OnboardingContext', () => ({
@@ -38,11 +40,27 @@ vi.mock('@/lib/supabase', () => ({
 
 import { AccountCreation } from '../AccountCreation';
 import { setLocalePref, t } from '@/lib/i18n';
+import { callbackProblemText } from '@/lib/authCallback';
+
+const ONBOARDING_CONTEXT = Object.values(
+  import.meta.glob('/src/lib/OnboardingContext.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>,
+)[0];
 
 const EMAIL = 'alex@example.com';
 const REFUSED = { name: 'AuthApiError', status: 403, code: 'otp_expired', message: 'Token has expired or is invalid' };
 const WRONG = 'That code doesn’t match. Check it and try again, or send a new one.';
 const EXPIRED = 'This code has expired. Send a new one.';
+const AUTO_CHECK = 'The code is checked as soon as you enter the last digit.';
+const PASSWORD = 'correct horse';
+
+/** A promise the test settles when it wants: a request still on its way. */
+function pending<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
 
 const flush = async () => {
   await act(async () => {
@@ -63,15 +81,16 @@ const type = async (value: string) => {
 async function signUpToCodeStep(props: Partial<React.ComponentProps<typeof AccountCreation>> = {}) {
   const onComplete = vi.fn();
   const onSignIn = vi.fn();
-  render(<AccountCreation onBack={() => {}} onComplete={onComplete} onSignIn={onSignIn} {...props} />);
+  const ui = () => <AccountCreation onBack={() => {}} onComplete={onComplete} onSignIn={onSignIn} {...props} />;
+  const view = render(ui());
   // (t(): the helper also runs in Italian.)
   if (mocks.path !== 'joiner') fireEvent.change(screen.getByPlaceholderText(t('Your name')), { target: { value: 'Alex' } });
   if (!props.prefilledEmail) fireEvent.change(screen.getByPlaceholderText('you@email.com'), { target: { value: EMAIL } });
-  fireEvent.change(screen.getByPlaceholderText(t('Password')), { target: { value: 'correct horse' } });
+  fireEvent.change(screen.getByPlaceholderText(t('Password')), { target: { value: PASSWORD } });
   fireEvent.submit(document.getElementById('account-creation-form') as HTMLFormElement);
   await flush();
   expect(screen.getByRole('heading', { name: t('Check your email') })).toBeInTheDocument();
-  return { onComplete, onSignIn };
+  return { onComplete, onSignIn, rerender: () => view.rerender(ui()) };
 }
 
 beforeEach(() => {
@@ -84,6 +103,10 @@ beforeEach(() => {
   mocks.setAccountData.mockReset();
   mocks.verifyOtp.mockReset().mockResolvedValue({ data: { user: { id: 'u1' }, session: { access_token: 'a' } }, error: null });
   mocks.resend.mockReset().mockResolvedValue({ data: {}, error: null });
+  mocks.authError = null;
+  mocks.clearAuthError.mockReset().mockImplementation(() => {
+    mocks.authError = null;
+  });
 });
 
 afterEach(() => {
@@ -127,8 +150,132 @@ describe('Check your email: the 6-digit code', () => {
     expect(mocks.verifyOtp).toHaveBeenCalledWith({ email: EMAIL, token: '482913', type: 'email' });
     expect(onComplete).toHaveBeenCalledTimes(1);
     // The same hand-over as a sign-up that needs no confirmation: no second password prompt.
-    expect(mocks.setAccountData).toHaveBeenCalledWith({ email: EMAIL, password: 'correct horse', authMethod: 'email' });
+    expect(mocks.setAccountData).toHaveBeenCalledWith({ email: EMAIL, authMethod: 'email' });
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('the password never reaches the onboarding state: the session is enough', async () => {
+    await signUpToCodeStep();
+    await type('482913');
+    expect(mocks.setAccountData).toHaveBeenCalledTimes(1);
+    expect(mocks.setAccountData.mock.calls[0][0]).not.toHaveProperty('password');
+    expect(JSON.stringify(mocks.setAccountData.mock.calls)).not.toContain(PASSWORD);
+  });
+
+  it('nor with a sign-up that needs no confirmation', async () => {
+    mocks.signUp.mockResolvedValue({ error: null, session: { access_token: 'a' }, existing: false });
+    const onComplete = vi.fn();
+    render(<AccountCreation onBack={() => {}} onComplete={onComplete} />);
+    fireEvent.change(screen.getByPlaceholderText('Your name'), { target: { value: 'Alex' } });
+    fireEvent.change(screen.getByPlaceholderText('you@email.com'), { target: { value: EMAIL } });
+    fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: PASSWORD } });
+    fireEvent.submit(document.getElementById('account-creation-form') as HTMLFormElement);
+    await flush();
+    expect(mocks.setAccountData).toHaveBeenCalledWith({ email: EMAIL, authMethod: 'email' });
+    expect(JSON.stringify(mocks.setAccountData.mock.calls)).not.toContain(PASSWORD);
+    await act(async () => {
+      vi.advanceTimersByTime(600);
+    });
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('the onboarding state has no place for a password', () => {
+    const accountData = ONBOARDING_CONTEXT.match(/accountData:\s*\{[^}]*\}\s*\|\s*null;/)?.[0] ?? '';
+    expect(accountData).toContain('email: string');
+    expect(accountData).not.toMatch(/password/i);
+  });
+
+  it('tells screen readers that the last digit checks the code on its own', async () => {
+    await signUpToCodeStep();
+    expect(codeField()).toHaveAccessibleDescription(expect.stringContaining(AUTO_CHECK));
+    // Still tied to the field while an error shows.
+    mocks.verifyOtp.mockResolvedValueOnce({ data: { user: null, session: null }, error: REFUSED });
+    await type('000000');
+    expect(codeField()).toHaveAccessibleDescription(expect.stringContaining(WRONG));
+    expect(codeField()).toHaveAccessibleDescription(expect.stringContaining(AUTO_CHECK));
+  });
+
+  it('an expired confirmation link opened from the email says so here, and a new code can be sent', async () => {
+    const { rerender } = await signUpToCodeStep();
+    // The phone app comes back from the link with the callback's error (AuthContext).
+    mocks.authError = callbackProblemText('link_expired', false).body;
+    await act(async () => {
+      rerender();
+    });
+    expect(mocks.clearAuthError).toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: 'Check your email' })).toBeInTheDocument();
+    expect(screen.getByRole('alert').textContent).toBe('This link has expired or was already used. Ask for a new one.');
+    expect(codeField()).not.toHaveAttribute('aria-invalid');
+    expect(screen.getByRole('button', { name: 'Send a new code' })).toBeEnabled();
+    // It goes away once the person acts on it.
+    await type('4');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('another problem with the link (no connection) keeps its own sentence', async () => {
+    const { rerender } = await signUpToCodeStep();
+    mocks.authError = callbackProblemText('network', false).body;
+    await act(async () => {
+      rerender();
+    });
+    expect(screen.getByRole('alert').textContent).toBe('Check your connection and try again.');
+  });
+
+  it('while a code is being checked, a new one cannot be sent', async () => {
+    const check = pending<unknown>();
+    mocks.verifyOtp.mockReturnValueOnce(check.promise);
+    await signUpToCodeStep();
+    await type('482913');
+    const send = screen.getByRole('button', { name: 'Send a new code' });
+    expect(send).toBeDisabled();
+    fireEvent.click(send);
+    await flush();
+    expect(mocks.resend).not.toHaveBeenCalled();
+
+    // Refused: the code is still in the field, with its message.
+    await act(async () => {
+      check.resolve({ data: { user: null, session: null }, error: REFUSED });
+    });
+    await flush();
+    expect(codeField().value).toBe('482913');
+    expect(screen.getByRole('alert').textContent).toBe(WRONG);
+    expect(screen.getByRole('button', { name: 'Send a new code' })).toBeEnabled();
+  });
+
+  it('while a new code is being sent, the old one is not checked', async () => {
+    const sending = pending<unknown>();
+    mocks.resend.mockReturnValueOnce(sending.promise);
+    const { onComplete } = await signUpToCodeStep();
+    await type('48291');
+    fireEvent.click(screen.getByRole('button', { name: 'Send a new code' }));
+    await flush();
+    expect(codeField()).toHaveAttribute('readonly');
+    expect(verifyButton()).toBeDisabled();
+    await type('482913');
+    fireEvent.submit(document.getElementById('confirm-email-code-form') as HTMLFormElement);
+    await flush();
+    expect(mocks.verifyOtp).not.toHaveBeenCalled();
+
+    await act(async () => {
+      sending.resolve({ data: {}, error: null });
+    });
+    await flush();
+    expect(codeField().value).toBe('');
+    expect(codeField()).not.toHaveAttribute('readonly');
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it('an empty field never says the code does not match', async () => {
+    mocks.verifyOtp.mockResolvedValueOnce({ data: { user: null, session: null }, error: REFUSED });
+    await signUpToCodeStep();
+    await type('000000');
+    expect(screen.getByRole('alert').textContent).toBe(WRONG);
+    fireEvent.click(screen.getByRole('button', { name: 'Send a new code' }));
+    await flush();
+    expect(codeField().value).toBe('');
+    expect(screen.queryByText(WRONG)).toBeNull();
+    expect(codeField()).not.toHaveAttribute('aria-invalid');
   });
 
   it('takes the whole code pasted at once, spaces and all', async () => {
