@@ -59,73 +59,50 @@ jobs:
       - run: npm ci --prefix supabase/tests/pglite-runner --ignore-scripts
       - run: node supabase/tests/pglite-runner/run.mjs
 
-  e2e:
-    name: E2E (${{ matrix.shard }}/3)
+  # Which areas a pull request touches: the app's E2E shards and lifecycles
+  # are skipped when it only changes docs/ or site/ (scripts/ci-changed-areas.mjs).
+  # Pushes to main always run everything.
+  changes:
+    name: Changed areas
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 5
+    outputs:
+      app: ${{ steps.areas.outputs.app }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: areas
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "app=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --name-only "origin/$BASE...HEAD" | tee /dev/stderr | node scripts/ci-changed-areas.mjs >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
+  # The app's Playwright specs, split over 8 shards (standard runners are free
+  # for this public repo; 3 shards took 40-50 minutes and hit the timeout).
+  e2e:
+    name: E2E (${{ matrix.shard }}/8)
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Playwright version
-        id: pw
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
-      - name: Cache Playwright browsers
-        id: pw-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium-webkit
-      - name: Install browsers
-        if: steps.pw-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps chromium webkit
-      # The runner's Ubuntu mirror can crawl (~50 KB/s for ~436 MB of browser
-      # deps): keep the downloaded .deb files between runs so apt only installs.
-      - name: Cache browser system packages
-        if: steps.pw-cache.outputs.cache-hit == 'true'
-        uses: actions/cache@v4
-        with:
-          path: ~/apt-debs
-          key: apt-debs-${{ runner.os }}-${{ steps.pw.outputs.version }}-v1
-      - name: Install browser system deps
-        if: steps.pw-cache.outputs.cache-hit == 'true'
-        run: |
-          echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/99bw-keep-debs >/dev/null
-          sudo rm -f /etc/apt/apt.conf.d/docker-clean
-          if compgen -G "$HOME/apt-debs/*.deb" >/dev/null; then sudo cp "$HOME"/apt-debs/*.deb /var/cache/apt/archives/; fi
-          ok=0
-          for i in 1 2 3; do
-            # Retries go to another mirror (the default one is sometimes very slow).
-            if [ "$i" = 2 ] && [ -f /etc/apt/apt-mirrors.txt ]; then echo "http://archive.ubuntu.com/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt >/dev/null; fi
-            if [ "$i" = 3 ] && [ -f /etc/apt/apt-mirrors.txt ]; then echo "http://azure.archive.ubuntu.com/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt >/dev/null; fi
-            if sudo timeout -k 10 480 env "PATH=$PATH" pnpm exec playwright install-deps chromium webkit; then ok=1; break; fi
-            echo "install-deps try $i failed or timed out, retrying"
-            sudo pkill -9 -x apt-get || true
-            sudo pkill -9 -x dpkg || true
-            sudo rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock
-            sudo dpkg --configure -a || true
-          done
-          mkdir -p "$HOME/apt-debs"
-          cp /var/cache/apt/archives/*.deb "$HOME/apt-debs/" 2>/dev/null || true
-          [ "$ok" = 1 ]
-      - run: pnpm e2e:typecheck
+      - uses: ./.github/actions/e2e-setup
       # The lifecycle model paths run in the "E2E lifecycles" job.
-      - run: pnpm e2e --shard=${{ matrix.shard }}/3
+      - run: pnpm e2e --shard=${{ matrix.shard }}/8
         env:
           E2E_SKIP_LIFECYCLES: 1
-      # Product site (site/): languages, the language suggestion, translated scripts.
-      - run: pnpm e2e:site
-        if: matrix.shard == 1
       - name: Upload report and traces
         if: failure()
         uses: actions/upload-artifact@v4
@@ -134,7 +111,6 @@ jobs:
           path: |
             e2e/.report/
             e2e/.results/
-            e2e/.results-site/
           retention-days: 7
           # Dot folders: upload-artifact@v4 skips hidden files unless asked.
           include-hidden-files: true
@@ -143,60 +119,13 @@ jobs:
   # beside the shards instead of inside them. Same setup as the shards.
   e2e-lifecycles:
     name: E2E lifecycles
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Playwright version
-        id: pw
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
-      - name: Cache Playwright browsers
-        id: pw-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium-webkit
-      - name: Install browsers
-        if: steps.pw-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps chromium webkit
-      # The runner's Ubuntu mirror can crawl (~50 KB/s for ~436 MB of browser
-      # deps): keep the downloaded .deb files between runs so apt only installs.
-      - name: Cache browser system packages
-        if: steps.pw-cache.outputs.cache-hit == 'true'
-        uses: actions/cache@v4
-        with:
-          path: ~/apt-debs
-          key: apt-debs-${{ runner.os }}-${{ steps.pw.outputs.version }}-v1
-      - name: Install browser system deps
-        if: steps.pw-cache.outputs.cache-hit == 'true'
-        run: |
-          echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/99bw-keep-debs >/dev/null
-          sudo rm -f /etc/apt/apt.conf.d/docker-clean
-          if compgen -G "$HOME/apt-debs/*.deb" >/dev/null; then sudo cp "$HOME"/apt-debs/*.deb /var/cache/apt/archives/; fi
-          ok=0
-          for i in 1 2 3; do
-            # Retries go to another mirror (the default one is sometimes very slow).
-            if [ "$i" = 2 ] && [ -f /etc/apt/apt-mirrors.txt ]; then echo "http://archive.ubuntu.com/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt >/dev/null; fi
-            if [ "$i" = 3 ] && [ -f /etc/apt/apt-mirrors.txt ]; then echo "http://azure.archive.ubuntu.com/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt >/dev/null; fi
-            if sudo timeout -k 10 480 env "PATH=$PATH" pnpm exec playwright install-deps chromium webkit; then ok=1; break; fi
-            echo "install-deps try $i failed or timed out, retrying"
-            sudo pkill -9 -x apt-get || true
-            sudo pkill -9 -x dpkg || true
-            sudo rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock
-            sudo dpkg --configure -a || true
-          done
-          mkdir -p "$HOME/apt-debs"
-          cp /var/cache/apt/archives/*.deb "$HOME/apt-debs/" 2>/dev/null || true
-          [ "$ok" = 1 ]
-      - run: pnpm e2e:typecheck
+      - uses: ./.github/actions/e2e-setup
       - run: pnpm e2e specs/xstate-lifecycles.spec.ts
       - name: Upload report and traces
         if: failure()
@@ -209,3 +138,49 @@ jobs:
           retention-days: 7
           # Dot folders: upload-artifact@v4 skips hidden files unless asked.
           include-hidden-files: true
+
+  # Product site (site/): languages, the language suggestion, translated scripts.
+  # Always runs: it is the only E2E job left for a site-only change.
+  e2e-site:
+    name: E2E site
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/e2e-setup
+      - run: pnpm e2e:site
+      - name: Upload report and traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report-site
+          path: |
+            e2e/.report/
+            e2e/.results-site/
+          retention-days: 7
+          # Dot folders: upload-artifact@v4 skips hidden files unless asked.
+          include-hidden-files: true
+
+  # The one required E2E check on main: green when every E2E job passed, or was
+  # skipped on purpose by "Changed areas". Shard counts can change without
+  # touching branch protection.
+  e2e-gate:
+    name: E2E
+    if: always()
+    needs: [changes, e2e, e2e-lifecycles, e2e-site]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          CHANGES: ${{ needs.changes.result }}
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "changes: $CHANGES · all: $RESULTS"
+          # A failed or cancelled "Changed areas" skips the shards: that is not a pass.
+          [ "$CHANGES" = "success" ] || { echo "Changed areas did not succeed: $CHANGES"; exit 1; }
+          for r in $RESULTS; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "An E2E job did not pass: $r"; exit 1 ;;
+            esac
+          done
