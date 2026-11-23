@@ -147,6 +147,87 @@ export function startCountIn(opts: {
 
 export const stopCountIn = (s: CountInState): CountInState => ({ ...s, seq: nextSeq(s.seq), on: false });
 
+// ── Over Bluetooth (no internet) ───────────────────────────────────────────
+
+const round = (v: number, per: number) => Math.round(v * per) / per;
+
+/**
+ * The count-in as it travels in the Bluetooth live frame (stageBleSync.ts),
+ * next to the click and the playhead. The same state in short keys, with what
+ * is usual left out: the frame is one characteristic value (512 bytes), and
+ * in the channel's form a count-in would not fit next to a click left running
+ * on another song. `from` and `songId` keep their names (the frame sends them
+ * once for every state that shares them).
+ *
+ *   q seq · o on (1/0) · b bpm · t time · g groups · n bars (2) · p pickup
+ *   u 1 = counting up · a startAt (to 0.1 ms) · k 1 = the BPM counts every tick
+ *
+ * Released apps (Android 1.0.14, TestFlight 202611222310) carry 'countin' in
+ * the frame and do nothing with it, in either form.
+ */
+export function countInBleWire(s: CountInState): Record<string, unknown> {
+  return {
+    from: s.from,
+    songId: s.songId,
+    q: s.seq,
+    o: s.on ? 1 : 0,
+    b: round(s.bpm, 1000),
+    t: s.time,
+    ...(s.groups ? { g: s.groups } : {}),
+    ...(s.bars === 2 ? { n: 2 } : {}),
+    ...(s.pickup ? { p: s.pickup } : {}),
+    ...(s.style === 'up' ? { u: 1 } : {}),
+    a: round(s.startAt, 10),
+    ...(s.perTick ? { k: 1 } : {}),
+  };
+}
+
+/** A count-in read from the Bluetooth live frame (its short form, or the channel's), checked like the channel's. */
+export function parseCountInBle(payload: unknown): CountInState | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const p = payload as Record<string, unknown>;
+  if (!('q' in p)) return parseCountInState(p);
+  if (p.o !== 0 && p.o !== 1) return null;
+  if (p.u !== undefined && p.u !== 1) return null;
+  if (p.k !== undefined && p.k !== 1) return null;
+  return parseCountInState({
+    seq: p.q,
+    from: p.from,
+    songId: p.songId,
+    on: p.o === 1,
+    bpm: p.b,
+    time: p.t,
+    groups: p.g ?? null,
+    bars: p.n ?? 1,
+    pickup: p.p ?? 0,
+    style: p.u === 1 ? 'up' : 'down',
+    startAt: p.a,
+    perTick: p.k === 1,
+  });
+}
+
+/**
+ * A start this much further ahead than the tap's own lead is still a tap
+ * (the clock measure can be off by half a slow round trip); beyond it, it
+ * isn't one.
+ */
+export const COUNTIN_AHEAD_SLACK_MS = 500;
+
+/**
+ * Where a count-in stands at `leaderNow` (its sender's clock). The Bluetooth
+ * frame serves the leader's last count-in for as long as Stage is open, so a
+ * phone can read one at any time: only a 'live' one is shown. 'over': it has
+ * played out (never a late full countdown). 'ahead': it starts later than a
+ * tap can put it.
+ */
+export function countInWindow(state: Pick<CountInState, 'bpm' | 'time' | 'groups' | 'bars' | 'pickup' | 'style' | 'perTick' | 'startAt'>, leaderNow: number): 'ahead' | 'live' | 'over' {
+  const t = leaderNow - state.startAt;
+  if (t < -(COUNTIN_LEAD_MS + COUNTIN_AHEAD_SLACK_MS)) return 'ahead';
+  const plan = countInPlan(state);
+  // The same end as the countdown's own (countInAt: 'done').
+  return t >= plan.goAt + GO_MS && t >= plan.endAt ? 'over' : 'live';
+}
+
 /** Every count of the count-in, and when GO and bar 1 come. */
 export function countInPlan(state: Pick<CountInState, 'bpm' | 'time' | 'groups' | 'bars' | 'pickup' | 'style' | 'perTick'>): CountInPlan {
   const meter = meterOf(state.time, state.groups, state.perTick);
