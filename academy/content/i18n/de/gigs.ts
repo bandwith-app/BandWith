@@ -994,17 +994,17 @@ const gigs: AreaText = {
     {
       id: "gig-on-home",
       title: "Gigs auf Start",
-      summary: "Der nächste Gig, Bereitschaft, Go live, offene Auszahlungen und Entwürfe auf dem Startbildschirm.",
+      summary: "Der nächste Gig, Bereitschaft, Bühne, offene Auszahlungen und Entwürfe auf dem Startbildschirm.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["Start", "nächster Gig", "Go live", "offene Auszahlungen", "Entwürfe", "Dashboard"],
+      keywords: ["Start", "nächster Gig", "Bühne", "Go live", "offene Auszahlungen", "Entwürfe", "Dashboard"],
       related: ["show-readiness", "fee-and-payouts-on-a-gig", "gig-drafts", "stage-mode"],
       body: [
         {
           type: "list",
           items: [
             "Die Karte des nächsten Gigs zeigt Datum, Treffzeiten (Load-in, Soundcheck), Location, den Link zur Setlist und für Mitglieder **Deine Gage**.",
-            "Darunter: **Show-Bereitschaft · {done}/{total}** und **Go live**, das den Gig direkt im Bühnenmodus öffnet.",
+            "Darunter: **Show-Bereitschaft · {done}/{total}** und **Bühne**, das den Gig direkt im Bühnenmodus öffnet.",
             "**Zu erledigen** listet **Auszahlungen ({count})** für Admins oder **Deine Gagen ({count})** für Mitglieder auf. Siehe [[fee-and-payouts-on-a-gig]].",
             "**Entwürfe** (Admins): deine unfertigen Gigs, Proben und Angebote. **Nur du siehst sie.**",
           ],

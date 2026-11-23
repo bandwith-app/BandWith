@@ -45,7 +45,7 @@ import { RoleTourModal } from '@/app/components/onboarding/RoleTourModal';
 import type { AcademyTarget } from '@/lib/academy';
 import { useAppVersion } from '@/lib/appVersion';
 import { allowAndroidInstalls, androidInstallMessage, openAndroidUpdate, useAndroidInstallState, useAndroidUpdate } from '@/lib/androidUpdate';
-import { deleteMyAccount } from '@/lib/services/account';
+import { asFinishedDeletion, deleteMyAccount } from '@/lib/services/account';
 import { useAuth } from '@/lib/AuthContext';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
@@ -58,7 +58,9 @@ import { usePosture, useLaptopPoseEnabled, setLaptopPoseEnabled } from '@/lib/po
 import { setDistanceUnit, useDistanceUnit } from '@/lib/units';
 import { useT, useLocalePref, setLocalePref, getLocale, deviceLocale, formatList, LANGUAGES } from '@/lib/i18n';
 import { appLockSupported, authenticateDevice, setAppLockEnabled, useAppLockEnabled } from '@/lib/appLock';
-import { analyticsAvailable, setAnalyticsConsent, useAnalyticsConsent } from '@/lib/appAnalytics';
+import { analyticsAvailable, setAnalyticsConsent, useAnalyticsConsent, useAnalyticsConsentSaveFailed } from '@/lib/appAnalytics';
+import { CARD, IconTile, ROW, RowText } from '@/app/components/settings/rows';
+import { CrashReportsRow } from '@/app/components/settings/CrashReportsRow';
 
 type SettingsSection = 'notifications' | 'calendar' | 'offline' | 'plan' | 'appearance' | 'units' | 'privacy' | 'duo' | 'help' | 'about' | 'language';
 
@@ -68,36 +70,8 @@ interface SettingsViewProps {
   isAdmin?: boolean;
 }
 
-/* ── Local building blocks (Figma: Card / Icon tile) ── */
+/* Card / Icon tile building blocks: ../components/settings/rows.tsx */
 
-const IconTile: React.FC<{ children: React.ReactNode; className?: string }> = ({
-  children,
-  className,
-}) => (
-  <span
-    aria-hidden
-    className={cn(
-      'size-10 rounded-full bg-foreground/[0.08] flex items-center justify-center text-foreground shrink-0 [&>svg]:size-[18px]',
-      className
-    )}
-  >
-    {children}
-  </span>
-);
-
-const RowText: React.FC<{ title: React.ReactNode; hint?: React.ReactNode; titleClassName?: string }> = ({
-  title,
-  hint,
-  titleClassName,
-}) => (
-  <span className="flex flex-col gap-1 min-w-0 flex-1">
-    <span className={cn('bw-label-md text-foreground', titleClassName)}>{title}</span>
-    {hint && <span className="bw-body-sm text-muted-foreground">{hint}</span>}
-  </span>
-);
-
-const CARD = 'bg-card text-card-foreground rounded-[24px]';
-const ROW = 'p-4 flex items-center gap-3 w-full text-left';
 const PRESSABLE =
   'transition-colors hover:bg-foreground/[0.03] active:bg-foreground/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring';
 
@@ -128,6 +102,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const distanceUnit = useDistanceUnit();
   const appLockAvailable = appLockSupported();
   const analyticsConsent = useAnalyticsConsent();
+  // Storage full: the answer holds for this run only (a no stays a no), and the row says so.
+  const analyticsSaveFailed = useAnalyticsConsentSaveFailed();
   const appLockOn = useAppLockEnabled();
   const [appLockBusy, setAppLockBusy] = useState(false);
   // Turning the lock off asks for the same check as unlocking.
@@ -151,7 +127,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   }[] = [
     { id: 'notifications', label: t('Notifications'), hint: t('Push and email'), icon: Bell },
     { id: 'calendar', label: t('Calendar sync'), hint: t('Your events in Apple or Google Calendar'), icon: Calendar },
-    { id: 'offline', label: t('Offline & live'), hint: t('Setlists on this device for no signal'), icon: WifiOff },
+    // Stays while live_pack is off: what is on the device can still be seen and deleted.
+    { id: 'offline' as const, label: t('Offline & live'), hint: t('Setlists on this device for no signal'), icon: WifiOff },
     ...(planBand ? [{ id: 'plan' as const, label: t('Plan'), hint: t('Your band’s plan'), value: planName(plan), icon: Crown }] : []),
     { id: 'appearance', label: t('Appearance'), hint: t('Light, dark or system'), value: themeLabel, icon: Sun },
     { id: 'units', label: t('Units'), hint: t('Distances in km or miles'), value: distanceUnit === 'mi' ? t('Miles') : t('Kilometres'), icon: Navigation },
@@ -319,14 +296,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (deleteText.trim().toUpperCase() !== 'DELETE' || deleting) return;
     setDeleting(true);
     setDeleteError(null);
-    const result = await deleteMyAccount();
+    // Committed (round 6, Claude): the server finishes it within minutes,
+    // so this device signs out as after a deletion that finished.
+    const result = asFinishedDeletion(await deleteMyAccount());
     if (result.ok) {
+      // Its unsent chat messages go with it (sign-out alone keeps them).
+      await import('@/lib/chatOutbox').then((m) => m.discardChatOutbox(user?.id)).catch(() => {});
       // Quick sign-in (Face ID) must not keep the deleted account's session.
       await import('@/lib/services/biometric')
         .then((m) => m.forgetQuickSignInFor(user?.id, user?.email))
         .catch(() => {});
-      // The account no longer exists: clear the local session.
-      await signOut().catch(() => {});
+      // The account no longer exists: clear the local session and its unsent changes.
+      await signOut({ discardPendingWrites: true }).catch(() => {});
       onClose();
       return;
     }
@@ -540,7 +521,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </IconTile>
           <RowText
             title={t('Anonymous usage statistics')}
-            hint={t('Which screens are used and how often, to improve BandWith. Never your songs, gigs, messages or contacts, and nothing for ads.')}
+            hint={
+              <>
+                {t('Which screens are used and how often, and the crash details if the app crashes, to improve BandWith. Never your songs, gigs, messages or contacts, and nothing for ads.')}
+                {analyticsSaveFailed && (
+                  <span role="alert" className="block mt-1 text-destructive">
+                    {t("Couldn't save the choice, free up some space")}
+                  </span>
+                )}
+              </>
+            }
           />
           <Toggle
             checked={analyticsConsent === 'granted'}
@@ -549,6 +539,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           />
         </div>
       )}
+      <CrashReportsRow />
       {/* Personal gigs are private by design (only their creator can read them,
           migration 056): bands never see their title or venue. */}
       <div className={cn(CARD, 'p-4 flex items-center gap-3')}>
@@ -604,7 +595,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <span className="bw-h2 text-destructive">{t('Delete account')}</span>
         </div>
         <p className="bw-body-md text-foreground">
-          {t('Permanently removes your profile, personal gigs and messages. If you are the only admin of a band with other members, make someone else admin first; bands where you are alone are deleted with your account.')}
+          {t('Permanently removes your profile, personal gigs and direct messages. Your messages in band, gig and group chats stay, shown as from a former member. If you are the only admin of a band with other members, make someone else admin first; bands where you are alone are deleted with your account.')}
         </p>
         <PillButton
           variant="danger"
@@ -877,7 +868,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 {t('Delete account?')}
               </h2>
               <p id="delete-account-desc" className="bw-body-md text-muted-foreground">
-                {t("This can't be undone. Your profile, personal gigs and messages will be deleted.")}
+                {t("This can't be undone. Your profile, personal gigs and direct messages will be deleted. Your messages in band, gig and group chats stay, shown as from a former member.")}
               </p>
               <div className="flex flex-col gap-2">
                 <label htmlFor="delete-account-confirm" className="bw-label-sm text-muted-foreground">

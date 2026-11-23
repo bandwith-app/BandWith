@@ -22,6 +22,7 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { VoiceAssignmentScope } from '@/app/components/songs/WhoSingsWhat';
 import { isMyPart, lineVoice, songVoiceParts, stripVoiceMarkers, voiceRuns, type VoicePart } from '@/lib/voiceParts';
 import { useMyVoicePart, useVoiceHighlight, voiceClass, VoiceLegend } from './VoiceParts';
+import { useFlag } from '@/lib/appFlags';
 
 const SIZES = [18, 21, 24, 28, 33, 40];
 const SIZE_KEY = 'bw-lyrics-size';
@@ -115,15 +116,24 @@ const ChordedText: React.FC<{ text: string; hideChords?: boolean }> = ({ text, h
  * on their own. With "Highlight my part", the parts I don't sing dim a
  * little (`mine` null: nothing dims).
  */
-const LyricsLine: React.FC<{ line: string; hideChords?: boolean; mine?: VoicePart[] | null }> = ({ line, hideChords, mine }) => {
+const LyricsLine: React.FC<{ line: string; hideChords?: boolean; mine?: VoicePart[] | null; plain?: boolean; at?: string }> = ({ line, hideChords, mine, plain, at }) => {
   const runs = React.useMemo(() => voiceRuns(line), [line]);
   const voice = React.useMemo(() => lineVoice(line), [line]);
   // Lyrics only: a chords-only line disappears.
   if (hideChords && !lyricWords(stripVoiceMarkers(line)).trim()) return null;
+  // Voice parts switched off (app_flags voice_parts): every line reads as lead, markers never shown.
+  if (plain) {
+    return (
+      <p data-line={at} className="font-medium break-words">
+        <ChordedText text={runs.map((r) => r.text).join('')} hideChords={hideChords} />
+      </p>
+    );
+  }
   const dim = (v: VoicePart) => (mine && !isMyPart(v, mine) ? true : undefined);
   if (voice !== 'mixed') {
     return (
       <p
+        data-line={at}
         className={cn('font-medium break-words', voiceClass(voice))}
         data-voice={voice === 'lead' ? undefined : voice}
         data-voice-dim={dim(voice)}
@@ -133,7 +143,7 @@ const LyricsLine: React.FC<{ line: string; hideChords?: boolean; mine?: VoicePar
     );
   }
   return (
-    <p className="font-medium break-words">
+    <p data-line={at} className="font-medium break-words">
       {runs.map((r, k) => (
         <span key={k} className={voiceClass(r.voice)} data-voice={r.voice === 'lead' ? undefined : r.voice} data-voice-dim={dim(r.voice)}>
           <ChordedText text={r.text} hideChords={hideChords} />
@@ -175,7 +185,9 @@ const LyricsSections: React.FC<LyricsTextProps> = ({
   // My notes (109): under their lines, and lines to tap while adding one.
   const refs = useLineRefs(lyrics);
   // Voice parts (§5): a legend when the song uses them; my part bright, the others dimmed.
-  const parts = React.useMemo(() => songVoiceParts(normalizeLyrics(lyrics)), [lyrics]);
+  // Off with the kill switch (docs/flags.md): plain lines, no legend.
+  const voicesOn = useFlag('voice_parts');
+  const parts = React.useMemo(() => (voicesOn ? songVoiceParts(normalizeLyrics(lyrics)) : []), [lyrics, voicesOn]);
   const myPart = useMyVoicePart();
   const [highlight, setHighlight] = useVoiceHighlight();
   const mine = parts.length > 0 && highlight ? myPart : null;
@@ -186,19 +198,20 @@ const LyricsSections: React.FC<LyricsTextProps> = ({
         <p className={`bw-body-lg ${muted}`}>{tr('No lyrics for this song yet.')}</p>
       ) : (
         sections.map((s, i) => (
-          <section key={i} className="flex flex-col gap-1">
+          // data-lyric-section / LyricsLine's data-line: Follow the tempo (StageFollow) lights the line being sung.
+          <section key={i} data-lyric-section={i} className="flex flex-col gap-1">
             {s.name && <h3 className={`bw-label-md ${muted} uppercase mb-1`}>{sectionLabel(s.name, tr)}</h3>}
             {s.lines.map((line, j) =>
               line.trim() ? (
                 refs?.get(`${i}:${j}`) ? (
                   <React.Fragment key={j}>
                     <PickableLine refLine={refs.get(`${i}:${j}`)!} sectionName={s.name}>
-                      <LyricsLine line={line} hideChords={hideChords} mine={mine} />
+                      <LyricsLine line={line} hideChords={hideChords} mine={mine} plain={!voicesOn} at={`${i}:${j}`} />
                     </PickableLine>
                     <LineNotes id={`${i}:${j}`} line={line} />
                   </React.Fragment>
                 ) : (
-                  <LyricsLine key={j} line={line} hideChords={hideChords} mine={mine} />
+                  <LyricsLine key={j} line={line} hideChords={hideChords} mine={mine} plain={!voicesOn} at={`${i}:${j}`} />
                 )
               ) : (
                 <span key={j} className="block h-[0.8em]" aria-hidden />

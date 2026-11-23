@@ -71,8 +71,23 @@ export const countryName = (c: Pick<CountryTaxPreset, 'code' | 'name'>): string 
   }
 };
 
-export const currencySymbol = (code?: string | null): string =>
-  CURRENCIES.find((c) => c.code === code)?.symbol ?? '€';
+export const currencySymbol = (code?: string | null): string => {
+  const known = CURRENCIES.find((c) => c.code === code)?.symbol;
+  if (known) return known;
+  // Any other ISO code a quote can carry (CAD, AUD, SEK...): its own symbol,
+  // never €; a letters-only one gets a space, as "CHF ".
+  const iso = String(code || '').trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(iso)) return '€';
+  try {
+    const part = new Intl.NumberFormat('en-US', { style: 'currency', currency: iso })
+      .formatToParts(0)
+      .find((p) => p.type === 'currency')?.value;
+    if (part) return /^[A-Za-z]+$/.test(part) ? `${part} ` : part;
+  } catch {
+    /* not a currency Intl knows */
+  }
+  return `${iso} `;
+};
 
 // ── Active currency store ───────────────────────────────────────
 

@@ -64,6 +64,15 @@ export function isGigType(eventType: string | null | undefined): boolean {
   return !(NOT_GIG_TYPES as readonly string[]).includes((eventType || '').toLowerCase());
 }
 
+/**
+ * Who is owed on a played gig: confirmed, a fee above 0, not paid yet. The
+ * list (Home, Analytics, the gig's Fee & payouts) and "Mark all as paid"
+ * (bw_mark_event_paid, 186) use this one rule.
+ */
+export function isOwedPayout(row: { status?: string | null; fee?: number | string | null; paidAt?: string | null }): boolean {
+  return (row.status || '').toLowerCase() === 'confirmed' && Number(row.fee) > 0 && !row.paidAt;
+}
+
 export function payoutsDue(input: PayoutsDueInput): GigPayouts[] {
   const statusOf = new Map(input.members.map((m) => [`${m.event_id}:${m.user_id}`, (m.status || '').toLowerCase()]));
   const result: GigPayouts[] = [];
@@ -78,9 +87,8 @@ export function payoutsDue(input: PayoutsDueInput): GigPayouts[] {
     for (const row of input.money) {
       if (row.event_id !== gig.id) continue;
       if (!input.isAdmin && row.user_id !== input.viewerId) continue;
-      if (statusOf.get(`${gig.id}:${row.user_id}`) !== 'confirmed') continue;
       const fee = Number(row.fee);
-      if (!(fee > 0) || row.paid_at) continue;
+      if (!isOwedPayout({ status: statusOf.get(`${gig.id}:${row.user_id}`), fee, paidAt: row.paid_at })) continue;
       payouts.push({ userId: row.user_id, fee });
     }
     if (payouts.length === 0) continue;

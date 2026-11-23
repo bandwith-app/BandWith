@@ -16,9 +16,40 @@ import { t } from '@/lib/i18n';
  * - bt-off: Bluetooth turned off on the phone;
  * - unsupported: this phone can't do it;
  * - outdated: linked, but the leader's setlist has other songs than the one
- *   on this phone (songs added or removed while it was offline).
+ *   on this phone (songs added or removed while it was offline);
+ * - old-leader: linked and following, but the leader's app is from before
+ *   signed states (audit #1): it works, the leader should update.
+ * - stale-key: the server says the gig's key pair changed (an admin stopped
+ *   being one, migration 190: "pending") and the new one isn't on this phone
+ *   yet: one trip online. Never from a leader's claim alone.
+ * - unverified: linked and following, but this phone has no key to check the
+ *   leader's signature yet (it wasn't online since the pair was made).
+ * - leader-unverified: linked and following an admin on this app who has no
+ *   key pair yet (offline since before one was made): it can't sign.
+ * - not-admin: this phone leads, but the server says its account is no
+ *   longer an admin of the band: phones on this app won't follow it.
+ * - clock-off: linked, but the leader's band-key state is far ahead of this
+ *   phone's time, with no clock measured to explain it: not followed.
  */
-export type StageBleStatus = 'off' | 'leading' | 'searching' | 'connected' | 'denied' | 'bt-off' | 'unsupported' | 'outdated';
+export type StageBleStatus =
+  | 'off'
+  | 'leading'
+  | 'not-admin'
+  | 'searching'
+  | 'connected'
+  | 'old-leader'
+  | 'stale-key'
+  | 'unverified'
+  | 'leader-unverified'
+  | 'denied'
+  | 'bt-off'
+  | 'unsupported'
+  | 'outdated'
+  | 'clock-off';
+
+/** A member's phone linked to the leader's (and following it). */
+export const bleLinked = (status: StageBleStatus | undefined) =>
+  status === 'connected' || status === 'old-leader' || status === 'unverified' || status === 'leader-unverified';
 
 export interface StageBleNoticeInput {
   status: StageBleStatus;
@@ -27,6 +58,8 @@ export interface StageBleNoticeInput {
   isLeader: boolean;
   /** Leader: phones linked to it. */
   followers: number;
+  /** Leader: leading with no key pair (offline before one was made, or none could be made): only older apps can check it. */
+  unsigned?: boolean;
   platform: string;
 }
 
@@ -37,7 +70,7 @@ export interface StageBleNotice {
   action?: 'allow' | 'turn-on';
 }
 
-export function stageBleNotice({ status, online, isLeader, followers, platform }: StageBleNoticeInput): StageBleNotice | null {
+export function stageBleNotice({ status, online, isLeader, followers, unsigned, platform }: StageBleNoticeInput): StageBleNotice | null {
   if (status === 'off') return null;
   if (status === 'denied') {
     return {
@@ -48,6 +81,10 @@ export function stageBleNotice({ status, online, isLeader, followers, platform }
       action: 'allow',
     };
   }
+  // Worth fixing before the internet drops, so shown with it up too.
+  if (status === 'old-leader') return { tone: 'warn', text: t("The leader's app is out of date: ask them to update") };
+  // Online or not: the band won't follow this phone.
+  if (status === 'not-admin') return { tone: 'warn', text: t("You're no longer an admin for this band: another admin needs to lead.") };
   // With the internet up, the band is in sync anyway: nothing to say.
   if (online) return null;
   switch (status) {
@@ -56,6 +93,7 @@ export function stageBleNotice({ status, online, isLeader, followers, platform }
     case 'searching':
       return { tone: 'warn', text: t('Not connected: ask the leader to open Stage') };
     case 'leading':
+      if (unsigned) return { tone: 'warn', text: t("Phones on the latest app can't check you yet: connect to the internet once with Stage open.") };
       if (followers <= 0) return { tone: 'warn', text: t('No phones connected yet: ask the band to open Stage') };
       return {
         tone: 'ok',
@@ -67,6 +105,14 @@ export function stageBleNotice({ status, online, isLeader, followers, platform }
         : { tone: 'warn', text: t('Bluetooth is off: turn it on in Control Center to stay in sync without internet.') };
     case 'outdated':
       return { tone: 'warn', text: t('This phone has an older setlist: connect to the internet once to follow the leader.') };
+    case 'stale-key':
+      return { tone: 'warn', text: t('The band changed who can lead: connect to the internet once to follow the leader.') };
+    case 'unverified':
+      return { tone: 'warn', text: t('Leader not verified yet: connect to the internet once to check it.') };
+    case 'leader-unverified':
+      return { tone: 'warn', text: t('Leader not verified yet: ask the leader to connect to the internet once.') };
+    case 'clock-off':
+      return { tone: 'warn', text: t("This phone's time and the leader's are far apart: set both to automatic date and time.") };
     case 'unsupported':
       return {
         tone: 'warn',
@@ -82,3 +128,27 @@ export const bleProblem = (error: unknown): 'denied' | 'unsupported' => {
   const msg = String((error as { message?: unknown })?.message ?? error);
   return /unsupported|not available|not supported/i.test(msg) ? 'unsupported' : 'denied';
 };
+
+export interface FollowLabelInput {
+  following: boolean;
+  /** A leader's state (a song) has arrived. */
+  leaderSeen: boolean;
+  /** The leader's phone is in Stage mode and reachable, song picked or not. */
+  leaderHere?: boolean;
+  /** The live channel (internet) is connected. */
+  connected: boolean;
+  bluetooth?: StageBleStatus;
+}
+
+/**
+ * A member's follow button, one state at a time and never against the status
+ * line: linked to the leader's phone before it picked a song is "hasn't
+ * started yet", not "waiting".
+ */
+export function followLabel({ following, leaderSeen, leaderHere, connected, bluetooth }: FollowLabelInput): string {
+  if (!following) return t('Follow leader');
+  if (!leaderSeen) return leaderHere ? t("Leader hasn't started yet") : t('Waiting for leader');
+  // Linked to the leader's phone in any of its states (signed, an older app's, not checkable yet: #288).
+  if (!connected && !bleLinked(bluetooth)) return t('Offline');
+  return t('Following leader');
+}

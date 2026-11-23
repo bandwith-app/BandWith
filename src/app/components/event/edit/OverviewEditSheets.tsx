@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Folder, MapPin, Plus, X } from '@/app/components/icons';
 import { BwSheet, IconButton } from '@/app/components/bw/Screen';
 import { FormError, PillButton, PillField, Selector } from '@/app/components/bw/Form';
@@ -41,6 +41,7 @@ import {
   type VenueCardValues,
 } from '@/lib/eventOverviewEdit';
 import type { OverviewEditApi } from './useOverviewEdit';
+import { newUuid } from '@/lib/uuid';
 
 /**
  * The editors behind the overview's EDIT actions (one sheet per card), so a
@@ -84,11 +85,14 @@ const EditSheet: React.FC<{
   overline: string;
   dirty: boolean;
   canSave?: boolean;
+  /** Why Save is off, shown under the buttons and tied to Save (aria-describedby). */
+  saveHint?: string | null;
   saving: boolean;
   error: string | null;
   onSave: () => void;
   children: React.ReactNode;
-}> = ({ open, onClose, title, overline, dirty, canSave = true, saving, error, onSave, children }) => {
+}> = ({ open, onClose, title, overline, dirty, canSave = true, saveHint, saving, error, onSave, children }) => {
+  const hintId = React.useId();
   const t = useT();
   // Leaving with edits (closing, or opening another card's editor) asks
   // first: Save changes / Discard / Keep editing.
@@ -129,10 +133,22 @@ const EditSheet: React.FC<{
             <PillButton variant="outline" size="lg" onClick={requestClose} disabled={saving}>
               {t('Cancel')}
             </PillButton>
-            <PillButton variant="primary" size="lg" onClick={onSave} loading={saving} disabled={!dirty || !canSave}>
+            <PillButton
+              variant="primary"
+              size="lg"
+              onClick={onSave}
+              loading={saving}
+              disabled={!dirty || !canSave}
+              aria-describedby={saveHint && dirty && !canSave ? hintId : undefined}
+            >
               {t('Save')}
             </PillButton>
           </div>
+          {saveHint && dirty && !canSave && (
+            <p id={hintId} className="text-sm text-muted-foreground text-center">
+              {saveHint}
+            </p>
+          )}
         </div>
       }
     >
@@ -195,17 +211,28 @@ const EventFieldsSheet: React.FC<SheetBase & { allEvents?: EventData[] }> = ({ o
   const { saving, error, setError, run } = useSaving(onClose);
   const [v, setV] = useState<EventCardValues>(() => eventCardValues(event));
   const [initial, setInitial] = useState(v);
+  // A new date for one date of a series (the first one too): that date only,
+  // or the whole series (Claude #297 round 3). Asked before Save.
+  const [moveScope, setMoveScope] = useState<'date' | 'series' | null>(null);
+  // One request id per opening: a retry of "Only this date" creates nothing more.
+  const moveRequest = React.useRef('');
   useEffect(() => {
     if (!open) return;
     const now = eventCardValues(event);
     setV(now);
     setInitial(now);
+    setMoveScope(null);
+    moveRequest.current = newUuid(); // a real uuid on every browser (Codex #297 r7 M3)
     setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   const set = (p: Partial<EventCardValues>) => setV((prev) => ({ ...prev, ...p }));
   // Only what the admin changed (a gig with no start time yet opens on 20:00).
-  const patch = JSON.stringify(v) !== JSON.stringify(initial) ? changedPatch(event, eventCardPatch(kind, v)) : null;
+  const askMove = kind === 'rehearsal' && initial.recurrence !== 'once' && v.recurrence !== 'once' && !!v.date && v.date !== initial.date;
+  const patch = JSON.stringify(v) !== JSON.stringify(initial)
+    ? changedPatch(event, eventCardPatch(kind, v, event, askMove ? moveScope ?? undefined : undefined))
+    : null;
+  const moveOnly = askMove && moveScope === 'date';
   const accent = kind === 'rehearsal' ? 'var(--accent-rehearsal)' : 'var(--accent-gig)';
   const overline = timeOverlineOf(t, kind, v.date);
   const pickerEvents = useMemo(() => toDatePickerEvents(allEvents, event.eventId), [allEvents, event.eventId]);
@@ -230,11 +257,20 @@ const EventFieldsSheet: React.FC<SheetBase & { allEvents?: EventData[] }> = ({ o
       onClose={onClose}
       overline={event.title}
       title={t('Title, date & times')}
-      dirty={!!patch}
-      canSave={!!v.title.trim() && !!v.date}
+      dirty={!!patch || askMove}
+      canSave={!!v.title.trim() && !!v.date && (!askMove || !!moveScope)}
+      saveHint={askMove && !moveScope ? t('Choose which dates to move to save.') : null}
       saving={saving}
       error={error}
-      onSave={() => run(() => api.saveFields(patch))}
+      onSave={() =>
+        run(() =>
+          moveOnly
+            ? api.moveDateOnly
+              ? api.moveDateOnly({ title: v.title, date: v.date, startTime: v.startTime, endTime: v.endTime, clientId: moveRequest.current })
+              : Promise.resolve(t('Could not save the event. Please try again.'))
+            : api.saveFields(patch),
+        )
+      }
     >
       <PillField
         label={kind === 'rehearsal' ? t('Session title') : t('Event title')}
@@ -272,6 +308,21 @@ const EventFieldsSheet: React.FC<SheetBase & { allEvents?: EventData[] }> = ({ o
           availability={{ bandId: event.band_id, start: v.startTime, end: v.endTime, excludeEventId: event.eventId }}
         />
       </div>
+      {askMove && (
+        <div className="flex flex-col gap-2">
+          <Label>{t('Move which dates?')}</Label>
+          <Segmented<'date' | 'series' | ''>
+            label={t('Move which dates?')}
+            value={moveScope ?? ''}
+            options={[
+              { value: 'date', label: t('Only this date') },
+              { value: 'series', label: t('The whole series') },
+            ]}
+            onChange={(s) => setMoveScope(s === '' ? null : s)}
+            size="sm"
+          />
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-2 min-w-0">
           <Label htmlFor="ovw-start">{t('Start time')}</Label>
@@ -545,6 +596,20 @@ const LineupSheet: React.FC<SheetBase & { lineup: ResolvedMember[]; currentUserI
   };
 
   const known = new Set(initial.ids);
+  const feesUnknown = lineup.some((m) => m.feeUnknown);
+  // 05 #5: the real fees came in while the sheet was open (back online):
+  // the musicians already on the lineup start from them, not the zeros shown.
+  const feesWereUnknown = useRef(feesUnknown);
+  useEffect(() => {
+    if (open && feesWereUnknown.current && !feesUnknown) {
+      setFees((prev) => {
+        const next = { ...prev };
+        for (const id of Object.keys(initial.fees)) if (id in next) next[id] = initial.fees[id];
+        return next;
+      });
+    }
+    feesWereUnknown.current = feesUnknown;
+  }, [open, feesUnknown, initial]);
   const feeOf = (id: string) => (kind === 'gig' && tbd ? 0 : amountOf(fees[id]));
   const wanted: LineupRow[] = selected.map((id) => ({
     user_id: id,
@@ -572,10 +637,14 @@ const LineupSheet: React.FC<SheetBase & { lineup: ResolvedMember[]; currentUserI
       title={kind === 'rehearsal' ? t('Band roster') : t('Lineup')}
       dirty={dirty}
       // A rehearsal for nobody isn't one (the Edit page read an empty list as the whole band).
-      canSave={kind === 'gig' || selected.length > 0}
+      // 05 #5: a gig's lineup saves fees: not while the real fees are unknown.
+      canSave={kind === 'gig' ? !feesUnknown : selected.length > 0}
       saving={saving}
-      error={error}
-      onSave={() => run(() => api.saveLineup(wanted, feePatch, tbd))}
+      error={kind === 'gig' && feesUnknown ? t('The fees could not be loaded, so the lineup cannot be saved yet. Try again when you are back online.') : error}
+      onSave={() => {
+        if (kind === 'gig' && feesUnknown) return;
+        run(() => api.saveLineup(wanted, feePatch, tbd));
+      }}
     >
       {kind === 'gig' && rosterIds.length > 1 && (
         <div className="flex flex-col gap-2">
@@ -657,6 +726,7 @@ const FeeSheet: React.FC<SheetBase & { lineup: ResolvedMember[] }> = ({ open, on
   const { saving, error, setError, run } = useSaving(onClose);
   const pricing = usePricing(event.band_id, open);
   const members = useMemo(() => lineup.filter((m): m is ResolvedMember & { userId: string } => !!m.userId), [lineup]);
+  const feesUnknown = lineup.some((m) => m.feeUnknown);
   const wasTbd = event.paymentStatus === 'tbd';
   const initial = useMemo(() => {
     const fees: Record<string, string> = {};
@@ -675,6 +745,17 @@ const FeeSheet: React.FC<SheetBase & { lineup: ResolvedMember[] }> = ({ open, on
     setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  // 05 #5: the real fees came in while the sheet was open: start from them
+  // (and the extra band fee they give), not from the zeros shown before.
+  const feesWereUnknown = useRef(feesUnknown);
+  useEffect(() => {
+    if (open && feesWereUnknown.current && !feesUnknown) {
+      setFees(initial.fees);
+      setExtra(initial.extra);
+    }
+    feesWereUnknown.current = feesUnknown;
+  }, [open, feesUnknown, initial]);
 
   const memberFee = (id: string) => (tbd ? 0 : amountOf(fees[id]));
   const feesChanged = members.some((m) => memberFee(m.userId) !== amountOf(initial.fees[m.userId]));
@@ -703,7 +784,20 @@ const FeeSheet: React.FC<SheetBase & { lineup: ResolvedMember[] }> = ({ open, on
     );
 
   return (
-    <EditSheet open={open} onClose={onClose} overline={event.title} title={t('Edit fee')} dirty={dirty} saving={saving} error={error} onSave={save}>
+    <EditSheet
+      open={open}
+      onClose={onClose}
+      overline={event.title}
+      title={t('Edit fee')}
+      dirty={dirty}
+      // 05 #5: the fees shown are not the real ones: nothing to save from them.
+      canSave={!feesUnknown}
+      saving={saving}
+      error={feesUnknown ? t('The fees could not be loaded, so they cannot be changed yet. Try again when you are back online.') : error}
+      onSave={() => {
+        if (!feesUnknown) save();
+      }}
+    >
       {kind === 'gig' && (
         <div className="flex flex-col gap-3">
           <Selector selected={tbd} onClick={() => setTbd((v) => !v)}>

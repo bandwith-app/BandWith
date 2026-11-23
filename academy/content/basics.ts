@@ -257,8 +257,8 @@ const basics: AreaModule = {
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Four cards: your band in one place, putting a gig on the calendar, who sees which fees, and your rates. The last card has **Configure rates**, which opens **Pricing, fees & services**." },
-            { role: "member", text: "Three cards: Home, answering a gig invitation, and the songs (chords, lyrics, your notes and Stage mode)." },
+            { role: "admin", text: "Five cards: your band in one place, putting a gig on the calendar, setlists ready without signal, who sees which fees, and your rates. The last card has **Configure rates**, which opens **Pricing, fees & services**." },
+            { role: "member", text: "Four cards: Home, answering a gig invitation, the songs (chords, lyrics, your notes and Stage mode), and setlists ready without signal." },
             { role: "deputy", text: "Three cards on **Deputy gigs**: answering a request, what the band shares with you, and adding your deputy gigs to your calendar." },
           ],
         },
@@ -675,11 +675,11 @@ const basics: AreaModule = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["offline", "no connection", "sync", "airplane mode", "cached"],
-      related: ["drafts", "sign-in", "sign-out"],
+      related: ["drafts", "sign-in", "sign-out", "live-mode-offline", "changes-without-signal"],
       body: [
         { type: "p", text: "Your bands, gigs and setlists stay available without a connection: the app shows what it last loaded on this device. A strip under the status bar says **You’re offline · showing cached info**." },
-        { type: "p", text: "Creating, editing or deleting a gig or rehearsal works offline. The app says **Saved offline • Will sync when connected** and the strip counts the waiting changes: **You’re offline · 2 changes will sync**." },
-        { type: "p", text: "When the connection comes back, the changes are sent on their own. The strip shows **Back online · 2 changes to sync** with a **Sync now** button, then **Back online · synced**." },
+        { type: "p", text: "Creating, editing or deleting a gig or rehearsal works offline. The app says **Saved offline • Will sync when connected** and the strip counts the waiting changes: **You’re offline · 2 changes waiting for signal**." },
+        { type: "p", text: "When the connection comes back, the changes are sent on their own. The strip shows **Back online · sending 2 changes** with a **Send now** button, then **Back online · up to date**. For Stage and Live mode, see [[live-mode-offline]]." },
         {
           type: "list",
           title: "Needs a connection",
@@ -690,7 +690,7 @@ const basics: AreaModule = {
             "Signing in for the first time on a device.",
           ],
         },
-        { type: "note", tone: "tip", text: "Signing out sends waiting changes first, which can take a few seconds. Sign out only once the strip says synced if you want to be sure." },
+        { type: "note", tone: "tip", text: "Signing out sends waiting changes first, which can take a few seconds. Sign out only once the strip says up to date if you want to be sure." },
       ],
     },
 
@@ -725,7 +725,7 @@ const basics: AreaModule = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["settings", "preferences", "options", "app settings"],
-      related: ["calendar-sync", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
+      related: ["calendar-sync", "offline-and-live-settings", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
       body: [
         { type: "p", text: "Open the menu (the last tab), then tap **Settings & account**. **App settings** lists the sections:" },
         {
@@ -734,9 +734,10 @@ const basics: AreaModule = {
           rows: [
             ["**Notifications**", "**Push notifications**, **Email notifications**, **Product news**", "Your account (all devices)"],
             ["**Calendar sync**", "A private link to your events for **Apple Calendar**, **Google Calendar** or Outlook ([[calendar-sync]])", "Your account (all devices)"],
+            ["**Offline & live**", "**Automatic download**, **Wi-Fi only**, **Space used** for the setlists kept for no signal ([[offline-and-live-settings]])", "Mixed: **Automatic download** follows your account, the rest is this device"],
             ["**Appearance**", "Theme: **Light**, **Dark**, **System**", "This device"],
             ["**Units**", "**Kilometres** or **Miles**", "This device"],
-            ["**Privacy & account**", "**App lock**, **Anonymous usage statistics**, hide personal gig details, **Export my data**, Terms, Privacy Policy, **Delete account**", "Mixed (see [[privacy-and-account-settings]])"],
+            ["**Privacy & account**", "**App lock**, **Anonymous usage statistics**, **Send crash reports**, hide personal gig details, **Export my data**, Terms, Privacy Policy, **Delete account**", "Mixed (see [[privacy-and-account-settings]])"],
             ["**iPhone Duo**", "**Laptop pose**. Only on dual-screen phones", "This device"],
             ["**Language**", "**Automatic** or one of six languages", "This device, plus your pushes and emails"],
             ["**Help & support**", "Answers and what you can do in the app", "-"],
@@ -890,7 +891,8 @@ const basics: AreaModule = {
           type: "list",
           items: [
             "**App lock** (phones and tablets only): ask for Face ID, fingerprint or the device passcode when BandWith starts again after being closed. Per device ([[app-lock]]).",
-            "**Anonymous usage statistics** (Android and iOS apps only): off until you say yes. BandWith asks once, after the first tour; the answer can be changed here anytime. It shares only which screens are used and how often, never your songs, gigs, messages or contacts, and nothing for ads. Switching it off deletes what was collected on this device. Per device.",
+            "**Anonymous usage statistics** (Android and iOS apps only): off until you say yes. BandWith asks once, after the first tour; the answer can be changed here anytime. It shares only which screens are used and how often, never your songs, gigs, messages or contacts, and nothing for ads. Switching it off deletes what was collected on this device. Per device. With a yes, the phone apps also send the crash details if the app crashes.",
+            "**Send crash reports**: on unless you switch it off. When something goes wrong, BandWith sends the error, the screen it happened on and the app version, so it can be fixed. Never your songs, gigs, messages or contacts. Per device. On the phone apps, full crash details go only with **Anonymous usage statistics** on too.",
             "**Personal gigs stay private**: an info row, not a switch. Only you see the title and venue of your personal gigs; bands only see that you are busy ([[personal-gigs]]).",
             "**Export my data**: a JSON copy of what you own ([[export-your-data]]).",
             "**Terms of Service** and **Privacy Policy**: open the documents inside the app.",
@@ -933,13 +935,13 @@ const basics: AreaModule = {
     {
       id: "delete-your-account",
       title: "Delete your account",
-      summary: "Permanently remove your profile, personal gigs and messages.",
+      summary: "Permanently remove your profile, personal gigs and direct messages.",
       roles: ["admin", "member", "deputy"],
       kind: "task",
       keywords: ["delete account", "close account", "remove account", "erase"],
       related: ["export-your-data", "privacy-and-account-settings", "make-admin"],
       body: [
-        { type: "note", tone: "warning", text: "This can't be undone. Your profile, personal gigs and messages are deleted. Export your data first if you want a copy." },
+        { type: "note", tone: "warning", text: "This can't be undone. Your profile, personal gigs and direct messages are deleted. Your messages in band, gig and group chats stay, shown as from a **Former member**. Export your data first if you want a copy." },
         {
           type: "steps",
           items: [
@@ -1332,7 +1334,7 @@ const basics: AreaModule = {
     { term: "Side rail", definition: "On a dual-screen phone, the column beside the screen that holds the tabs, Back, Search and your profile.", see: "duo-closed" },
     { term: "Book", definition: "A dual-screen phone opened like a book: two pages, lists on the left and details on the right.", see: "duo-book" },
     { term: "Laptop pose", definition: "A dual-screen phone standing half folded: the upper half (Display) to read, the lower half (Deck) to touch.", see: "duo-laptop-pose" },
-    { term: "Offline strip", definition: "The bar under the status bar that says you are offline and how many changes will sync.", see: "offline-mode" },
+    { term: "Offline strip", definition: "The bar under the status bar that says you are offline and how many changes are waiting for signal.", see: "offline-mode" },
   ],
 
   shots: [

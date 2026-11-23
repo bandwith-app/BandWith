@@ -23,6 +23,7 @@ import { formatDayShort, formatTime12 } from '@/app/components/event/format';
 import { inviteFeeToShow } from '@/lib/inviteFee';
 import { useSheetDrag } from '@/app/components/bw/useSheetDrag';
 import { useSystemBack } from '@/lib/backStack';
+import { useFocusTrap } from '@/lib/focusTrap';
 import { useT, intlLocale } from '@/lib/i18n';
 import { useLineupSoFar } from '@/app/hooks/useLineupSoFar';
 import { LineupSoFar } from '@/app/components/event/LineupSoFar';
@@ -67,6 +68,11 @@ export const EventRSVPSheet: React.FC<EventRSVPSheetProps> = ({
   const drag = useSheetDrag(onClose);
   // Android Back and Escape close this sheet, not the screen beneath.
   useSystemBack(true, onClose);
+  // Its own focus trap: opened from the inbox or the urgent pop-up (which
+  // close as it opens), it takes the focus over, and gives it back to what
+  // opened them (the bell) when it closes.
+  const sheetRef = React.useRef<HTMLDivElement | null>(null);
+  useFocusTrap(sheetRef, true);
   useCurrency(); // re-render money labels when the band currency changes
   const [isSubmitting, setIsSubmitting] = useState(false);
   // An older "maybe" preselects nothing: the member picks a firm answer.
@@ -226,6 +232,8 @@ export const EventRSVPSheet: React.FC<EventRSVPSheetProps> = ({
 
       {/* Figma: Event / RSVP – conflict (Sheet, Style=Dark) */}
       <motion.div
+        ref={sheetRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={t('RSVP: {title}', { title: eventTitle })}
@@ -233,7 +241,7 @@ export const EventRSVPSheet: React.FC<EventRSVPSheetProps> = ({
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
         transition={{ type: 'tween', duration: 0.32, ease: [0.32, 0.72, 0, 1] }}
-        className="bw-rail-sheet bw-sheet-card fixed bottom-0 left-0 right-0 z-[185] bg-sheet text-sheet-foreground rounded-t-[32px] sm:rounded-[32px] px-5 pt-3 sm:max-w-lg sm:mx-auto sm:bottom-6 max-h-[90vh] overflow-hidden flex flex-col"
+        className="bw-rail-sheet bw-sheet-card outline-none fixed bottom-0 left-0 right-0 z-[185] bg-sheet text-sheet-foreground rounded-t-[32px] sm:rounded-[32px] px-5 pt-3 sm:max-w-lg sm:mx-auto sm:bottom-6 max-h-[90vh] overflow-hidden flex flex-col"
         style={{ paddingBottom: 'calc(16px + var(--safe-bottom))' }}
         {...drag.sheet}
       >

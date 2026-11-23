@@ -6,7 +6,7 @@
  * song's iReal chart and key. Pure: no React, no network.
  */
 import { chordLabel, type ChartSection, type SongChart } from './ireal';
-import { isChordToken, parseLyrics, type LyricsSection } from './lyrics';
+import { isChordToken, parseJsonLyrics, parseLyrics, type LyricsSection } from './lyrics';
 import { foldSemitones, parseKey, pitchClass, transposeLyrics, prefersFlats } from './transpose';
 import { instrumentKeys } from './instruments';
 import { chordTokenSymbol } from './musicSymbols';
@@ -385,6 +385,20 @@ export function applyKeyFix(lyrics: string, fix: KeyCheck): string {
 // ── Tidy the whole text ────────────────────────────────────────────────────
 
 /**
+ * JSON lyrics → the same song as text (`# Section` headings, one line per
+ * line), for editors that work line by line: the chord editor placed a chord
+ * on the JSON itself (`[C]{"lines":[…]}`) and the reader then showed the JSON
+ * (audit 09 #8). Null when `raw` is not JSON lyrics.
+ */
+export function jsonLyricsAsText(raw: string | null | undefined): string | null {
+  const sections = parseJsonLyrics(raw);
+  if (!sections) return null;
+  return sections
+    .map((s) => [...(s.name ? [`# ${s.name}`] : []), ...s.lines.map((l) => l.replace(/\s+$/, ''))].join('\n'))
+    .join('\n\n');
+}
+
+/**
  * Any lyrics text → the band's format: section headings as `# Name` with
  * normalized names ("Rit." → "Chorus", "[Strofa 2]" → "Verse 2"), repeated
  * unnumbered verses numbered, chord lines over lyrics merged inline, and
@@ -575,6 +589,27 @@ export function setWordChord(line: string, wordIndex: number, chord: string | nu
   return serializeLine(model);
 }
 
+/**
+ * One chord of a word (several can share one: "[C][D]Hello"): chord
+ * `chordIndex` replaced, or added after the others when the word has fewer;
+ * null removes just that one. The others stay as they are.
+ */
+export function setWordChordAt(line: string, wordIndex: number, chordIndex: number, chord: string | null): string {
+  if (wordIndex < 0) return setWordChord(line, wordIndex, chord);
+  const model = parseLine(line);
+  const w = model.words[wordIndex];
+  if (!w) return line;
+  const chords = [...w.chords];
+  if (chordIndex >= 0 && chordIndex < chords.length) {
+    if (chord) chords[chordIndex] = { ...chords[chordIndex], chord };
+    else chords.splice(chordIndex, 1);
+  } else if (chord) {
+    chords.push({ at: chords.length ? chords[chords.length - 1].at : 0, chord });
+  }
+  w.chords = chords;
+  return serializeLine(model);
+}
+
 /** The chord a word starts with (the first one on it). */
 export const wordChord = (w: LineWord): string | null => w.chords[0]?.chord ?? null;
 
@@ -650,7 +685,8 @@ export function matchChartSection(chart: SongChart | null | undefined, sectionNa
 
 /**
  * A section's chords proposed from the chart: its bars spread over the
- * section's lines, each bar's chords on evenly spaced words.
+ * section's lines, each bar's chords on evenly spaced words (several on one
+ * word when the line has fewer words than chords, in order).
  */
 export function proposeChordsFromChart(lyrics: string, section: TextSection, chartSection: ChartSection): string {
   const bars = chartSectionChords(chartSection).filter((b) => b.length);
@@ -668,11 +704,11 @@ export function proposeChordsFromChart(lyrics: string, section: TextSection, cha
     if (!count) {
       model.tail = chords;
     } else {
+      // Chords that share a word stay on it, in the chart's order
+      // ("[C][D]Hello [E][F]again"), never pushed to the end of the line.
       chords.forEach((c, j) => {
         const wi = Math.min(count - 1, Math.floor((j * count) / chords.length));
-        const w = model.words[wi];
-        if (w.chords.length) model.tail.push(c);
-        else w.chords = [{ at: 0, chord: c }];
+        model.words[wi].chords.push({ at: 0, chord: c });
       });
     }
     lines[li] = serializeLine(model);
@@ -728,16 +764,17 @@ export function resolveView(want: SongView, song: SongContent): SongView | null 
 }
 
 /** Each section's chords in order (repeats in a row collapsed), for the structure view. */
-export function sectionProgressions(lyrics: string | null | undefined): { name: string | null; chords: string[] }[] {
+export function sectionProgressions(lyrics: string | null | undefined): { name: string | null; chords: string[]; index: number }[] {
   return parseLyrics(lyrics)
-    .map((s: LyricsSection) => {
+    .map((s: LyricsSection, index: number) => {
       const chords: string[] = [];
       for (const line of s.lines) {
         for (const m of line.matchAll(BRACKET)) {
           if (isChordToken(m[1]) && chords[chords.length - 1] !== m[1]) chords.push(m[1]);
         }
       }
-      return { name: s.name, chords };
+      // index: the section in parseLyrics (Follow the tempo marks it).
+      return { name: s.name, chords, index };
     })
     .filter((s) => s.name || s.chords.length);
 }

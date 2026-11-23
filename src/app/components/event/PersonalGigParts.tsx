@@ -7,6 +7,7 @@ import { findEventConflicts } from '@/lib/eventConflicts';
 import type { EventData } from '@/app/components/dashboard/EventCard';
 import { formatDayShort, formatTime12 } from './format';
 import { useT } from '@/lib/i18n';
+import { serverErrorText } from '@/lib/deletionRefusal';
 
 /* Personal gig (Figma 23:993): privacy note, band-event conflict, paid toggle. */
 
@@ -54,7 +55,7 @@ export const ScheduleConflictCard: React.FC<{
       await onNotify(conflict.band_id, conflict.eventId);
       setState('sent');
     } catch (e: any) {
-      setError(e?.message || t('Could not notify the admin.'));
+      setError(serverErrorText(e, t('Could not notify the admin.')));
       setState('idle');
     }
   };
@@ -116,7 +117,7 @@ export const PaidToggleRow: React.FC<{
     setSaving(false);
     if (upErr || !data?.length) {
       setPaid(!next);
-      setError(upErr?.message || t('This gig could not be updated.'));
+      setError(serverErrorText(upErr, t('This gig could not be updated.')));
       return;
     }
     onSaved?.();

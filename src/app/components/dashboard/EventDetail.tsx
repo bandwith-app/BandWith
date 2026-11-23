@@ -25,6 +25,7 @@ import {
 import { springs } from '@/styles/motion';
 import { EventData } from './EventCard';
 import { WeatherWidget } from '@/app/components/ui/WeatherWidget';
+import { isOwedPayout } from '@/lib/payoutsDue';
 import { supabase } from '@/lib/supabase';
 import { useBand } from '@/lib/BandContext';
 import { cn } from '@/app/components/ui/utils';
@@ -53,6 +54,7 @@ import { useEventLiveRefresh } from '@/app/components/event/useEventLiveRefresh'
 import { useStageLive, SETLIST_ORDER_SAVED, type StageRegiaBridge, type StageSessionBridge } from '@/app/components/event/useStageLive';
 import { useRehearsalSession } from '@/app/components/event/useRehearsalSession';
 import { useStageRegia } from '@/app/components/event/useStageRegia';
+import { CountInSheet, useBandCountInStyle, useCountInUi } from '@/app/components/dashboard/StageCountIn';
 import { Capacitor } from '@capacitor/core';
 import { OfflineAudioCard } from '@/app/components/event/OfflineAudioCard';
 import { inPrefetchWindow, localToday } from '@/lib/audioPrefetch';
@@ -63,10 +65,12 @@ import { useBandNotes } from '@/app/components/event/useBandNotes';
 import { FromLastTimeSection, type EarlierNotes } from './FromLastTime';
 import { fromLastTime } from '@/lib/toPractise';
 import { useBandFlag } from '@/lib/flags';
+import { isFlagOn } from '@/lib/appFlags';
 import { elapsedSeconds, occurrenceDate } from '@/lib/rehearsalSession';
+import { isSkippedOccurrence, skippedDates } from '@/lib/recurrenceSkips';
 import { prefetchStageKey } from '@/lib/stageBleNative';
-import { packRowFromItem, songFromRow, type LiveSong } from '@/lib/livePack';
-import { fetchSetlistRows, readPack, readPackBySetlist, refreshPack, savePackSongs } from '@/lib/livePackStore';
+import { isPackReady, packRowFromItem, songFromRow, type LiveSong } from '@/lib/livePack';
+import { fetchSetlistRows, packOpenedEvent, readPack, readPackBySetlist, savePackSongs } from '@/lib/livePackStore';
 import { packAllowed, readChoice } from '@/lib/livePackConsent';
 import { useLivePack, useOnline } from '@/app/components/event/useLivePack';
 import { OfflineReadyRow } from '@/app/components/event/OfflineReadyRow';
@@ -100,6 +104,7 @@ import {
   rehearsalCadence,
   shortPlace,
 } from '@/app/components/event/format';
+import { stageSongOf } from '@/lib/stageSongs';
 import { useEventStage } from '@/app/components/event/rider/useEventStage';
 import { RiderStageCard } from '@/app/components/event/rider/RiderParts';
 import { RiderStageContent, RiderStageScreen } from '@/app/components/event/rider/RiderStage';
@@ -112,6 +117,7 @@ import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 import { OverviewEditSheets } from '@/app/components/event/edit/OverviewEditSheets';
 import { useOverviewEdit, type OverviewToast } from '@/app/components/event/edit/useOverviewEdit';
 import type { EditCard, EditKind } from '@/lib/eventOverviewEdit';
+import { DateHoldAnswers } from '@/app/components/dashboard/DateHoldAnswers';
 
 interface EventDetailProps {
   event: EventData;
@@ -128,7 +134,16 @@ interface EventDetailProps {
   /** The viewer has an event_members row (shows the rehearsal RSVP card). Defaults to !isAdmin. */
   canRespond?: boolean;
   onEdit?: () => void;
-  onDelete?: () => void;
+  /**
+   * Delete. On a repeating rehearsal the admin picks: 'date' takes only this
+   * date out of the series, 'series' deletes every date (audit 05 #4).
+   */
+  onDelete?: (scope?: 'date' | 'series') => void;
+  /**
+   * Admins: put a date deleted on its own back in the series (the cancelled
+   * date's banner and the series' "Deleted dates", Claude #297 r5 minor 5).
+   */
+  onRestoreDate?: (date: string) => Promise<void> | void;
   onChat?: () => void;
   onConfirmQuote?: (event: EventData) => Promise<void> | void;
   onRevertQuote?: (event: EventData) => Promise<void> | void;
@@ -338,6 +353,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   canRespond,
   onEdit: onEditProp,
   onDelete,
+  onRestoreDate,
   onChat,
   onConfirmQuote,
   onRevertQuote,
@@ -427,7 +443,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   const [packSheetOpen, setPackSheetOpen] = useState(false);
   const [packPending, setPackPending] = useState<Promise<boolean> | null>(null);
   useEffect(() => {
-    if (!startOnLivePack) return;
+    // Live pack switched off (app_flags live_pack): the push just opens the event.
+    if (!startOnLivePack || !isFlagOn('live_pack')) return;
     // Already a yes (automatic, or this event): no sheet again, just bring it down.
     if (currentUserId && event.eventId && packAllowed(readChoice(currentUserId), event.eventId)) {
       setPackPending(
@@ -454,7 +471,13 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     onSaved: (songs, savedId) => {
       setSetlistSongs(songs as typeof setlistSongs);
       if (currentUserId && savedId === event.setlistId)
-        void savePackSongs({ userId: currentUserId, event: packRow, occurrenceDate: occurrenceDate(event.date) ?? undefined, songs: songs as LiveSong[] }).catch(() => undefined);
+        void savePackSongs({
+          userId: currentUserId,
+          event: packRow,
+          occurrenceDate: occurrenceDate(event.date) ?? undefined,
+          songs: songs as LiveSong[],
+          partial: !isFlagOn('live_pack'),
+        }).catch(() => undefined);
       setSetlistReloadKey((k) => k + 1);
       // A new setlist was linked to the gig: the events list picks up its id.
       if (savedId !== event.setlistId) onEventUpdated?.();
@@ -601,17 +624,18 @@ export const EventDetail: React.FC<EventDetailProps> = ({
         const songs = rows.map((r: any) => songFromRow(r, t('Unknown Song')));
         setSetlistSongs(songs);
         if (currentUserId && event.band_id && event.eventId) {
-          const occurrence = occurrenceDate(event.date) ?? undefined;
-          if (songs.length === 0) {
-            void refreshPack({ userId: currentUserId, event: packRow, occurrenceDate: occurrence, songs }).catch(() => undefined);
-          } else {
-            await savePackSongs({ userId: currentUserId, event: packRow, occurrenceDate: occurrence, songs }).catch(() => undefined);
-            // My notes and files, band notes, the key: at most every few minutes.
-            if (fullPackDue(event.eventId)) {
-              const withFiles = packAllowed(readChoice(currentUserId), event.eventId);
-              void refreshPack({ userId: currentUserId, event: packRow, occurrenceDate: occurrence, songs, withFiles }).catch(() => undefined);
-            }
-          }
+          // Songs at once; my notes and files, band notes, the key at most
+          // every few minutes. Switched off (live_pack): tidied, nothing new
+          // downloaded, the pack stays partial (never "Offline ready").
+          void packOpenedEvent({
+            userId: currentUserId,
+            event: packRow,
+            occurrenceDate: occurrenceDate(event.date) ?? undefined,
+            songs,
+            livePackOn: isFlagOn('live_pack'),
+            fullDue: songs.length > 0 && fullPackDue(event.eventId),
+            allowFiles: packAllowed(readChoice(currentUserId), event.eventId),
+          }).catch(() => undefined);
         }
       } catch {
         if (cancelled) return;
@@ -745,10 +769,12 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   const sessionsOn = useBandFlag(event.band_id, 'rehearsal_sessions');
   const sessionBridge = useRef<StageSessionBridge>({});
   const regiaBridge = useRef<StageRegiaBridge>({});
+  // Follow the tempo and the count-in read the checked line timing and the length in seconds.
+  const stageSongs = useMemo(() => setlistSongs.map(stageSongOf), [setlistSongs]);
   const stageLive = useStageLive({
     eventId: isPersonalGig ? undefined : event.eventId,
     setlistId: event.setlistId,
-    songs: setlistSongs,
+    songs: stageSongs,
     open: isStageOpen,
     isLeader: isAdmin,
     session: sessionBridge,
@@ -770,12 +796,31 @@ export const EventDetail: React.FC<EventDetailProps> = ({
     send: stageLive.sendRegia,
     bridge: regiaBridge,
     songs: stageLive.songs,
+    savedSongs: stageLive.savedSongs,
+    pendingOrder: stageLive.pendingOrder,
+    clearPendingOrder: stageLive.dropPendingOrder,
+    rebasePendingOrder: stageLive.rebasePendingOrder,
+    holdOrderSaves: stageLive.holdOrderSaves,
     currentId: stageLive.currentId,
     skipped: stageLive.skipped,
     select: stageLive.select,
     jumpTo: stageLive.jumpTo,
   });
   const liveSong = stageLive.songs[stageLive.index];
+  // The floor wedge's Count in (the countdown itself is Stage mode's).
+  const [countStyle, setCountStyle, countStyleFailed] = useBandCountInStyle(isStageOpen ? event.band_id ?? undefined : undefined);
+  // Its Count-in options: Stage mode's setlist row, where they are, is under the wedge.
+  const [wedgeCountSheet, setWedgeCountSheet] = useState(false);
+  const wedgeCount = useCountInUi({
+    countIn: stageLive.countIn,
+    click: stageLive.click,
+    playhead: stageLive.playhead,
+    song: liveSong,
+    isLeader: stageLive.isLeader,
+    regiaPlaying: (stageRegia.on && stageRegia.status === 'playing') || !!stageRegia.nowPlaying?.state.playing,
+    style: countStyle,
+  });
+  const wedgeCountStop = wedgeCount.counting && wedgeCount.mine;
   // Audio on this device (admins: whoever can be the stage manager): the
   // setlist's song files ahead of time, so Stage mode plays them with no
   // internet; on its own in the days before a confirmed gig (the phone app).
@@ -800,7 +845,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
         onAsk={() => setPackSheetOpen(true)}
         pending={packPending}
       />
-      {isAdmin && !!event.eventId && <OfflineMembersRow eventId={event.eventId} members={resolvedMembers} online={online} currentUserId={currentUserId} selfReady={!!livePack} />}
+      {isAdmin && !!event.eventId && <OfflineMembersRow eventId={event.eventId} members={resolvedMembers} online={online} currentUserId={currentUserId} selfReady={isPackReady(livePack)} />}
     </>
   ) : null;
   const rehearsalSession = useRehearsalSession({
@@ -856,8 +901,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   const pageNoteSheets = useNoteSheets(rehearsalNotes);
   // The Bluetooth key is fetched while online, so Stage mode can sync offline on stage.
   useEffect(() => {
-    if (canStage) prefetchStageKey(event.eventId);
-  }, [canStage, event.eventId]);
+    if (canStage) prefetchStageKey(event.eventId, isAdmin);
+  }, [canStage, event.eventId, isAdmin]);
   const isGigDay = isLiveDay(gigTimes);
   // "Go live" opens the gig (or rehearsal) straight in live mode: on open, and
   // again when it comes for the gig already open in the side pane (iPad, Duo).
@@ -913,6 +958,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   // Reverting a gig to a quote asks first. Declared before the early return
   // below: every hook must run on every render.
   const [showRevertConfirm, setShowRevertConfirm] = useState(false);
+  // "Restore" in progress on a deleted date (Claude #297 r5 minor 5).
+  const [restoringDate, setRestoringDate] = useState<string | null>(null);
 
   if (!isAdmin && !isPersonalGig && (eventType === 'quote' || userResponse === 'declined')) {
     return null;
@@ -1039,9 +1086,33 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   const fullLocationQuery = [venueName !== 'TBD' ? venueName : '', venueAddress, venueCityPart].filter(Boolean).join(', ');
   const venueShown = venueName === 'TBD' ? t('TBD') : venueName;
 
+  // A date deleted from its series, opened from the "Rehearsal cancelled"
+  // push: shown as cancelled, with no RSVP or calendar (Claude #297 r5 minor 6).
+  const cancelledDate = isRehearsal && !!event.is_recurring && isSkippedOccurrence(event, event.date);
+  // The series' other deleted dates still to come, for admins to restore (minor 5).
+  const todayYmd = (() => {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+  })();
+  const deletedDates =
+    isRehearsal && !!event.is_recurring && isAdmin && !!onRestoreDate
+      ? Array.from(skippedDates(event.recurrence_rule)).filter((d) => d >= todayYmd && d !== occurrenceDate(event.date)).sort()
+      : [];
+  const restoreDate = async (day: string) => {
+    if (!onRestoreDate || restoringDate) return;
+    setRestoringDate(day);
+    try {
+      await onRestoreDate(day);
+    } finally {
+      setRestoringDate(null);
+    }
+  };
+  const longDate = (day: string) =>
+    parseLocalDate(day).toLocaleDateString(intlLocale(), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+
   // "Add to calendar": a saved event with a date, that the user is part of.
   const calendarDate =
-    !isQuote && !isPast && !!event.eventId && /^[0-9a-f-]{36}$/i.test(event.eventId) && (isPersonalGig || userResponse !== 'declined')
+    !cancelledDate && !isQuote && !isPast && !!event.eventId && /^[0-9a-f-]{36}$/i.test(event.eventId) && (isPersonalGig || userResponse !== 'declined')
       ? occurrenceDate(event.date)
       : null;
 
@@ -1094,7 +1165,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
       : typeLabels[eventType];
   const statusChips: string[] = [];
   if (isPersonalGig) statusChips.push(t('ONLY YOU'));
-  else if (isRehearsal) statusChips.push(rehearsalCadence(event.is_recurring, event.recurrence_rule, event.date));
+  else if (isRehearsal) statusChips.push(cancelledDate ? t('CANCELLED') : rehearsalCadence(event.is_recurring, event.recurrence_rule, event.date));
   else if (isQuote) {
     // Same fallback as the status card below: a quote never shared is a draft.
     const qs = String(linkedQuote?.status || event.quoteStatus || 'draft');
@@ -1125,25 +1196,14 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   const quoteGuide = (() => {
     if (!isQuote || !isAdmin || isPast) return null;
     const qs = String(linkedQuote?.status || event.quoteStatus || 'draft').toLowerCase();
-    const answered = resolvedMembers.filter((m) => m.status !== 'pending').length;
-    const free = resolvedMembers.filter((m) => m.status === 'confirmed').length;
-    const lineup =
-      memberCount > 0
-        ? ` ${
-            answered < memberCount
-              ? t('Availability: {free} of {total} free, {pending} still to answer (see below).', {
-                  free,
-                  total: memberCount,
-                  pending: memberCount - answered,
-                })
-              : t('Availability: {free} of {total} free (see below).', { free, total: memberCount })
-          }`
-        : '';
+    // Members only see a hold card (day, time, place) and answer it: their
+    // answers are under "Who's free" (178).
+    const lineup = ` ${t("Members were asked to keep the date free: they see only the day, time and place.")}`;
     if (qs === 'draft')
       return {
         icon: <EyeOff className="w-5 h-5" />,
         title: t('Draft · not sent to the client'),
-        body: `${memberCount > 0 ? t('The lineup only got an availability check.') : t("Only admins see it: the band isn't told yet.")} ${t("Share quote sends it to the client (it becomes Sent). When they say yes, Confirm as gig puts it on everyone's calendar.")}${lineup}`,
+        body: `${t("Only admins see the quote.")} ${t("Share quote sends it to the client (it becomes Sent). When they say yes, Confirm as gig puts it on everyone's calendar.")}${lineup}`,
       };
     if (qs === 'accepted')
       return {
@@ -1155,7 +1215,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
       return {
         icon: <XCircle className="w-5 h-5" />,
         title: qs === 'expired' ? t('The quote expired') : t('The client said no'),
-        body: `${t('Edit it and share a new version, or delete the quote to free the date.')}${lineup}`,
+        body: t('Members were told the date is free again. Edit it and share a new version, or delete the quote.'),
       };
     return {
       icon: <Send className="w-5 h-5" />,
@@ -1196,7 +1256,8 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   const depositAmount = Number(event.depositAmount) || 0;
   const depositDue = depositAmount > 0 && !event.depositPaid;
   const depositPct = bandFeeNum > 0 && depositAmount > 0 ? Math.round((depositAmount / bandFeeNum) * 100) : null;
-  const allPaid = activeMembers.length > 0 && activeMembers.every((m) => !!m.paidAt);
+  // "Mark all as paid" pays who is owed (confirmed, a fee): the button goes once nobody is (05 #9, 186).
+  const allPaid = activeMembers.length > 0 && !activeMembers.some((m) => isOwedPayout(m));
 
   // iPad gig workspace (Figma "iPad · 03"): Overview · Setlist · Rider & stage
   // · Money (admins). Tablets only; phones and the Duo keep one scroll.
@@ -1254,6 +1315,7 @@ export const EventDetail: React.FC<EventDetailProps> = ({
   // Rehearsal (Figma 22:895): always visible to invited members, current answer selected.
   const showRehearsalRsvp =
     isRehearsal &&
+    !cancelledDate &&
     !isPast &&
     !isPersonalGig &&
     (canRespond ?? !isAdmin) &&
@@ -1316,7 +1378,45 @@ export const EventDetail: React.FC<EventDetailProps> = ({
         ? { label: t('DETAILS'), run: () => setActiveSheet('lineup') }
         : null;
 
-  const renderDeleteConfirm = (onCancel: () => void) => (
+  // A repeating rehearsal: this date only, or the whole series (audit 05 #4).
+  const repeatingRehearsal = isRehearsal && !!event.is_recurring && !!event.recurrence_rule;
+  const renderDeleteConfirm = (onCancel: () => void) => repeatingRehearsal ? (
+    <div className="flex flex-col gap-3 w-full" role="group" aria-label={t('Delete which dates?')}>
+      <p className="bw-body-sm text-muted-foreground">
+        {t('This rehearsal repeats. Delete only this date, or every date with its notes?')}
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        {!cancelledDate && (
+          <PillButton
+            size="sm"
+            fullWidth={false}
+            className="bg-destructive-solid text-white"
+            onClick={() => {
+              onDelete?.('date');
+              setShowDeleteConfirm(false);
+            }}
+          >
+            {t('Delete this date')}
+          </PillButton>
+        )}
+        <PillButton
+          size="sm"
+          fullWidth={false}
+          variant="outline"
+          className="text-destructive-solid"
+          onClick={() => {
+            onDelete?.('series');
+            setShowDeleteConfirm(false);
+          }}
+        >
+          {t('Delete the whole series')}
+        </PillButton>
+        <button onClick={onCancel} className={LINK_CLASS}>
+          {t('CANCEL')}
+        </button>
+      </div>
+    </div>
+  ) : (
     <div className="flex items-center gap-3">
       <PillButton
         size="sm"
@@ -1652,6 +1752,32 @@ export const EventDetail: React.FC<EventDetailProps> = ({
               )}
               style={{ paddingBottom: 'calc(var(--safe-bottom) + 48px)' }}
             >
+              {/* ─── A DATE DELETED FROM THE SERIES (Claude #297 r5 minors 5, 6) ─── */}
+              {cancelledDate && (
+                <section
+                  role="status"
+                  data-testid="ed-date-cancelled"
+                  className={cn('rounded-[16px] border border-destructive-solid/40 bg-destructive-solid/5 p-5 flex flex-col gap-3', spanAll)}
+                >
+                  <h2 className="bw-h3">{t('This date was cancelled')}</h2>
+                  <p className="bw-body-sm text-muted-foreground">
+                    {t('The rehearsal on {date} is off. The other dates of the series stay as they are.', { date: longDate(occurrenceDate(event.date) || '') })}
+                  </p>
+                  {isAdmin && onRestoreDate && (
+                    <PillButton
+                      size="sm"
+                      fullWidth={false}
+                      variant="outline"
+                      disabled={!!restoringDate}
+                      onClick={() => restoreDate(occurrenceDate(event.date) || '')}
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      {t('Restore this date')}
+                    </PillButton>
+                  )}
+                </section>
+              )}
+
               {/* ─── RSVP (pending gig invite) ─── */}
               {showRsvpCard && (
                 <section className={cn('dark bg-sheet text-sheet-foreground rounded-[16px] p-5 flex flex-col gap-4', spanAll)}>
@@ -1870,6 +1996,10 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                       </span>
                     </section>
                   )}
+                  {/* Who can keep the date free (178): admins only. */}
+                  {isAdmin && !isPast && event.eventId && (
+                    <DateHoldAnswers eventId={event.eventId} />
+                  )}
                   <QuoteSummaryCard
                     quote={linkedQuote}
                     loading={quoteLoading}
@@ -1882,15 +2012,11 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                     fallback={{ company: event.clientCompany, contact: event.clientName, guests: event.guests }}
                     notes={event.notes}
                   />
-                  {/* Availability check sent with the quote: who is free. */}
+                  {/* The planned lineup (admins; members don't see quotes, 178). */}
                   {!isPersonalGig && (memberCount > 0 || (membersLoading && !dbMembers)) && (
                     <section className="flex flex-col gap-6" aria-label={t('Lineup availability')}>
                       <SectionTitle
-                        title={
-                          memberCount > 0
-                            ? t('AVAILABILITY · {confirmed}/{total} FREE', { confirmed: confirmedExact, total: memberCount })
-                            : t('AVAILABILITY')
-                        }
+                        title={t('LINEUP')}
                         actionLabel={memberCount > 0 ? t('DETAILS') : undefined}
                         onAction={memberCount > 0 ? () => setActiveSheet('lineup') : undefined}
                       />
@@ -2343,6 +2469,30 @@ export const EventDetail: React.FC<EventDetailProps> = ({
                           : t('No notes added yet.'))}
                     </span>
                   </button>
+                </section>
+              )}
+
+              {/* ─── DELETED DATES (admins, repeating rehearsal): Restore (r5 minor 5) ─── */}
+              {deletedDates.length > 0 && (
+                <section data-testid="ed-deleted-dates" className={cn('flex flex-col gap-3', spanAll)} aria-labelledby="ed-deleted-dates-title">
+                  <h2 id="ed-deleted-dates-title" className="bw-label-sm">{t('Deleted dates')}</h2>
+                  <ul className="flex flex-col divide-y divide-border rounded-[16px] border border-border">
+                    {deletedDates.map((day) => (
+                      <li key={day} className="flex items-center justify-between gap-3 px-4 py-3 min-h-12">
+                        <span className="bw-body-sm">{longDate(day)}</span>
+                        <button
+                          type="button"
+                          className={LINK_CLASS}
+                          disabled={!!restoringDate}
+                          aria-label={t('Restore {date}', { date: longDate(day) })}
+                          onClick={() => restoreDate(day)}
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          {restoringDate === day ? '…' : t('RESTORE')}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 </section>
               )}
 
@@ -3066,13 +3216,18 @@ export const EventDetail: React.FC<EventDetailProps> = ({
           onIndexChange={stageLive.select}
           skipped={stageLive.skipped}
           click={stageLive.click}
+          playhead={stageLive.playhead}
+          countIn={wedgeCount.available || wedgeCountStop ? { counting: wedgeCountStop, onPress: wedgeCountStop ? wedgeCount.stop : wedgeCount.start } : null}
+          countInOptions={stageLive.countIn && stageLive.songs.length > 0 ? () => setWedgeCountSheet(true) : undefined}
           follow={{
             isLeader: stageLive.isLeader,
             following: stageLive.following,
             leaderSeen: stageLive.leaderSeen,
+            leaderHere: stageLive.leaderHere,
             connected: stageLive.connected,
             bluetooth: stageLive.bluetooth,
             bluetoothFollowers: stageLive.bluetoothFollowers,
+            bluetoothUnsigned: stageLive.bluetoothUnsigned,
             fixBluetooth: stageLive.fixBluetooth,
             onToggle: stageLive.setFollowing,
           }}
@@ -3080,6 +3235,21 @@ export const EventDetail: React.FC<EventDetailProps> = ({
           exitLabel={isRehearsalLive ? t('Exit live mode') : undefined}
           session={isRehearsalLive ? rehearsalSession : undefined}
           notes={isRehearsalLive ? liveNotes : undefined}
+        />
+      )}
+      {isStageOpen && laptopPose && (
+        <CountInSheet
+          open={wedgeCountSheet}
+          onClose={() => setWedgeCountSheet(false)}
+          force={
+            wedgeCount.forceable && !wedgeCount.available
+              ? {
+                  reason: liveSong?.backingTrack ? t('This song is played with a backing track: the track starts the band.') : t('The stage manager is playing this song.'),
+                  start: wedgeCount.start,
+                }
+              : null
+          }
+          style={stageLive.isLeader && event.band_id ? { value: countStyle, set: setCountStyle, failed: countStyleFailed } : null}
         />
       )}
 

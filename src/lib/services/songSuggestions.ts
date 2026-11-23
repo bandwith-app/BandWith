@@ -3,9 +3,13 @@ import { isOfflineError } from '../offline/networkErrors';
 import { queueLiveOp } from '../liveOutbox';
 import { newLocalId, sessionUserId } from '../sessionUser';
 import { supabase } from '../supabase';
+import { UserError } from '../userError';
+import { t } from '@/lib/i18n';
 import { adoptSuggestionFiles, removeSongFiles } from './songFiles';
 import type { SongChart } from '../ireal';
 import type { SongSuggestion, SuggestionKind, SuggestionStatus } from '../songSuggestions';
+// Storage room for an accepted song's files (Codex review of #295).
+import { isStorageFullError, isSuggestionFile, songFilesFit, storageFullError } from './songFiles';
 
 /**
  * Members suggest, admins review (migration 108). Rows are read under RLS:
@@ -18,13 +22,29 @@ const SELECT =
 
 export async function listSongSuggestions(
   bandId: string,
-  opts?: { status?: SuggestionStatus | SuggestionStatus[]; createdBy?: string; songId?: string; limit?: number },
+  opts?: {
+    status?: SuggestionStatus | SuggestionStatus[];
+    createdBy?: string;
+    songId?: string;
+    limit?: number;
+    /** Keyset page: only suggestions older than this one (newest first, ties by id). */
+    before?: Pick<SongSuggestion, 'created_at' | 'id'>;
+  },
 ): Promise<{ data: SongSuggestion[] | null; error: Error | null }> {
   try {
-    let q = supabase.from('song_suggestions').select(SELECT).eq('band_id', bandId).order('created_at', { ascending: false });
+    let q = supabase
+      .from('song_suggestions')
+      .select(SELECT)
+      .eq('band_id', bandId)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false });
     if (opts?.status) q = Array.isArray(opts.status) ? q.in('status', opts.status) : q.eq('status', opts.status);
     if (opts?.createdBy) q = q.eq('created_by', opts.createdBy);
     if (opts?.songId) q = q.eq('song_id', opts.songId);
+    if (opts?.before) {
+      const at = JSON.stringify(opts.before.created_at);
+      q = q.or(`created_at.lt.${at},and(created_at.eq.${at},id.lt.${JSON.stringify(opts.before.id)})`);
+    }
     q = q.limit(opts?.limit ?? 200);
     const { data, error } = await q;
     if (error) throw error;
@@ -34,7 +54,39 @@ export async function listSongSuggestions(
   }
 }
 
+/** One suggestion by id (RLS: the band's for admins, your own for members), e.g. opened from a notification. */
+export async function getSongSuggestion(id: string): Promise<{ data: SongSuggestion | null; error: Error | null }> {
+  try {
+    const { data, error } = await supabase.from('song_suggestions').select(SELECT).eq('id', id).maybeSingle();
+    if (error) throw error;
+    return { data: (data as unknown as SongSuggestion) ?? null, error: null };
+  } catch (error: any) {
+    return { data: null, error };
+  }
+}
+
 /** A correction to a band song, or a note for the band. */
+/** Lyrics, a note and a message over the server's limits (108): the message to show, else null. */
+export const SUGGESTION_LIMITS = { lyrics: 100_000, note: 2000, message: 1000 } as const;
+function suggestionTooLong(input: { kind: string; lyrics?: string; note?: string; message?: string }): string | null {
+  const over = (text: string | undefined, max: number) => (text ?? '').length > max;
+  if (input.kind !== 'note' && over(input.lyrics, SUGGESTION_LIMITS.lyrics)) {
+    return t('The lyrics are too long to save: {count} characters, the limit is {max}. Shorten them, the full text stays here.', {
+      count: (input.lyrics ?? '').length,
+      max: SUGGESTION_LIMITS.lyrics,
+    });
+  }
+  const note = input.kind === 'note' ? (input.note ?? '').trim() : '';
+  if (over(note, SUGGESTION_LIMITS.note)) {
+    return t('This suggestion is too long to send: {count} characters, the limit is {max}.', { count: note.length, max: SUGGESTION_LIMITS.note });
+  }
+  const message = input.message?.trim() ?? '';
+  if (over(message, SUGGESTION_LIMITS.message)) {
+    return t('This suggestion is too long to send: {count} characters, the limit is {max}.', { count: message.length, max: SUGGESTION_LIMITS.message });
+  }
+  return null;
+}
+
 export async function suggestSongChange(input: {
   bandId: string;
   songId: string;
@@ -44,7 +96,13 @@ export async function suggestSongChange(input: {
   note?: string;
   message?: string;
 }): Promise<{ data: SongSuggestion | null; error: Error | null; queued?: true }> {
+  // The server's limits (108), said here first: a change it would refuse is
+  // never sent, nor queued to block the others (Codex review #292 round 6).
+  const tooLong = suggestionTooLong(input);
+  if (tooLong) return { data: null, error: new UserError(tooLong) };
   let row: Record<string, unknown> | null = null;
+  // Whose change it is, read before the request: queued only for that account.
+  const owner = await sessionUserId();
   try {
     const proposed =
       input.kind === 'note'
@@ -59,6 +117,7 @@ export async function suggestSongChange(input: {
       kind: input.kind,
       proposed,
       message: input.message?.trim() || null,
+      ...(owner ? { created_by: owner } : {}),
     };
     const { data, error } = await supabase.from('song_suggestions').insert(row).select('*').single();
     if (error) throw error;
@@ -66,8 +125,9 @@ export async function suggestSongChange(input: {
     return { data: data as unknown as SongSuggestion, error: null };
   } catch (error: any) {
     // No signal (a venue, a basement): kept on this phone, sent when back online.
-    const me = row && isOfflineError(error) ? await sessionUserId() : null;
-    if (row && me) {
+    // Re-read now: a tab switched to another account meanwhile queues nothing.
+    const me = row && owner && isOfflineError(error) ? await sessionUserId() : null;
+    if (row && me && me === owner) {
       queueLiveOp(me, { kind: 'suggestion', id: newLocalId(), row });
       return { data: null, error: null, queued: true };
     }
@@ -88,6 +148,13 @@ export async function reviewSongSuggestion(
   opts: ReviewOptions & { edited?: boolean; song?: { audio_url?: string | null; chart_url?: string | null } | null } = {},
 ): Promise<{ status: SuggestionStatus | null; error: Error | null }> {
   try {
+    // A suggested song whose recording doesn't fit in the band's storage
+    // stays pending: its move would fail (Codex review of #295, 28cb3199).
+    const files = [opts.song?.audio_url, opts.song?.chart_url];
+    if (decision === 'accept' && suggestion.kind === 'new_song' && files.some(isSuggestionFile)) {
+      const bandId = files.find(isSuggestionFile)!.slice('sb://song-files/'.length).split('/')[0];
+      if (!(await songFilesFit(bandId, files))) return { status: null, error: storageFullError() };
+    }
     const { data, error } = await supabase.rpc('bw_review_song_suggestion', {
       p_id: suggestion.id,
       p_decision: decision,
@@ -99,11 +166,15 @@ export async function reviewSongSuggestion(
     const res = (data || {}) as { status?: SuggestionStatus; song_id?: string; files?: string[] };
     // A rejected suggested song is gone: so are its files.
     if (res.files?.length) await removeSongFiles(res.files);
-    // An accepted one keeps them, moved into the band's folders.
+    // An accepted one keeps them, moved into the band's folders. The review is
+    // already saved: if the move stops half-way the song still links to its
+    // original file, and the repertoire finishes the move later (audit 09 #9).
     if (decision === 'accept' && suggestion.kind === 'new_song' && res.song_id && opts.song) {
-      const moved = await adoptSuggestionFiles(opts.song);
-      if (Object.keys(moved).length > 0) {
-        await supabase.from('songs').update(moved).eq('id', res.song_id);
+      const moved = await adoptSuggestionFiles({ id: res.song_id, ...opts.song });
+      // No room after all (filled meanwhile): said, never shown as approved.
+      if (isStorageFullError(moved.error)) {
+        notifySuggestionsChanged();
+        return { status: null, error: moved.error };
       }
     }
     notifySuggestionsChanged();
@@ -129,17 +200,22 @@ export async function withdrawSongSuggestion(id: string): Promise<{ error: Error
 
 /** Pending suggestions: the band's for admins, your own for members (RLS). 0 when offline. */
 export async function countPendingSuggestions(bandId: string, createdBy?: string): Promise<number> {
+  return (await countSongSuggestions(bandId, { status: 'pending', createdBy })) ?? 0;
+}
+
+/** How many suggestions have this status (the server's total, not a page). Null if it could not be read. */
+export async function countSongSuggestions(
+  bandId: string,
+  opts: { status: SuggestionStatus | SuggestionStatus[]; createdBy?: string },
+): Promise<number | null> {
   try {
-    let q = supabase
-      .from('song_suggestions')
-      .select('id', { count: 'exact', head: true })
-      .eq('band_id', bandId)
-      .eq('status', 'pending');
-    if (createdBy) q = q.eq('created_by', createdBy);
+    let q = supabase.from('song_suggestions').select('id', { count: 'exact', head: true }).eq('band_id', bandId);
+    q = Array.isArray(opts.status) ? q.in('status', opts.status) : q.eq('status', opts.status);
+    if (opts.createdBy) q = q.eq('created_by', opts.createdBy);
     const { count, error } = await q;
-    return error ? 0 : count || 0;
+    return error ? null : count || 0;
   } catch {
-    return 0;
+    return null;
   }
 }
 

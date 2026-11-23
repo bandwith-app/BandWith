@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ChevronLeft, ChevronRight, Maximize, Minimize, Minus, Plus, StickyNote, X } from '@/app/components/icons';
 import { useLyricsSize } from '@/app/components/ui/LyricsViewer';
@@ -26,9 +26,12 @@ import { SortableSongList } from '@/app/components/ui/SortableSongList';
 import { TransposeControl, TransposeProvider, useSongTranspose } from '@/app/components/ui/Transpose';
 import { keyLabel } from '@/lib/ireal';
 import { StageClickButton, StageClickFrame, useStageClickUi, type StageClickControls } from './StageClick';
+import { FollowArea, FollowStrip, FollowTempoSwitch, useFollowTempo, type StageFollowPlayhead } from './StageFollow';
+import { CountInButton, CountInSheet, CountInSheetButton, StageCountInOverlay, useBandCountInStyle, useCountInUi, type StageCountInControls } from './StageCountIn';
 import { useKeepAwake } from '@/lib/posture';
 import type { StageSaveState } from '@/app/components/event/useStageLive';
 import type { StageBleStatus } from '@/app/components/event/useStageBle';
+import { followLabel } from '@/lib/stageBleNotice';
 import { StageBleNoticeLine } from '@/app/components/event/StageBleNoticeLine';
 import type { LiveKind } from '@/lib/liveMode';
 import type { RehearsalSessionControls } from '@/app/components/event/useRehearsalSession';
@@ -42,6 +45,7 @@ import { enterScreen } from '@/lib/appAnalytics';
 import { WaitingChangesTag } from '@/app/components/event/WaitingChangesTag';
 import { packSavedLabel } from '@/app/components/event/OfflineReadyRow';
 import type { LiveSongExtras } from '@/lib/livePack';
+import type { LiveSongFields } from '@/lib/stageSongs';
 
 export interface StageStep {
   label: string;
@@ -51,7 +55,11 @@ export interface StageStep {
   display: string;
 }
 
-export interface StageSong extends LiveSongExtras {
+/**
+ * A setlist song in live mode: the live pack's extras (voice parts…) and the
+ * tempo fields read for Follow the tempo and the count-in (171).
+ */
+export interface StageSong extends Omit<LiveSongExtras, 'lineTiming'>, LiveSongFields {
   /** setlist_songs row id (live order and current song follow it). */
   id?: string;
   /** songs.id, needed to save a new order. */
@@ -83,11 +91,15 @@ export interface StageLiveControls {
   following: boolean;
   setFollowing: (on: boolean) => void;
   leaderSeen: boolean;
+  /** The leader's phone is in Stage mode and reachable, song picked or not. */
+  leaderHere?: boolean;
   connected: boolean;
   /** Bluetooth link in the native apps (offline on stage). */
   bluetooth?: StageBleStatus;
   /** Leader: phones linked over Bluetooth. */
   bluetoothFollowers?: number;
+  /** Leader: leading over Bluetooth with no key pair (the status line says so). */
+  bluetoothUnsigned?: boolean;
   /** Allow Bluetooth / turn it on. */
   fixBluetooth?: () => void | Promise<void>;
   isLeader: boolean;
@@ -101,6 +113,10 @@ export interface StageLiveControls {
   toggleSkip?: (index: number) => void;
   /** Visual metronome (useStageLive): newest click, ours or the leader's. */
   click?: StageClickControls;
+  /** Count-in (useStageLive): the leader's reaches every phone. */
+  countIn?: StageCountInControls;
+  /** Follow the tempo (useStageLive): the leader's playhead; the count-in starts it at bar 1. */
+  playhead?: StageFollowPlayhead;
 }
 
 interface StageModeProps {
@@ -210,6 +226,19 @@ export const StageMode: React.FC<StageModeProps> = ({
   // Stage manager mode: the Regia's ▶ on each song with audio, and a song off the setlist.
   const regiaOn = !!regia?.on && !!live;
   const [extraOpen, setExtraOpen] = useState(false);
+  // The pick wasn't added (the setlist changed meanwhile): the sheet says so,
+  // and opens again once the setlist reloaded (or after a moment, if the
+  // reload brings nothing new).
+  const [extraChanged, setExtraChanged] = useState(false);
+  const reopenExtra = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openExtraAgain = useCallback(() => {
+    if (reopenExtra.current === null) return;
+    clearTimeout(reopenExtra.current);
+    reopenExtra.current = null;
+    setExtraOpen(true);
+  }, []);
+  useEffect(() => openExtraAgain(), [songs, openExtraAgain]);
+  useEffect(() => () => clearTimeout(reopenExtra.current ?? undefined), []);
   const inSetlist = useMemo(() => new Set(songs.map((s) => s.songId).filter((id): id is string => !!id)), [songs]);
   // The screen stays on while Stage mode is open (lyrics and chords are read
   // hands-free; a locked leader's phone stops the band's sync too).
@@ -276,6 +305,21 @@ export const StageMode: React.FC<StageModeProps> = ({
   const currentSong = songs[Math.max(0, current)];
   const clickUi = useStageClickUi(click, currentSong);
   const { state: clickState, running: clickRunning, hidden: clickHidden, show: showClick, press: pressClick } = clickUi;
+  // Follow the tempo (StageFollow): the switch, the strip, the lit bar / line.
+  const followSong = useMemo(() => (lyricsSong ? { ...lyricsSong, lyrics: lyricsContent.lyrics } : null), [lyricsSong, lyricsContent.lyrics]);
+  const follow = useFollowTempo({ playhead: live?.playhead, song: followSong, isLeader: !!live?.isLeader, click });
+  // Count-in (plan §6): the leader's button by the click, the countdown on every phone.
+  const [countStyle, setCountStyle, countStyleFailed] = useBandCountInStyle(bandId);
+  const regiaPlaying = (!!regia?.on && regia.status === 'playing') || !!regia?.nowPlaying?.state.playing;
+  const countUi = useCountInUi({ countIn: live?.countIn, click, playhead: live?.playhead, song: currentSong, isLeader: !!live?.isLeader, regiaPlaying, style: countStyle });
+  const [countSheet, setCountSheet] = useState(false);
+  const countStopping = countUi.counting && countUi.mine;
+  const countButton =
+    countUi.available || countStopping ? <CountInButton counting={countStopping} onPress={countStopping ? countUi.stop : countUi.start} /> : null;
+  const countForce =
+    countUi.forceable && !countUi.available
+      ? { reason: currentSong?.backingTrack ? t('This song is played with a backing track: the track starts the band.') : t('The stage manager is playing this song.'), start: countUi.start }
+      : null;
   const lyricsRef = useRef<HTMLDivElement | null>(null);
   const sectionRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -701,9 +745,11 @@ export const StageMode: React.FC<StageModeProps> = ({
               className="pb-1"
             />
           )}
-          <div className="flex items-center justify-between gap-3 shrink-0 pb-2 min-h-11">
+          {/* The tabs never shrink under the pills: when both don't fit (a member's
+              "Waiting for leader" by Count-in on a phone), the pills take a line of their own. */}
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 shrink-0 pb-2 min-h-11">
             {views.length > 1 ? (
-              <span className="flex items-center gap-1 min-w-0" role="tablist" aria-label={t('Setlist')}>
+              <span className="flex items-center gap-1 shrink-0" role="tablist" aria-label={t('Setlist')}>
                 {views.map((v) => (
                   <button
                     key={v}
@@ -740,7 +786,9 @@ export const StageMode: React.FC<StageModeProps> = ({
               </span>
             )}
             {live && songs.length > 0 && (
-              <span className="flex items-center gap-2 min-w-0 shrink-0 max-w-[70%]">
+              <span className="flex items-center justify-end gap-2 min-w-0 max-w-full ml-auto">
+                {/* Count-in options (this phone's vibration and sound; the band's direction; Count in anyway). */}
+                {live.countIn && <CountInSheetButton onPress={() => setCountSheet(true)} />}
                 {live.isLeader ? (
                   <LiveStatus
                     on={live.connected || live.bluetooth === 'leading'}
@@ -773,7 +821,7 @@ export const StageMode: React.FC<StageModeProps> = ({
                       className={cn('w-2 h-2 rounded-full shrink-0', live.following ? 'bg-black' : 'border border-white')}
                     />
                     <span className="truncate">
-                      {followLabel(live, t)}
+                      {followLabel(live)}
                     </span>
                   </button>
                 )}
@@ -787,6 +835,7 @@ export const StageMode: React.FC<StageModeProps> = ({
               online={live.connected}
               isLeader={live.isLeader}
               followers={live.bluetoothFollowers}
+              unsigned={live.bluetoothUnsigned}
               onFix={live.fixBluetooth}
               accentColor={accentColor}
             />
@@ -831,8 +880,11 @@ export const StageMode: React.FC<StageModeProps> = ({
                   off="text-white/60"
                   className="min-w-0 -ml-1 overflow-x-auto scrollbar-hide"
                 />
+                <FollowTempoSwitch follow={follow} accent={accentColor} />
                 {lyricsHasChords && <TransposeControl tone="stage" semitones={semitones} onChange={setSemitones} songKey={lyricsKey} className="ml-auto" />}
               </div>
+              {/* Sticky: where the whole column scrolls (a phone on its side), following the line keeps it in view. */}
+              <FollowStrip follow={follow} accent={accentColor} className="pb-2 sticky top-0 z-[1] bg-black" />
               <PersonalLayerScope
                 song={mine}
                 stage
@@ -851,6 +903,7 @@ export const StageMode: React.FC<StageModeProps> = ({
                   songTitle={lyricsSong?.title}
                   lyrics={lyricsContent.lyrics}
                 >
+                <FollowArea follow={follow} accent={accentColor}>
                 <SongBody
                   song={lyricsContent}
                   view={songView}
@@ -860,6 +913,7 @@ export const StageMode: React.FC<StageModeProps> = ({
                   className="w-full flex flex-col gap-6 pt-1 text-white"
                   chartClassName="w-full flex flex-col gap-5 pt-1 text-white"
                 />
+                </FollowArea>
                 </VoiceAssignmentScope>
               </div>
               </TransposeProvider>
@@ -1020,7 +1074,7 @@ export const StageMode: React.FC<StageModeProps> = ({
 
         {/* Song steps: the leader's reach the whole band. */}
         {live && songs.length > 0 && (
-          <div className={cn('grid gap-3 shrink-0', click ? 'grid-cols-[1fr_auto_1fr]' : 'grid-cols-2', ' [@media(max-height:520px)_and_(min-width:600px)]:col-start-1 [@media(max-height:520px)_and_(min-width:600px)]:row-start-3 [@media(max-height:520px)_and_(min-width:600px)]:self-end', split && 'col-start-1 row-start-3 self-end', split && showSide && 'row-start-4', showSide && !split && '[@media(min-width:900px)_and_(min-height:521px)]:col-start-2 [@media(min-width:900px)_and_(min-height:521px)]:row-start-3')}>
+          <div className={cn('grid gap-3 shrink-0', click && countButton ? 'grid-cols-[1fr_auto_auto_1fr]' : click || countButton ? 'grid-cols-[1fr_auto_1fr]' : 'grid-cols-2', ' [@media(max-height:520px)_and_(min-width:600px)]:col-start-1 [@media(max-height:520px)_and_(min-width:600px)]:row-start-3 [@media(max-height:520px)_and_(min-width:600px)]:self-end', split && 'col-start-1 row-start-3 self-end', split && showSide && 'row-start-4', showSide && !split && '[@media(min-width:900px)_and_(min-height:521px)]:col-start-2 [@media(min-width:900px)_and_(min-height:521px)]:row-start-3')}>
             <button
               type="button"
               disabled={current <= 0}
@@ -1044,6 +1098,7 @@ export const StageMode: React.FC<StageModeProps> = ({
                 accent={accentColor}
               />
             )}
+            {countButton}
             <button
               type="button"
               disabled={current >= songs.length - 1}
@@ -1079,16 +1134,22 @@ export const StageMode: React.FC<StageModeProps> = ({
           onStep={(d) => live?.go(d)}
           accent={accentColor}
           onShowAll={showAll}
+          follow={follow}
           click={
-            click ? (
-              <StageClickButton
-                bpm={currentSong?.bpm}
-                running={clickRunning}
-                following={clickRunning && !click.mine}
-                hidden={clickHidden}
-                onPress={pressClick}
-                accent={accentColor}
-              />
+            click || countButton ? (
+              <div className="flex gap-3">
+                {click && (
+                  <StageClickButton
+                    bpm={currentSong?.bpm}
+                    running={clickRunning}
+                    following={clickRunning && !click.mine}
+                    hidden={clickHidden}
+                    onPress={pressClick}
+                    accent={accentColor}
+                  />
+                )}
+                {countButton}
+              </div>
             ) : undefined
           }
           clickFrame={
@@ -1099,6 +1160,24 @@ export const StageMode: React.FC<StageModeProps> = ({
         />
         </VoiceAssignmentScope>
       )}
+      {live?.countIn?.state?.on && (
+        <StageCountInOverlay
+          key={live.countIn.state.seq}
+          state={live.countIn.state}
+          offset={live.countIn.offset}
+          title={songs.find((s) => s.id && s.id === live.countIn!.state!.songId)?.title ?? currentSong?.title}
+          accent={accentColor}
+          canStop={live.countIn.mine}
+          onStop={countUi.stop}
+          big={laptop}
+        />
+      )}
+      <CountInSheet
+        open={countSheet}
+        onClose={() => setCountSheet(false)}
+        force={countForce}
+        style={live?.isLeader && bandId ? { value: countStyle, set: setCountStyle, failed: countStyleFailed } : null}
+      />
       <AnimatePresence>
         {summary && session && (
           <RehearsalSummaryDialog
@@ -1123,11 +1202,22 @@ export const StageMode: React.FC<StageModeProps> = ({
           open={extraOpen}
           bandId={bandId}
           inSetlist={inSetlist}
+          notice={extraChanged ? t('The setlist changed meanwhile. Pick the song again.') : null}
           onPick={(song) => {
             setExtraOpen(false);
-            void regia!.playExtra(song);
+            setExtraChanged(false);
+            // Changed meanwhile: the picker opens again on the latest setlist.
+            void regia!.playExtra(song).then((r) => {
+              if (r !== 'changed') return;
+              setExtraChanged(true);
+              clearTimeout(reopenExtra.current ?? undefined);
+              reopenExtra.current = setTimeout(openExtraAgain, 1500);
+            });
           }}
-          onClose={() => setExtraOpen(false)}
+          onClose={() => {
+            setExtraOpen(false);
+            setExtraChanged(false);
+          }}
           accent={accentColor}
         />
       )}
@@ -1151,16 +1241,6 @@ export const StageMode: React.FC<StageModeProps> = ({
     </motion.div>
   );
 };
-
-/** A member's follow button: says so when nothing can reach this phone any more. */
-const followLabel = (live: StageLiveControls, t: ReturnType<typeof useT>) =>
-  !live.following
-    ? t('Follow leader')
-    : !live.leaderSeen
-      ? t('Waiting for leader')
-      : !live.connected && live.bluetooth !== 'connected'
-        ? t('Offline')
-        : t('Following leader');
 
 const saveLabel = (state: StageSaveState, t: ReturnType<typeof useT>) =>
   state === 'saving'

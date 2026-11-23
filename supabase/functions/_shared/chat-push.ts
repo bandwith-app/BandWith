@@ -1,0 +1,384 @@
+/**
+ * Chat pushes sent from the app (send-push, user callers): the server decides
+ * who wrote what (audit 02 #6, #7, release 383f15b).
+ *
+ * The app used to choose the title (sender name), subtitle and body freely,
+ * so a participant could make a lock-screen alert and an inbox entry look
+ * like someone else's message. Now the text must be the caller's own recent
+ * message in that chat (by id from newer builds, by its first 120 characters
+ * from older ones), and title, subtitle and body are rebuilt from the stored
+ * message and the caller's profile. Pushes also respect the recipient's
+ * "Push notifications" switch (notification_preferences.push).
+ *
+ * Plain TypeScript with no imports: Deno and vitest share this file.
+ */
+
+export interface ChatMessageRow {
+  id: string;
+  chat_id: string;
+  sender_id: string;
+  content: string | null;
+  created_at: string;
+  /** messages.deleted: a message marked deleted is never announced. */
+  deleted?: boolean | null;
+}
+
+/** Drops half an emoji left at the end by a cut (an unpaired high surrogate). */
+const wholeEnd = (s: string): string => (/[\uD800-\uDBFF]$/.test(s) ? s.slice(0, -1) : s);
+
+/**
+ * The preview of a message: its first 120 UTF-16 units, like the app's
+ * substring(0, 120), but never ending in half an emoji (Postgres refuses an
+ * unpaired surrogate in JSON, so the inbox insert failed and nobody got a
+ * push). Same cut as bw_js_left in 192.
+ */
+export const chatPreview = (content: string | null | undefined): string =>
+  wholeEnd((content ?? '').substring(0, 120)) || 'New message';
+
+/** "New message" in the reader's language (Claude NIT 7): the same words as 194's bw_chat_preview_in. */
+export const NEW_MESSAGE: Readonly<Record<'it' | 'es' | 'fr' | 'de' | 'pt', string>> = {
+  it: 'Nuovo messaggio',
+  es: 'Nuevo mensaje',
+  fr: 'Nouveau message',
+  de: 'Neue Nachricht',
+  pt: 'Nova mensagem',
+};
+
+/**
+ * The preview one reader sees: `chatPreview`, but an empty message reads
+ * "New message" in their language (profiles.preferred_language: it, es, fr,
+ * de, pt; English otherwise). A message's own text is never translated.
+ */
+export const chatPreviewIn = (content: string | null | undefined, lang: string | null | undefined): string => {
+  const cut = wholeEnd((content ?? '').substring(0, 120));
+  if (cut) return cut;
+  const l = String(lang || '').trim().slice(0, 2).toLowerCase() as keyof typeof NEW_MESSAGE;
+  return NEW_MESSAGE[l] ?? 'New message';
+};
+
+/**
+ * What bw_write_chat_notices (194, round 8) read under the message's lock:
+ * its content, and per recipient the preview the inbox got. Null when the
+ * rows don't say (194 before round 8): the caller keeps its own read.
+ */
+export function storedAnnouncement(
+  rows: unknown,
+): { content: string; previewByUser: Map<string, string> } | null {
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  const first = rows[0] as Record<string, unknown> | null;
+  if (!first || typeof first !== 'object' || !('content' in first)) return null;
+  const previewByUser = new Map<string, string>();
+  for (const r of rows as Record<string, unknown>[]) {
+    if (r && typeof r.preview === 'string' && r.user_id != null) previewByUser.set(String(r.user_id), r.preview);
+  }
+  return { content: typeof first.content === 'string' ? first.content : '', previewByUser };
+}
+
+/**
+ * A push-only call's message as read again after its claim (round 9, review
+ * MINOR-2; bw_claim_chat_push_only keeps its SETOF uuid result for older
+ * callers): its text now, edited or not; 'gone' when it was deleted or
+ * removed since (nothing rings); null when the read failed (ring the text
+ * verifyChatPush checked).
+ */
+export function pushOnlyReread(row: unknown, error: unknown): { content: string } | 'gone' | null {
+  if (error) return null;
+  if (!row || typeof row !== 'object') return 'gone';
+  const r = row as { content?: unknown; deleted?: unknown };
+  if (r.deleted === true) return 'gone';
+  return { content: typeof r.content === 'string' ? r.content : '' };
+}
+
+/**
+ * Notices this call claimed whose type the stored message changes (round 9,
+ * Claude delta review NIT-3): an edit between verifyChatPush and the write
+ * added or removed an @mention. Each gets the type and title its push has
+ * (typeFor / titleFor after announcing the stored content).
+ */
+export function retypedNotices(
+  written: { user_id: string; type: string }[],
+  claimed: { id: string; user_id: string }[],
+  typeFor: (uid: string) => 'chat_message' | 'chat_mention',
+  titleFor: (uid: string) => string,
+): { id: string; type: 'chat_message' | 'chat_mention'; title: string }[] {
+  const wrote = new Map(written.map((r) => [String(r.user_id), r.type]));
+  const out: { id: string; type: 'chat_message' | 'chat_mention'; title: string }[] = [];
+  for (const c of claimed) {
+    const uid = String(c.user_id);
+    const type = typeFor(uid);
+    if (wrote.has(uid) && wrote.get(uid) !== type) out.push({ id: String(c.id), type, title: titleFor(uid) });
+  }
+  return out;
+}
+
+/**
+ * A message older than this can't be announced any more. Well past a lapsed
+ * claim (PUSH_CLAIM_MS): a call that took the claim and crashed is retried
+ * by a later call, still inside the window (Claude #284 r5).
+ */
+export const CHAT_PUSH_WINDOW_MS = 20 * 60 * 1000;
+/** Device clocks drift: a message this far "ahead" still counts as new. */
+export const CHAT_PUSH_FUTURE_SKEW_MS = 60 * 1000;
+
+/**
+ * Every message of the caller's this push could announce, newest first
+ * (`recent` newest first too). By id: at most that one. Older builds (by
+ * preview): each recent message with that preview, so "OK" sent twice gives
+ * two candidates and each push announces a different one.
+ */
+export function findAnnouncedCandidates(
+  recent: ChatMessageRow[],
+  opts: { callerId: string; chatId: string; messageId?: unknown; body?: unknown; now?: number },
+): ChatMessageRow[] {
+  const now = opts.now ?? Date.now();
+  // UUIDs compare in lower case: an app may send them in capitals (Codex r4).
+  const same = (a: unknown, b: unknown) => typeof a === 'string' && typeof b === 'string' && a.toLowerCase() === b.toLowerCase();
+  const mine = recent.filter(
+    (m) =>
+      m.deleted !== true &&
+      same(m.sender_id, opts.callerId) &&
+      same(m.chat_id, opts.chatId) &&
+      now - Date.parse(m.created_at) <= CHAT_PUSH_WINDOW_MS &&
+      // Inserts may carry their own created_at: a future one isn't new forever.
+      Date.parse(m.created_at) - now <= CHAT_PUSH_FUTURE_SKEW_MS,
+  );
+  if (typeof opts.messageId === 'string' && opts.messageId) {
+    return mine.filter((m) => same(m.id, opts.messageId)).slice(0, 1);
+  }
+  // An older build's preview may end in half an emoji: compare whole ends.
+  const body = wholeEnd(typeof opts.body === 'string' ? opts.body : '') || 'New message';
+  return mine.filter((m) => chatPreview(m.content) === body);
+}
+
+/** The newest message this push could announce, or null. */
+export function findAnnouncedMessage(
+  recent: ChatMessageRow[],
+  opts: { callerId: string; chatId: string; messageId?: unknown; body?: unknown; now?: number },
+): ChatMessageRow | null {
+  return findAnnouncedCandidates(recent, opts)[0] ?? null;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Message ids are UUIDs: anything else would make the database cast fail (500). */
+export const isUuid = (v: unknown): v is string => typeof v === 'string' && UUID_RE.test(v);
+
+/**
+ * Older builds send only the preview (`chatPreview`). Looking it up by
+ * content, not in the caller's latest 20 messages, finds it however busy the
+ * chat got before a delayed push arrived. A 120-unit preview may be cut: a
+ * prefix match (LIKE, with % _ \ escaped, without a half emoji at the end).
+ */
+export function legacyContentFilter(body: string): { eq: string } | { like: string } | { in: string[] } {
+  if (body === 'New message') return { in: ['', 'New message'] };
+  if (body.length < 120) return { eq: body };
+  const whole = /[\uD800-\uDBFF]$/.test(body) ? body.slice(0, -1) : body;
+  return { like: whole.replace(/[\\%_]/g, '\\$&') + '%' };
+}
+
+/** Older builds: how many recent messages with the same preview are candidates. */
+export const LEGACY_CANDIDATES = 500;
+
+/**
+ * A push claim (bw_write_chat_notices, 194) lapses after this: the push is
+ * retried. Longer than the longest send-push call (Edge Function wall clock:
+ * 150 s Free, 400 s paid) plus a margin, so a slow call is never pushed
+ * twice (Claude review #284 r4). A call that can't push releases its claim
+ * at once (bw_release_chat_notice_claims).
+ */
+export const PUSH_CLAIM_MS = 7 * 60 * 1000;
+
+/**
+ * Whether a chat notice is announced: pushed, or being pushed right now.
+ * Written but never pushed (the token lookup failed after the insert) is
+ * not: a retry pushes it.
+ */
+export function noticeSettled(n: { pushed_at?: string | null; push_claimed_at?: string | null }, now = Date.now()): boolean {
+  if (n.pushed_at) return true;
+  const claimed = n.push_claimed_at ? Date.parse(n.push_claimed_at) : NaN;
+  // A claim far in the future is bogus (Claude #284 r5): unclaimed. Same
+  // minute of slack as 194's bw_chat_push_claim_free.
+  return Number.isFinite(claimed) && now - claimed < PUSH_CLAIM_MS && claimed - now <= CHAT_PUSH_FUTURE_SKEW_MS;
+}
+
+/**
+ * Each recipient hears about a message once (Claude review #284): calling
+ * send-push again with the same message rang everyone again and added inbox
+ * rows. `existing` are the chat notifications already written for these
+ * candidates. Picks the newest candidate someone hasn't been told about, and
+ * who that is; null when everyone already was.
+ */
+export function chooseUnannounced(
+  candidates: ChatMessageRow[],
+  targets: string[],
+  existing: { user_id: string; message_id: string | null }[],
+): { message: ChatMessageRow; recipients: string[] } | null {
+  return pendingAnnouncements(candidates, targets, existing)[0] ?? null;
+}
+
+/**
+ * Every candidate someone hasn't been told about yet, newest first, with who
+ * that is. send-push tries them in order: when another call claimed the
+ * first (two quick requests from an older build), it moves on to the next
+ * instead of dropping a message (Codex review #284 r3).
+ */
+export function pendingAnnouncements(
+  candidates: ChatMessageRow[],
+  targets: string[],
+  existing: { user_id: string; message_id: string | null }[],
+): { message: ChatMessageRow; recipients: string[] }[] {
+  const out: { message: ChatMessageRow; recipients: string[] }[] = [];
+  for (const message of candidates) {
+    const told = new Set(existing.filter((e) => e.message_id === message.id).map((e) => String(e.user_id)));
+    const recipients = targets.filter((id) => !told.has(id));
+    if (recipients.length > 0) out.push({ message, recipients });
+  }
+  return out;
+}
+
+/**
+ * Recipients whose chat notice can be marked pushed (Codex review #284 r3):
+ * a device took it, or there was nothing to deliver to (no device, push
+ * off, only dead tokens). If every device failed for now (503, timeout),
+ * the claim lapses and a retry delivers.
+ */
+export function pushSettledUsers(
+  recipients: string[],
+  outcomes: { userId: string; success: boolean; error?: string }[],
+): string[] {
+  const permanent = (e?: string) => e === 'invalid_token' || e === 'Unknown platform';
+  return recipients.filter((uid) => {
+    const mine = outcomes.filter((o) => o.userId === uid);
+    return mine.length === 0 || mine.some((o) => o.success) || mine.every((o) => permanent(o.error));
+  });
+}
+
+/** Name, else email address, else fallback (same rule as src/lib/personName.ts). */
+export function senderDisplayName(fullName: string | null | undefined, email: string | null | undefined, fallback = 'Someone'): string {
+  const n = (fullName ?? '').trim();
+  const address = (email ?? '').trim();
+  const lower = n.toLowerCase();
+  const isReal = !!n && !(address && (lower === address.toLowerCase() || lower === address.toLowerCase().split('@')[0]));
+  return (isReal ? n : '') || address || fallback;
+}
+
+const MENTIONED: Record<string, string> = {
+  en: '{name} mentioned you',
+  it: '{name} ti ha menzionato',
+  es: '{name} te ha mencionado',
+  fr: "{name} t'a mentionné",
+  de: '{name} hat dich erwähnt',
+  pt: '{name} mencionou você',
+};
+
+/** The push title: the sender's name, or "{name} mentioned you" in the reader's language. */
+export function chatPushTitle(type: 'chat_message' | 'chat_mention', senderName: string, lang: string | null | undefined): string {
+  if (type === 'chat_message') return senderName;
+  const l = String(lang || 'en').slice(0, 2).toLowerCase();
+  // A callback, so a "$" in the name stays literal (Ke$$, not Ke$).
+  return (MENTIONED[l] ?? MENTIONED.en).replace('{name}', () => senderName);
+}
+
+/** The push subtitle: "Private Message" for a direct chat, else the band (or chat) name. */
+export function chatPushSubtitle(chatType: string | null | undefined, bandName: string | null | undefined, chatName: string | null | undefined): string {
+  if (chatType === 'direct') return 'Private Message';
+  return (bandName || chatName || '').trim() || 'Band Chat';
+}
+
+/** Recipients whose device may ring: not those who turned push off. */
+export function pushAllowed(userIds: string[], prefs: { id: string; notification_preferences: unknown }[]): string[] {
+  const off = new Set(
+    prefs
+      .filter((p) => {
+        const v = (p.notification_preferences as Record<string, unknown> | null)?.push;
+        return v === false || v === 'false';
+      })
+      .map((p) => p.id),
+  );
+  return userIds.filter((id) => !off.has(id));
+}
+
+/**
+ * The chat a request is about. Older builds send both keys with the same
+ * value; when they differ, verification and tap routing could disagree, so
+ * the request is refused (Codex review #284).
+ */
+export function resolveChatId(data: Record<string, unknown> | null | undefined): { chatId: string | null; conflict: boolean } {
+  const a = typeof data?.chat_id === 'string' && data.chat_id ? data.chat_id : null;
+  const b = typeof data?.chatId === 'string' && data.chatId ? data.chatId : null;
+  if (a && b && a !== b) return { chatId: null, conflict: true };
+  return { chatId: a ?? b, conflict: false };
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * People the message mentions ("@Name", same rule as src/lib/chatMentions.ts):
+ * only they get "{name} mentioned you", whatever type the caller asked for.
+ */
+export function mentionedInMessage(content: string | null | undefined, people: { id: string; name: string }[], excludeId?: string | null): string[] {
+  if (!content || !content.includes('@')) return [];
+  let rest = content;
+  const found: string[] = [];
+  const byLength = people
+    .filter((p) => p.id && p.id !== excludeId && p.name.trim())
+    .sort((a, b) => b.name.trim().length - a.name.trim().length);
+  for (const p of byLength) {
+    const re = new RegExp(`@${escapeRe(p.name.trim())}(?=$|[\\s.,;:!?)\\]}'"’])`, 'giu');
+    if (re.test(rest)) {
+      if (!found.includes(p.id)) found.push(p.id);
+      rest = rest.replace(re, ' ');
+    }
+  }
+  return found;
+}
+
+/**
+ * The recipients a message mentions. Names are read against the whole chat
+ * (`roster`), then narrowed to `recipients`: with Ana and Ana Maria in the
+ * chat, "@Ana Maria" isn't a mention of Ana when only Ana was asked for.
+ */
+export function mentionsAmong(content: string | null | undefined, roster: { id: string; name: string }[], recipients: string[], excludeId?: string | null): string[] {
+  const asked = new Set(recipients);
+  return mentionedInMessage(content, roster, excludeId).filter((id) => asked.has(id));
+}
+
+/** Android channel for every verified chat push (muting Messages mutes chat). */
+export const CHAT_PUSH_CHANNEL = 'bandwith_messages';
+
+export interface VerifiedChatFields {
+  chatId: string;
+  type: 'chat_message' | 'chat_mention';
+  senderName: string;
+  body: string;
+  messageId: string;
+  bandId: string | null;
+  bandName: string | null;
+  chatType: string | null;
+  /** "Private Message" or the band name (the foreground iOS banner reads data.subtitle). */
+  subtitle?: string | null;
+}
+
+/**
+ * What a chat push carries to the device: the verified fields, plus the
+ * caller's harmless labels. Nothing else from the request goes through (an
+ * `aps` key used to replace the iOS alert, a stray id could route the tap).
+ */
+export function chatPushData(data: Record<string, unknown> | null | undefined, v: VerifiedChatFields): Record<string, unknown> {
+  const label = (k: string) => (typeof data?.[k] === 'string' ? String(data[k]).slice(0, 64) : undefined);
+  const out: Record<string, unknown> = {
+    type: v.type,
+    chat_id: v.chatId,
+    chatId: v.chatId,
+    senderName: v.senderName,
+    content: v.body,
+    message_id: v.messageId,
+    band_id: v.bandId,
+    bandName: v.bandName ?? undefined,
+    chatType: v.chatType ?? undefined,
+    subtitle: v.subtitle || undefined,
+    tag: label('tag'),
+    channel_id: CHAT_PUSH_CHANNEL,
+  };
+  for (const k of Object.keys(out)) if (out[k] === undefined) delete out[k];
+  return out;
+}

@@ -1,12 +1,45 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { cn } from '@/app/components/ui/utils';
 import { useT } from '@/lib/i18n';
 import { useWaitingChanges } from '@/app/hooks/useLiveOutbox';
+import { useOnline } from '@/app/components/event/useLivePack';
+import { BwSheet } from '@/app/components/bw/Screen';
+import { PillButton } from '@/app/components/bw/Form';
+import { LIVE_REFUSED_EVENT, readRefusedLiveOps, refusedId, refusedKey, removeRefusedLiveOp, type RefusedLiveOp } from '@/lib/liveOutbox';
+import { refusedText } from '@/app/components/settings/RefusedLiveChanges';
+
+/**
+ * Changes the server refused, kept on this phone: the same list as Settings ›
+ * Offline & live (liveOutbox.ts, readRefusedLiveOps), so removing one here
+ * removes it there too.
+ */
+function useLiveRefused(userId?: string | null): RefusedLiveOp[] {
+  const [items, setItems] = useState(() => readRefusedLiveOps(userId));
+  useEffect(() => {
+    const update = () => setItems(readRefusedLiveOps(userId));
+    update();
+    // Another tab changed the list (it removed one, or one more was refused).
+    const fromOtherTab = (e: StorageEvent) => {
+      if (!userId || e.key === null || e.key === refusedKey(userId)) update();
+    };
+    window.addEventListener(LIVE_REFUSED_EVENT, update);
+    window.addEventListener('storage', fromOtherTab);
+    return () => {
+      window.removeEventListener(LIVE_REFUSED_EVENT, update);
+      window.removeEventListener('storage', fromOtherTab);
+    };
+  }, [userId]);
+  return items;
+}
 
 /**
  * "3 changes waiting for signal" (plan §3.5): notes, suggestions and the
  * leader's order made with no signal, kept on this phone until they are
- * sent. Nothing when nothing waits. `stage`: white on the dark Stage header.
+ * sent. With full signal and the server busy for a moment: "waiting to
+ * send". A change the server refused is not lost: "1 change wasn't saved"
+ * opens it, to copy its words and remove it (the list of Settings › Offline
+ * & live, through the same calls). Nothing when
+ * nothing waits. `stage`: white on the dark Stage header.
  */
 export const WaitingChangesTag: React.FC<{ userId?: string | null; stage?: boolean; className?: string }> = ({
   userId,
@@ -15,19 +48,96 @@ export const WaitingChangesTag: React.FC<{ userId?: string | null; stage?: boole
 }) => {
   const t = useT();
   const n = useWaitingChanges(userId);
-  if (n <= 0) return null;
+  const online = useOnline();
+  const refused = useLiveRefused(userId);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!refused.length) setOpen(false);
+  }, [refused.length]);
+  if (n <= 0 && !refused.length) return null;
+
+  const pill = cn(
+    'self-start inline-flex items-center gap-1.5 min-h-6 max-w-full px-2.5 rounded-full border bw-label-xs whitespace-nowrap overflow-hidden text-ellipsis',
+    stage ? 'border-white/40 text-white/80' : 'border-foreground/30 text-muted-foreground',
+  );
+  const waiting = online
+    ? n === 1
+      ? t('1 change waiting to send')
+      : t('{n} changes waiting to send', { n })
+    : n === 1
+      ? t('1 change waiting for signal')
+      : t('{n} changes waiting for signal', { n });
+
   return (
-    <span
-      role="status"
-      title={t('Saved on this phone, sent when you’re back online.')}
-      className={cn(
-        'self-start inline-flex items-center gap-1.5 min-h-6 max-w-full px-2.5 rounded-full border bw-label-xs whitespace-nowrap overflow-hidden text-ellipsis',
-        stage ? 'border-white/40 text-white/80' : 'border-foreground/30 text-muted-foreground',
-        className,
+    <>
+      {n > 0 && (
+        <span
+          role="status"
+          title={online ? t('Saved on this phone, sent as soon as the server answers.') : t('Saved on this phone, sent when you’re back online.')}
+          className={cn(pill, className)}
+        >
+          <span aria-hidden className={cn('w-1.5 h-1.5 rounded-full shrink-0', stage ? 'bg-white/60' : 'bg-foreground/50')} />
+          <span className="truncate">{waiting}</span>
+        </span>
       )}
-    >
-      <span aria-hidden className={cn('w-1.5 h-1.5 rounded-full shrink-0', stage ? 'bg-white/60' : 'bg-foreground/50')} />
-      <span className="truncate">{n === 1 ? t('1 change waiting for signal') : t('{n} changes waiting for signal', { n })}</span>
-    </span>
+      {refused.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className={cn(pill, 'relative border-destructive/70 after:absolute after:-inset-y-2.5 after:inset-x-0 after:content-[\'\']', stage ? 'text-white' : 'text-foreground', n > 0 ? '' : className)}
+        >
+          <span aria-hidden className="w-1.5 h-1.5 rounded-full shrink-0 bg-destructive" />
+          <span className="truncate">
+            {refused.length === 1 ? t('1 change wasn’t saved') : t('{n} changes weren’t saved', { n: refused.length })}
+          </span>
+        </button>
+      )}
+      <BwSheet open={open} onClose={() => setOpen(false)} overline={t('Offline & live')} title={t('Not saved')} closeLabel={t('Close')} zIndex={200}>
+        <div className="flex flex-col gap-4">
+          <p className="bw-body-sm text-sheet-foreground/80">{t('These changes couldn’t be saved. Copy what you need, then remove them.')}</p>
+          {refused.map((item) => {
+            // The words to copy (none for a new order or a deleted note: the label says it).
+            const words = item.kind === 'note' || item.kind === 'suggestion' || item.kind === 'gigSetlist' ? refusedText(item, t) : '';
+            const what =
+              item.kind === 'note'
+                ? t('Your note')
+                : item.kind === 'suggestion'
+                  ? t('Suggestion to the band')
+                  : item.kind === 'order'
+                    ? t('New song order')
+                    : item.kind === 'noteDelete'
+                      ? t('Deleting one of my notes')
+                      : null;
+            const rid = refusedId(item);
+            return (
+              <div key={rid} className="flex flex-col gap-2 rounded-[16px] border border-sheet-foreground/20 p-4">
+                {what && <span className="bw-label-xs text-sheet-foreground/70">{what}</span>}
+                {words && <p className="bw-body [overflow-wrap:anywhere] whitespace-pre-wrap select-text">{words}</p>}
+                {item.why && (
+                  <span className="bw-body-sm text-sheet-foreground/70">
+                    {item.why === 'stuck' ? t('The server didn’t answer for too long.') : t('The server didn’t accept it.')}
+                  </span>
+                )}
+                <div className="flex gap-2 pt-1">
+                  {words && (
+                    <PillButton
+                      variant="outline"
+                      size="sm"
+                      fullWidth={false}
+                      onClick={() => void navigator.clipboard?.writeText(words).catch(() => undefined)}
+                    >
+                      {t('Copy')}
+                    </PillButton>
+                  )}
+                  <PillButton variant="ghost" size="sm" fullWidth={false} onClick={() => userId && removeRefusedLiveOp(userId, rid)}>
+                    {t('Remove')}
+                  </PillButton>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </BwSheet>
+    </>
   );
 };

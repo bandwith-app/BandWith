@@ -390,6 +390,9 @@ export const DuoRail: React.FC<DuoRailProps> = ({ tabs, isPlusMenuOpen, onPlus, 
             key="actions"
             role="toolbar"
             aria-label={t('Screen actions, search and profile')}
+            // A layer's Close and Back move here on the Duo: a trapped layer's
+            // Tab cycle includes this toolbar (src/lib/focusTrap.ts).
+            data-bw-trap-include=""
             {...containerMotion}
             className={cn('bw-glass pointer-events-auto shrink-0 rounded-[24px] flex items-center', onDeck ? 'gap-[14px] h-12 px-3 flex-row' : 'gap-[var(--bw-rail-gap,14px)] w-12 py-[var(--bw-rail-pill-py,12px)] flex-col')}
           >

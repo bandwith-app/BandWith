@@ -15,8 +15,24 @@ const isLaptop = () => test.info().project.name === 'duo-laptop';
 const stageDialog = (app: App) => app.page.getByRole('dialog', { name: app.t('Stage mode: {title}', { title: SEED.gigToday }) });
 const waiting = (app: App, n: number) =>
   app.page.getByRole('status').filter({ hasText: n === 1 ? app.t('1 change waiting for signal') : app.t('{n} changes waiting for signal', { n }) });
+const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Any "waiting" pill: no signal ("waiting for signal") or the server busy ("waiting to send"), one or more. */
 const anyWaiting = (app: App) =>
-  app.page.getByRole('status').filter({ hasText: app.t('{n} changes waiting for signal', { n: '§' }).split('§')[1].trim() });
+  app.page.getByRole('status').filter({
+    hasText: new RegExp(
+      [
+        app.t('1 change waiting for signal'),
+        app.t('{n} changes waiting for signal', { n: '§' }),
+        app.t('1 change waiting to send'),
+        app.t('{n} changes waiting to send', { n: '§' }),
+      ]
+        .map((s) => escape(s).replace('§', '\\d+'))
+        .join('|'),
+    ),
+  });
+/** The "wasn't saved" button: a change the server refused. Never after a plain reconnect. */
+const notSaved = (app: App) =>
+  app.page.getByRole('button', { name: new RegExp(`${escape(app.t('1 change wasn’t saved'))}|${escape(app.t('{n} changes weren’t saved', { n: '§' })).replace('§', '\\d+')}`) });
 
 /** Open the gig once with signal (its setlist stays on the phone), then lose it and open Stage. */
 async function stageWithoutSignal(app: App, context: import('@playwright/test').BrowserContext) {
@@ -68,6 +84,7 @@ test.describe('Changes with no signal, as member', () => {
 
     await context.setOffline(false);
     await expect(anyWaiting(app)).toHaveCount(0, { timeout: 15_000 });
+    await expect(notSaved(app)).toHaveCount(0);
     const db = await app.readDb();
     const notes = (db.song_personal_notes as Array<{ body: string }> | undefined) ?? [];
     expect(notes.filter((n) => n.body === 'Capo 2 on the last chorus')).toHaveLength(1);
@@ -88,6 +105,7 @@ test.describe('Changes with no signal, as member', () => {
 
     await context.setOffline(false);
     await expect(anyWaiting(app)).toHaveCount(0, { timeout: 15_000 });
+    await expect(notSaved(app)).toHaveCount(0);
     const db = await app.readDb();
     const rows = (db.song_suggestions as Array<{ kind: string; proposed?: { note?: string } }> | undefined) ?? [];
     expect(rows.filter((r) => r.kind === 'note' && (r.proposed?.note || '').includes('Count in 4 before the bridge'))).toHaveLength(1);
@@ -117,6 +135,7 @@ test.describe('Changes with no signal, as leader', () => {
 
     await context.setOffline(false);
     await expect(anyWaiting(app)).toHaveCount(0, { timeout: 15_000 });
+    await expect(notSaved(app)).toHaveCount(0);
     // Sent: Stage no longer says it is only on this phone.
     await expect(stage.getByText(app.t('Saved on this phone'), { exact: true })).toHaveCount(0, { timeout: 10_000 });
     const db = await app.readDb();

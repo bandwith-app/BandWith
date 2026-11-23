@@ -280,6 +280,7 @@ export const BandPricingModal: React.FC<BandPricingModalProps> = ({
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [saveError, setSaveError] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [presetFeedback, setPresetFeedback] = useState<string | null>(null);
   const [isSubRateOpen, setIsSubRateOpen] = useState(false);
@@ -497,7 +498,17 @@ export const BandPricingModal: React.FC<BandPricingModalProps> = ({
 
   const handleSave = async () => {
     setSaving(true);
-    const saved = await saveBandPricing({ ...settings, band_id: effectiveBandId });
+    setSaveError(false);
+    let saved: BandPricingSettings;
+    try {
+      saved = await saveBandPricing({ ...settings, band_id: effectiveBandId });
+    } catch (err) {
+      // Not saved: the edit stays here to try again, nothing says Saved.
+      console.warn('[BandPricingModal] pricing not saved:', err);
+      setSaving(false);
+      setSaveError(true);
+      return;
+    }
     setSettings(saved);
     if (effectiveBandId && effectiveBandId !== 'default') {
       try {
@@ -1298,18 +1309,22 @@ export const BandPricingModal: React.FC<BandPricingModalProps> = ({
                     <div className="flex-1 min-w-0">
                       <VenueAutocomplete
                         value={settings.band_origin_address}
-                        onChange={(val) => setSettings({ ...settings, band_origin_address: val })}
+                        // From the latest settings too: the field hands its text
+                        // back late on a pick, just before `onSelect` below.
+                        onChange={(val) => setSettings((s) => ({ ...s, band_origin_address: val }))}
                         onSelect={(place) => {
                           const formatted =
                             place.fullAddress ||
                             [place.address, place.city, place.country].filter(Boolean).join(', ') ||
                             place.name;
-                          setSettings({
-                            ...settings,
+                          // From the latest settings: the pick can land late
+                          // (place details), after other fields changed.
+                          setSettings((s) => ({
+                            ...s,
                             band_origin_address: formatted,
                             band_origin_lat: place.latitude,
                             band_origin_lng: place.longitude,
-                          });
+                          }));
                         }}
                         placeholder={t('City or rehearsal studio')}
                         className="border-0 pb-0 text-lg font-medium normal-case placeholder:text-muted-foreground/60"
@@ -2063,7 +2078,12 @@ export const BandPricingModal: React.FC<BandPricingModalProps> = ({
 
       {/* Save (Figma CTA) */}
       <div className="shrink-0 px-4 pt-3 bg-background" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}>
-        <div className="max-w-2xl mx-auto w-full">
+        <div className="max-w-2xl mx-auto w-full flex flex-col gap-2">
+          {saveError && (
+            <p role="alert" className="bw-body-sm text-destructive text-center">
+              {t('Not saved. Check your connection and try again.')}
+            </p>
+          )}
           <PillButton onClick={handleSave} loading={saving} icon={<Check className="w-[18px] h-[18px]" />}>
             {savedSuccess ? t('Saved') : t('Save changes')}
           </PillButton>

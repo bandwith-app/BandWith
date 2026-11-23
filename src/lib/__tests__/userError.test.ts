@@ -23,6 +23,17 @@ describe('userMessage', () => {
     expect(userMessage(new Error('BW_PLAN_LIMIT:gear_items'), fb)).toBe(msg);
   });
 
+  it('a file that is gone or another song’s says to upload it again, with no retry (197)', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fb = 'Could not save the song.';
+    const gone = `${fb} This file is no longer available: upload it again.`;
+    expect(userMessage({ message: 'BW_FILE_REMOVED: this file is being removed; upload it again', code: 'BWF02' }, fb)).toBe(gone);
+    expect(userMessage({ message: 'x', code: 'BWF02' }, fb)).toBe(gone);
+    const taken = `${fb} This file belongs to another song: upload it again.`;
+    expect(userMessage({ message: 'BW_FILE_IN_USE: this file belongs to another song; upload it again', code: 'BWF01' }, fb)).toBe(taken);
+    expect(userMessage(new Error('BW_FILE_IN_USE: x'), fb)).toBe(taken);
+  });
+
   it('planOr: the plan sentence for a refusal, the screen\'s own text otherwise', () => {
     expect(planOr(new Error('BW_PLAN_LIMIT:gear_items'), 'raw')).toBe('Your band’s plan has no room for this.');
     expect(planOr(new Error("This category can't be saved yet. Pick another one."), 'kept')).toBe('kept');

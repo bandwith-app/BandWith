@@ -7,10 +7,12 @@
  * survive a reload; signing out wipes it.
  */
 import { buildSeed, DEMO_USER, type DemoDB, type Row } from './seed';
+import { voicesKey } from '@/lib/voicesKey';
 import { memberStatsFromRows } from '@/lib/memberStats';
 import { freeSlotsFromRows, type MemberCommitment } from '@/lib/freeSlots';
 import { computeEntitlements, limitFor, type BandPlanRow, type Entitlements, type LimitKey } from '@/lib/plans';
 import { reportPlanLimit } from '@/lib/planLimit';
+import { isDateHoldType, isQuoteStageEvent } from '@/lib/dateHoldRules';
 
 // v5: song suggestions (108) refer to seed songs added with them.
 const DB_KEY = 'bw-demo-db-v6';
@@ -120,12 +122,22 @@ interface SelectField {
   children?: SelectField[];
 }
 
-/** Split on top-level commas (ignores commas inside parentheses). */
+/** Split on top-level commas (ignores commas inside parentheses and "quoted values"). */
 const splitTop = (s: string): string[] => {
   const out: string[] = [];
   let depth = 0;
   let cur = '';
+  let quoted = false;
+  let escaped = false;
   for (const ch of s) {
+    if (quoted) {
+      cur += ch;
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') quoted = false;
+      continue;
+    }
+    if (ch === '"') quoted = true;
     if (ch === '(') depth++;
     if (ch === ')') depth--;
     if (ch === ',' && depth === 0) {
@@ -287,6 +299,9 @@ const safeJSON = (s: string) => {
   }
 };
 
+/** A PostgREST "double-quoted" value (backslash escapes), as the server reads it. */
+const unquote = (v: string) => (/^".*"$/s.test(v) ? v.slice(1, -1).replace(/\\(.)/gs, '$1') : v);
+
 /** Parse a PostgREST `or=(...)` expression such as `a.eq.1,and(b.is.null,c.eq.2)`. */
 const parseLogic = (expr: string, mode: 'or' | 'and'): Pred => {
   const parts = splitTop(expr).map((p): Pred => {
@@ -295,10 +310,10 @@ const parseLogic = (expr: string, mode: 'or' | 'and'): Pred => {
     const [col, maybeNot, ...rest] = p.split('.');
     if (maybeNot === 'not') {
       const [op, ...v] = rest;
-      const inner = opPred(col, op, v.join('.'));
+      const inner = opPred(col, op, unquote(v.join('.')));
       return (r) => !inner(r);
     }
-    return opPred(col, maybeNot, rest.join('.'));
+    return opPred(col, maybeNot, unquote(rest.join('.')));
   });
   return mode === 'or' ? (r) => parts.some((p) => p(r)) : (r) => parts.every((p) => p(r));
 };
@@ -497,7 +512,9 @@ class DemoQuery implements PromiseLike<Result> {
   overrideTypes() { return this; }
 
   private matches(): Row[] {
-    return table(this.name).filter((r) => this.preds.every((p) => p(r)));
+    const rows = table(this.name).filter((r) => this.preds.every((p) => p(r)));
+    // Reads follow the date-on-hold rules (178): quotes stay with the admins.
+    return this.op === 'select' ? rows.filter((r) => demoReadable(this.name, r)) : rows;
   }
 
   private shape(rows: Row[]): Result {
@@ -812,6 +829,7 @@ const storage = {
   from: (bucket: string) => ({
     upload: async (path: string) => ({ data: { path, id: uuid(), fullPath: `${bucket}/${path}` }, error: null }),
     move: async () => ({ data: { message: 'Successfully moved' }, error: null }),
+    copy: async (_from: string, to: string) => ({ data: { path: to }, error: null }),
     update: async (path: string) => ({ data: { path }, error: null }),
     remove: async () => ({ data: [], error: null }),
     list: async () => ({ data: [], error: null }),
@@ -827,6 +845,62 @@ const storage = {
 const demoUid = (): string => DEMO_USER.id;
 const isDemoAdmin = (bandId: string, uid = demoUid()) =>
   table('band_members').some((m) => m.band_id === bandId && m.user_id === uid && m.role === 'admin' && m.is_active !== false);
+
+// ------------------------------------------------------ date on hold (178) --
+
+/** A band event still at quote stage that the demo user doesn't administer. */
+const demoQuoteHidden = (eventId: unknown): boolean => {
+  const ev = table('events').find((e) => e.id === eventId);
+  return !!ev && !!ev.band_id && isQuoteStageEvent(ev) && !isDemoAdmin(ev.band_id);
+};
+
+/** What the database lets the demo user read, as 178 has it. */
+function demoReadable(name: string, r: Row): boolean {
+  switch (name) {
+    case 'events':
+      return !(r.band_id && isQuoteStageEvent(r) && !isDemoAdmin(r.band_id));
+    case 'event_members':
+    case 'event_stage':
+    case 'event_gear_kits':
+      return !demoQuoteHidden(r.event_id);
+    case 'chats':
+      return !(r.type === 'event' && demoQuoteHidden(r.event_id));
+    case 'notifications':
+      // Hold notices go to members only; other notices about a quote, to admins only.
+      if (isDateHoldType(r.type)) return !r.band_id || !isDemoAdmin(r.band_id);
+      return !demoQuoteHidden(r.data?.event_id ?? (r.reference_type === 'event' ? r.reference_id : null));
+    default:
+      return true;
+  }
+}
+
+/** Live holds for the demo user: quote-stage band gigs from today on, in bands they don't run. */
+function demoDateHolds(): Row[] {
+  const today = new Date().toISOString().slice(0, 10);
+  const mine = table('band_members').filter((m) => m.user_id === demoUid() && m.is_active !== false && m.role !== 'admin');
+  const bandIds = new Set(mine.map((m) => m.band_id));
+  const closed = (ev: Row) =>
+    table('quotes').some(
+      (q) => (q.id === ev.quote_id || q.converted_to_event_id === ev.id) && ['declined', 'rejected', 'expired', 'archived', 'cancelled'].includes(String(q.status).toLowerCase()),
+    );
+  return table('events')
+    .filter((e) => bandIds.has(e.band_id) && isQuoteStageEvent(e) && !['cancelled', 'canceled', 'draft'].includes(String(e.status)) && String(e.event_date || e.date || '') >= today && !closed(e))
+    .map((e) => {
+      const a = table('event_hold_answers').find((x) => x.event_id === e.id && x.user_id === demoUid());
+      return {
+        event_id: e.id,
+        band_id: e.band_id,
+        band_name: table('bands').find((b) => b.id === e.band_id)?.name ?? '',
+        event_date: e.event_date || e.date,
+        start_time: e.start_time ?? null,
+        end_time: e.end_time ?? null,
+        venue_name: e.venue_name ?? null,
+        venue_city: e.venue_city ?? null,
+        my_answer: a?.answer ?? null,
+        answered_at: a?.answered_at ?? null,
+      };
+    });
+}
 
 /** BEFORE INSERT: the server-side copy of the song, a pending row. */
 function fillSuggestion(row: Row) {
@@ -913,6 +987,57 @@ function withdrawSuggestion(args: Row): { data: any; error: any } {
   }
   persist();
   return { data: { status: 'withdrawn', files }, error: null };
+}
+
+// ------------------------------------------------- song files (197) --
+
+const SONG_REF = 'sb://song-files/';
+const demoFileInUse = (ref: string) => table('songs').some((s) => s.audio_url === ref || s.chart_url === ref);
+
+/**
+ * 197's adoption RPCs, as the server answers them for one admin: the
+ * destination is `<band>/<kind>/<song id>-<name>`, the repoint changes the
+ * song only while it still links the original. The demo's Storage holds no
+ * objects, so the sweep has nothing to list and a delete claim is any file
+ * no song uses.
+ */
+function demoSongFiles(fn: string, args: Row): { data: any; error: any } {
+  const notAdmin = { data: null, error: { message: 'Only band admins can move song files', code: '42501' } };
+  const song = args.p_song_id ? table('songs').find((s) => s.id === args.p_song_id) : null;
+  const field = args.p_field === 'chart_url' ? 'chart_url' : 'audio_url';
+  switch (fn) {
+    case 'bw_song_file_adopt_begin': {
+      if (!song || !isDemoAdmin(song.band_id)) return notAdmin;
+      if (song.status === 'suggested') return { data: { won: false, reason: 'waiting' }, error: null };
+      const ref = song[field] as string | null;
+      const parts = typeof ref === 'string' && ref.startsWith(SONG_REF) ? ref.slice(SONG_REF.length).split('/') : [];
+      if (parts.length !== 5 || parts[0] !== song.band_id || parts[1] !== 'suggestions') return { data: { won: false, reason: 'nothing', ref }, error: null };
+      return { data: { won: true, from: parts.join('/'), to: `${parts[0]}/${parts[3]}/${song.id}-${parts[4]}` }, error: null };
+    }
+    case 'bw_song_file_copy_reserve':
+      return song && isDemoAdmin(song.band_id) ? { data: { registered: true, reserved_at: new Date().toISOString() }, error: null } : notAdmin;
+    case 'bw_song_file_copy_release':
+      return song && isDemoAdmin(song.band_id) ? { data: true, error: null } : notAdmin;
+    case 'bw_song_file_adopt_repoint': {
+      if (!song || !isDemoAdmin(song.band_id)) return notAdmin;
+      const to = `${SONG_REF}${args.p_to}`;
+      if (song[field] !== `${SONG_REF}${args.p_from}`) return { data: { won: false, ref: song[field], to_referenced: demoFileInUse(to) }, error: null };
+      song[field] = to;
+      persist();
+      return { data: { won: true, ref: to, to_referenced: true }, error: null };
+    }
+    case 'bw_song_file_sweep_list':
+      return isDemoAdmin(args.p_band_id) ? { data: [], error: null } : notAdmin;
+    case 'bw_song_file_sweep_claim':
+      return isDemoAdmin(args.p_band_id) ? { data: { ok: false, reason: 'gone' }, error: null } : notAdmin;
+    case 'bw_song_file_sweep_done':
+      return isDemoAdmin(args.p_band_id) ? { data: 0, error: null } : notAdmin;
+    case 'bw_song_files_claim_delete':
+      return { data: ((args.p_refs as string[] | null) || []).filter((r) => typeof r === 'string' && r.startsWith(SONG_REF) && !demoFileInUse(r)), error: null };
+    case 'bw_song_files_removed':
+      return { data: ((args.p_refs as string[] | null) || []).length, error: null };
+  }
+  return { data: null, error: null };
 }
 
 // ------------------------------------------------------------ plans --
@@ -1039,8 +1164,9 @@ function demoPlanWrite(name: string, row: Row, before?: Row) {
 // -------------------------------------------------------------------- rpc --
 
 let demoCalendarToken = '';
+const demoEventCalendarTokens = new Map<string, string>();
 
-const rpc = (fn: string, args: Row = {}) => {
+const rpcOnline = (fn: string, args: Row = {}) => {
   let data: any = null;
   let error: any = null;
   switch (fn) {
@@ -1049,17 +1175,108 @@ const rpc = (fn: string, args: Row = {}) => {
       data = `Q-${new Date().getFullYear()}-${String(n).padStart(4, '0')}`;
       break;
     }
+    case 'bw_my_date_holds':
+      data = demoDateHolds();
+      break;
+    case 'bw_answer_date_hold': {
+      if (args.p_answer !== 'free' && args.p_answer !== 'busy') {
+        error = { code: '22023', message: 'Answer free or busy' };
+        break;
+      }
+      const held = demoDateHolds().find((h) => h.event_id === args.p_event_id);
+      if (!held) {
+        error = { code: 'P0002', message: 'This date is free again' };
+        break;
+      }
+      // The day or time the card showed is not the hold's any more (178).
+      if (args.p_date && String(held.event_date).slice(0, 10) !== args.p_date) {
+        error = { code: 'BWD01', message: 'The date changed' };
+        break;
+      }
+      if (args.p_date && (String(held.start_time || '').slice(0, 5) !== String(args.p_start_time || '')
+        || String(held.end_time || '').slice(0, 5) !== String(args.p_end_time || ''))) {
+        error = { code: 'BWD02', message: 'The time changed' };
+        break;
+      }
+      const rows = table('event_hold_answers');
+      const at = new Date().toISOString();
+      const row = rows.find((x) => x.event_id === args.p_event_id && x.user_id === demoUid());
+      if (row) Object.assign(row, { answer: args.p_answer, answered_at: at });
+      else rows.push({ event_id: args.p_event_id, user_id: demoUid(), answer: args.p_answer, answered_at: at });
+      persist();
+      break;
+    }
+    case 'bw_date_hold_answers': {
+      const ev = table('events').find((e) => e.id === args.p_event_id);
+      if (!ev?.band_id || !isDemoAdmin(ev.band_id)) {
+        error = { code: '42501', message: 'Only band admins see the answers' };
+        break;
+      }
+      const people = table('band_members').filter((m) => m.band_id === ev.band_id && m.is_active !== false && m.role !== 'admin');
+      data = people.map((m) => {
+        const a = table('event_hold_answers').find((x) => x.event_id === ev.id && x.user_id === m.user_id);
+        const p = table('profiles').find((x) => x.id === m.user_id);
+        return {
+          user_id: m.user_id,
+          name: p?.full_name || p?.email || '',
+          answer: a?.answer ?? null,
+          answered_at: a?.answered_at ?? null,
+          on_lineup: table('event_members').some((em) => em.event_id === ev.id && em.user_id === m.user_id && !['declined', 'dropped_out', 'removed'].includes(String(em.status))),
+        };
+      });
+      break;
+    }
     case 'bw_my_pending_invitations':
       data = [];
       break;
     // Calendar sync (165): a fixed link per demo session; rotate makes a new one.
     case 'bw_my_calendar_token': {
       if (args.p_rotate || !demoCalendarToken) {
+        demoEventCalendarTokens.clear();
+        if (args.p_rotate) {
+          try {
+            localStorage.removeItem('bw-demo-calendar-review');
+          } catch {
+            /* private mode */
+          }
+        }
         demoCalendarToken = Array.from({ length: 64 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join('');
       }
       data = demoCalendarToken;
       break;
     }
+    // Calendar link made before 182 (asked once): e2e turns it on with
+    // localStorage bw-demo-calendar-review = 1.
+    case 'bw_my_calendar_link_review': {
+      try {
+        data = localStorage.getItem('bw-demo-calendar-review') === '1';
+      } catch {
+        data = false;
+      }
+      break;
+    }
+    case 'bw_my_calendar_link_keep': {
+      try {
+        localStorage.removeItem('bw-demo-calendar-review');
+      } catch {
+        /* private mode */
+      }
+      data = null;
+      break;
+    }
+    // "Add to calendar" (182): a link token per event and date.
+    case 'bw_my_event_calendar_token': {
+      const k = `${args.p_event_id}|${args.p_date ?? ''}`;
+      if (!demoEventCalendarTokens.has(k)) {
+        demoEventCalendarTokens.set(k, Array.from({ length: 64 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join(''));
+      }
+      data = demoEventCalendarTokens.get(k);
+      break;
+    }
+    // Opening the event: the link it has, made only by the tap above.
+    case 'bw_my_event_calendar_link':
+      data = demoEventCalendarTokens.get(`${args.p_event_id}|${args.p_date ?? ''}`) ?? null;
+      break;
     // Band members → Invited (166): the demo's own band_invitations rows.
     case 'bw_band_invitations': {
       const now = Date.now();
@@ -1176,11 +1393,13 @@ const rpc = (fn: string, args: Row = {}) => {
           return {
             user_id: String(em.user_id), event_id: String(e.id), event_date: String(e.event_date),
             start_time: e.start_time ?? null, end_time: e.end_time ?? null, event_status: e.status, answer: em.status ?? '',
+            skip_dates: Array.isArray(e.recurrence_rule?.skip_dates) ? e.recurrence_rule.skip_dates : null,
           };
         }),
         ...table('events').filter((e) => !e.band_id && e.created_by).map((e) => ({
           user_id: String(e.created_by), event_id: String(e.id), event_date: String(e.event_date),
           start_time: e.start_time ?? null, end_time: e.end_time ?? null, event_status: e.status, answer: null,
+          skip_dates: Array.isArray(e.recurrence_rule?.skip_dates) ? e.recurrence_rule.skip_dates : null,
         })),
         ...table('demo_member_busy').map((b) => ({ ...b, user_id: String(b.user_id), event_date: String(b.event_date), answer: null })),
       ];
@@ -1188,6 +1407,27 @@ const rpc = (fn: string, args: Row = {}) => {
         from: String(args.p_from ?? ''), to: String(args.p_to ?? ''), start: args.p_start ?? null, end: args.p_end ?? null,
         slotMinutes: args.p_slot_minutes ?? null, excludeEventId: args.p_exclude_event ?? null,
       }).map((r) => ({ day: r.day, slot_start: r.slotStart, free_count: r.free, total_count: r.total }));
+      break;
+    }
+    // 196 (#296 round 8): a running rehearsal session saved on the revision it read.
+    case 'bw_save_rehearsal_session': {
+      const r = table('rehearsal_sessions').find(
+        (x) => x.event_id === args.p_event_id && x.occurrence_date === args.p_occurrence_date && x.updated_at === args.p_rev,
+      );
+      if (r) {
+        const before = { ...r };
+        Object.assign(r, {
+          started_at: args.p_started_at,
+          paused_ms: args.p_paused_ms,
+          paused_at: args.p_paused_at,
+          ended_at: args.p_ended_at,
+          summary: args.p_summary,
+          updated_at: new Date().toISOString(),
+        });
+        emitChange({ table: 'rehearsal_sessions', eventType: 'UPDATE', new: clone(r), old: before });
+        persist();
+        data = r.updated_at;
+      }
       break;
     }
     case 'bw_mark_chats_delivered':
@@ -1410,10 +1650,25 @@ const rpc = (fn: string, args: Row = {}) => {
     case 'bw_deputy_request_ping':
       data = 'sent';
       break;
-    case 'bw_deputy_unlink': {
+    case 'bw_deputy_unlink':
+    case 'bw_deputy_revoke_links': {
       const d = table('band_deputies').find((x) => x.id === args.p_deputy_id);
-      data = d?.user_id ? 'unlinked' : 'not_linked';
+      // "Revoke sent links" never unlinks (182, Codex review #285 round 5).
+      if (fn === 'bw_deputy_revoke_links' && d?.user_id) {
+        data = 'linked';
+        break;
+      }
+      data = d?.user_id ? 'unlinked' : 'revoked';
       if (d) d.user_id = null;
+      // As 182: every request's reply and calendar links change, so an old
+      // one stops (Codex review #285 round 5).
+      const fresh = () => (uuid() + uuid()).replace(/-/g, '');
+      for (const r of table('deputy_requests')) {
+        if (r.deputy_id !== args.p_deputy_id) continue;
+        r.token = fresh();
+        if (r.calendar_token) r.calendar_token = fresh();
+        if (r.gig_calendar_token) r.gig_calendar_token = fresh();
+      }
       persist();
       break;
     }
@@ -1617,6 +1872,8 @@ const rpc = (fn: string, args: Row = {}) => {
       const kind = args.p_kind === 'reminded' && l.balance_sent_at ? 'balance_reminded' : 'balance_requested';
       table('quote_activity').push({ id: uuid(), quote_id: l.quote_id, band_id: l.band_id, kind, channel: args.p_channel ?? null, version: l.balance_version, body: String(l.balance.amountLabel || '').slice(0, 60), created_at: now });
       l.balance_sent_at ||= now;
+      // 185: what the client has now is the balance just sent.
+      l.balance_sent = l.balance;
       l.updated_at = now;
       persist();
       data = kind;
@@ -1699,6 +1956,18 @@ const rpc = (fn: string, args: Row = {}) => {
     case 'bw_withdraw_song_suggestion':
       ({ data, error } = withdrawSuggestion(args));
       break;
+    // Moving an accepted song's files (197): the demo's Storage keeps nothing.
+    case 'bw_song_file_adopt_begin':
+    case 'bw_song_file_copy_reserve':
+    case 'bw_song_file_copy_release':
+    case 'bw_song_file_adopt_repoint':
+    case 'bw_song_file_sweep_list':
+    case 'bw_song_file_sweep_claim':
+    case 'bw_song_file_sweep_done':
+    case 'bw_song_files_claim_delete':
+    case 'bw_song_files_removed':
+      ({ data, error } = demoSongFiles(fn, args));
+      break;
     // No one else to notify in the demo: keep the call for checks.
     case 'bw_notify_setlist_saved':
     case 'bw_notify_song_updated': {
@@ -1714,6 +1983,86 @@ const rpc = (fn: string, args: Row = {}) => {
       data = true;
       break;
     }
+    // A setlist saved in one go (188): rows of songs still there keep their id, notes and voice parts.
+    case 'bw_save_setlist_songs': {
+      const id = args.p_setlist_id;
+      const all = table('setlist_songs');
+      const before = all
+        .filter((r) => r.setlist_id === id)
+        .sort((a, b) => (a.set_number ?? 1) - (b.set_number ?? 1) || a.position - b.position);
+      // Changed since the editor loaded it (188 p_expected): nothing is written.
+      const exp = args.p_expected as { name?: string; songs?: Row[] } | null | undefined;
+      if (exp && typeof exp === 'object') {
+        const sl = table('setlists').find((r) => r.id === id);
+        const now = before.map((r) => ({ id: r.id, song_id: r.song_id, set_number: r.set_number ?? 1, vocal_parts: r.vocal_parts ?? null }));
+        const want = Array.isArray(exp.songs) ? exp.songs : [];
+        // Per place: song and set; the row when named; who sings it when sent (188, voicesKey).
+        const differs =
+          now.length !== want.length ||
+          want.some((w, i) =>
+            w.song_id !== now[i].song_id ||
+            (w.set_number ?? 1) !== now[i].set_number ||
+            (w.id && w.id !== now[i].id) ||
+            ('vocal_parts' in w && voicesKey(w.vocal_parts) !== voicesKey(now[i].vocal_parts)));
+        if (('name' in exp && exp.name !== sl?.name) || ('songs' in exp && differs)) {
+          data = { saved: false, conflict: true, current: { name: sl?.name ?? '', songs: now } };
+          break;
+        }
+      }
+      const left = [...before];
+      const list: Row[] = Array.isArray(args.p_songs) ? args.p_songs : [];
+      const now = new Date().toISOString();
+      const next: Row[] = list.map((e, i) => {
+        // An entry naming its row keeps it (188), else the first of that song.
+        const byId = e.id ? left.findIndex((r) => r.id === e.id && r.song_id === e.song_id) : -1;
+        const k = byId >= 0 ? byId : left.findIndex((r) => r.song_id === e.song_id);
+        const old = k >= 0 ? left.splice(k, 1)[0] : null;
+        return {
+          ...(old ?? { id: uuid(), created_at: now, vocal_parts: null }),
+          setlist_id: id,
+          song_id: e.song_id,
+          position: i + 1,
+          set_number: typeof e.set_number === 'number' && e.set_number >= 1 ? Math.floor(e.set_number) : 1,
+          notes: 'notes' in e ? (e.notes ?? null) : (old?.notes ?? null),
+        };
+      });
+      for (let i = all.length - 1; i >= 0; i--) if (all[i].setlist_id === id) all.splice(i, 1);
+      all.push(...next);
+      const s = table('setlists').find((r) => r.id === id);
+      if (s) {
+        s.song_count = next.length;
+        const name = typeof args.p_name === 'string' ? args.p_name.trim() : '';
+        if (name) s.name = name;
+        s.updated_at = now;
+      }
+      persist();
+      data = {
+        saved: true,
+        song_count: next.length,
+        previous: before.map((r) => ({ song_id: r.song_id, set_number: r.set_number ?? 1, position: r.position })),
+        rows: next.map((r) => ({ id: r.id, song_id: r.song_id, set_number: r.set_number, position: r.position })),
+      };
+      break;
+    }
+    // Lyrics written only over the version the editor loaded (189).
+    case 'bw_save_song_lyrics': {
+      const song = table('songs').find((r) => r.id === args.p_song_id);
+      if (!song) {
+        error = { code: '42501', message: 'Only band admins can change this song' };
+        break;
+      }
+      const current = song.lyrics ?? null;
+      if (current !== (args.p_expected ?? null)) {
+        data = { saved: false, lyrics: current };
+        break;
+      }
+      if (args.p_fields && typeof args.p_fields === 'object') Object.assign(song, args.p_fields);
+      song.lyrics = args.p_lyrics;
+      song.updated_at = new Date().toISOString();
+      persist();
+      data = { saved: true, lyrics: args.p_lyrics };
+      break;
+    }
     case 'update_setlist_song_count': {
       const id = args.p_setlist_id ?? args.setlist_id;
       const s = table('setlists').find((r) => r.id === id);
@@ -1723,13 +2072,23 @@ const rpc = (fn: string, args: Row = {}) => {
     }
   }
   const res = { data, error, count: null, status: error ? 400 : 200, statusText: error ? 'Bad Request' : 'OK' };
-  const p: any = Promise.resolve(res);
-  // rpc() is sometimes chained with .single()/.maybeSingle().
+  return chainable(Promise.resolve(res));
+};
+
+// rpc() is sometimes chained with .single()/.maybeSingle().
+const chainable = (p: any) => {
   p.single = () => p;
   p.maybeSingle = () => p;
   p.select = () => p;
   return p;
 };
+
+// Offline (dev builds, the e2e suite): an RPC fails like a real one with no
+// network and writes nothing, as table requests do (DemoQuery.then).
+const rpc = (fn: string, args: Row = {}) =>
+  demoNetworkDown()
+    ? chainable(new Promise((r) => setTimeout(() => r({ data: null, error: { message: 'TypeError: Failed to fetch', code: '' }, count: null, status: 0, statusText: '' }), 40)))
+    : rpcOnline(fn, args);
 
 // ------------------------------------------------------------------ client --
 

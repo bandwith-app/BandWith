@@ -5,7 +5,8 @@
 // conversation. The client accepts (typed name + "I accept", recorded
 // with the time, on the version they saw), declines (optional reason) or
 // writes to the band; the band answers from the app and the reply shows
-// up here. `&preview=1` is the admin's own preview: nothing is recorded.
+// up here. `&preview=1` is the admin's own preview: nothing is recorded
+// (`&k=` adds the draft balance the admin is looking at, 185).
 //
 // 168: once the band asks for the final balance, the same page shows the
 // balance due, by when, and how to pay it (bank details with Copy buttons,
@@ -13,15 +14,22 @@
 // what was already received. When the band records it as received, the
 // page says thank you instead.
 
+import { clientQuotePdfUrl, isQuoteStoragePdf, type QuotePdfKeys } from './lib/quotePdfLink';
 import type { ClientBalance, ClientQuoteSnapshot, QuoteLinkView } from './quote/types';
 import { QUOTE_STRINGS, fill, pickQuoteLang, type QuoteLang, type QuoteStrings } from './quote/strings';
+import { rememberFocus, restoreFocus } from './quote/focus';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
 
 const params = new URL(window.location.href).searchParams;
 const token = (params.get('t') ?? '').toLowerCase();
+// 176: each PDF has its own key (bw_quote_link_pdf_keys), never the token:
+// a copied PDF link opens that one PDF only, not a later one or the page.
+let pdfKeys: QuotePdfKeys = {};
 const preview = params.get('preview') === '1';
+// 185: the admin's draft balance (Preview in the app), shown only with its key.
+const previewKey = preview && /^[0-9a-f]{64}$/.test(params.get('k') ?? '') ? (params.get('k') as string) : '';
 const forcedLang = params.get('l') ?? '';
 let lang: QuoteLang = pickQuoteLang([forcedLang, ...(navigator.languages ?? []), navigator.language ?? '']);
 let S: QuoteStrings = QUOTE_STRINGS[lang];
@@ -65,11 +73,12 @@ const stampTime = (iso: string) =>
 const stamp = (iso: string) =>
   new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso));
 let currency = 'EUR';
-const money = (n: number) => {
+/** `cur`: another currency than the quote's (183: the deposit in the gig's currency). */
+const money = (n: number, cur = currency) => {
   try {
-    return new Intl.NumberFormat(lang, { style: 'currency', currency, maximumFractionDigits: n % 1 ? 2 : 0 }).format(n);
+    return new Intl.NumberFormat(lang, { style: 'currency', currency: cur, maximumFractionDigits: n % 1 ? 2 : 0 }).format(n);
   } catch {
-    return `${n} ${currency}`;
+    return `${n} ${cur}`;
   }
 };
 
@@ -109,7 +118,10 @@ async function rpc<T>(fn: string, body: Record<string, unknown>): Promise<T> {
 
 const remoteApi: Api = {
   seen: () => rpc('bw_quote_link_seen', { p_token: token }),
-  view: () => rpc('bw_quote_link_view', { p_token: token }),
+  view: () =>
+    previewKey
+      ? rpc('bw_quote_link_preview', { p_token: token, p_key: previewKey })
+      : rpc('bw_quote_link_view', { p_token: token }),
   respond: (action, name, reason, version) =>
     rpc('bw_quote_link_respond', { p_token: token, p_action: action, p_name: name, p_reason: reason, p_version: version }),
   message: (body) => rpc('bw_quote_link_message', { p_token: token, p_body: body }),
@@ -135,10 +147,19 @@ function readFields() {
   if (box) draft.checked = box.checked;
 }
 
-function applyView(next: QuoteLinkView | null) {
+/**
+ * Show a view from the server. `keepStale` (the poll): a notice already on
+ * screen stays. A different version of a quote not yet accepted is a new
+ * quote for the client: the "I accept" box ticked for the old one is
+ * cleared (the typed name stays) and the page says it was updated, so an
+ * acceptance is always given on the version on screen.
+ */
+function applyView(next: QuoteLinkView | null, keepStale = false) {
   if (!next) return;
+  const revised = !!view && next.status !== 'accepted' && next.version !== view.version;
+  if (revised) draft.checked = false;
   view = next;
-  stale = !!next.stale;
+  stale = !!next.stale || revised || (keepStale && stale);
   currency = next.quote?.currency || 'EUR';
   if (!forcedLang && next.lang && next.lang in QUOTE_STRINGS && next.lang !== lang) {
     lang = next.lang as QuoteLang;
@@ -161,9 +182,16 @@ async function act(run: () => Promise<QuoteLinkView | null>, focus?: string) {
     } else {
       applyView(next);
       if (focus === 'sent') draft.message = '';
+      // Accepting changes the PDF shown (the accepted one): its own key.
+      await refreshPdfKeys();
     }
   } catch (e) {
-    failure = e instanceof RpcError && e.code === '54000' ? S.tooMany : S.error;
+    if (e instanceof RpcError && e.code === 'BWQ01' && view) {
+      // 187 round 10: the band cancelled or deleted the date meanwhile; nothing was recorded.
+      view = { ...view, unavailable: true };
+    } else {
+      failure = e instanceof RpcError && e.code === '54000' ? S.tooMany : S.error;
+    }
   }
   busy = false;
   render();
@@ -280,7 +308,13 @@ function quoteCard(v: QuoteLinkView, q: ClientQuoteSnapshot) {
   }
   if (q.notes) card.append(h('div', { class: 'kicker', style: 'margin-top:22px' }, S.notes), h('p', { class: 'pre' }, q.notes));
   if (q.terms) card.append(h('div', { class: 'kicker', style: 'margin-top:22px' }, S.terms), h('p', { class: 'pre mute', style: 'font-size:15px;line-height:21px' }, q.terms));
-  const pdf = b?.pdfUrl || v.pdf_url;
+  // 176: the PDF through the link (checked by the server each time).
+  const storedPdf = b?.pdfUrl || v.pdf_url;
+  const pdf =
+    clientQuotePdfUrl(storedPdf, SUPABASE_URL, b?.pdfUrl ? pdfKeys.balance : pdfKeys.doc, b?.pdfUrl ? 'balance' : 'doc', lang) ??
+    // No gate yet (176 not applied): the stored PDF link, as before.
+    (pdfGateMissing && isQuoteStoragePdf(storedPdf) ? storedPdf : null) ??
+    (import.meta.env.DEV && token === 'demo' ? storedPdf : null);
   if (b) {
     // The balance as a document of its own: the page itself, printed.
     card.append(
@@ -454,12 +488,17 @@ function depositCard(v: QuoteLinkView, q: ClientQuoteSnapshot) {
   const amount = money(q.deposit.amount);
   const kicker = h('div', { class: 'kicker' }, `${v.band_name} · ${S.depositKicker}${q.ref ? ` ${q.ref}` : ''}`);
   if (v.deposit_paid) {
+    // 183: what the band recorded, in the gig's currency ($300 on a €500
+    // deposit says $300). No amount recorded (or a server before 183): no
+    // amount, never the one asked.
+    const cur = v.deposit_paid_currency && /^[A-Z]{3}$/.test(v.deposit_paid_currency) ? v.deposit_paid_currency : currency;
+    const got = v.deposit_paid_amount != null && v.deposit_paid_amount > 0 ? money(v.deposit_paid_amount, cur) : null;
     return h(
       'section',
       { class: 'card', role: 'status', 'data-testid': 'deposit-paid' },
       kicker,
       h('h2', { style: 'margin-top:12px' }, S.depositPaidTitle),
-      h('p', {}, fill(S.depositPaidBody, { ...vars(v), amount })),
+      h('p', {}, got ? fill(S.depositPaidBody, { ...vars(v), amount: got }) : fill(S.depositPaidBodyNoAmount, vars(v))),
     );
   }
   const pay = q.pay;
@@ -504,8 +543,13 @@ function statusCard(v: QuoteLinkView) {
       h('p', { class: 'mute', style: 'font-size:14px;line-height:20px' }, S.acceptedLegal),
     );
   }
+  if (v.unavailable) {
+    // 187 round 10: the band cancelled or deleted the date: no accept, the chat stays.
+    return h('section', { class: 'card ink', role: 'status', 'data-testid': 'date-unavailable' }, h('h2', { 'data-focus': true, tabindex: '-1' }, S.unavailableTitle), h('p', {}, S.unavailableBody));
+  }
   if (stale) {
-    return h('section', { class: 'card ink', role: 'alert' }, h('h2', { 'data-focus': true, tabindex: '-1' }, S.staleTitle), h('p', {}, S.staleBody));
+    // Round 4: a polite status: it arrives on a refresh, while the client may be typing.
+    return h('section', { class: 'card ink', role: 'status' }, h('h2', { 'data-focus': true, tabindex: '-1' }, S.staleTitle), h('p', {}, S.staleBody));
   }
   if (v.status === 'declined') {
     return h(
@@ -528,7 +572,7 @@ function statusCard(v: QuoteLinkView) {
 }
 
 function answerCard(v: QuoteLinkView) {
-  if (v.status === 'accepted' || v.expired) return null;
+  if (v.status === 'accepted' || v.expired || v.unavailable) return null;
   const err = (field: 'name' | 'check') => (fieldError?.field === field ? h('p', { class: 'err', id: `${field}-err`, role: 'alert' }, fieldError.text) : null);
   const name = h('input', {
     id: 'acc-name',
@@ -636,17 +680,102 @@ function render() {
 
 // New band replies while the page stays open.
 let polling = false;
+/** The PDF keys of what the page shows now (none for the demo, or offline). */
+let pdfGateMissing = false;
+let keyRetry = 0;
+let keyRetryPending = false;
+let keyWatch = false;
+const keysMoved = (next: QuotePdfKeys) =>
+  JSON.stringify([next.doc ?? null, next.balance ?? null]) !== JSON.stringify([pdfKeys.doc ?? null, pdfKeys.balance ?? null]);
+/** The keys of the document the link shows now; null when there are none to use. */
+async function fetchPdfKeys(): Promise<QuotePdfKeys | null> {
+  if (!/^[0-9a-f]{64}$/.test(token)) return null;
+  startKeyWatch();
+  try {
+    const next = (await rpc<QuotePdfKeys | null>('bw_quote_link_pdf_keys', { p_token: token })) ?? {};
+    keyRetry = 0;
+    return next;
+  } catch (e) {
+    // Before 176 is applied there is no gate: the stored (public) PDF link,
+    // as before. Any other failure: keep the last keys and try again soon.
+    if (e instanceof RpcError && e.code === 'PGRST202') {
+      pdfGateMissing = true;
+      return null;
+    }
+    if (keyRetry < 4 && !keyRetryPending) {
+      keyRetryPending = true;
+      const wait = 2_000 * 3 ** keyRetry++;
+      window.setTimeout(() => {
+        keyRetryPending = false;
+        void followPdfKeys();
+      }, wait);
+    }
+    return null;
+  }
+}
+/** With a view just fetched (loading, an answer sent): the keys that go with it. */
+async function refreshPdfKeys(): Promise<void> {
+  const next = await fetchPdfKeys();
+  if (next) pdfKeys = next;
+}
+/**
+ * Keys change when the band republishes: a new document, so maybe a new
+ * version and price. Round 4: the page then reloads the whole view and shows
+ * it with the new keys in one render, never a new PDF next to an old price;
+ * when the view can't be had, the old keys stay too.
+ */
+async function followPdfKeys(): Promise<void> {
+  if (busy || !view) return;
+  const next = await fetchPdfKeys();
+  if (!next || !keysMoved(next)) return;
+  let fresh: QuoteLinkView | null;
+  try {
+    fresh = await api.view();
+  } catch {
+    return;
+  }
+  if (busy) return;
+  readFields();
+  if (fresh) {
+    pdfKeys = next;
+    applyView({ ...fresh, stale });
+  } else {
+    // Turned off or replaced meanwhile.
+    view = null;
+  }
+  render();
+}
+/**
+ * An open page asks again on every poll and whenever it comes back to the
+ * screen: its PDF button never keeps a key the gate no longer opens (round 3).
+ */
+function startKeyWatch() {
+  if (keyWatch || (import.meta.env.DEV && token === 'demo')) return;
+  keyWatch = true;
+  const check = async () => {
+    if (document.hidden || busy || !view) return;
+    await followPdfKeys();
+  };
+  window.setInterval(() => void check(), 30_000);
+  document.addEventListener('visibilitychange', () => void check());
+}
+
 function poll() {
   window.setInterval(async () => {
     if (document.hidden || busy || !view) return;
     try {
       const next = await api.view();
+      // A new version counts too, with or without a message (183).
       const changed = (a: QuoteLinkView, b: QuoteLinkView) =>
-        JSON.stringify([a.messages, a.balance, a.balance_paid, a.deposit_paid]) !== JSON.stringify([b.messages, b.balance, b.balance_paid, b.deposit_paid]);
+        JSON.stringify([a.version, a.messages, a.balance, a.balance_paid, a.deposit_paid, a.deposit_paid_amount, a.deposit_paid_currency]) !==
+        JSON.stringify([b.version, b.messages, b.balance, b.balance_paid, b.deposit_paid, b.deposit_paid_amount, b.deposit_paid_currency]);
       if (next && changed(next, view)) {
         readFields();
-        applyView({ ...next, stale });
+        // Round 4: the field the client is typing in stays focused, caret and all.
+        const mark = rememberFocus();
+        applyView(next, true);
         render();
+        restoreFocus(mark);
       }
     } catch {
       /* try again next time */
@@ -670,6 +799,7 @@ async function load() {
     offline = true;
   }
   // NULL: an unknown, replaced or turned-off link.
+  if (next) await refreshPdfKeys();
   if (next) applyView(next);
   else view = null;
   const kicker = view && balanceOf(view) ? S.balanceKicker : S.kicker;

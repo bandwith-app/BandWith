@@ -249,8 +249,8 @@ const basics: AreaText = {
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Cuatro tarjetas: tu banda en un solo sitio, cómo poner un concierto en el calendario, quién ve cada caché y tus tarifas. La última tarjeta tiene **Configurar tarifas**, que abre **Precios, cachés y servicios**." },
-            { role: "member", text: "Tres tarjetas: Inicio, cómo responder a una invitación a un concierto y las canciones (acordes, letras, tus notas y el Modo escenario)." },
+            { role: "admin", text: "Cinco tarjetas: tu banda en un solo sitio, cómo poner un concierto en el calendario, los setlists listos sin señal, quién ve cada caché y tus tarifas. La última tarjeta tiene **Configurar tarifas**, que abre **Precios, cachés y servicios**." },
+            { role: "member", text: "Cuatro tarjetas: Inicio, cómo responder a una invitación a un concierto, las canciones (acordes, letras, tus notas y el Modo escenario) y los setlists listos sin señal." },
             { role: "deputy", text: "Tres tarjetas en **Bolos como sustituto**: cómo responder a una petición, qué comparte la banda contigo y cómo añadir tus bolos como sustituto a tu calendario." },
           ],
         },
@@ -481,7 +481,7 @@ const basics: AreaText = {
             ["Métricas (2 × 2)", "**FECHAS CONFIRMADAS**, **PRÓXIMOS ENSAYOS**, **PRESUPUESTOS ACTIVOS**, **INGRESOS**", "**FECHAS CONFIRMADAS**, **PRÓXIMOS ENSAYOS**, **PRÓXIMOS COBROS**, **TOTAL GANADO** (solo tus propios cachés)"],
             ["**Pendientes**", "**Pagos** pendientes después de un show (cada músico) y **Organización de ensayos** (sondeos y propuestas)", "**Tus pagos** (solo lo que te deben) y los sondeos de ensayo abiertos"],
             ["**Próxima prueba de sonido** / **Mi setlist**", "No se muestra", "Los horarios de tu próximo concierto, el **Mapa de montaje**, el número de canciones y **Ver setlist**"],
-            ["**Próximos**", "Los 3 próximos conciertos y ensayos; el primer concierto muestra **Preparación del show** y **Go live**", "Los 3 próximos conciertos y ensayos; los conciertos muestran **Tu caché**"],
+            ["**Próximos**", "Los 3 próximos conciertos y ensayos; el primer concierto muestra **Preparación del show** y **A escena**", "Los 3 próximos conciertos y ensayos; los conciertos muestran **Tu caché**"],
             ["**Borradores**", "Tus conciertos, ensayos y presupuestos sin terminar ([[drafts]])", "Solo si tienes borradores propios"],
             ["**Accesos rápidos**", "**Repertorio**, **Miembros**, **Equipo**, **Tareas**, **Contratos**", "**Repertorio**, **Miembros**"],
             ["Crecimiento", "**Conciertos este mes**, **Ingresos vs mes pasado**, **Ver calendario**, **Ver estadísticas**", "No se muestra"],
@@ -495,7 +495,7 @@ const basics: AreaText = {
             "**PRESUPUESTOS ACTIVOS** e **INGRESOS** (admins) abren las tarjetas de presupuestos y finanzas.",
             "**Ver todo**, junto a **Próximos**, abre el calendario.",
             "**Revisar pagos** (admin) abre el caché y los pagos del concierto; **Ver pago** (miembro) muestra el tuyo.",
-            "Una tarjeta de **Próximos** abre el evento. **Go live** abre el concierto en Modo escenario.",
+            "Una tarjeta de **Próximos** abre el evento. **A escena** abre el concierto en Modo escenario.",
             "La flecha junto a **Accesos rápidos** abre todos los recursos de la banda.",
           ],
         },
@@ -665,11 +665,11 @@ const basics: AreaText = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["sin conexión", "offline", "sin internet", "sincronizar", "modo avión", "datos guardados"],
-      related: ["drafts", "sign-in", "sign-out"],
+      related: ["drafts", "sign-in", "sign-out", "live-mode-offline", "changes-without-signal"],
       body: [
         { type: "p", text: "Tus bandas, conciertos y setlists siguen disponibles sin conexión: la app muestra lo último que cargó en este dispositivo. Una franja bajo la barra de estado dice **Sin conexión · datos guardados**." },
-        { type: "p", text: "Crear, editar o eliminar un concierto o un ensayo funciona sin conexión. La app dice **Guardado sin conexión • Se sincronizará al conectarte** y la franja cuenta los cambios pendientes: **Sin conexión · 2 cambios pendientes**." },
-        { type: "p", text: "Cuando vuelve la conexión, los cambios se envían solos. La franja muestra **En línea · 2 cambios pendientes** con un botón **Sincronizar ahora** y luego **En línea · sincronizado**." },
+        { type: "p", text: "Crear, editar o eliminar un concierto o un ensayo funciona sin conexión. La app dice **Guardado sin conexión • Se sincronizará al conectarte** y la franja cuenta los cambios pendientes: **Sin conexión · 2 cambios esperando señal**." },
+        { type: "p", text: "Cuando vuelve la conexión, los cambios se envían solos. La franja muestra **De nuevo en línea · enviando 2 cambios** con un botón **Enviar ahora** y luego **De nuevo en línea · todo al día**. Para el Modo escenario y el Modo en vivo, consulta [[live-mode-offline]]." },
         {
           type: "list",
           title: "Necesita conexión",
@@ -680,7 +680,7 @@ const basics: AreaText = {
             "Entrar por primera vez en un dispositivo.",
           ],
         },
-        { type: "note", tone: "tip", text: "Al cerrar sesión se envían primero los cambios pendientes, lo que puede tardar unos segundos. Si quieres ir sobre seguro, cierra sesión cuando la franja diga sincronizado." },
+        { type: "note", tone: "tip", text: "Al cerrar sesión se envían primero los cambios pendientes, lo que puede tardar unos segundos. Si quieres ir sobre seguro, cierra sesión cuando la franja diga todo al día." },
       ],
     },
     {
@@ -713,7 +713,7 @@ const basics: AreaText = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["ajustes", "preferencias", "opciones", "configuración", "ajustes de la app"],
-      related: ["calendar-sync", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
+      related: ["calendar-sync", "offline-and-live-settings", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
       body: [
         { type: "p", text: "Abre el menú (la última pestaña) y toca **Ajustes y cuenta**. **Ajustes** muestra las secciones:" },
         {
@@ -722,9 +722,10 @@ const basics: AreaText = {
           rows: [
             ["**Notificaciones**", "**Notificaciones push**, **Notificaciones por correo**, **Novedades del producto**", "Tu cuenta (todos los dispositivos)"],
             ["**Sincronizar calendario**", "Un enlace privado a tus eventos para **Calendario de Apple**, **Google Calendar** u Outlook ([[calendar-sync]])", "Tu cuenta (todos los dispositivos)"],
+            ["**Sin conexión y en vivo**", "**Descarga automática**, **Solo con Wi-Fi**, **Espacio usado** para las setlists guardadas para cuando no hay señal ([[offline-and-live-settings]])", "Depende: **Descarga automática** sigue a tu cuenta, el resto es de este dispositivo"],
             ["**Apariencia**", "Tema: **Claro**, **Oscuro**, **Sistema**", "Este dispositivo"],
             ["**Unidades**", "**Kilómetros** o **Millas**", "Este dispositivo"],
-            ["**Privacidad y cuenta**", "**Bloqueo de la app**, **Estadísticas de uso anónimas**, ocultar los detalles de los conciertos personales, **Exportar mis datos**, Términos, Política de privacidad, **Eliminar cuenta**", "Depende (consulta [[privacy-and-account-settings]])"],
+            ["**Privacidad y cuenta**", "**Bloqueo de la app**, **Estadísticas de uso anónimas**, **Enviar informes de errores**, ocultar los detalles de los conciertos personales, **Exportar mis datos**, Términos, Política de privacidad, **Eliminar cuenta**", "Depende (consulta [[privacy-and-account-settings]])"],
             ["**iPhone Duo**", "**Postura portátil**. Solo en móviles de doble pantalla", "Este dispositivo"],
             ["**Idioma**", "**Automático** o uno de los seis idiomas", "Este dispositivo, además de tus push y tus emails"],
             ["**Ayuda y soporte**", "Respuestas y qué puedes hacer en la app", "-"],
@@ -878,7 +879,8 @@ const basics: AreaText = {
           type: "list",
           items: [
             "**Bloqueo de la app** (solo móviles y tablets): pide Face ID, la huella o el código del dispositivo cuando BandWith se vuelve a abrir después de cerrarla. Por dispositivo ([[app-lock]]).",
-            "**Estadísticas de uso anónimas** (solo apps de Android e iOS): desactivadas hasta que digas que sí. BandWith lo pregunta una vez, después del primer tour; puedes cambiar la respuesta aquí cuando quieras. Solo comparte qué pantallas se usan y con qué frecuencia, nunca tus canciones, conciertos, mensajes ni contactos, y nada para publicidad. Al desactivarlas se borra lo recogido en este dispositivo. Por dispositivo.",
+            "**Estadísticas de uso anónimas** (solo apps de Android e iOS): desactivadas hasta que digas que sí. BandWith lo pregunta una vez, después del primer tour; puedes cambiar la respuesta aquí cuando quieras. Solo comparte qué pantallas se usan y con qué frecuencia, nunca tus canciones, conciertos, mensajes ni contactos, y nada para publicidad. Al desactivarlas se borra lo recogido en este dispositivo. Por dispositivo. Con un sí, las apps del teléfono también envían los detalles del fallo si la app se cierra por un error.",
+            "**Enviar informes de errores**: activado salvo que lo desactives. Cuando algo falla, BandWith envía el error, la pantalla donde ocurrió y la versión de la app, para poder arreglarlo. Nunca tus canciones, conciertos, mensajes ni contactos. Por dispositivo. En las apps del teléfono, los detalles completos de los fallos solo se envían con **Estadísticas de uso anónimas** activadas.",
             "**Los bolos personales son privados**: una fila informativa, no un interruptor. Solo tú ves el título y el lugar de tus conciertos personales; las bandas solo ven que estás ocupado ([[personal-gigs]]).",
             "**Exportar mis datos**: una copia en JSON de lo que es tuyo ([[export-your-data]]).",
             "**Términos del servicio** y **Política de privacidad**: abren los documentos dentro de la app.",
@@ -921,13 +923,13 @@ const basics: AreaText = {
     {
       id: "delete-your-account",
       title: "Elimina tu cuenta",
-      summary: "Borra para siempre tu perfil, tus conciertos personales y tus mensajes.",
+      summary: "Borra para siempre tu perfil, tus conciertos personales y tus mensajes directos.",
       roles: ["admin", "member", "deputy"],
       kind: "task",
       keywords: ["eliminar cuenta", "cerrar cuenta", "borrar cuenta", "darse de baja"],
       related: ["export-your-data", "privacy-and-account-settings", "make-admin"],
       body: [
-        { type: "note", tone: "warning", text: "No se puede deshacer. Se borran tu perfil, tus conciertos personales y tus mensajes. Si quieres una copia, exporta antes tus datos." },
+        { type: "note", tone: "warning", text: "No se puede deshacer. Se borran tu perfil, tus conciertos personales y tus mensajes directos. Tus mensajes en los chats de la banda, de los conciertos y de grupo se quedan, como de un **Antiguo miembro**. Si quieres una copia, exporta antes tus datos." },
         {
           type: "steps",
           items: [
@@ -1042,7 +1044,7 @@ const basics: AreaText = {
             "Comprueba que cada músico ha recibido una **Invitación a concierto**. En el concierto, **FORMACIÓN** muestra quién ha respondido; **INVITACIÓN PENDIENTE** significa que aún no ([[answer-a-gig-invitation]]).",
             "Abre **CHAT DEL EVENTO** en el concierto para hablar de la logística con la formación ([[event-and-rehearsal-chats]]).",
             "Abre **RIDER Y ESCENARIO** para preparar el PDF del rider y compartirlo con la sala ([[rider-and-stage]]).",
-            "El día del concierto, ábrelo desde Inicio y toca **Go live** para entrar en el Modo escenario ([[stage-mode]]).",
+            "El día del concierto, ábrelo desde Inicio y toca **A escena** para entrar en el Modo escenario ([[stage-mode]]).",
           ],
         },
         { type: "note", tone: "privacy", text: "Cada músico solo ve su propio caché en la invitación y en el concierto. Solo los admins ven los demás cachés y lo que paga el cliente." },
@@ -1314,7 +1316,7 @@ const basics: AreaText = {
     { term: "Barra lateral", definition: "En un móvil de doble pantalla, la columna junto a la pantalla que contiene las pestañas, Atrás, Buscar y tu perfil.", see: "duo-closed" },
     { term: "Modo libro", definition: "Un móvil de doble pantalla abierto como un libro: dos páginas, listas a la izquierda y detalles a la derecha.", see: "duo-book" },
     { term: "Postura portátil", definition: "Un móvil de doble pantalla de pie y medio plegado: la mitad de arriba (Display) para leer, la de abajo (Deck) para tocar.", see: "duo-laptop-pose" },
-    { term: "Franja sin conexión", definition: "La barra bajo la barra de estado que dice que no tienes conexión y cuántos cambios se sincronizarán.", see: "offline-mode" },
+    { term: "Franja sin conexión", definition: "La barra bajo la barra de estado que dice que no tienes conexión y cuántos cambios están esperando señal.", see: "offline-mode" },
   ],
 };
 

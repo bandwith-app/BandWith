@@ -120,9 +120,10 @@ ol.steps > li::before {
 aside.note { border-radius: 2mm; padding: 2.4mm 3.2mm; margin: 2.6mm 0 3mm; break-inside: avoid; background: var(--lime-soft); }
 aside.note.privacy { background: var(--blue-soft); }
 aside.note.warning { background: var(--amber-soft); }
+aside.note.draft { background: var(--amber-soft); border: 0.3mm dashed var(--amber); }
 .note-label { display: block; font-size: 6.8pt; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase; color: var(--lime-ink); margin-bottom: 0.6mm; }
 .privacy .note-label { color: var(--blue); }
-.warning .note-label { color: var(--amber); }
+.warning .note-label, .draft .note-label { color: var(--amber); }
 aside.note b.ui { background: rgba(255, 255, 255, 0.7); }
 
 .devnote { border-left: 1.4mm solid var(--ink); background: var(--soft); padding: 2mm 3mm 2mm 3mm; margin: 2.4mm 0 3mm; border-radius: 0 2mm 2mm 0; break-inside: avoid; }

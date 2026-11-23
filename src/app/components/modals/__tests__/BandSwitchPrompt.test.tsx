@@ -7,8 +7,11 @@ vi.mock('@/lib/haptics', () => ({
 }));
 
 import { BandSwitchPrompt } from '../BandSwitchPrompt';
+import { setLocalePref } from '@/lib/i18n';
+import appSource from '@/app/AuthenticatedApp.tsx?raw';
+import promptSource from '../BandSwitchPrompt.tsx?raw';
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); setLocalePref('en'); });
 
 describe('BandSwitchPrompt', () => {
   it('names both bands and switches on confirm', () => {
@@ -37,5 +40,21 @@ describe('BandSwitchPrompt', () => {
   it('renders nothing without a request', () => {
     render(<BandSwitchPrompt request={null} onChoose={vi.fn()} />);
     expect(screen.queryByText(/Switch to/)).toBeNull();
+  });
+});
+
+describe('BandSwitchPrompt: every action is a whole translated sentence (Codex #297 M4)', () => {
+  it('"restore this date" is not English spliced into another language', () => {
+    setLocalePref('it');
+    render(<BandSwitchPrompt request={{ bandName: 'Mirage', action: 'restore this date' }} onChoose={vi.fn()} />);
+    expect(screen.getByText(/Per ripristinare questa data, passa prima a Mirage\./)).toBeTruthy();
+    expect(screen.queryByText(/restore this date/)).toBeNull();
+  });
+
+  it('each action the app asks about has its own sentence', () => {
+    const actions = new Set<string>();
+    for (const m of appSource.matchAll(/(?:inItemBand|askBandFor(?:Ref\.current)?)\([^,]+,\s*"([^"]+)"/g)) actions.add(m[1]);
+    expect(actions.has('restore this date')).toBe(true);
+    for (const a of actions) expect(promptSource, a).toContain(`case '${a}':`);
   });
 });

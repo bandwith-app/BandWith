@@ -33,7 +33,8 @@ export interface SongSuggestion {
   status: SuggestionStatus;
   reason: string | null;
   applied: { lyrics?: string | null; chord_chart?: SongChart | null; notes?: string | null } | null;
-  created_by: string;
+  /** NULL: a former member (account deleted, migration 180). */
+  created_by: string | null;
   created_at: string;
   reviewed_by: string | null;
   reviewed_at: string | null;

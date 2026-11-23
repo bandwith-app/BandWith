@@ -7,6 +7,7 @@ import { personName } from '@/lib/personName';
 import { userMessage } from '@/lib/userError';
 import { eventDataPatch, type EditKind } from '@/lib/eventOverviewEdit';
 import { saveEventFields, saveLineupEdit, saveTasksEdit } from '@/lib/services/eventEdits';
+import { moveRehearsalDateOnly } from '@/lib/services/rehearsalSkip';
 import type { LineupRow } from '@/lib/services/eventMemberMoney';
 import type { EventTaskDraft } from '@/lib/services/eventTasks';
 
@@ -18,6 +19,8 @@ export interface OverviewEditApi {
   /** The whole lineup after the edit, and the gig fee that follows it. */
   saveLineup: (wanted: LineupRow[], eventPatch: Record<string, unknown> | null, feeTbd?: boolean) => Promise<string | null>;
   saveTasks: (drafts: EventTaskDraft[], originalIds: string[]) => Promise<string | null>;
+  /** One later date of a series to a new date, that date only (Claude #297 round 3). */
+  moveDateOnly?: (values: { title: string; date: string; startTime: string; endTime: string; clientId?: string }) => Promise<string | null>;
 }
 
 /**
@@ -119,5 +122,19 @@ export function useOverviewEdit(opts: {
     [event, reloadTasks, done, t],
   );
 
-  return { saveFields, saveLineup, saveTasks };
+  const moveDateOnly = useCallback<NonNullable<OverviewEditApi['moveDateOnly']>>(
+    async (values) => {
+      try {
+        const { error } = await moveRehearsalDateOnly(event, values);
+        if (error) return userMessage(error, t('Could not save the event. Please try again.'));
+        done();
+        return null;
+      } catch (err) {
+        return userMessage(err, t('Could not save the event. Please try again.'));
+      }
+    },
+    [event, done, t],
+  );
+
+  return { saveFields, saveLineup, saveTasks, moveDateOnly };
 }

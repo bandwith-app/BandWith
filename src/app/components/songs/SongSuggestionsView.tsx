@@ -13,6 +13,7 @@ import { useSystemBack } from '@/lib/backStack';
 import { supabase } from '@/lib/supabase';
 import { intlLocale, useT } from '@/lib/i18n';
 import { personName } from '@/lib/personName';
+import { authorName } from '@/lib/formerMember';
 import { userMessage } from '@/lib/userError';
 import type { Song } from '@/lib/services/songs';
 import {
@@ -27,6 +28,8 @@ import {
 } from '@/lib/songSuggestions';
 import {
   closeSongSuggestions,
+  countSongSuggestions,
+  getSongSuggestion,
   listSongSuggestions,
   reviewSongSuggestion,
   SUGGESTIONS_CHANGED,
@@ -61,37 +64,202 @@ export const SongSuggestionsView: React.FC = () => {
   const bandId = selectedBand?.id;
   const open = !!screen && !!bandId;
 
-  const [tab, setTab] = React.useState<'pending' | 'reviewed'>('pending');
-  const [items, setItems] = React.useState<SongSuggestion[] | null>(null);
+  const [tab, setTab] = React.useState<Tab>('pending');
   const [songs, setSongs] = React.useState<Record<string, SongRow>>({});
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
 
+  // Each tab asks the server for its own status, a page at a time (keyset:
+  // older than the last one shown, so no row cap hides the oldest): an old
+  // correction still waiting never hides behind newer reviewed ones, and a
+  // notification's suggestion is fetched by id (audit 09 #10).
+  const [pages, setPages] = React.useState<Record<Tab, SongSuggestion[]>>({ pending: [], reviewed: [] });
+  const [more, setMore] = React.useState<Record<Tab, boolean>>({ pending: false, reviewed: false });
+  const [extra, setExtra] = React.useState<SongSuggestion | null>(null);
+  // Each tab's total on the server (null: not known, the loaded rows count).
+  const [totals, setTotals] = React.useState<Record<Tab, number | null>>({ pending: null, reviewed: null });
+  // The notification target the shown items were loaded for (until then, a
+  // target missing from the old items is not "gone": it is being fetched).
+  const [loadedFor, setLoadedFor] = React.useState<{ focus: string | undefined } | null>(null);
+  const pagesRef = React.useRef(pages);
+  pagesRef.current = pages;
+  const focusId = screen?.suggestionId;
+  const mine = React.useMemo(() => (isAdmin || !user?.id ? {} : { createdBy: user.id }), [isAdmin, user?.id]);
+  // Whose list is shown: a response for another band (or person) is dropped,
+  // and another band's pages never set how far a refresh pages down.
+  const scope = `${bandId ?? ''}|${mine.createdBy ?? ''}`;
+  const scopeRef = React.useRef(scope);
+  scopeRef.current = scope;
+  const pagesScope = React.useRef<string | null>(null);
+  // The request generation: each refresh starts a new one. A response of an
+  // older one is dropped (a refresh, or a "Load older" page read before it:
+  // it could bring back a suggestion withdrawn or reviewed since).
+  const loadSeq = React.useRef(0);
+  // The rows each "Load older" page added, by the generation it ran in: a
+  // refresh merges only the ones added during its own run (read after it
+  // started), never older ones it no longer finds.
+  const moreRows = React.useRef(new Map<string, { gen: number; tab: Tab }>());
+  // The notification target that failed to load (kept selected, with Try again).
+  const [focusError, setFocusError] = React.useState<string | null>(null);
+
+  const loadSongs = React.useCallback(async (list: SongSuggestion[]) => {
+    const ids = [...new Set(list.map((s) => s.song_id).filter((id): id is string => !!id))];
+    if (!ids.length) return;
+    // A request per 100 ids: every page of a long list in one `in.(...)`
+    // would pass the URL length the server accepts.
+    const chunks: string[][] = [];
+    for (let i = 0; i < ids.length; i += SONG_CHUNK) chunks.push(ids.slice(i, i + SONG_CHUNK));
+    const results = await Promise.all(
+      chunks.map((chunk) =>
+        supabase
+          .from('songs')
+          .select('id, band_id, title, artist, key, bpm, duration_seconds, status, lyrics, notes, audio_url, chart_url, youtube_url, genre, chord_chart, created_at, updated_at, priority')
+          .in('id', chunk),
+      ),
+    );
+    const rows = results.flatMap((r) => ((r.data || []) as SongRow[]));
+    setSongs((prev) => ({ ...prev, ...Object.fromEntries(rows.map((r) => [r.id, r])) }));
+  }, []);
+
+  /** One tab from the newest, page by page, down to `through` (what was shown before a refresh). */
+  const fetchTab = React.useCallback(
+    async (tab: Tab, through?: SongSuggestion) => {
+      if (!bandId) return { data: null, more: false, error: null as Error | null };
+      const out: SongSuggestion[] = [];
+      let before: SongSuggestion | undefined;
+      for (let n = 0; n < 200; n++) {
+        const { data, error } = await listSongSuggestions(bandId, { ...mine, status: STATUS[tab], limit: PAGE + 1, before });
+        if (error || !data) return { data: null, more: false, error };
+        const page = data.slice(0, PAGE);
+        out.push(...page);
+        const hasMore = data.length > PAGE;
+        const last = page[page.length - 1];
+        if (!hasMore || !last || !through || !olderThan(through, last)) return { data: out, more: hasMore, error: null };
+        before = last;
+      }
+      return { data: out, more: true, error: null };
+    },
+    [bandId, mine],
+  );
+
   const load = React.useCallback(async () => {
     if (!bandId || !user?.id) return;
-    const { data, error } = await listSongSuggestions(bandId, isAdmin ? {} : { createdBy: user.id });
+    const seq = ++loadSeq.current;
+    const forScope = scope;
+    const shown = pagesScope.current === forScope ? pagesRef.current : { pending: [], reviewed: [] };
+    const [p, r, nPending, nReviewed] = await Promise.all([
+      fetchTab('pending', shown.pending[shown.pending.length - 1]),
+      fetchTab('reviewed', shown.reviewed[shown.reviewed.length - 1]),
+      countSongSuggestions(bandId, { ...mine, status: STATUS.pending }),
+      countSongSuggestions(bandId, { ...mine, status: STATUS.reviewed }),
+    ]);
+    // A newer load, or another band meanwhile: this one is stale.
+    if (seq !== loadSeq.current || scopeRef.current !== forScope) return;
+    if (p.error || r.error || !p.data || !r.data) {
+      setLoadError(userMessage(p.error || r.error, t('Could not load the suggestions.')));
+      // Not loaded for the notification target: it stays selected until a
+      // load succeeds (the next refresh, or reopening), then opens.
+      setLoadedFor((prev) => prev ?? { focus: undefined });
+      return;
+    }
+    let one: SongSuggestion | null = null;
+    let oneFailed = false;
+    if (focusId && !p.data.some((s) => s.id === focusId) && !r.data.some((s) => s.id === focusId)) {
+      const { data, error } = await getSongSuggestion(focusId);
+      if (seq !== loadSeq.current || scopeRef.current !== forScope) return;
+      if (error) oneFailed = true;
+      else if (data && data.band_id === bandId && data.status !== 'withdrawn') one = data;
+    }
+    setLoadError(null);
+    setFocusError(oneFailed && focusId ? focusId : null);
+    const samePages = pagesScope.current === forScope;
+    pagesScope.current = forScope;
+    // Per tab (Codex review of 28cb3199, M2): a tab "Load older" added rows
+    // to while this ran keeps them (those past its range) and its "more";
+    // the other tab takes this load's rows and "more".
+    const added: Record<Tab, Set<string>> = { pending: new Set(), reviewed: new Set() };
+    for (const [id, v] of moreRows.current) if (v.gen === seq) added[v.tab].add(id);
+    // Read by the next refresh again (they are shown): no longer needed.
+    moreRows.current.clear();
+    const keeps = (tab: Tab) => samePages && added[tab].size > 0;
+    const merge = (tab: Tab, prev: SongSuggestion[], fresh: SongSuggestion[]) => {
+      if (!keeps(tab)) return fresh;
+      const last = fresh[fresh.length - 1];
+      const ids = new Set(fresh.map((s) => s.id));
+      return [...fresh, ...prev.filter((s) => !ids.has(s.id) && added[tab].has(s.id) && (!last || olderThan(s, last)))];
+    };
+    setPages((prev) => ({ pending: merge('pending', prev.pending, p.data), reviewed: merge('reviewed', prev.reviewed, r.data) }));
+    setMore((prev) => ({ pending: keeps('pending') ? prev.pending : p.more, reviewed: keeps('reviewed') ? prev.reviewed : r.more }));
+    // A failed fetch keeps what was shown for the target.
+    setExtra((prev) => one ?? (oneFailed && prev?.id === focusId ? prev : null));
+    setTotals({ pending: nPending, reviewed: nReviewed });
+    // A target that failed to load is not "loaded": it stays selected.
+    setLoadedFor({ focus: oneFailed ? undefined : focusId });
+    await loadSongs([...p.data, ...r.data, ...(one ? [one] : [])]);
+  }, [bandId, user?.id, t, focusId, fetchTab, loadSongs, scope, mine]);
+
+  const [loadingMore, setLoadingMore] = React.useState(false);
+  // Another band (or person): the pages shown are of the old one until it loads.
+  React.useEffect(() => {
+    setLoadingMore(false);
+    setPages({ pending: [], reviewed: [] });
+    setMore({ pending: false, reviewed: false });
+    setTotals({ pending: null, reviewed: null });
+    setExtra(null);
+    setLoadedFor(null);
+    setFocusError(null);
+    pagesScope.current = null;
+    moreRows.current.clear();
+  }, [scope]);
+  const showMore = async () => {
+    const last = pages[tab][pages[tab].length - 1];
+    if (!bandId || !last || loadingMore || pagesScope.current !== scope) return;
+    const forScope = scope;
+    const forTab = tab;
+    const gen = loadSeq.current;
+    setLoadingMore(true);
+    const { data, error } = await listSongSuggestions(bandId, { ...mine, status: STATUS[forTab], limit: PAGE + 1, before: last });
+    // The user moved to another band meanwhile: drop it.
+    if (scopeRef.current !== forScope || pagesScope.current !== forScope) return;
+    setLoadingMore(false);
+    // A refresh started after this was asked: its rows may be out of date
+    // (one withdrawn meanwhile would come back). Dropped; "Load older"
+    // stays to ask again.
+    if (loadSeq.current !== gen) return;
     if (error || !data) {
       setLoadError(userMessage(error, t('Could not load the suggestions.')));
       return;
     }
     setLoadError(null);
-    setItems(data.filter((s) => s.status !== 'withdrawn'));
-    const ids = [...new Set(data.map((s) => s.song_id).filter((id): id is string => !!id))];
-    if (ids.length) {
-      const { data: rows } = await supabase
-        .from('songs')
-        .select('id, band_id, title, artist, key, bpm, duration_seconds, status, lyrics, notes, audio_url, chart_url, youtube_url, genre, chord_chart, created_at, updated_at, priority')
-        .in('id', ids);
-      setSongs(Object.fromEntries(((rows || []) as SongRow[]).map((r) => [r.id, r])));
-    } else setSongs({});
-  }, [bandId, user?.id, isAdmin, t]);
+    const page = data.slice(0, PAGE);
+    for (const s of page) moreRows.current.set(s.id, { gen, tab: forTab });
+    setPages((prev) => ({ ...prev, [forTab]: [...prev[forTab], ...page.filter((s) => !prev[forTab].some((x) => x.id === s.id))] }));
+    setMore((prev) => ({ ...prev, [forTab]: data.length > PAGE }));
+    void loadSongs(page);
+  };
+
+  const items = React.useMemo(() => {
+    if (!loadedFor) return null;
+    // One row per suggestion: a page loaded later can hold one already shown
+    // in the other tab (reviewed meanwhile). Its latest status wins: a
+    // review only ever moves it out of pending.
+    const byId = new Map<string, SongSuggestion>();
+    for (const s of [...pages.pending, ...pages.reviewed, ...(extra ? [extra] : [])]) {
+      const seen = byId.get(s.id);
+      if (!seen || (seen.status === 'pending' && s.status !== 'pending')) byId.set(s.id, s);
+    }
+    return [...byId.values()];
+  }, [pages, extra, loadedFor]);
 
   React.useEffect(() => {
     if (!open) return;
     setSelectedId(screen?.suggestionId ?? null);
     setTab('pending');
-    void load();
   }, [open, screen]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Opening (also again, from a notification), another band: (re)load.
+  React.useEffect(() => {
+    if (open) void load();
+  }, [open, screen, load]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A suggestion arrives or is reviewed elsewhere: refresh.
   React.useEffect(() => {
@@ -109,10 +277,12 @@ export const SongSuggestionsView: React.FC = () => {
   }, [open, bandId, load]);
 
   const selected = items?.find((s) => s.id === selectedId) ?? null;
-  // Opened from a notification on a suggestion that is no longer listed.
+  // Opened from a notification on a suggestion that is no longer listed (once
+  // the items were loaded for it: before that it is still being fetched).
   React.useEffect(() => {
-    if (items && selectedId && !items.some((s) => s.id === selectedId)) setSelectedId(null);
-  }, [items, selectedId]);
+    if (!items || !selectedId || loadedFor?.focus !== focusId || focusError === selectedId) return;
+    if (!items.some((s) => s.id === selectedId)) setSelectedId(null);
+  }, [items, selectedId, loadedFor, focusId, focusError]);
 
   const back = () => {
     if (selected) setSelectedId(null);
@@ -164,16 +334,24 @@ export const SongSuggestionsView: React.FC = () => {
                 titleSize="h1"
               >
                 <div className="flex flex-wrap gap-2 pb-1" role="group" aria-label={isAdmin ? t('Suggestions') : t('My suggestions')}>
-                  <Selector size="md" selected={tab === 'pending'} onClick={() => setTab('pending')} count={pending.length}>
+                  <Selector size="md" selected={tab === 'pending'} onClick={() => setTab('pending')} count={totals.pending ?? pending.length}>
                     {t('Waiting')}
                   </Selector>
-                  <Selector size="md" selected={tab === 'reviewed'} onClick={() => setTab('reviewed')} count={reviewed.length}>
+                  <Selector size="md" selected={tab === 'reviewed'} onClick={() => setTab('reviewed')} count={totals.reviewed ?? reviewed.length}>
                     {t('Reviewed')}
                   </Selector>
                 </div>
               </ScreenHeader>
               <div className="flex flex-col gap-3 px-4 pt-3 w-full" style={{ paddingBottom: 'calc(var(--safe-bottom) + 32px)' }}>
                 {loadError && <FormError>{loadError}</FormError>}
+                {focusError && focusError === selectedId && (
+                  <div className="flex flex-col items-start gap-2">
+                    <FormError>{t('Could not load this suggestion.')}</FormError>
+                    <PillButton size="md" variant="outline" onClick={() => void load()}>
+                      {t('Try again')}
+                    </PillButton>
+                  </div>
+                )}
                 {items && shown.length === 0 && (
                   <Card className="items-center text-center py-10 gap-3">
                     <StickyNote className="w-9 h-9 text-muted-foreground" />
@@ -191,11 +369,16 @@ export const SongSuggestionsView: React.FC = () => {
                     key={s.id}
                     icon={KIND_ICON[s.kind]}
                     title={s.song_title || t('Song')}
-                    subtitle={[kindLabel(s.kind, t), isAdmin ? personName(s.author || {}, t('Member')) : null, shortDate(s.created_at)].filter(Boolean).join(' · ')}
+                    subtitle={[kindLabel(s.kind, t), isAdmin ? authorName(s.created_by, s.author, t('Member'), t('Former member')) : null, shortDate(s.created_at)].filter(Boolean).join(' · ')}
                     trailing={s.status !== 'pending' ? <StatusTag status={s.status} /> : undefined}
                     onClick={() => setSelectedId(s.id)}
                   />
                 ))}
+                {items && more[tab] && (
+                  <PillButton size="md" variant="outline" loading={loadingMore} onClick={() => void showMore()}>
+                    {t('Load older suggestions')}
+                  </PillButton>
+                )}
               </div>
             </>
           )}
@@ -206,6 +389,19 @@ export const SongSuggestionsView: React.FC = () => {
     document.body,
   );
 };
+
+/** Suggestions per page, in each tab. */
+const PAGE = 100;
+/** Song ids per request (URL length). */
+const SONG_CHUNK = 100;
+type Tab = 'pending' | 'reviewed';
+const STATUS: Record<Tab, SuggestionStatus | SuggestionStatus[]> = {
+  pending: 'pending',
+  reviewed: ['accepted', 'accepted_edited', 'rejected'],
+};
+/** `a` comes after `b` in the list (older, or as old with a smaller id). */
+const olderThan = (a: Pick<SongSuggestion, 'created_at' | 'id'>, b: Pick<SongSuggestion, 'created_at' | 'id'>) =>
+  a.created_at < b.created_at || (a.created_at === b.created_at && a.id < b.id);
 
 const kindLabel = (k: SuggestionKind, t: (s: string) => string) =>
   k === 'new_song' ? t('New song') : k === 'lyrics' ? t('Lyrics correction') : k === 'chords' ? t('Chords correction') : t('Note for the band');
@@ -252,7 +448,7 @@ const SuggestionDetail: React.FC<{
 
   const pending = s.status === 'pending';
   const canReview = isAdmin && pending;
-  const author = personName(s.author || {}, t('Member'));
+  const author = authorName(s.created_by, s.author, t('Member'), t('Former member'));
   const changedSince = pending && songChangedSince(s, song);
 
   // What the song has now, and what it would have.

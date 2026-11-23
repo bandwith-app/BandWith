@@ -1,6 +1,8 @@
 import { handleBackFromStack, setAppBack, type BackMode } from '@/lib/backStack';
 import { allowAndroidInstalls, androidInstallMessage, openAndroidUpdate, useAndroidInstallState, useAndroidUpdate } from '@/lib/androidUpdate';
 import { runGuarded } from '@/lib/unsavedGuard';
+import { APP_TOAST_EVENT, type AppToast } from '@/lib/appToast';
+import { useSignOutFailedNotice } from '@/app/hooks/useSignOutFailedNotice';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { uuidToNumericId } from '@/lib/numericId';
 import { useCurrentKey } from '@/lib/useCurrentKey';
@@ -17,12 +19,15 @@ import { syncSystemBarsAppearance } from "@/lib/systemBars";
 import { haptic } from "@/lib/haptics";
 import { deleteEventDraft, useEventDrafts, type EventDraft } from "@/lib/wizardDrafts";
 import { DraftPreviewSheet } from "@/app/components/drafts/DraftPreviewSheet";
+import { DateHoldSheet } from "@/app/components/dashboard/DateHoldCard";
+import { useMyDateHolds } from "@/app/hooks/useDateHolds";
 import { supabase } from "@/lib/supabase";
 import { getPermissions, type UserRole } from "@/lib/permissions";
 import {
   useEvents,
   useUpcomingEvents,
   useNotifications,
+  useSwitchedOffHidden,
   useQuotes,
   useDashboardData,
   useExpandedFinanceData,
@@ -33,6 +38,8 @@ import {
 import {
   markAsRead as markNotificationAsRead,
   markAllAsRead as markAllNotificationsAsRead,
+  markIdsAsRead,
+  unreadInboxIds,
   notifyEventMembersCreated,
   notifyEventMembersRemoved,
   notifyEventPendingConfirmations,
@@ -50,7 +57,9 @@ import {
 } from "@/lib/services/events";
 import type { EventMember, Event } from "@/lib/services/events";
 import { respondToOwnInvite, InviteResponseError, getOwnInviteStatus, inviteSettled } from "@/lib/services/inviteResponse";
-import { createSetlist, deleteSetlist, replaceSetlistSongs, updateSetlist } from "@/lib/services/songs";
+import { createSetlist, deleteSetlist } from "@/lib/services/songs";
+import { saveExistingGigSetlist, SetlistConflictError } from "@/lib/services/gigSetlistSave";
+import { LIVE_REFUSED_EVENT } from "@/lib/liveOutbox";
 import { diffSetlist, entriesFromRows, type SetlistChange } from "@/lib/setlistChanges";
 import { notifySetlistSaved } from "@/lib/services/setlistNotify";
 import { receiptFor, deleteChat as deleteChatService, createChat as createChatService, chatErrorMessage } from "@/lib/services/chats";
@@ -99,6 +108,10 @@ import { listMyDeputyGigs } from "@/lib/services/deputies";
 import { OfflineBanner } from "@/app/components/ui/OfflineBanner";
 import { useNetworkStatus, isOfflineError, reportNetworkStatus } from "@/lib/offline/useNetworkStatus";
 import { enqueueMutation, getPendingMutations } from "@/lib/offline/syncQueue";
+import { deleteRehearsalDate, moveRehearsalDateOnly, restoreRehearsalDate } from "@/lib/services/rehearsalSkip";
+import { isSkippedOccurrence, mergeRecurrenceRule, occurrenceOn, openDateFor } from "@/lib/recurrenceSkips";
+import { occurrenceStart } from "@/lib/eventOverviewEdit";
+import { newUuid } from "@/lib/uuid";
 import type { QueuedEventExtras } from "@/lib/offline/eventExtras";
 import { getOfflineItem, setOfflineItem, getCacheKey } from "@/lib/offline/storage";
 import { todayLocal } from '../lib/dates';
@@ -111,11 +124,16 @@ const SetlistManagerView = lazyLayer(() => import("@/app/views/SetlistManagerVie
 const SettingsView = lazyLayer(() => import("@/app/views/SettingsView").then(m => ({ default: m.SettingsView })));
 const AnalyticsView = lazyLayer(() => import("@/app/views/AnalyticsView").then(m => ({ default: m.AnalyticsView })));
 const InventoryView = lazyLayer(() => import("@/app/views/InventoryView").then(m => ({ default: m.InventoryView })));
+/** One empty list for the inbox filter (same array every render). */
+const NO_NOTIFICATIONS: never[] = [];
 const ContractsView = lazyLayer(() => import("@/app/views/ContractsView").then(m => ({ default: m.ContractsView })));
 import type { ContractPrefill } from "@/app/views/ContractsView";
 const TaskTemplatesView = lazyLayer(() => import("@/app/views/TaskTemplatesView").then(m => ({ default: m.TaskTemplatesView })));
 const CreateEventModal = lazyLayer(() => import("@/app/components/dashboard/CreateEventModal").then(m => ({ default: m.CreateEventModal })));
 const QuoteCreationWizard = lazyLayer(() => import("@/app/components/quotes/QuoteCreationWizard").then(m => ({ default: m.QuoteCreationWizard })));
+type NewQuoteCreate = import("@/app/components/quotes/QuoteCreationWizard").QuoteCreationWizardProps['onCreate'];
+type NewQuoteInput = Parameters<NewQuoteCreate>[0];
+type NewQuoteOptions = Parameters<NewQuoteCreate>[1];
 const BandPricingModal = lazyLayer(() => import("@/app/components/quotes/BandPricingModal").then(m => ({ default: m.BandPricingModal })));
 const QuoteShareModal = lazyLayer(() => import("@/app/components/quotes/QuoteShareModal").then(m => ({ default: m.QuoteShareModal })));
 /** A quote save that found no connection (nothing saved, nothing queued). */
@@ -137,10 +155,11 @@ import {
 
 import { RoleTourModal, markRoleTourSeen, roleTourSeen } from "@/app/components/onboarding/RoleTourModal";
 import { Quote } from "@/app/data/quotes";
-import { createQuote as createQuoteDB, updateQuote as updateQuoteDB, appQuoteToDbRecord, appMusiciansToDb, dbQuoteToAppQuote } from "@/lib/services/quotes";
+import { createQuote as createQuoteDB, updateQuote as updateQuoteDB, getQuote as getQuoteDB, appQuoteToDbRecord, quoteUpdateRecord, appMusiciansToDb, dbQuoteToAppQuote, saveQuoteWithLineup, isLineupChangedError, changedQuoteLineup } from "@/lib/services/quotes";
 import { republishClientQuote } from "@/lib/services/quoteLinks";
 import type { Quote as AppQuote } from "@/app/data/quotes";
 import { quoteMusicianFee } from "@/lib/services/quoteMath";
+import { DATE_HOLDS_CHANGED, holdPlace, isQuoteStageEvent } from "@/lib/dateHolds";
 
 import { ChatDetailModal, NewChatModal } from "@/app/components/chat";
 import { EditProfileModal, CreateBandModal } from "@/app/components/profile";
@@ -161,13 +180,15 @@ import type { RehearsalPoll } from "@/lib/services/rehearsalPolls";
 
 import { useBodyScrollLock } from "@/app/hooks";
 import { usePushNotifications } from "@/app/hooks/usePushNotifications";
-import { parseLocalDate } from '@/lib/dates';
+import { useTypingFocus } from "@/lib/focusTrap";
 import { addressWithoutCity } from '@/lib/eventAddress';
+import { repeatDates } from '@/lib/recurrence';
 import { MapsChooserHost } from '@/app/components/ui/MapsLink';
 import { PlanLimitSheet } from '@/app/components/plans/PlanLimitSheet';
 import { personName, personFirstName, personInitials } from "@/lib/personName";
+import { directChatName } from "@/lib/formerMember";
 import { t, useLocale, dateName, intlLocale } from "@/lib/i18n";
-import { syncEventTasks, type EventTaskDraft } from "@/lib/services/eventTasks";
+import { syncEventTasks, withTaskClientIds, type EventTaskDraft } from "@/lib/services/eventTasks";
 import { getEventMemberMoney, moneyLookup, saveEventLineup, type LineupRow } from "@/lib/services/eventMemberMoney";
 import { newEventInvites } from "@/lib/eventLineup";
 import { EVENT_PUBLIC_COLUMNS, attachEventPrivate } from "@/lib/services/eventPrivate";
@@ -179,7 +200,10 @@ import { AnalyticsConsentSheet } from "@/app/components/settings/AnalyticsConsen
 import { useAudioPrefetch } from "@/app/hooks/useAudioPrefetch";
 import { useLivePackPrefetch } from "@/app/hooks/useLivePackPrefetch";
 import { findPack } from "@/lib/livePackStore";
+import { isFlagOn, startAppFlags } from "@/lib/appFlags";
 import { useLiveOutboxFlush } from "@/app/hooks/useLiveOutbox";
+import { useLayerOpen } from "@/app/hooks/useLayerOpen";
+import { useChatOutboxFlush } from "@/app/hooks/useChatOutbox";
 
 const mapEventStatus = (event: Event): EventStatus => {
   // event_type is the primary classifier
@@ -200,7 +224,8 @@ const eventToEventItem = (event: Event): EventItem => {
     eventId: event.id,
     title: event.title || t("Untitled Event"),
     status,
-    date: event.event_date || new Date().toISOString().split("T")[0],
+    // As the server reads it: coalesce(event_date, date).
+    date: event.event_date || event.date || new Date().toISOString().split("T")[0],
     time: event.start_time || "19:00",
     timeSet: !!event.start_time,
     location: event.venue_name || event.venue_city || "TBD",
@@ -389,6 +414,8 @@ export default function AuthenticatedApp() {
   const quoteSaveRunningRef = useRef(false);
   /** EDIT QUOTE on a quote event: the quote itself, in the quote wizard. */
   const [editingLinkedQuote, setEditingLinkedQuote] = useState<{ quote: AppQuote; eventId: string; bandId: string } | null>(null);
+  // Round 6: bumped to open the wizard again on a quote reloaded after a refused save.
+  const [linkedQuoteWizardKey, setLinkedQuoteWizardKey] = useState(0);
   // RSVP answers arrive late: they only apply if their event is still open.
   const eventKeyOf = (e: EventData) => e.eventId || e.id?.toString() || null;
   const { isCurrent: isOpenEvent, markCurrent: markOpenEvent } = useCurrentKey(
@@ -431,6 +458,24 @@ export default function AuthenticatedApp() {
     };
     duration?: number;
   } | null>(null);
+  // A gig setlist edited offline met someone else's newer one when sent: not
+  // written over it, kept in Settings › Offline & live, and said here.
+  useEffect(() => {
+    const onRefused = (e: globalThis.Event) => {
+      const d = (e as CustomEvent<{ userId?: string; kind?: string; full?: boolean }>).detail;
+      if (d?.kind !== 'gigSetlist' || d.userId !== user?.id) return;
+      const place = `${t('Settings & account')} › ${t('Offline & live')}`;
+      // No room in the refused list: the setlist waits on this device (still queued).
+      setSaveToast({
+        message: d.full
+          ? t('Too many unsaved changes: review them in {place}. Your gig setlist waits on this device until there’s room.', { place })
+          : t('Someone else changed a gig setlist meanwhile, so your offline changes were not saved. They’re kept in {place}.', { place }),
+        type: 'error',
+      });
+    };
+    window.addEventListener(LIVE_REFUSED_EVENT, onRefused);
+    return () => window.removeEventListener(LIVE_REFUSED_EVENT, onRefused);
+  }, [user?.id, t]);
   useEffect(() => {
     if (!saveToast) return;
     if (saveToast.type === 'success') {
@@ -442,6 +487,18 @@ export default function AuthenticatedApp() {
     const timer = setTimeout(() => setSaveToast(null), duration);
     return () => clearTimeout(timer);
   }, [saveToast]);
+  // Toasts raised outside this screen (src/lib/appToast.ts), e.g. a chat
+  // message that could not be kept on this phone (#291 round 8).
+  useEffect(() => {
+    // (`Event` here is the app's calendar type: the DOM one comes via EventListener.)
+    const onToast: EventListener = (e) => {
+      const d = (e as CustomEvent<AppToast>).detail;
+      if (d?.message) setSaveToast({ message: d.message, type: d.type, duration: d.type === 'error' ? 8000 : undefined });
+    };
+    window.addEventListener(APP_TOAST_EVENT, onToast);
+    return () => window.removeEventListener(APP_TOAST_EVENT, onToast);
+  }, []);
+  useSignOutFailedNotice(); // after the listener above: a sign-out whose wipe threw left this account signed in
 
   // Android test builds come from GitHub releases: offer a newer one
   // (src/lib/androidUpdate.ts), at most once a day per version.
@@ -483,7 +540,7 @@ export default function AuthenticatedApp() {
     }
   }, [androidInstall, androidInstallSource]);
 
-  const { isOnline, wasOffline, pendingSyncCount, triggerSync } = useNetworkStatus((msg) => {
+  const { isOnline, wasOffline, pendingSyncCount, retryLaterCount, triggerSync } = useNetworkStatus((msg) => {
     setSaveToast({ message: msg, type: 'success' });
     refetchEvents();
     if (refetchDashboard) refetchDashboard();
@@ -525,13 +582,21 @@ export default function AuthenticatedApp() {
   // ═══ LOCAL CLIENT-SIDE BAND PILL FILTER (instant, <1ms) ═══
   const [selectedBandPill, setSelectedBandPill] = useState<string>('all');
   const [urgentNotification, setUrgentNotification] = useState<import('@/lib/services/notifications').Notification | null>(null);
+  // The urgent pop-up never draws over an open sheet, modal or Stage mode:
+  // it waits for it to close (watched only while one is waiting).
+  const layerOpen = useLayerOpen(!!urgentNotification);
   const [rsvpNotification, setRsvpNotification] = useState<import('@/lib/services/notifications').Notification | null>(null);
   const [pollNotification, setPollNotification] = useState<import('@/lib/services/notifications').Notification | null>(null);
+  // Typing in a field, or choosing in an open picker: the urgent pop-up waits
+  // (never takes the focus mid-word), and Back meanwhile leaves it alone.
+  const typing = useTypingFocus();
   const { notifications: realNotifications, loading: notificationsLoading, refetch: refetchNotifications, setNotifications: setRealNotifications } = useNotifications({
     // The inbox: chat messages are not in it (the Chat tab has them), so 20
     // means 20 inbox items however busy the band chat is.
     limit: 20,
     excludeChat: true,
+    // Unread items older than those 20 come too: the bell shows and counts them.
+    withOlderUnread: 100,
     onNewEventInvite: (notif) => {
       if (notif.data?.creator_id === user?.id) return;
       // A re-sent invite for a gig already answered needs no pop-up.
@@ -829,6 +894,8 @@ export default function AuthenticatedApp() {
   // Live packs (plan §3.2): tidied on open/resume, downloaded ahead once agreed.
   const myBandIds = useMemo(() => (bandsLoading ? null : (realBands ?? []).map((b) => b.id)), [bandsLoading, realBands]);
   useLivePackPrefetch(events, user?.id, myBandIds);
+  // Remote kill switches (app_flags, docs/flags.md): read at start, on resume and back online.
+  useEffect(() => startAppFlags(), []);
 
   // Calendar band filter: offered from two bands on (plus Personal when there
   // are personal gigs). A choice that is no longer offered goes back to All,
@@ -857,8 +924,10 @@ export default function AuthenticatedApp() {
     const { next, seen } = syncOpenEvent<EventData>(selectedEvent, fresh as Partial<EventData>, track.seen);
     track.seen = seen;
     if (next === selectedEvent) return;
+    // `next.date` / `next.seriesDate`: one date of a repeating rehearsal stays
+    // on that date, and follows the series when it moves.
     setSelectedEvent(prev =>
-      prev && eventKeyOf(prev) === openEventKey ? { ...prev, ...(fresh as Partial<EventData>) } : prev,
+      prev && eventKeyOf(prev) === openEventKey ? { ...prev, ...(fresh as Partial<EventData>), date: next?.date ?? prev.date, seriesDate: next?.seriesDate ?? prev.seriesDate } : prev,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events, openEventKey]);
@@ -938,6 +1007,13 @@ export default function AuthenticatedApp() {
     return result;
   }, [visibleEvents, eventFilter, eventSearch]);
 
+  // ── Dates on hold (178) ─────────────────────────────────────
+  // A member's possible gigs: in the calendar (day, time, place only), and a
+  // hold notice or a tap on one opens its sheet with the answers.
+  const [myDateHolds] = useMyDateHolds(!isSolo);
+  const [holdSheetEventId, setHoldSheetEventId] = useState<string | null>(null);
+  const holdInSheet = holdSheetEventId ? myDateHolds?.find((h) => h.eventId === holdSheetEventId) ?? null : null;
+
   // ── Drafts in the calendar ──────────────────────────────────
   // The admin's saved gig / rehearsal drafts and quotes not shared yet show
   // on their day (desaturated, "only you"); undated ones under Drafts.
@@ -953,7 +1029,7 @@ export default function AuthenticatedApp() {
       });
     return ids;
   }, [realQuotes]);
-  const calendarEvents = useMemo(() => {
+  const calendarEventsBase = useMemo(() => {
     if (!isAdmin || selectedBandPill === 'personal') return visuallyFilteredEvents;
     const f = String(eventFilter).toUpperCase();
     const wantDrafts = f === 'DRAFTS' || f === 'DRAFT';
@@ -1016,6 +1092,39 @@ export default function AuthenticatedApp() {
       .filter((e) => matches(e) && matchesBandFilter(e.band_id, selectedBandPill));
     return local.length ? [...base, ...local] : base;
   }, [isAdmin, selectedBandPill, eventFilter, eventSearch, visuallyFilteredEvents, events, draftQuoteIds, myEventDrafts, realQuotes]);
+  // Holds on their day, under All and Gigs: never the quote itself (an admin
+  // of that band already has it).
+  const calendarEvents = useMemo(() => {
+    if (!myDateHolds?.length || selectedBandPill === 'personal') return calendarEventsBase;
+    const f = String(eventFilter).toUpperCase();
+    if (f !== 'ALL' && f !== 'GIGS' && f !== 'CONFIRMED') return calendarEventsBase;
+    const q = eventSearch.trim().toLowerCase();
+    const have = new Set(calendarEventsBase.map((e) => e.eventId).filter(Boolean));
+    const holds = myDateHolds
+      .filter((h) => !have.has(h.eventId) && matchesBandFilter(h.bandId, selectedBandPill))
+      .map((h): EventData => {
+        let n = 11;
+        for (let i = 0; i < h.eventId.length; i++) n = (n * 31 + h.eventId.charCodeAt(i)) | 0;
+        return {
+          id: -Math.abs(n || 1),
+          eventId: `hold:${h.eventId}`,
+          band_id: h.bandId || undefined,
+          band_name: h.bandName || undefined,
+          title: t('Possible gig – keep the date free'),
+          status: 'TENTATIVE',
+          date: h.date,
+          time: h.startTime ? h.startTime.slice(0, 5) : '',
+          endTime: h.endTime ? h.endTime.slice(0, 5) : undefined,
+          location: holdPlace(h) || '',
+          price: '',
+          members: [],
+          color: '',
+          holdOf: h,
+        };
+      })
+      .filter((e) => !q || e.title.toLowerCase().includes(q) || e.location.toLowerCase().includes(q));
+    return holds.length ? [...calendarEventsBase, ...holds] : calendarEventsBase;
+  }, [calendarEventsBase, myDateHolds, selectedBandPill, eventFilter, eventSearch]);
   const [previewDraftId, setPreviewDraftId] = useState<string | null>(null);
   const previewDraft = previewDraftId ? myEventDrafts.find((d) => d.id === previewDraftId) || null : null;
 
@@ -1065,7 +1174,7 @@ export default function AuthenticatedApp() {
   const missingCtxRef = useRef({ userId: user?.id, isAdminOfBand, eventMembersMap, bandLookup });
   missingCtxRef.current = { userId: user?.id, isAdminOfBand, eventMembersMap, bandLookup };
   /** Works out why an event isn't in the list, or opens it when it can. */
-  const explainMissingEvent = useCallback(async (eventDbId: string) => {
+  const explainMissingEvent = useCallback(async (eventDbId: string, openAt?: (item: EventData) => void) => {
     const { userId, isAdminOfBand: adminOf, eventMembersMap: membersMap, bandLookup: bands } = missingCtxRef.current;
     const { data: publicRow, error } = await supabase.from('events').select(EVENT_PUBLIC_COLUMNS).eq('id', eventDbId).maybeSingle();
     if (error) {
@@ -1152,9 +1261,29 @@ export default function AuthenticatedApp() {
     const item = eventToEventItem(row as Event);
     item.band_id = row.band_id || undefined;
     item.band_name = row.band_id ? bands[row.band_id] : t('Personal');
-    handleEventCardClickRef.current(item);
+    (openAt ?? handleEventCardClickRef.current)(item);
   }, []);
-  const navigateToEvent = useCallback(async (eventDbId: string) => {
+  // The date being edited in the wizard. The form's close handlers reopen
+  // the event by id only: they run before this clears, so cancelling an
+  // edit of one date of a series reopens that date (Codex #297 round 3).
+  const editReturnRef = useRef<{ eventId: string; date: string } | null>(null);
+  useEffect(() => {
+    if (editingEventData?.eventId && editingEventData.date) {
+      editReturnRef.current = { eventId: editingEventData.eventId, date: editingEventData.date };
+    } else if (!isCreateEventOpen) editReturnRef.current = null;
+  }, [editingEventData, isCreateEventOpen]);
+  /**
+   * Opens an event by id. `date`: the date of a repeating rehearsal the user
+   * picked (Home's list, a session summary). With none, a series opens on its
+   * next date still on, never on a deleted or long-past first date, so
+   * "Delete this date" deletes the date on screen (Codex #297 B1).
+   */
+  const navigateToEvent = useCallback(async (eventDbId: string, asked?: string | null) => {
+    const date = openDateFor(eventDbId, asked, editReturnRef.current);
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const openAt = (item: EventData) =>
+      handleEventCardClickRef.current((date ? occurrenceOn(item, date) : occurrenceOn(item, null, today)) ?? item);
     // One pane: closing the gig goes back to the tab it was opened from
     // (Home's "Review payouts", a notification) instead of the calendar.
     const from = activeTabRef.current;
@@ -1165,7 +1294,7 @@ export default function AuthenticatedApp() {
     setTimeout(async () => {
       const ev = eventsRef.current.find(e => e.eventId === eventDbId);
       if (ev) {
-        handleEventCardClickRef.current(ev);
+        openAt(ev);
       } else {
         // No signal ("Go live" at a venue): open the event from its live
         // pack instead of fetching the list (plan §3.4).
@@ -1175,7 +1304,7 @@ export default function AuthenticatedApp() {
           const item = eventToEventItem(pack.event as unknown as Event);
           item.band_id = pack.bandId;
           item.band_name = bandsByIdRef.current[pack.bandId];
-          handleEventCardClickRef.current(item);
+          openAt(item);
           return true;
         };
         if (typeof navigator !== 'undefined' && navigator.onLine === false && (await fromPack())) return;
@@ -1188,9 +1317,9 @@ export default function AuthenticatedApp() {
         }
         setTimeout(() => {
           const evRetry = eventsRef.current.find(e => e.eventId === eventDbId);
-          if (evRetry) handleEventCardClickRef.current(evRetry);
+          if (evRetry) openAt(evRetry);
           else
-            void explainMissingEvent(eventDbId).catch((err: any) =>
+            void explainMissingEvent(eventDbId, openAt).catch((err: any) =>
               setEventLoadError({ id: eventDbId, kind: 'error', message: err?.message }),
             );
         }, 500);
@@ -1227,6 +1356,8 @@ export default function AuthenticatedApp() {
 
   // Changes made with no signal (notes, suggestions, the leader's order): sent when back online.
   useLiveOutboxFlush(user?.id);
+  // Chat messages written offline (chatOutbox): sent with the chat closed too.
+  useChatOutboxFlush(user?.id);
 
   // The live_pack_ready push: open the event with the offline consent sheet.
   const [livePackOnOpen, setLivePackOnOpen] = useState<string | null>(null);
@@ -1344,13 +1475,13 @@ export default function AuthenticatedApp() {
           setSelectedChat(known ? { ...known, unread: 0 } : { id: Date.now(), uuid: d.chatId, type: "direct", name: t("Chat"), initials: "CH", lastMessage: "", time: "now", unread: 0, status: "received" });
         }, 100);
       } else if (d.screen === "event" && d.eventId) {
-        if (d.livePack) {
+        if (d.livePack && isFlagOn("live_pack")) {
           const id = String(d.eventId);
           setLivePackOnOpen(id);
           window.setTimeout(() => setLivePackOnOpen((cur) => (cur === id ? null : cur)), 5000);
         }
         // After it: a deleted event is named from this notification.
-        await navigateToEvent(d.eventId);
+        await navigateToEvent(d.eventId, typeof d.date === 'string' ? d.date : null);
       } else if (d.screen === "poll" && d.pollId) {
         setVotePollId(String(d.pollId));
       } else if (d.screen === "event") {
@@ -1387,7 +1518,17 @@ export default function AuthenticatedApp() {
         setDeputyGigsFocus(d.requestId ?? null);
         setShowDeputyGigs(true);
         window.dispatchEvent(new CustomEvent("bw:refresh-deputy-gigs"));
-      } else if (d.screen === "home") setActiveTab("Home");
+      } else if (d.screen === "home") {
+        setActiveTab("Home");
+        // A date on hold (178): that hold's sheet, over Home (on the Duo
+        // Laptop pose Home sits under the desk). A hold that just arrived
+        // shows once the list reloads.
+        if (d.holdEventId) {
+          closeLayersFor("view");
+          setHoldSheetEventId(String(d.holdEventId));
+          window.dispatchEvent(new CustomEvent(DATE_HOLDS_CHANGED));
+        }
+      }
       done();
     };
     window.addEventListener("push-navigate", handler);
@@ -1648,6 +1789,9 @@ export default function AuthenticatedApp() {
   // can show "No notifications yet" instead of not opening at all.
   const [inboxOpen, setInboxOpen] = useState(false);
   const isNotificationsOpen = inboxOpen || !!selectedNotification || selectedNotifications.length > 0;
+  // Kill switch live_pack off: its prompts leave the open inbox too (it shows a snapshot).
+  const shownSelectedNotifications = useSwitchedOffHidden(selectedNotifications);
+  const shownSelectedNotification = useSwitchedOffHidden(selectedNotification ? [selectedNotification] : NO_NOTIFICATIONS)[0] ?? null;
 
   /** Deletes notifications for good (list, badge and other devices). */
   const removeNotifications = useCallback((ids: string[]) => {
@@ -1677,12 +1821,15 @@ export default function AuthenticatedApp() {
     setSelectedNotifications(nonChatNotifs);
     setInboxOpen(true);
     setSelectedNotification(null);
-    if (unreadCount > 0) {
-      markAllNotificationsAsRead().then(() => {
+    // Only what the bell shows is marked read (07 #10): older unread items
+    // come with the list (withOlderUnread), never marked unseen.
+    const shown = unreadInboxIds(realNotifications || []);
+    if (shown.length > 0) {
+      markIdsAsRead(shown).then(() => {
         refetchNotifications?.();
       });
     }
-  }, [realNotifications, unreadCount, refetchNotifications]);
+  }, [realNotifications, refetchNotifications]);
 
   // Computed values
   const notificationGroups = useMemo(() => {
@@ -1709,9 +1856,12 @@ export default function AuthenticatedApp() {
       let displayName = "";
       let avatarUrl: string | undefined = undefined;
       if (type === "direct") {
-        const otherWithProfile = others.find((p) => (p as any).profile);
-        // Always the other person's name, never a generic "Direct Chat".
-        displayName = (otherWithProfile ? personName((otherWithProfile as any).profile, "") : "") || (chat.name && chat.name !== "New Chat" && chat.name !== "Chat" && chat.name !== "Direct Chat" ? chat.name : t("Member"));
+        // Always the other person's name, never a generic "Direct Chat"; a
+        // former member when they deleted their account (#282).
+        displayName = directChatName({
+          others: others as { profile?: any }[], storedName: chat.name, fallback: t("Member"), former: t("Former member"),
+          me: user?.id, otherIds: [(chat as any).created_by, chat.last_message?.sender_id],
+        });
         const otherWithAvatar = others.find((p) => (p as any).profile?.avatar_url);
         avatarUrl = (otherWithAvatar as any)?.profile?.avatar_url || undefined;
       } else if (type === "band") {
@@ -1859,7 +2009,7 @@ export default function AuthenticatedApp() {
       if (realBand?.id && e.band_id && e.band_id !== realBand.id) return;
       const normDate = (e.date || '').includes('T') ? e.date.split('T')[0] : (e.date || '');
 
-      if (!normDate || normDate >= todayStr) {
+      if ((!normDate || normDate >= todayStr) && !isSkippedOccurrence(e, normDate)) {
         rehearsals.push(e);
       }
 
@@ -1867,28 +2017,23 @@ export default function AuthenticatedApp() {
         const rule = e.recurrence_rule;
         const freq = (rule.freq || rule.frequency || '').toLowerCase();
         if (freq) {
-          const baseDate = parseLocalDate(normDate);
           const until = rule.until ? new Date(rule.until) : new Date(now.getFullYear(), now.getMonth() + 4, 0);
           const maxCount = rule.count || 24;
-          let cursor = new Date(baseDate);
-          let generated = 0;
-          while (cursor <= until && generated < maxCount) {
-            if (freq === 'weekly') cursor.setDate(cursor.getDate() + 7 * (rule.interval || 1));
-            else if (freq === 'biweekly') cursor.setDate(cursor.getDate() + 14);
-            else if (freq === 'monthly') cursor.setMonth(cursor.getMonth() + (rule.interval || 1));
-            else break;
-            if (cursor > until) break;
+          repeatDates(normDate, rule, until, maxCount).forEach((cursor) => {
             const occDate = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
-            if (occDate >= todayStr && occDate !== normDate) {
+            if (occDate >= todayStr && occDate !== normDate && !isSkippedOccurrence(e, occDate)) {
               rehearsals.push({
                 ...e,
-                id: (e.id * 31 + generated) % 2147483647,
+                // Keyed by the date, not its place in the list: deleting one
+                // date leaves the ids of the later ones as they were (Claude
+                // review #285 r8).
+                id: uuidToNumericId(`${e.eventId ?? e.id}-occ-${occDate}`),
                 eventId: e.eventId,
+                occurrence_of: e.eventId ?? e.id,
                 date: occDate,
               });
             }
-            generated++;
-          }
+          });
         }
       }
     });
@@ -2139,7 +2284,7 @@ export default function AuthenticatedApp() {
       setShowPricingModal(true);
     }
     if (item === "AdminTour") setShowAdminTour(true);
-    if (item === "Quote" && isAdmin) { setCreateEventType("quote"); setIsCreateEventOpen(true); }
+    if (item === "Quote" && isAdmin) { setEditingEventData(null); setCreateEventType("quote"); setIsCreateEventOpen(true); }
     if (item === "InviteMember") setShowBandMembers(true);
   };
 
@@ -2213,7 +2358,8 @@ export default function AuthenticatedApp() {
     const realNotifNav = realId ? realNotifications?.find((rn) => rn.id === realId) : null;
     const navEventId = (realNotifNav?.data as any)?.event_id;
     if (navEventId && (actionType === "NAV_EVENTS" || actionType === "NAV_EVENTS_CONFIRMED")) {
-      setTimeout(() => navigateToEvent(navEventId), 300);
+      const navDate = (realNotifNav?.data as any)?.occurrence_date;
+      setTimeout(() => navigateToEvent(navEventId, typeof navDate === 'string' ? navDate : null), 300);
       return;
     }
 
@@ -2248,8 +2394,20 @@ export default function AuthenticatedApp() {
     setIsCreateEventOpen(true);
   };
   useEffect(() => {
-    if (!isCreateEventOpen) setActiveEventDraft(null);
+    if (isCreateEventOpen) return;
+    setActiveEventDraft(null);
+    // Closed by any path (Android Back included): the next "New gig" must
+    // never inherit this edit's event and update it (audit 10 #1).
+    setEditingEventData(null);
   }, [isCreateEventOpen]);
+  // The event form's own close (X, Cancel, Android Back): an edit returns to its event.
+  const closeCreateEventRef = useRef<() => void>(() => {});
+  closeCreateEventRef.current = () => {
+    // Cancelling an edit returns to the event it was opened from (saving has its own path).
+    const back = editingEventData?.eventId;
+    setIsCreateEventOpen(false); setEditingEventData(null); setCreateEventInitialDate(null); setCreateEventInitialTasks(undefined); setActiveEventDraft(null);
+    if (back) void navigateToEvent(back);
+  };
   const handleCreateEvent = (type: CreateEventType) => {
     if (type === 'personal') {
       setEditingPersonalGig(null);
@@ -2270,6 +2428,7 @@ export default function AuthenticatedApp() {
       setShowProposeRehearsalModal(true);
       return;
     }
+    setEditingEventData(null);
     setCreateEventType(type);
     setIsCreateEventOpen(true);
   };
@@ -2300,9 +2459,11 @@ export default function AuthenticatedApp() {
   const lastBackPressRef = useRef<number>(0);
   const backNavStateRef = useRef({
     urgentNotification,
+    layerOpen,
     rsvpNotification,
     pollNotification,
     votePollId,
+    typing,
     eventLoadError,
     selectedNotifications,
     selectedNotification,
@@ -2342,9 +2503,11 @@ export default function AuthenticatedApp() {
   // Keep ref synchronized with latest state on every render
   backNavStateRef.current = {
     urgentNotification,
+    layerOpen,
     rsvpNotification,
     pollNotification,
     votePollId,
+    typing,
     eventLoadError,
     selectedNotifications,
     selectedNotification,
@@ -2395,8 +2558,11 @@ export default function AuthenticatedApp() {
       if (handleBackFromStack()) return true;
 
       // 1. Transient Notifications & Popups
-      // The urgent popup only shows when no RSVP or poll sheet covers it.
-      if (s.urgentNotification && !s.rsvpNotification && !s.pollNotification && !s.showAdminTour) {
+      // The urgent popup only shows when no RSVP or poll sheet covers it, and
+      // waits while another sheet or Stage is open (#271) or the person is
+      // typing (#298): Back then closes that layer (further down), and the
+      // waiting pop-up comes back after.
+      if (s.urgentNotification && !s.rsvpNotification && !s.pollNotification && !s.showAdminTour && !s.layerOpen && !s.typing) {
         setUrgentNotification(null);
         return true;
       }
@@ -2447,7 +2613,7 @@ export default function AuthenticatedApp() {
         return true;
       }
       if (s.isCreateEventOpen) {
-        setIsCreateEventOpen(false);
+        closeCreateEventRef.current();
         return true;
       }
       if (s.showNewChat) {
@@ -2682,42 +2848,236 @@ export default function AuthenticatedApp() {
     setIsCreateEventOpen(true);
   };
 
+  /**
+   * A new quote, from the calendar or from Quotes (08 #10: both take this
+   * path): the tentative event that holds the date, the lineup, the quote,
+   * the to-do list and, when asked, the lineup's availability request. The
+   * wizard stays open until the quote is saved: on an error the user keeps
+   * everything typed and can try again.
+   */
+  const saveNewQuote = async (
+    q: NewQuoteInput,
+    opts: NewQuoteOptions,
+    ctx: { close: () => void; templateTasks?: { title: string; templateId?: string; dueOffset?: number }[]; openShare?: (quote: NewQuoteInput, autoSend: boolean) => void },
+  ) => {
+    if (quoteSaveRunningRef.current) return;
+    const templateTasks = ctx.templateTasks;
+    // The share sheet / PDF opens only after the quote is saved, so it
+    // carries the number assigned by the database.
+    const wantsShare = !!opts?.share;
+    if (!realBand?.id) {
+      setSaveToast({ message: t('Select a band before creating a quote.'), type: 'error' });
+      return;
+    }
+    quoteSaveRunningRef.current = true;
+    try {
+    if (realBand?.id) {
+      // One id for this save: a create that only timed out on the
+      // client and its queued retry are the same row, never two.
+      const clientEventId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : undefined;
+      const createdEventId = q.eventId || (await (async () => {
+        const evD: Record<string, any> = {
+          ...(clientEventId ? { id: clientEventId } : {}),
+          band_id: realBand.id,
+          title: q.eventName || q.clientName || t('Quote Event'),
+          event_type: q.eventType || 'other',
+          status: 'tentative' as const,
+          event_date: q.eventDate || todayLocal(),
+          start_time: q.eventTimeStart || '20:00',
+          end_time: q.eventTimeEnd || null,
+          venue_name: q.venueName || 'TBD',
+          venue: q.venueName || 'TBD',
+          venue_city: q.venueCity || null,
+          venue_address: q.venueAddress || null,
+          indoor_outdoor: q.indoorOutdoor || null,
+          fee: q.total || 0,
+          // The fee is in the quote's currency (the gig defaults to EUR).
+          ...(/^[A-Za-z]{3}$/.test(String(q.currency || '')) ? { currency: String(q.currency).toUpperCase() } : {}),
+          client_name: q.clientName || null,
+        };
+        const memberRows = Array.isArray(q.musicians)
+          ? q.musicians
+              .map((m: any) => {
+                const bandMember = realBand.members?.find((bm: any) => bm.id === m.id || bm.user_id === m.id);
+                const resolvedUserId = bandMember?.user_id || m.user_id || null;
+                if (!resolvedUserId) return null;
+                return {
+                  user_id: resolvedUserId,
+                  status: resolvedUserId === user?.id ? 'confirmed' : 'pending',
+                  fee: quoteMusicianFee(m),
+                  role: m.instrument || bandMember?.role || 'Musician',
+                };
+              })
+              .filter(Boolean)
+          : [];
+
+        // Quotes need a database number, so they can't be queued
+        // offline; their tentative event isn't queued either (it would
+        // hold the date with no quote behind it).
+        const saveQuoteEventOffline = async () => {
+          reportNetworkStatus(false);
+          return QUOTE_NEEDS_CONNECTION;
+        };
+
+        if (!isOnline || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+          return await saveQuoteEventOffline();
+        }
+
+        const creating = createEvent(evD);
+        try {
+          const { data: ev, error: evErr } = await Promise.race([
+            creating,
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('offline_timeout')), 4500)),
+          ]);
+          if (evErr && isOfflineError(evErr)) {
+            return await saveQuoteEventOffline();
+          }
+          if (ev?.id && memberRows.length > 0) {
+            await saveEventLineup(ev.id, memberRows as LineupRow[]);
+          }
+          return ev?.id || null;
+        } catch (err) {
+          if (isOfflineError(err)) {
+            // Timed out: if the event still lands, take it back (no quote holds it).
+            void creating
+              .then(({ data: late }) => (late?.id ? supabase.from('events').delete().eq('id', late.id) : null))
+              .catch(() => {});
+            return await saveQuoteEventOffline();
+          }
+          return null;
+        }
+      })());
+
+      const stillOnline = isOnline && (typeof navigator === 'undefined' || navigator.onLine);
+      if (createdEventId === QUOTE_NEEDS_CONNECTION || !stillOnline) {
+        // Nothing saved: the wizard stays open with the quote as typed.
+        // An event saved just before the connection dropped goes too.
+        if (createdEventId && createdEventId !== QUOTE_NEEDS_CONNECTION && !q.eventId) {
+          void Promise.resolve(supabase.from('events').delete().eq('id', createdEventId)).catch(() => {});
+        }
+        setSaveToast({ message: t('You’re offline. Quotes need a connection: nothing was saved, try again when you’re back online.'), type: 'error' });
+      } else {
+        const { data: savedQuote, error: quoteErr } = await createQuoteDB(
+          { ...appQuoteToDbRecord(q, realBand.id), converted_to_event_id: createdEventId || undefined },
+          appMusiciansToDb(q.musicians)
+        );
+        if (quoteErr || !savedQuote) {
+          // Don't leave a tentative event without its quote.
+          if (createdEventId && !q.eventId) {
+            await supabase.from('events').delete().eq('id', createdEventId);
+          }
+          // The wizard stays open with the quote as typed.
+          console.warn('[quotes] quote not saved:', quoteErr);
+          setSaveToast({ message: t('Quote not saved. Check your connection and try again.'), type: 'error' });
+        } else {
+          ctx.close();
+          setSaveToast({ message: t('Quote {number} saved', { number: savedQuote.quote_number }), type: 'success' });
+          // Started from a to-do list: the quote's event gets its tasks.
+          if (templateTasks?.length && createdEventId) {
+            const { error: taskErr } = await syncEventTasks(
+              createdEventId,
+              templateTasks.map((t) => ({ title: t.title, dueOffset: t.dueOffset })),
+              q.eventDate || todayLocal(),
+              [],
+            );
+            if (taskErr) setSaveToast({ message: t('Quote saved, but the to-do list was not added: {error}', { error: taskErr.message }), type: 'error' });
+          }
+          // Members get the hold card from the server (178): day, time
+          // and place only, never the client or the fee.
+          if (wantsShare) {
+            const toShare = { ...q, id: savedQuote.id, quoteNumber: savedQuote.quote_number, status: 'DRAFT' } as typeof q;
+            if (ctx.openShare) ctx.openShare(toShare, !!opts?.send);
+            else {
+              setSharingAutoSend(!!opts?.send);
+              setSharingQuote(toShare);
+            }
+          }
+          refetchExpandedQuotes();
+        }
+      }
+      setMembersRefreshKey(prev => prev + 1);
+      refetchEvents().catch(() => {});
+      if (refetchDashboard) refetchDashboard().catch(() => {});
+    }
+    } finally {
+      quoteSaveRunningRef.current = false;
+    }
+  };
+
   /** Saves the quote edited from its event, and keeps the event in step. */
   const handleLinkedQuoteSave = async (q: Partial<AppQuote>, opts?: { share?: boolean }) => {
     const editing = editingLinkedQuote;
     if (!editing || quoteSaveRunningRef.current) return;
     quoteSaveRunningRef.current = true;
     try {
-      const { band_id: _bandId, ...updates } = appQuoteToDbRecord(q, editing.bandId);
-      const { data, error } = await updateQuoteDB(editing.quote.id, updates);
+      // Only what changed, never the status the wizard was opened with (183).
+      const updates = quoteUpdateRecord(q, editing.bandId, editing.quote);
+      // Round 5: only a lineup changed in the wizard, checked against the one it opened with.
+      // Round 6: the quote and that lineup in one call (185): neither without the other.
+      const lineupEdit = changedQuoteLineup(q.musicians, editing.quote.musicians);
+      const { data, lineup, error, lineupError } = lineupEdit
+        ? await saveQuoteWithLineup(editing.quote.id, updates, lineupEdit)
+        : { ...(await updateQuoteDB(editing.quote.id, updates)), lineup: null, lineupError: null };
       if (error || !data) {
+        if (isLineupChangedError(error)) {
+          // Nothing was saved: the wizard opens again on the quote and lineup as stored now.
+          const fresh = await getQuoteDB(editing.quote.id);
+          if (!fresh.data) {
+            // Not reloaded (r9): the wizard would keep the old lineup, so it closes.
+            setEditingLinkedQuote(null);
+            setSaveToast({ message: t('Someone else changed this quote’s lineup meanwhile, so nothing was saved, and the quote could not be reloaded. Close it and open it again.'), type: 'error' });
+            return;
+          }
+          setEditingLinkedQuote({ ...editing, quote: dbQuoteToAppQuote(fresh.data as any) });
+          setLinkedQuoteWizardKey((k) => k + 1);
+          setSaveToast({ message: t('Someone else changed this quote’s lineup meanwhile, so nothing was saved. The quote now shows the lineup as it is: make your change again.'), type: 'error' });
+          return;
+        }
         // The wizard stays open with what was typed.
         setSaveToast({ message: t('Quote not saved: {error}', { error: error?.message || t('unknown error') }), type: 'error' });
         return;
       }
-      // The event shows the quote's date, time, place, client and fee.
+      // The lineup is saved with the quote and the gig on hold, in one go (185).
+      let roster = editing.quote.musicians;
+      let gigConfirmed = false;
+      if (lineupEdit) {
+        if (lineupError || !lineup) {
+          // A database before round 6's 185: the quote was saved alone; saving again saves the lineup.
+          setSaveToast({ message: t('Quote saved, but the lineup was not: {error}', { error: lineupError?.message || t('unknown error') }), type: 'error' });
+          return;
+        }
+        roster = dbQuoteToAppQuote({ ...(data as any), musicians: lineup.musicians }).musicians;
+        gigConfirmed = lineup.confirmed;
+      }
+      // The event shows the quote's date, time, place, client and fee, as
+      // saved (round 6: the row the database returns, with its own totals
+      // and another admin's changes; never the wizard's copy).
+      const merged = { ...q, ...dbQuoteToAppQuote(data as any) } as AppQuote;
       const { error: eventErr } = await updateEvent(editing.eventId, {
-        title: q.eventName || q.clientName || t('Quote Event'),
-        event_date: q.eventDate,
-        start_time: q.eventTimeStart || '20:00',
-        end_time: q.eventTimeEnd || null,
-        venue_name: q.venueName || null,
-        venue: q.venueName || null,
-        venue_city: q.venueCity || null,
-        venue_address: q.venueAddress || null,
-        indoor_outdoor: q.indoorOutdoor || null,
-        fee: q.total || 0,
-        client_name: q.clientName || null,
+        title: merged.eventName || merged.clientName || t('Quote Event'),
+        event_date: merged.eventDate,
+        start_time: merged.eventTimeStart || '20:00',
+        end_time: merged.eventTimeEnd || null,
+        venue_name: merged.venueName || null,
+        venue: merged.venueName || null,
+        venue_city: merged.venueCity || null,
+        venue_address: merged.venueAddress || null,
+        indoor_outdoor: merged.indoorOutdoor || null,
+        fee: Number((data as any)?.total) || 0,
+        client_name: merged.clientName || null,
       } as any);
-      const saved = { ...q, ...dbQuoteToAppQuote(data as any), musicians: q.musicians || editing.quote.musicians } as AppQuote;
+      const saved = { ...q, ...dbQuoteToAppQuote(data as any), musicians: roster } as AppQuote;
       setEditingLinkedQuote(null);
       setSaveToast(eventErr
         ? { message: t('Quote updated, but the event was not: {error}', { error: eventErr.message }), type: 'error' }
-        : { message: t('Quote updated'), type: 'success' });
+        : gigConfirmed
+          ? { message: t('The gig was confirmed meanwhile: the quote is saved, the gig’s lineup was not changed.'), type: 'success' }
+          : { message: t('Quote updated'), type: 'success' });
       if (opts?.share) setSharingQuote(saved);
       // Already sent with the client link: the page shows the new version.
-      republishClientQuote(saved as any, editing.bandId, realBand?.name || 'Band').then(({ data: version, error: pubError }) => {
+      republishClientQuote(saved as any, editing.bandId, realBand?.name || 'Band').then(({ data: version, error: pubError, newRecipient }) => {
         if (pubError) setSaveToast({ message: t('The client page could not be updated. Try again.'), type: 'error' });
+        else if (newRecipient) setSaveToast({ message: t('New client, new link: the old one no longer works. Send the quote to the new client.'), type: 'success' });
         else if (version && version > 1) setSaveToast({ message: t('The client’s page now shows version {n}.', { n: version }), type: 'success' });
       });
       refetchExpandedQuotes();
@@ -2728,10 +3088,50 @@ export default function AuthenticatedApp() {
     }
   };
 
-  const handleEventDelete = async () => {
+  // A date deleted on its own back in the series (undo toast, the cancelled
+  // date's banner, "Deleted dates"; Claude #297 r5 minor 5).
+  const handleRestoreDate = async (date: string | null | undefined, eventId?: string | null) => {
+    const id = eventId ?? selectedEvent?.eventId;
+    const { error, skipDates } = await restoreRehearsalDate(id, date);
+    if (error) {
+      setSaveToast({ message: error.message, type: 'error' });
+      return;
+    }
+    // The open detail shows the date as on again at once.
+    if (skipDates) {
+      setSelectedEvent((prev: any) => prev && prev.eventId === id && prev.recurrence_rule
+        ? { ...prev, recurrence_rule: { ...prev.recurrence_rule, skip_dates: skipDates }, skippedOccurrence: undefined }
+        : prev);
+    }
+    setSaveToast({ message: t('Rehearsal date restored'), type: 'success' });
+    refetchEvents();
+    refetchDashboard?.();
+  };
+
+  const handleEventDelete = async (scope?: 'date' | 'series') => {
     if (!selectedEvent?.eventId) return;
     haptic.delete();
     try {
+      if (scope === 'date') {
+        // One date of a repeating rehearsal: the series and its notes stay (audit 05 #4).
+        // No band or no date: refused with a message, never the whole series.
+        const { error } = await deleteRehearsalDate(selectedEvent);
+        if (error) throw error;
+        // Undo right away (Claude #297 r5 minor 5); later, Restore in the
+        // series' "Deleted dates".
+        const seriesId = selectedEvent.eventId;
+        const deletedDay = selectedEvent.date;
+        setSaveToast({
+          message: t('Rehearsal date deleted'),
+          type: 'success',
+          action: { label: t('Undo'), onClick: () => handleRestoreDate(deletedDay, seriesId) },
+        });
+        refetchEvents();
+        refetchDashboard?.();
+        setSelectedEvent(null);
+        setSelectedEventMembership(null);
+        return;
+      }
       if (!selectedEvent.band_id) {
         const { error } = await deletePersonalGig(selectedEvent.eventId, user?.id);
         if (error) throw error;
@@ -2793,9 +3193,12 @@ export default function AuthenticatedApp() {
       setSaveToast({ message: t('Event chats are available for band events.'), type: 'info' });
       return;
     }
-    const lineup = (eventMembersMap[ev.eventId] || [])
-      .map((m: any) => m.userId)
-      .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
+    // Still a quote: the chat stays with the admins (members only get the hold card, 178).
+    const lineup = isQuoteStageEvent(ev as any)
+      ? []
+      : (eventMembersMap[ev.eventId] || [])
+          .map((m: any) => m.userId)
+          .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
     const { data: chat, error } = await createChatService({
       type: 'event',
       name: ev.title,
@@ -2959,6 +3362,11 @@ export default function AuthenticatedApp() {
     runGuarded(() => void openEventCard(event));
   };
   const openEventCard = async (event: EventData) => {
+    // A date on hold: its sheet (day, time, place and the answers).
+    if (event.holdOf) {
+      setHoldSheetEventId(event.holdOf.eventId);
+      return;
+    }
     // A saved draft: its own sheet (only the author has it).
     if (event.draftId) {
       setPreviewDraftId(event.draftId);
@@ -2972,6 +3380,12 @@ export default function AuthenticatedApp() {
         return; // Member is not added to this event
       }
     }
+    // A later date of a series (Calendar, Home): remember where the series
+    // starts, so editing that date does not move it (Codex #297).
+    const series = event.eventId && !event.seriesDate && event.is_recurring
+      ? eventsRef.current.find((e) => e.eventId === event.eventId)
+      : undefined;
+    if (series?.date && series.date !== event.date) event = { ...event, seriesDate: series.date };
     setSelectedEvent(event);
     setSelectedEventMembership(null);
     const key = eventKeyOf(event);
@@ -3289,15 +3703,61 @@ export default function AuthenticatedApp() {
         is_recurring: isRehearsalWizard
           ? Boolean(data.recurrence && data.recurrence !== 'once')
           : Boolean(data.is_recurring || (data.recurrence && data.recurrence !== 'once')),
+        // On top of the rule it edits: dates deleted on their own stay deleted
+        // (Codex #297 B2; updateEvent merges the stored rule too).
         recurrence_rule: (data.recurrence && data.recurrence !== 'once')
-          ? { frequency: data.recurrence === 'biweekly' ? 'weekly' : data.recurrence, interval: data.recurrence === 'biweekly' ? 2 : 1 }
+          ? mergeRecurrenceRule(
+              data._editingEventId ? (editingEventData?.recurrence_rule ?? data.recurrence_rule) : null,
+              { frequency: data.recurrence === 'biweekly' ? 'weekly' : data.recurrence, interval: data.recurrence === 'biweekly' ? 2 : 1 },
+            )
           : (data.recurrence_rule || null),
       };
+
+      // One later date of a series edited here: the series start is written
+      // only when the date moved (the whole series, by the same days); a
+      // switch to "once" keeps the date on screen (Codex / Claude #297 round 3).
+      const moveOnly = !!(data._editing && data._editingEventId && data._moveScope === 'date');
+      const seriesStart = data._editingEventId && !moveOnly
+        ? occurrenceStart(editingEventData, date, !!eventData.is_recurring, 'series')
+        : undefined;
+      if (seriesStart === null) delete eventData.event_date;
+      else if (seriesStart !== undefined) eventData.event_date = seriesStart;
+
+      // "Only this date" (Claude #297 round 4): the date leaves the series as
+      // a one-off in one transaction (bw_move_rehearsal_date: every column,
+      // lineup, rider & stage, its own copy of the setlist), with the edits
+      // made here in the same write, so one notice lists what changed and no
+      // second update follows (r5 minors 1 and 2). The lineup, to-dos and
+      // setlist are then saved on that one-off. Its to-dos are new ones there.
+      let movedHere = false;
+      if (moveOnly) {
+        if (!isOnline || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+          setSaveToast({ message: t('Moving one date needs a connection. Try again when you are online.'), type: 'error' });
+          return false;
+        }
+        const moved = await moveRehearsalDateOnly(
+          { eventId: data._editingEventId, band_id: realBand.id, date: editingEventData?.date ?? null, seriesDate: editingEventData?.seriesDate ?? null },
+          { title: title || '', date, startTime: timeFinal, endTime: endTime || '', clientId: data._moveClientId, fields: eventData },
+        );
+        if (moved.error || !moved.eventId) {
+          setSaveToast({ message: t('Save failed: {error}', { error: moved.error?.message || '' }), type: 'error' });
+          return false;
+        }
+        data = { ...data, _editingEventId: moved.eventId, _originalTaskIds: [], _moveScope: undefined };
+        movedHere = true;
+        eventData.event_date = date;
+        eventData.is_recurring = false;
+        eventData.recurrence_rule = null;
+      }
 
       // Event to-dos (create modal, template or rehearsal wizard). Ids count
       // as saved only when the form loaded them from this event.
       const originalTaskIds: string[] = Array.isArray(data._originalTaskIds) ? data._originalTaskIds : [];
-      const taskDrafts = (): EventTaskDraft[] => {
+      // Built once, with the ids of new to-dos: the first try and the
+      // offline queue send the same ones (Codex #297 round 3).
+      let draftsOnce: EventTaskDraft[] | null = null;
+      const taskDrafts = (): EventTaskDraft[] => (draftsOnce ??= withTaskClientIds(buildTaskDrafts()));
+      const buildTaskDrafts = (): EventTaskDraft[] => {
         const knownUserIds = new Set((realBand?.members || []).map((m: any) => m.user_id).filter(Boolean));
         return (Array.isArray(data.tasks) ? data.tasks : []).map((t: any) => {
           const assignees: string[] = Array.isArray(t.assignedTo) ? t.assignedTo : [];
@@ -3416,6 +3876,8 @@ export default function AuthenticatedApp() {
       // Set once the setlist is saved online: an offline fallback after that
       // must not queue it again.
       let setlistSaved = false;
+      // The setlist changed since the wizard loaded it: not written, not queued either.
+      let setlistConflict = false;
       // Edit: what the save changed in the setlist, for the lineup's one notification (107).
       const setlistChange: { current: { id: string; change: SetlistChange } | null } = { current: null };
       const persistSetlist = async (): Promise<string | null> => {
@@ -3433,11 +3895,14 @@ export default function AuthenticatedApp() {
             .maybeSingle();
           const existingId = (ev as { setlist_id?: string | null } | null)?.setlist_id;
           if (existingId) {
-            const { error: replaceErr, previous } = await replaceSetlistSongs(
+            // Songs and count in one transaction (188). The setlist keeps its
+            // own name, and is written only while it is still what the
+            // wizard loaded: someone else's newer setlist is never overwritten.
+            const previous = await saveExistingGigSetlist(
               existingId,
-              songs.map(({ song_id, set_number }) => ({ song_id, set_number }))
+              songs.map(({ song_id, set_number }) => ({ song_id, set_number })),
+              data._setlistExpected
             );
-            if (replaceErr) throw replaceErr;
             setlistChange.current = {
               id: existingId,
               change: diffSetlist(
@@ -3445,7 +3910,6 @@ export default function AuthenticatedApp() {
                 songs.map(({ song_id, set_number }) => ({ songId: song_id, setNumber: set_number }))
               ),
             };
-            await updateSetlist(existingId, { name, song_count: songs.length });
             return existingId;
           }
         }
@@ -3458,13 +3922,7 @@ export default function AuthenticatedApp() {
 
       // One id for every attempt: a create that times out on the client but
       // lands on the server is recognised when the offline queue replays it.
-      const newEventId: string =
-        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-          ? crypto.randomUUID()
-          : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-              const r = (Math.random() * 16) | 0;
-              return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
-            });
+      const newEventId: string = newUuid();
       const queuedMembers = (data.members || [])
         .filter((m: any) => !(isRehearsalWizard && data.audienceIds?.length > 0) || data.audienceIds.includes(m.id))
         .map((m: any) => ({
@@ -3486,10 +3944,10 @@ export default function AuthenticatedApp() {
       // lineup changes, rider & stage): queued with it, replayed on sync.
       const offlineExtras = (isEdit: boolean): QueuedEventExtras | undefined => {
         const extras: QueuedEventExtras = {};
-        if (!setlistSaved && !eventData.setlist_id) {
+        if (!setlistSaved && !setlistConflict && !eventData.setlist_id) {
           const songs = setlistSongs();
           const cleared = !!(isEdit && data._setlistCleared);
-          if (songs.length > 0 || cleared) extras.setlist = { bandId: realBand.id, name: setlistName, songs, cleared };
+          if (songs.length > 0 || cleared) extras.setlist = { bandId: realBand.id, name: setlistName, songs, cleared, loaded: data._setlistExpected ?? null };
         }
         const drafts = taskDrafts();
         if (drafts.length > 0 || originalTaskIds.length > 0) {
@@ -3565,6 +4023,7 @@ export default function AuthenticatedApp() {
       const setlistId = await withFastTimeout(persistSetlist(), 6000).catch((err) => {
         console.error('Setlist persist error:', err);
         setlistFailed = true;
+        if (err instanceof SetlistConflictError) setlistConflict = true;
         return null;
       });
       if (!setlistFailed) setlistSaved = true;
@@ -3573,7 +4032,11 @@ export default function AuthenticatedApp() {
       }
 
       if (data._editing && data._editingEventId) {
-        const { error } = await withFastTimeout(updateEvent(data._editingEventId, eventData), 4500);
+        // A date just moved on its own has its edits saved: only a setlist
+        // made now is linked (no date/time/venue change, so no second notice).
+        const { error } = movedHere
+          ? (setlistId ? await withFastTimeout(updateEvent(data._editingEventId, { setlist_id: setlistId }), 4500) : { error: null })
+          : await withFastTimeout(updateEvent(data._editingEventId, eventData), 4500);
         if (!error) {
           closeWizard();
           const memberResult = await persistMembers(data._editingEventId, true);
@@ -3601,6 +4064,8 @@ export default function AuthenticatedApp() {
           if (memberFailed) {
             console.error('Member persist issue:', memberResult);
             setSaveToast({ message: t('Event updated, but there was a problem saving members.'), type: 'error' });
+          } else if (setlistConflict) {
+            setSaveToast({ message: t('Event updated. Someone else changed the setlist meanwhile, so your setlist changes were not saved.'), type: 'error' });
           } else if (setlistFailed) {
             setSaveToast({ message: t('Event updated, but the setlist was not saved.'), type: 'error' });
           } else if (!tasksSaved) {
@@ -3825,7 +4290,7 @@ export default function AuthenticatedApp() {
         return;
       }
 
-      if (d && d >= todayStr) {
+      if (d && d >= todayStr && !isSkippedOccurrence(e as any, d)) {
         liveUpcomingEvents.push(e);
       }
 
@@ -3834,28 +4299,20 @@ export default function AuthenticatedApp() {
         const rule = (e as any).recurrence_rule;
         const freq = (rule.freq || rule.frequency || '').toLowerCase();
         if (freq) {
-          const baseDate = new Date(d);
           const until = rule.until ? new Date(rule.until) : new Date(now.getFullYear(), now.getMonth() + 4, 0);
           const maxCount = rule.count || 24;
-          let cursor = new Date(baseDate);
-          let generated = 0;
-          while (cursor <= until && generated < maxCount) {
-            if (freq === 'weekly') cursor.setDate(cursor.getDate() + 7 * (rule.interval || 1));
-            else if (freq === 'biweekly') cursor.setDate(cursor.getDate() + 14);
-            else if (freq === 'monthly') cursor.setMonth(cursor.getMonth() + (rule.interval || 1));
-            else break;
-            if (cursor > until) break;
+          for (const cursor of repeatDates(d, rule, until, maxCount)) {
             const occDate = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
-            if (occDate >= todayStr && occDate !== d) {
+            if (occDate >= todayStr && occDate !== d && !isSkippedOccurrence(e as any, occDate)) {
               liveUpcomingEvents.push({
                 ...e,
                 id: `${e.id}-occ-${occDate}`,
                 eventId: e.id,
+                occurrence_of: e.id,
                 event_date: occDate,
                 date: occDate,
               });
             }
-            generated++;
           }
         }
       }
@@ -3951,6 +4408,7 @@ export default function AuthenticatedApp() {
         isOnline={isOnline}
         wasOffline={wasOffline}
         pendingCount={pendingSyncCount}
+        retryLaterCount={retryLaterCount}
         onSyncNow={triggerSync}
       />
       <div className="fixed inset-0 z-0 bg-background" />
@@ -3989,6 +4447,7 @@ export default function AuthenticatedApp() {
               setEditingPersonalGig(null);
               setShowPersonalGigModal(true);
             } else {
+              setEditingEventData(null);
               setCreateEventType(null);
               setIsCreateEventOpen(true);
             }
@@ -4157,7 +4616,7 @@ export default function AuthenticatedApp() {
         <AnimatePresence>
           {expandedCard === "finance" && <FinanceExpanded key="finance-expanded" bandId={realBand?.id || selectedBand.id.toString()} onClose={() => setExpandedCard(null)} financialStats={financeData.financialStats} transactions={financeData.recentTransactions} loading={financeLoading} onTransactionAdded={() => { refetchFinance(); refetchDashboard?.(); }} />}
           {expandedCard === "pending" && <PendingExpanded key="pending-expanded" bandId={realBand?.id || selectedBand.id.toString()} onClose={() => setExpandedCard(null)} eventFilter={eventFilter} setEventFilter={setEventFilter} events={pendingEvents} loading={pendingEventsLoading} />}
-          {isAdmin && expandedCard === "quotes" && <QuotesExpanded key="quotes-expanded" bandId={realBand?.id || selectedBand.id.toString()} onClose={() => setExpandedCard(null)} realQuotes={realQuotes} quoteStats={quotesStats} loading={quotesLoading} onShowToast={(msg, type) => setSaveToast({ message: msg, type })} onQuotesChanged={() => { refetchExpandedQuotes(); refetchDashboard?.(); }} onOpenBandSettings={() => { setPricingModalInitialTab('branding'); setPricingReturnTo(null); setShowPricingModal(true); }} onOpenEvent={(eventId) => { setExpandedCard(null); navigateToEvent(eventId); }} onPrepareContract={(prefill) => { if (!realBand || !isAdminOfBand(realBand.id)) return; setExpandedCard(null); setContractPrefill(prefill); setShowContracts(true); }} focusQuoteId={quoteFocus} onFocusConsumed={() => setQuoteFocus(null)} />}
+          {isAdmin && expandedCard === "quotes" && <QuotesExpanded key="quotes-expanded" bandId={realBand?.id || selectedBand.id.toString()} onClose={() => setExpandedCard(null)} onCreateNew={(q, opts, close, openShare) => saveNewQuote(q, opts, { close, openShare })} realQuotes={realQuotes} quoteStats={quotesStats} loading={quotesLoading} onShowToast={(msg, type) => setSaveToast({ message: msg, type })} onQuotesChanged={() => { refetchExpandedQuotes(); refetchDashboard?.(); }} onOpenBandSettings={() => { setPricingModalInitialTab('branding'); setPricingReturnTo(null); setShowPricingModal(true); }} onOpenEvent={(eventId) => { setExpandedCard(null); navigateToEvent(eventId); }} onPrepareContract={(prefill) => { if (!realBand || !isAdminOfBand(realBand.id)) return; setExpandedCard(null); setContractPrefill(prefill); setShowContracts(true); }} focusQuoteId={quoteFocus} onFocusConsumed={() => setQuoteFocus(null)} />}
           {expandedCard === "confirmed" && <ConfirmedExpanded key="confirmed-expanded" bandId={realBand?.id || selectedBand.id.toString()} onClose={() => setExpandedCard(null)} events={myConfirmedEvents} loading={confirmedEventsLoading} />}
           {expandedCard === "rehearsal" && currentRehearsal ? (
             <RehearsalExpanded key="rehearsal-expanded" upcomingRehearsals={upcomingRehearsals} currentRehearsal={currentRehearsal} rehearsalIndex={rehearsalIndex} setRehearsalIndex={setRehearsalIndex} rehearsalViewMode={rehearsalViewMode} setRehearsalViewMode={setRehearsalViewMode} onGoLive={() => { const id = currentRehearsal.eventId; setExpandedCard(null); if (id) handleGoLive(id); }} onClose={() => setExpandedCard(null)} onDecline={handleRehearsalDecline} />
@@ -4166,13 +4625,13 @@ export default function AuthenticatedApp() {
               <div className="sticky top-0 z-20 flex items-center justify-between px-4 py-3">
                 <NavBackButton onClick={() => setExpandedCard(null)} variant="ghost" className="w-10 h-10 bg-white/20 text-white" icon={<ChevronLeft className="w-6 h-6 text-white" />} />
                 <h1 className="text-lg font-bold text-white">{t('My Rehearsals')}</h1>
-                {isAdmin ? <HeaderAction label={t('New rehearsal')} variant="ghost" icon={<Plus />} onClick={() => { setExpandedCard(null); setCreateEventType("rehearsal"); setIsCreateEventOpen(true); }} className="w-10 h-10 bg-white/20 text-white" /> : <div className="w-10" />}
+                {isAdmin ? <HeaderAction label={t('New rehearsal')} variant="ghost" icon={<Plus />} onClick={() => { setExpandedCard(null); setEditingEventData(null); setCreateEventType("rehearsal"); setIsCreateEventOpen(true); }} className="w-10 h-10 bg-white/20 text-white" /> : <div className="w-10" />}
               </div>
               <div className="flex flex-col items-center justify-center flex-1 px-6 py-16">
                 <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mb-6"><Music className="w-10 h-10 text-white" /></div>
                 <h2 className="bw-h2 uppercase text-white mb-2">{t('No Rehearsals')}</h2>
                 <p className="text-white/70 text-center mb-8">{isAdmin ? t('No upcoming rehearsals. Tap + to create one!') : t('No upcoming rehearsals scheduled.')}</p>
-                {isAdmin && <button onClick={() => { setExpandedCard(null); setCreateEventType("rehearsal"); setIsCreateEventOpen(true); }} className="bg-white text-blue-600 px-6 py-3 rounded-full font-bold">{t('Schedule Rehearsal')}</button>}
+                {isAdmin && <button onClick={() => { setExpandedCard(null); setEditingEventData(null); setCreateEventType("rehearsal"); setIsCreateEventOpen(true); }} className="bg-white text-blue-600 px-6 py-3 rounded-full font-bold">{t('Schedule Rehearsal')}</button>}
               </div>
             </ExpandedCardWrapper>
           ) : null}
@@ -4378,12 +4837,7 @@ export default function AuthenticatedApp() {
                 initialType={createEventType as any}
                 initialDate={createEventInitialDate || undefined}
                 layoutId={`create-button-${createEventType}`}
-                onClose={() => {
-                  // Cancelling an edit returns to the event it was opened from (saving has its own path).
-                  const back = editingEventData?.eventId;
-                  setIsCreateEventOpen(false); setEditingEventData(null); setCreateEventInitialDate(null); setCreateEventInitialTasks(undefined); setActiveEventDraft(null);
-                  if (back) void navigateToEvent(back);
-                }}
+                onClose={() => closeCreateEventRef.current()}
                 onCreate={handleEventCreate}
                 draft={editingEventData ? null : activeEventDraft}
                 existingEvents={events}
@@ -4453,7 +4907,8 @@ export default function AuthenticatedApp() {
                 setShowRehearsalPollModal(false);
                 setPollModalInitialProposal(null);
               }}
-              bandId={realBand.id}
+              // A proposal opened from a notification may be another band's (audit 05 #1).
+              bandId={pollModalInitialProposal?.band_id || realBand.id}
               adminId={user.id}
               initialProposal={pollModalInitialProposal}
               onSuccess={() => {
@@ -4468,6 +4923,11 @@ export default function AuthenticatedApp() {
               onShowToast={(msg, type) => setSaveToast({ message: msg, type })}
             />
           )}
+          <DateHoldSheet
+            hold={holdInSheet}
+            onClose={() => setHoldSheetEventId(null)}
+            onShowToast={(message, type) => setSaveToast({ message, type })}
+          />
           <DraftPreviewSheet
             draft={previewDraft}
             onClose={() => setPreviewDraftId(null)}
@@ -4478,176 +4938,19 @@ export default function AuthenticatedApp() {
               setSaveToast({ message: t('Draft deleted'), type: 'success' });
             }}
           />
-          <AnimatePresence key="nested-presence-2">{isCreateEventOpen && createEventType === "quote" && !editingEventData && <QuoteCreationWizard bandMembers={memoizedBandMembers} initialData={createEventInitialDate ? { eventDate: createEventInitialDate } : undefined} onClose={() => { setIsCreateEventOpen(false); setCreateEventInitialDate(null); setCreateEventInitialTasks(undefined); }} onCreate={async (q, opts) => {
-            // The wizard stays open until the quote is saved: on an error the
-            // user keeps everything typed and can try again.
-            if (quoteSaveRunningRef.current) return;
-            const closeQuoteWizard = () => {
+          <AnimatePresence key="nested-presence-2">{isCreateEventOpen && createEventType === "quote" && !editingEventData && <QuoteCreationWizard bandMembers={memoizedBandMembers} initialData={createEventInitialDate ? { eventDate: createEventInitialDate } : undefined} onClose={() => { setIsCreateEventOpen(false); setCreateEventInitialDate(null); setCreateEventInitialTasks(undefined); }} onCreate={(q, opts) => saveNewQuote(q, opts, {
+            close: () => {
               setIsCreateEventOpen(false);
               setCreateEventInitialDate(null);
               setCreateEventInitialTasks(undefined);
-            };
-            const templateTasks = createEventInitialTasks;
-            // The share sheet / PDF opens only after the quote is saved, so it
-            // carries the number assigned by the database.
-            const wantsShare = !!opts?.share;
-            if (!realBand?.id) {
-              setSaveToast({ message: t('Select a band before creating a quote.'), type: 'error' });
-              return;
-            }
-            quoteSaveRunningRef.current = true;
-            try {
-            if (realBand?.id) {
-              // One id for this save: a create that only timed out on the
-              // client and its queued retry are the same row, never two.
-              const clientEventId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : undefined;
-              const createdEventId = q.eventId || (await (async () => {
-                const evD: Record<string, any> = {
-                  ...(clientEventId ? { id: clientEventId } : {}),
-                  band_id: realBand.id,
-                  title: q.eventName || q.clientName || t('Quote Event'),
-                  event_type: q.eventType || 'other',
-                  status: 'tentative' as const,
-                  event_date: q.eventDate || todayLocal(),
-                  start_time: q.eventTimeStart || '20:00',
-                  end_time: q.eventTimeEnd || null,
-                  venue_name: q.venueName || 'TBD',
-                  venue: q.venueName || 'TBD',
-                  venue_city: q.venueCity || null,
-                  venue_address: q.venueAddress || null,
-                  indoor_outdoor: q.indoorOutdoor || null,
-                  fee: q.total || 0,
-                  client_name: q.clientName || null,
-                };
-                const memberRows = Array.isArray(q.musicians)
-                  ? q.musicians
-                      .map((m: any) => {
-                        const bandMember = realBand.members?.find((bm: any) => bm.id === m.id || bm.user_id === m.id);
-                        const resolvedUserId = bandMember?.user_id || m.user_id || null;
-                        if (!resolvedUserId) return null;
-                        return {
-                          user_id: resolvedUserId,
-                          status: resolvedUserId === user?.id ? 'confirmed' : 'pending',
-                          fee: quoteMusicianFee(m),
-                          role: m.instrument || bandMember?.role || 'Musician',
-                        };
-                      })
-                      .filter(Boolean)
-                  : [];
-
-                // Quotes need a database number, so they can't be queued
-                // offline; their tentative event isn't queued either (it would
-                // hold the date with no quote behind it).
-                const saveQuoteEventOffline = async () => {
-                  reportNetworkStatus(false);
-                  return QUOTE_NEEDS_CONNECTION;
-                };
-
-                if (!isOnline || (typeof navigator !== 'undefined' && !navigator.onLine)) {
-                  return await saveQuoteEventOffline();
-                }
-
-                const creating = createEvent(evD);
-                try {
-                  const { data: ev, error: evErr } = await Promise.race([
-                    creating,
-                    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('offline_timeout')), 4500)),
-                  ]);
-                  if (evErr && isOfflineError(evErr)) {
-                    return await saveQuoteEventOffline();
-                  }
-                  if (ev?.id && memberRows.length > 0) {
-                    await saveEventLineup(ev.id, memberRows as LineupRow[]);
-                  }
-                  return ev?.id || null;
-                } catch (err) {
-                  if (isOfflineError(err)) {
-                    // Timed out: if the event still lands, take it back (no quote holds it).
-                    void creating
-                      .then(({ data: late }) => (late?.id ? supabase.from('events').delete().eq('id', late.id) : null))
-                      .catch(() => {});
-                    return await saveQuoteEventOffline();
-                  }
-                  return null;
-                }
-              })());
-
-              const stillOnline = isOnline && (typeof navigator === 'undefined' || navigator.onLine);
-              if (createdEventId === QUOTE_NEEDS_CONNECTION || !stillOnline) {
-                // Nothing saved: the wizard stays open with the quote as typed.
-                // An event saved just before the connection dropped goes too.
-                if (createdEventId && createdEventId !== QUOTE_NEEDS_CONNECTION && !q.eventId) {
-                  void Promise.resolve(supabase.from('events').delete().eq('id', createdEventId)).catch(() => {});
-                }
-                setSaveToast({ message: t('You’re offline. Quotes need a connection: nothing was saved, try again when you’re back online.'), type: 'error' });
-              } else {
-                const { data: savedQuote, error: quoteErr } = await createQuoteDB(
-                  { ...appQuoteToDbRecord(q, realBand.id), converted_to_event_id: createdEventId || undefined },
-                  appMusiciansToDb(q.musicians)
-                );
-                if (quoteErr || !savedQuote) {
-                  // Don't leave a tentative event without its quote.
-                  if (createdEventId && !q.eventId) {
-                    await supabase.from('events').delete().eq('id', createdEventId);
-                  }
-                  // The wizard stays open with the quote as typed.
-                  console.warn('[quotes] quote not saved:', quoteErr);
-                  setSaveToast({ message: t('Quote not saved. Check your connection and try again.'), type: 'error' });
-                } else {
-                  closeQuoteWizard();
-                  setSaveToast({ message: t('Quote {number} saved', { number: savedQuote.quote_number }), type: 'success' });
-                  // Started from a to-do list: the quote's event gets its tasks.
-                  if (templateTasks?.length && createdEventId) {
-                    const { error: taskErr } = await syncEventTasks(
-                      createdEventId,
-                      templateTasks.map((t) => ({ title: t.title, dueOffset: t.dueOffset })),
-                      q.eventDate || todayLocal(),
-                      [],
-                    );
-                    if (taskErr) setSaveToast({ message: t('Quote saved, but the to-do list was not added: {error}', { error: taskErr.message }), type: 'error' });
-                  }
-                  // Quote-stage RSVP: ask the lineup before the client confirms.
-                  if (opts?.askAvailability && createdEventId && user?.id) {
-                    const feeByUser: Record<string, number> = {};
-                    const invited = (Array.isArray(q.musicians) ? q.musicians : [])
-                      .map((m: any) => {
-                        const bm = realBand.members?.find((x: any) => x.id === m.id || x.user_id === m.id);
-                        const uid = bm?.user_id || m.user_id || null;
-                        if (uid) feeByUser[uid] = quoteMusicianFee(m);
-                        return uid;
-                      })
-                      .filter((uid: string | null): uid is string => !!uid && uid !== user.id);
-                    if (invited.length > 0) {
-                      const creatorName = personName({ full_name: profile?.full_name || user.user_metadata?.full_name, email: user.email }, "Someone");
-                      const { error: rsvpErr } = await notifyEventMembersCreated(
-                        realBand.id, createdEventId, q.eventName || q.clientName || 'Quote', q.eventDate || todayLocal(),
-                        q.eventTimeStart || '20:00', q.eventType || 'other', user.id, creatorName, invited,
-                        { venue: q.venueName, memberFees: feeByUser, tentative: true }
-                      );
-                      setSaveToast(rsvpErr
-                        ? { message: t("Quote {number} saved, but the availability check wasn't sent.", { number: savedQuote.quote_number }), type: 'error' }
-                        : { message: t('Quote {number} saved · availability asked to {count}', { number: savedQuote.quote_number, count: invited.length }), type: 'success' });
-                    }
-                  }
-                  if (wantsShare) {
-                    setSharingAutoSend(!!opts?.send);
-                    setSharingQuote({ ...q, id: savedQuote.id, quoteNumber: savedQuote.quote_number, status: 'DRAFT' });
-                  }
-                  refetchExpandedQuotes();
-                }
-              }
-              setMembersRefreshKey(prev => prev + 1);
-              refetchEvents().catch(() => {});
-              if (refetchDashboard) refetchDashboard().catch(() => {});
-            }
-            } finally {
-              quoteSaveRunningRef.current = false;
-            }
-          }} />}</AnimatePresence>
+            },
+            templateTasks: createEventInitialTasks,
+          })} />}</AnimatePresence>
 
           <AnimatePresence key="nested-presence-edit-quote">
             {editingLinkedQuote && (
               <QuoteCreationWizard
+                key={`linked-quote-wizard-${linkedQuoteWizardKey}`}
                 bandMembers={memoizedBandMembers}
                 initialData={editingLinkedQuote.quote}
                 initialClientName={editingLinkedQuote.quote.clientName}
@@ -4678,8 +4981,8 @@ export default function AuthenticatedApp() {
           <NotificationDetailModal key="notification-detail"
             isOpen={isNotificationsOpen}
             onClose={() => { setSelectedNotification(null); setSelectedNotifications([]); setInboxOpen(false); }}
-            notification={selectedNotification}
-            notifications={selectedNotifications}
+            notification={shownSelectedNotification}
+            notifications={shownSelectedNotifications}
             calendarEvents={events}
             bandNames={(realBands?.length ?? 0) > 1 ? bandLookup : undefined}
             // Opening the action a notification suggests (RSVP, poll, its
@@ -4703,12 +5006,22 @@ export default function AuthenticatedApp() {
               navigateToNotificationTarget(notificationTarget(notif.type, notif.data), notificationBandId(notif), notif.id);
             }}
             onClearAll={() => {
-              const ids = [selectedNotification?.id, ...selectedNotifications.map((n) => n.id)].filter(Boolean) as string[];
+              // Only what the inbox shows: items hidden by a kill switch stay.
+              const ids = [shownSelectedNotification?.id, ...shownSelectedNotifications.map((n) => n.id)].filter(Boolean) as string[];
               setSelectedNotification(null);
               setSelectedNotifications([]); // the inbox stays open, empty
               removeNotifications(ids);
             }}
-            onMarkAsRead={(id) => { const nid = id || selectedNotification?.id; if (nid) markNotificationAsRead(nid).then(() => refetchNotifications?.()); if (!id) { setSelectedNotification(null); setSelectedNotifications([]); setInboxOpen(false); } }}
+            onMarkAsRead={(id) => {
+              const nid = id || selectedNotification?.id;
+              if (nid) {
+                // The open item is a snapshot: mark it read there too (07 #9).
+                setSelectedNotification((n) => (n && n.id === nid && !n.read ? { ...n, read: true } : n));
+                setSelectedNotifications((list) => (list.some((n) => n.id === nid && !n.read) ? list.map((n) => (n.id === nid ? { ...n, read: true } : n)) : list));
+                markNotificationAsRead(nid).then(() => refetchNotifications?.());
+              }
+              if (!id) { setSelectedNotification(null); setSelectedNotifications([]); setInboxOpen(false); }
+            }}
             onMarkAllAsRead={() => {
               // The open list is a snapshot: clear its unread dots and count too.
               setSelectedNotifications((p) => p.map((n) => (n.read ? n : { ...n, read: true })));
@@ -4716,13 +5029,12 @@ export default function AuthenticatedApp() {
               markAllNotificationsAsRead().then(() => refetchNotifications?.());
             }}
             onDelete={(id) => {
+              // One notification, by id. No id: nothing (never "all of them"; Clear all is its own button).
+              if (!id) return;
               // Deleted for real (it used to come back on the next refresh).
-              const ids = id
-                ? [id]
-                : [selectedNotification?.id, ...selectedNotifications.map((n) => n.id)].filter(Boolean) as string[];
-              if (id) setSelectedNotifications((p) => p.filter((n) => n.id !== id));
-              else { setSelectedNotification(null); setSelectedNotifications([]); setInboxOpen(false); }
-              removeNotifications(ids);
+              setSelectedNotifications((p) => p.filter((n) => n.id !== id));
+              if (selectedNotification?.id === id) setSelectedNotification(null);
+              removeNotifications([id]);
             }}
             onAction={async (action, notificationId) => {
               const notif = selectedNotification || selectedNotifications.find((n) => n.id === notificationId);
@@ -4877,7 +5189,8 @@ export default function AuthenticatedApp() {
             onEventUpdated={() => { refetchEvents(); if (refetchDashboard) refetchDashboard().catch(() => {}); }}
             onToast={(message, type) => setSaveToast({ message, type })}
             onEdit={() => inItemBand(selectedEvent.band_id, "edit this event", handleEventEdit)}
-            onDelete={() => inItemBand(selectedEvent.band_id, "delete this event", handleEventDelete)}
+            onDelete={(scope) => inItemBand(selectedEvent.band_id, "delete this event", () => handleEventDelete(scope))}
+            onRestoreDate={(day) => inItemBand(selectedEvent.band_id, "restore this date", () => handleRestoreDate(day))}
             onChat={handleEventChat}
             onConfirmQuote={(ev) => inItemBand(ev.band_id, "confirm this quote", () => handleConfirmQuote(ev))}
             onRevertQuote={(ev) => inItemBand(ev.band_id, "change this quote", () => handleRevertQuote(ev))}
@@ -5041,7 +5354,7 @@ export default function AuthenticatedApp() {
 
       <AnimatePresence>
         {/* Waits for the welcome tour: one layer at a time on first launch. */}
-        {urgentNotification && !rsvpNotification && !pollNotification && !showAdminTour && (
+        {urgentNotification && !rsvpNotification && !pollNotification && !showAdminTour && !layerOpen && !typing && (
           <UrgentNotificationPopup
             key={urgentNotification.id}
             notification={urgentNotification}

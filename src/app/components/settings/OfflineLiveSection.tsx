@@ -1,12 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useFlag } from '@/lib/appFlags';
+import { RefusedLiveChanges } from './RefusedLiveChanges';
 import { Download, Trash2, Wifi } from '@/app/components/icons';
 import { PillButton, Toggle } from '@/app/components/bw';
 import { cn } from '@/app/components/ui/utils';
+import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 import { localDecimal, useT } from '@/lib/i18n';
 import { packSizeMb, type LivePack } from '@/lib/livePack';
 import { LIVE_PACK_CHANGED, deleteAllPacks, listPacks } from '@/lib/livePackStore';
 import { packFilesSize } from '@/lib/livePackFiles';
 import { LIVE_PACK_CHOICE_EVENT, readChoice, setAutomatic, setWifiOnly, type LivePackChoice } from '@/lib/livePackConsent';
+import { RejectedNotesForUser } from '@/app/components/dashboard/RehearsalNotes';
 
 const CARD = 'bg-card text-card-foreground rounded-[24px]';
 const ROW = 'p-4 flex items-center gap-3 w-full text-left';
@@ -45,6 +49,9 @@ export async function packsSpace(packs: LivePack[]): Promise<number> {
  */
 export const OfflineLiveSection: React.FC<{ userId?: string }> = ({ userId }) => {
   const t = useT();
+  // Switched off (app_flags live_pack, docs/flags.md): nothing is downloaded
+  // ahead, but what is on the device stays: its space and "Delete all" remain.
+  const livePackOn = useFlag('live_pack');
   const [choice, setChoice] = useState<LivePackChoice>(() => readChoice(userId));
   const [kept, setKept] = useState<{ count: number; bytes: number } | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -85,10 +92,17 @@ export const OfflineLiveSection: React.FC<{ userId?: string }> = ({ userId }) =>
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="bw-body-sm text-muted-foreground px-1">
-        {t('Lyrics, chords, structures and your own notes for your next gigs, on this device for when there is no signal. No fees, no contracts.')}
-      </p>
+      <div className="flex items-start gap-3 px-1">
+        <p className="bw-body-sm text-muted-foreground flex-1 min-w-0">
+          {livePackOn
+            ? t('Lyrics, chords, structures and your own notes for your next gigs, on this device for when there is no signal. No fees, no contracts.')
+            : t('Downloading setlists ahead is paused for now. What is already on this device stays readable offline until 24 hours after its gig, or until you delete it.')}
+        </p>
+        <AcademyHelpButton article="offline-and-live-settings" size="sm" />
+      </div>
+      <RefusedLiveChanges userId={userId} />
 
+      {livePackOn && (
       <div className={cn(CARD, ROW)}>
         <Tile>
           <Download />
@@ -101,12 +115,17 @@ export const OfflineLiveSection: React.FC<{ userId?: string }> = ({ userId }) =>
           aria-label={t('Automatic download')}
         />
       </div>
+      )}
 
+      {/* Switched off too: it still decides when kept setlists are brought up to date (the tidy-up). */}
       <div className={cn(CARD, ROW)}>
         <Tile>
           <Wifi />
         </Tile>
-        <Text title={t('Wi-Fi only')} hint={t('Automatic downloads wait for Wi-Fi on this device')} />
+        <Text
+          title={t('Wi-Fi only')}
+          hint={livePackOn ? t('Automatic downloads wait for Wi-Fi on this device') : t('Updates to what is kept wait for Wi-Fi on this device')}
+        />
         <Toggle
           checked={choice.wifiOnly}
           disabled={!userId}
@@ -142,6 +161,10 @@ export const OfflineLiveSection: React.FC<{ userId?: string }> = ({ userId }) =>
             </PillButton>
           ))}
       </div>
+
+      {/* Rehearsal notes the server refused, whatever rehearsal they were for (#296). */}
+      <RejectedNotesForUser userId={userId} />
     </div>
   );
 };
+

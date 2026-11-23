@@ -8,6 +8,7 @@ import { haptic } from '@/lib/haptics';
 import { useT } from '@/lib/i18n';
 import type { SongContent, SongView } from '@/lib/songFormat';
 import { cn } from '@/app/components/ui/utils';
+import { FollowArea, FollowStrip, type FollowTempo } from './StageFollow';
 
 /**
  * Song only (11-20): the current song, clean and full screen, with no other
@@ -39,7 +40,9 @@ export const StageSongOnly: React.FC<{
   clickFrame?: React.ReactNode;
   onShowAll: () => void;
   accent: string;
-}> = ({ title, index, count, song, view, size, semitones, songKey, canPrev, canNext, onStep, click, clickFrame, onShowAll, accent }) => {
+  /** Follow the tempo (StageFollow): the one line above the song and the lit bar / line. */
+  follow?: FollowTempo;
+}> = ({ title, index, count, song, view, size, semitones, songKey, canPrev, canNext, onStep, click, clickFrame, onShowAll, accent, follow }) => {
   const t = useT();
   const bodyRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -122,8 +125,10 @@ export const StageSongOnly: React.FC<{
             {title}
           </span>
         </p>
+        {follow && <FollowStrip follow={follow} accent={accent} className="px-4" />}
         <div ref={bodyRef} data-song-only-body className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4">
           <TransposeProvider semitones={semitones} songKey={songKey}>
+            <FollowSlot follow={follow} accent={accent}>
             <SongBody
               song={song}
               view={view}
@@ -134,6 +139,7 @@ export const StageSongOnly: React.FC<{
               chartClassName="w-full flex flex-col gap-5 pt-1 pb-4 text-white"
               showLegend={false}
             />
+            </FollowSlot>
           </TransposeProvider>
         </div>
         <div className={cn('grid gap-3 shrink-0 px-4', click ? 'grid-cols-[auto_1fr_auto_1fr]' : 'grid-cols-[auto_1fr_1fr]')}>
@@ -182,3 +188,13 @@ export const StageSongOnly: React.FC<{
   );
   return typeof document === 'undefined' ? node : createPortal(node, document.body);
 };
+
+/** The song inside FollowArea when Follow the tempo is there. */
+const FollowSlot: React.FC<{ follow?: FollowTempo; accent: string; children: React.ReactNode }> = ({ follow, accent, children }) =>
+  follow ? (
+    <FollowArea follow={follow} accent={accent}>
+      {children}
+    </FollowArea>
+  ) : (
+    <>{children}</>
+  );

@@ -16,12 +16,13 @@ import {
   BookOpen,
   Link as LinkIcon,
   Disc3,
+  AlertTriangle,
 } from '@/app/components/icons';
 import { IconButton, NavBackButton, PillButton, PillField, Selector, FormError } from '@/app/components/bw';
 import { useRailAction } from '@/lib/railActions';
 import { cn } from '@/app/components/ui/utils';
-import { createSong, updateSong, type Song } from '@/lib/services/songs';
-import { replacedFiles, songCreatePayload, songIdentity, songUpdatePayload, type SongFormValues } from '@/lib/songPayload';
+import { createSong, getSong, saveSongLyricsIfUnchanged, updateSong, type Song } from '@/lib/services/songs';
+import { lyricsTooLong, MAX_LYRICS_LENGTH, replacedFiles, savedLyricsLength, songCreatePayload, songIdentity, songUpdatePayload, type SongFormValues } from '@/lib/songPayload';
 import { UserError, userMessage } from '@/lib/userError';
 import {
   SONG_FILE_ACCEPT,
@@ -40,10 +41,11 @@ import { personName } from '@/lib/personName';
 import { notifySongAdded } from '@/lib/services/notifications';
 import { notifySongUpdated } from '@/lib/services/setlistNotify';
 import { normalizeLyrics } from '@/lib/songFormat';
-import { applyVoiceSuggestions, suggestVoiceParts } from '@/lib/voiceParts';
+import { applyVoiceSuggestions } from '@/lib/voiceParts';
+import { useVoiceSuggestions } from '@/app/components/songs/useVoiceSuggestions';
 import { songFieldsChanged } from '@/lib/setlistChanges';
 import { genresOf, joinGenres, parseGenres } from '@/lib/songGenres';
-import { useT } from '@/lib/i18n';
+import { intlLocale, useT } from '@/lib/i18n';
 import { asSongChart, keyLabel, type SongChart } from '@/lib/ireal';
 import { IrealImportField } from './IrealImportField';
 import { ChordImportSheet } from './ChordImportSheet';
@@ -51,6 +53,7 @@ import type { ImportedSong } from '@/lib/songImport';
 import { foldSemitones, parseKey, prefersFlats, transposeChart, transposeKey, transposeLyrics } from '@/lib/transpose';
 import { TempoKeyTools } from './TempoKeyTools';
 import { useVoiceSafeText, VoicePartsKept } from '@/app/components/songs/VoiceSafeText';
+import { LIVE_TEMPO_DEFAULTS, LiveTempoFields, type LiveTempoValues } from './LiveTempoFields';
 
 interface AddSongModalProps {
   isOpen: boolean;
@@ -65,6 +68,14 @@ interface AddSongModalProps {
 type StepType = 'details' | 'more' | 'extras';
 
 /** "245" seconds → { min: '4', sec: '05' }. */
+/** The song's live-mode fields as the form shows them (defaults before 171). */
+const liveTempoOf = (song: Song): LiveTempoValues => ({
+  timeSignature: song.time_signature || '',
+  countInBars: song.count_in_bars === 2 ? 2 : 1,
+  pickupBeats: song.pickup_beats && song.pickup_beats > 0 ? song.pickup_beats : 0,
+  backingTrack: !!song.backing_track,
+});
+
 const splitDuration = (seconds?: number | null) =>
   seconds && seconds > 0
     ? { min: String(Math.floor(seconds / 60)), sec: String(Math.round(seconds % 60)).padStart(2, '0') }
@@ -108,7 +119,8 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
   const [lyricsImportOpen, setLyricsImportOpen] = useState(false);
   // Voice parts proposed from a paste or an import: applied only on a tap ("Not now" hides it).
   const [voiceHintOff, setVoiceHintOff] = useState(false);
-  const voiceHints = useMemo(() => (voiceHintOff ? [] : suggestVoiceParts(lyrics)), [lyrics, voiceHintOff]);
+  // None while voice_parts is switched off (docs/flags.md).
+  const voiceHints = useVoiceSuggestions(lyrics, voiceHintOff);
   // The box shows the words without the part markers; the parts stay with their lines.
   const lyricsField = useVoiceSafeText(lyrics, setLyrics);
   // Chord chart pasted from iReal Pro (songs.chord_chart); saved only when changed here.
@@ -116,6 +128,8 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
   const [chordChartTouched, setChordChartTouched] = useState(false);
   const [bpm, setBpm] = useState('');
   const [key, setKey] = useState('');
+  // Live mode (171): time signature, count-in, pickup, backing track.
+  const [liveTempo, setLiveTempo] = useState<LiveTempoValues>(LIVE_TEMPO_DEFAULTS);
   /** Semitones moved with Transpose in this edit. */
   const [transposed, setTransposed] = useState(0);
   // Duration as minutes + seconds (number pads have no ":").
@@ -131,6 +145,13 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
   const successTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** The song as the form was filled from it (edit): only changes are saved. */
   const openedRef = useRef<SongFormValues | null>(null);
+  /** songs.lyrics exactly as stored when the form opened: lyrics are written only over it (189). */
+  const storedLyricsRef = useRef<string | null>(null);
+  /** A bandmate saved these lyrics meanwhile: what is stored now (the form keeps the draft). */
+  const [lyricsConflict, setLyricsConflict] = useState<{ stored: string | null } | null>(null);
+  const lyricsWarnId = React.useId();
+  // Over the limit: said once when the text crosses it, not on every keystroke.
+  const [lyricsAnnounce, setLyricsAnnounce] = useState('');
   /** Title of the same song already in the library (asked once before adding a copy). */
   const [duplicateOf, setDuplicateOf] = useState<string | null>(null);
 
@@ -140,13 +161,14 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
     }
   }, [isOpen, bandId]);
 
-  // Edit: start from the song's current values.
-  useEffect(() => {
-    if (!isOpen || !song) return;
+  // Edit: start from the song's current values (also after "Load the latest version").
+  const fillFrom = (song: Song) => {
     setTitle(song.title || '');
     setArtist(song.artist || '');
     setBpm(song.bpm ? String(song.bpm) : '');
     setKey(song.key || '');
+    const live = liveTempoOf(song);
+    setLiveTempo(live);
     const d = splitDuration(song.duration_seconds);
     setDurMin(d.min);
     setDurSec(d.sec);
@@ -159,6 +181,8 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
     setExistingAudio(song.audio_url || undefined);
     setExistingChart(song.chart_url || undefined);
     setChartUrl(song.chart_url && !isStoredSongFile(song.chart_url) ? song.chart_url : '');
+    storedLyricsRef.current = song.lyrics ?? null;
+    setLyricsConflict(null);
     openedRef.current = {
       title: song.title || '',
       artist: song.artist || '',
@@ -171,7 +195,13 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
       bpm: song.bpm ? String(song.bpm) : '',
       key: song.key || '',
       durationSeconds: song.duration_seconds && song.duration_seconds > 0 ? song.duration_seconds : 0,
+      ...live,
     };
+  };
+  useEffect(() => {
+    if (!isOpen || !song) return;
+    fillFrom(song);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per song opened
   }, [isOpen, song?.id]);
 
   // Another title or artist: check for a duplicate again.
@@ -181,7 +211,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
   // against now. Closing with something typed asks first, like every wizard.
   const formSig = JSON.stringify([
     title, artist, genres, audioFile?.name, chartFile?.name, existingAudio, existingChart,
-    youtubeUrl, chartUrl, chordsUrl, notes, lyrics, chordChartTouched, bpm, key, durMin, durSec,
+    youtubeUrl, chartUrl, chordsUrl, notes, lyrics, chordChartTouched, bpm, key, durMin, durSec, liveTempo,
   ]);
   const baselineRef = useRef<string | null>(null);
   const [baselineTick, setBaselineTick] = useState(0);
@@ -253,10 +283,27 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
     }
   };
 
+  const lyricsTooLongText = (count: number) =>
+    t('The lyrics are too long to save: {count} characters, the limit is {max}. Shorten them, the full text stays here.', {
+      count: count.toLocaleString(intlLocale()),
+      max: MAX_LYRICS_LENGTH.toLocaleString(intlLocale()),
+    });
+
   const handleSubmit = async () => {
     if (savingRef.current) return;
     if (!title.trim()) {
       setError(t('Song title is required'));
+      return;
+    }
+    // Edit: lyrics the user didn't touch are not written at all (no tidy-up
+    // over a bandmate's newer version, no limit for a title change).
+    const openedValues = isEdit && song ? openedRef.current : null;
+    const finalLyrics = openedValues && lyrics === openedValues.lyrics ? openedValues.lyrics : normalizeLyrics(lyrics);
+    const writesLyrics = openedValues ? 'lyrics' in songUpdatePayload(openedValues, { ...openedValues, lyrics: finalLyrics }) : true;
+    // Never cut on save (audit 09 #7): too long is said here, the whole text stays in the field.
+    if (writesLyrics && lyricsTooLong(finalLyrics)) {
+      setStep('extras');
+      setError(lyricsTooLongText(savedLyricsLength(finalLyrics)));
       return;
     }
 
@@ -319,10 +366,11 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
         youtubeUrl: youtube ?? null,
         notes: noteText,
         // One format for the band: section names and chords tidied on save.
-        lyrics: normalizeLyrics(lyrics),
+        lyrics: finalLyrics,
         bpm,
         key,
         durationSeconds: mins * 60 + secs,
+        ...liveTempo,
         ...(chordChartTouched ? { chordChart: { value: chordChart } } : {}),
       };
 
@@ -334,8 +382,28 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
         const opened = openedRef.current ?? values;
         const changes = songUpdatePayload(opened, values);
         if (Object.keys(changes).length > 0) {
-          const { error: songError } = await updateSong(song.id, changes);
-          if (songError) throw songError;
+          const { lyrics: newLyrics, ...rest } = changes;
+          if ('lyrics' in changes) {
+            // Written only over the lyrics this form opened (189): a
+            // bandmate's chords or verse saved meanwhile are never erased.
+            // The other changes go in the same request (Transpose: never
+            // the new chords with the old key).
+            const saved = await saveSongLyricsIfUnchanged(song.id, newLyrics ?? null, storedLyricsRef.current, rest);
+            if (saved.error) throw saved.error;
+            if (saved.conflict !== undefined) {
+              // Nothing saved: this attempt's uploads go (the form keeps the files).
+              if (uploaded.length > 0) await removeSongFiles(uploaded);
+              uploaded.length = 0;
+              setLyricsConflict({ stored: saved.conflict });
+              setStep('extras');
+              return;
+            }
+            storedLyricsRef.current = newLyrics ?? null;
+            setLyricsConflict(null);
+          } else {
+            const { error: songError } = await updateSong(song.id, rest);
+            if (songError) throw songError;
+          }
           replaced = replacedFiles(opened, changes);
           // One push to the band: "Ana changed: key, tempo" (107).
           void notifySongUpdated(song.id, songFieldsChanged(changes as Record<string, unknown>));
@@ -372,6 +440,41 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
     }
   };
 
+  // After a conflict: the whole latest song replaces the draft (key, chart,
+  // transpose and files of mine dropped, never their lyrics with my key), or
+  // the draft is saved over theirs. Not loaded: the conflict stays.
+  const loadLatestLyrics = async () => {
+    if (!lyricsConflict || !song || savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    const { data: latest, error: loadError } = await getSong(song.id);
+    savingRef.current = false;
+    setSaving(false);
+    if (loadError || !latest) {
+      setError(userMessage(loadError, t("Couldn't load this")));
+      return;
+    }
+    fillFrom(latest);
+    setTransposed(0);
+    setAudioFile(null);
+    setChartFile(null);
+    setChordsUrl('');
+    setError(null);
+    setBaselineTick((n) => n + 1);
+  };
+  const saveMyLyricsInstead = () => {
+    if (!lyricsConflict) return;
+    storedLyricsRef.current = lyricsConflict.stored;
+    setLyricsConflict(null);
+    void handleSubmit();
+  };
+
+  const tooLongNow = lyricsTooLong(lyrics);
+  useEffect(() => {
+    setLyricsAnnounce(tooLongNow ? lyricsTooLongText(savedLyricsLength(lyrics)) : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when it crosses the limit
+  }, [tooLongNow]);
+
   const handleClose = () => {
     // An upload or save is running: it can't be cancelled halfway.
     if (savingRef.current) return;
@@ -382,6 +485,8 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
       onSongAdded?.();
     }
     openedRef.current = null;
+    storedLyricsRef.current = null;
+    setLyricsConflict(null);
     setDuplicateOf(null);
     setStep('details');
     setTitle('');
@@ -402,6 +507,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
     setChordChartTouched(false);
     setBpm('');
     setKey('');
+    setLiveTempo(LIVE_TEMPO_DEFAULTS);
     setDurMin('');
     setDurSec('');
     setTransposed(0);
@@ -495,24 +601,11 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="add-song-title"
-      className="bw-pane-detail fixed inset-0 z-[100] flex flex-col overflow-hidden bg-background text-foreground"
+      // Laptop pose: the full-screen form layout (`.bw-fold-form`, as the gig
+      // wizard): the header holds the Display, the fields scroll and the
+      // actions sit on the Deck, so a scrolled field never rests on the fold.
+      className="bw-pane-detail bw-fold-form fixed inset-0 z-[100] flex flex-col overflow-hidden bg-background text-foreground"
     >
-      <UnsavedChangesSheet
-        open={leaveOpen}
-        title={t('Save your changes?')}
-        onSave={() => {
-          setLeaveOpen(false);
-          // No title yet: back to it (the form says what's missing).
-          if (canProceed()) void handleSubmit();
-          else setStep('details');
-        }}
-        onDiscard={() => {
-          setLeaveOpen(false);
-          handleClose();
-        }}
-        onKeepEditing={() => setLeaveOpen(false)}
-        saving={saving}
-      />
       {/* Header: Top Bar + wizard steps */}
       <header className="shrink-0 px-4 pb-3 flex flex-col gap-3" style={{ paddingTop: 'calc(var(--safe-top) + 8px)' }}>
         <div className="flex items-center gap-3 min-h-11">
@@ -539,6 +632,24 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
           </div>
         </div>
       </header>
+      {/* After the header: `.bw-fold-form` lays out its first child (the
+          header) and its last (the actions); an open sheet leaves a marker here. */}
+      <UnsavedChangesSheet
+        open={leaveOpen}
+        title={t('Save your changes?')}
+        onSave={() => {
+          setLeaveOpen(false);
+          // No title yet: back to it (the form says what's missing).
+          if (canProceed()) void handleSubmit();
+          else setStep('details');
+        }}
+        onDiscard={() => {
+          setLeaveOpen(false);
+          handleClose();
+        }}
+        onKeepEditing={() => setLeaveOpen(false)}
+        saving={saving}
+      />
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 pt-3 pb-8 max-w-2xl mx-auto w-full">
@@ -633,6 +744,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
                 moved={transposed}
                 onTranspose={transposeSong}
               />
+              <LiveTempoFields value={liveTempo} onChange={setLiveTempo} chartTime={chordChart?.time} />
 
               {/* Genre tags: used to filter the library when building a setlist */}
               <fieldset className="flex flex-col gap-2 pt-2">
@@ -764,6 +876,7 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
                 </span>
                 <textarea
                   {...lyricsField}
+                  aria-describedby={tooLongNow ? lyricsWarnId : undefined}
                   placeholder={[`# ${t('Verse 1')}`, t('First line…'), '', `[${t('Chorus')}]`, '…'].join('\n')}
                   rows={6}
                   className="w-full bg-transparent outline-none bw-body-lg text-foreground placeholder:text-muted-foreground/60 min-h-[140px] resize-y font-mono text-[15px]"
@@ -771,6 +884,34 @@ export const AddSongModal: React.FC<AddSongModalProps> = ({
                 <span className="bw-body-sm text-muted-foreground">{t('Read them in the app from the song menu or the player.')}</span>
                 <VoicePartsKept lyrics={lyrics} />
               </label>
+              {/* Outside the label (not part of the field's name); described by it, announced once. */}
+              {tooLongNow && (
+                <p id={lyricsWarnId} className="bw-body-sm text-destructive px-4 -mt-2">
+                  {lyricsTooLongText(savedLyricsLength(lyrics))}
+                </p>
+              )}
+              <span role="status" className="sr-only">{lyricsAnnounce}</span>
+              {lyricsConflict && (
+                <div className="flex flex-col gap-3 p-4 rounded-[24px] bg-card">
+                  <p role="alert" className="bw-body-md flex gap-3 items-start">
+                    <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" aria-hidden />
+                    <span className="min-w-0">
+                      {t('Someone else changed these lyrics while you were editing. Your changes are still here, not saved yet.')}
+                    </span>
+                  </p>
+                  <p className="bw-body-sm text-muted-foreground">
+                    {t('Load the latest version to see their changes (yours are dropped), or save yours over theirs.')}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <PillButton size="md" variant="outline" fullWidth={false} onClick={loadLatestLyrics} disabled={saving}>
+                      {t('Load the latest version')}
+                    </PillButton>
+                    <PillButton size="md" variant="dark" fullWidth={false} onClick={saveMyLyricsInstead} loading={saving}>
+                      {t('Save mine instead')}
+                    </PillButton>
+                  </div>
+                </div>
+              )}
               {voiceHints.length > 0 && (
                 <div className="flex flex-col gap-2 p-4 rounded-[24px] bg-card -mt-2" role="status">
                   <p className="bw-body-md">

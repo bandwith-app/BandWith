@@ -36,6 +36,7 @@ import { HeaderAction, IconButton, NavBackButton, Tag } from '@/app/components/b
 import { RailCover, useRailAction } from '@/lib/railActions';
 import { useSystemBack } from '@/lib/backStack';
 import { LeaveWizardSheet } from '@/app/components/bw/LeaveWizardSheet';
+import { UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
 import { PillButton, PillField } from '@/app/components/bw/Form';
 import {
   Quote,
@@ -80,6 +81,7 @@ import { BwSheet } from '@/app/components/bw/Screen';
 import { ComposerCard, ComposerPreview, ComposerShell, useComposerLayout } from '@/app/components/composer/Composer';
 import { builtinText } from '@/lib/i18n/builtins';
 import { instrumentText } from '@/lib/instruments';
+import { currencySymbol as symbolOf } from '@/lib/currency';
 
 export interface QuoteBandMember {
   id: string;
@@ -393,7 +395,7 @@ const LedgerRow: React.FC<{ label: string; value: string; tone?: 'success' }> = 
   </div>
 );
 
-interface QuoteCreationWizardProps {
+export interface QuoteCreationWizardProps {
   onClose: () => void;
   /** `share`: the user tapped Share, open the PDF/share sheet after saving. */
   /**
@@ -405,6 +407,7 @@ interface QuoteCreationWizardProps {
     quote: Partial<Quote>,
     opts?: {
       share?: boolean;
+      /** Unused since 178: every member gets the hold card from the server. */
       askAvailability?: boolean;
       /** "Send quote" (iPad composer): also email the client's link once it is ready. */
       send?: boolean;
@@ -415,6 +418,20 @@ interface QuoteCreationWizardProps {
   initialClientName?: string;
   initialData?: Partial<Quote>;
   bandMembers?: QuoteBandMember[];
+  /** False when no event is linked or created (Quotes → New quote): no hold to promise. */
+  holdsDate?: boolean;
+}
+
+/**
+ * The currency a quote is written in: an existing quote's own (changing the
+ * band's pricing currency must not turn a $1,000 quote into €1,000), the
+ * band's for a new one.
+ */
+export function quoteCurrencyFor(initialData: Partial<Quote> | undefined, bandCurrency: string | null | undefined): string {
+  const own = String(initialData?.currency || '').trim().toUpperCase();
+  const saved = !!(initialData?.id || initialData?.quoteNumber);
+  if (saved && /^[A-Z]{3}$/.test(own)) return own;
+  return String(bandCurrency || '').trim().toUpperCase() || 'EUR';
 }
 
 export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
@@ -424,6 +441,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
   initialClientName,
   initialData,
   bandMembers,
+  holdsDate = true,
 }) => {
   const t = useT();
   const { selectedBand, refreshMembers } = useBand();
@@ -436,12 +454,9 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
 
   // Distances are kept in km; per-distance services are priced and counted in the chosen unit.
   const distanceUnit = useDistanceUnit();
-  const currencySymbol = useMemo(() => {
-    if (pricingSettings.currency === 'USD') return '$';
-    if (pricingSettings.currency === 'GBP') return '£';
-    if (pricingSettings.currency === 'CHF') return 'CHF ';
-    return '€';
-  }, [pricingSettings.currency]);
+  // 08 #9: a saved quote keeps its own currency; the band's is for new quotes.
+  const quoteCurrency = quoteCurrencyFor(initialData, pricingSettings.currency);
+  const currencySymbol = useMemo(() => symbolOf(quoteCurrency), [quoteCurrency]);
 
   const availableMusicians = useMemo<QuoteMusician[]>(() => {
     if (bandMembers && bandMembers.length > 0) {
@@ -483,8 +498,14 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
   );
 
   const isEditing = Boolean(initialData?.id || initialData?.quoteNumber);
+  // 183 round 4: an accepted quote keeps its client (the server refuses another one).
+  const acceptedNote =
+    isEditing && String(initialData?.status || '').toUpperCase() === 'ACCEPTED' ? (
+      <p className="bw-body-sm text-muted-foreground" data-testid="quote-accepted-client-note">
+        {t('This quote has been accepted: you can correct the client’s details (a typo in the name, the phone written another way, a typo in the email until you ask for the balance), but to send it to someone else, duplicate it.')}
+      </p>
+    ) : null;
   // Ask the lineup for availability now (RSVP), before the client accepts.
-  const [askAvailability, setAskAvailability] = useState(false);
 
   // Accordion state for Edit mode (all 5 sections)
   const [expandedEditSections, setExpandedEditSections] = useState<Record<string, boolean>>({
@@ -1464,8 +1485,8 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
 
   // A save is running: the buttons show a spinner and a second tap does nothing.
   const [submitting, setSubmitting] = useState(false);
-  const handleCreate = (sendImmediately = true, sendToClient = false) => {
-    if (submitting) return;
+  /** The quote as Save would write it now. */
+  const buildQuoteData = (): Partial<Quote> => {
     const finalEventName = getEffectiveTitle();
     const finalClientName = clientName.trim() || 'Client';
 
@@ -1515,7 +1536,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
       vatRate,
       vatExempt,
       reverseCharge,
-      currency: pricingSettings.currency || 'EUR',
+      currency: quoteCurrency,
       baseFee: lineupBaseAmount,
       travelIncluded: travelMode !== 'separate',
       travelFee: effectiveTravelFee,
@@ -1562,9 +1583,14 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
       updatedAt: new Date().toISOString(),
       eventTitle: finalEventName,
     };
+    return quoteData;
+  };
+
+  const handleCreate = (sendImmediately = true, sendToClient = false) => {
+    if (submitting) return;
+    const quoteData = buildQuoteData();
     const pending = onCreate(quoteData, {
       share: sendImmediately,
-      askAvailability: !isEditing && askAvailability,
       ...(sendToClient ? { send: true } : {}),
     });
     if (pending && typeof (pending as Promise<void>).then === 'function') {
@@ -1855,6 +1881,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
   // ── STEP 01: EVENT, LINEUP & EXTRA SETS ─────────────────────
   const renderStep1 = () => (
     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 duration-300 pb-2">
+      {acceptedNote}
       <PillField
         label={t('Client name')}
         icon={<User className="w-5 h-5" />}
@@ -2779,28 +2806,11 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
       {renderReviewDrawer('logistics', t('Production & travel'), logisticsSummary, renderLogisticsAndCustomItemsControls())}
       {renderReviewDrawer('proposal_terms', t('Multi-option proposal & terms'), proposalSummary, renderProposalAndTermsControls())}
 
-      {!isEditing && allMusicians.length > 0 && (
-        <section className="rounded-[16px] bg-card p-4 flex flex-col gap-3">
-          <div
-            onClick={() => setAskAvailability(v => !v)}
-            className="flex items-center justify-between gap-3 cursor-pointer"
-          >
-            <span className="flex flex-col gap-1 min-w-0">
-              <span className="bw-label-sm text-muted-foreground">{t('Lineup availability')}</span>
-              <span className="bw-label-md">{t('Ask the lineup now')}</span>
-            </span>
-            <Toggle
-              checked={askAvailability}
-              onCheckedChange={() => setAskAvailability(v => !v)}
-              onClick={e => e.stopPropagation()}
-              aria-label={t('Ask the lineup for availability now')}
-            />
-          </div>
-          <span className="bw-body-sm text-muted-foreground">
-            {askAvailability
-              ? t('As soon as the quote is saved (shared, or kept as a draft from ✕), the musicians get an availability check (RSVP) for this date, marked as not confirmed yet.')
-              : t('Musicians are asked once the client accepts. Turn this on to check their availability now.')}
-          </span>
+      {/* Date on hold (178): every member gets a hold card, no toggle. */}
+      {!isEditing && holdsDate && (
+        <section className="rounded-[16px] bg-card p-4 flex flex-col gap-1">
+          <span className="bw-label-sm text-muted-foreground">{t('Lineup availability')}</span>
+          <span className="bw-body-sm text-muted-foreground">{t('Members are asked to keep the date free. They see only the day, time and place, not the client or the fee.')}</span>
         </section>
       )}
     </div>
@@ -2825,6 +2835,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
               </Chip>
             ))}
           </div>
+          {acceptedNote}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <PillField label={t('Client name')} icon={<User className="w-5 h-5" />} value={clientName} onChange={e => setClientName(e.target.value)} />
             <PillField label={t('Event title')} value={eventName} onChange={e => setEventName(e.target.value)} placeholder={getEffectiveTitle()} />
@@ -3127,6 +3138,99 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
     return true;
   });
 
+  // Editing a saved quote: Back, X and Cancel ask first when something
+  // changed (audit 10 #5: Back went past the editor and dropped the edits).
+  // Decided by the values, never by input events (a time wheel changes the
+  // time with none). Two groups:
+  // - what only the user sets (client, date and times, venue, notes…) is
+  //   compared with the quote as it opened;
+  // - what the form also settles by itself from the band's pricing (fees,
+  //   totals, currency, extras, deposit…) is compared per field: a field the
+  //   user changed (in the render of an input, a tap or a key: touched) keeps
+  //   the value it opened with as its baseline; a field the form changes on
+  //   its own (the pricing arriving, however late, and what follows from it)
+  //   moves its baseline along, unless the user touched it.
+  const SETTLED_BY_FORM = [
+    'currency', 'baseFee', 'musicianCount', 'musicians', 'performanceType',
+    'travelIncluded', 'travelFee', 'travelDistanceKm', 'travelMode',
+    'accommodationFee', 'mealsFee', 'lightsFee', 'backlineFee',
+    'productionTier', 'soundIncluded', 'soundFee', 'customItems', 'quoteOptions',
+    'depositAmount', 'depositRequired', 'depositPercentage', 'validityDays', 'validUntil',
+    'subtotal', 'discountAmount', 'netAmount', 'vatAmount', 'total', 'totalWithVat',
+  ];
+  const editBaselineRef = useRef<{ own: string; settled: Record<string, string> } | null>(null);
+  const editLastRef = useRef<Record<string, string> | null>(null);
+  const editTouchedRef = useRef(new Set<string>());
+  const editPricingRef = useRef(pricingSettings);
+  // An input, tap or key of the user's is being handled (until its renders are done).
+  const userActRef = useRef(false);
+  React.useEffect(() => {
+    if (!isEditing) return;
+    let held = false;
+    let timer: number | undefined;
+    const act = () => {
+      userActRef.current = true;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => (userActRef.current = held), 0);
+    };
+    const down = () => ((held = true), act());
+    const up = () => ((held = false), act());
+    const kinds = ['input', 'change', 'click', 'keydown'] as const;
+    for (const k of kinds) document.addEventListener(k, act, true);
+    document.addEventListener('pointerdown', down, true);
+    document.addEventListener('pointerup', up, true);
+    document.addEventListener('pointercancel', up, true);
+    return () => {
+      for (const k of kinds) document.removeEventListener(k, act, true);
+      document.removeEventListener('pointerdown', down, true);
+      document.removeEventListener('pointerup', up, true);
+      document.removeEventListener('pointercancel', up, true);
+      window.clearTimeout(timer);
+    };
+  }, [isEditing]);
+  const editSnapshot = isEditing
+    ? (() => {
+        const { createdAt: _c, updatedAt: _u, ...rest } = buildQuoteData() as Record<string, unknown>;
+        const own: Record<string, unknown> = {};
+        const settled: Record<string, string> = {};
+        for (const [k, v] of Object.entries(rest)) {
+          if (SETTLED_BY_FORM.includes(k)) settled[k] = JSON.stringify(v ?? null);
+          else own[k] = v;
+        }
+        return { own: JSON.stringify(own), settled };
+      })()
+    : null;
+  if (editSnapshot) {
+    const base = editBaselineRef.current;
+    const last = editLastRef.current;
+    // The band's pricing arrived in this very render: what it changed is the form's.
+    const pricingRender = editPricingRef.current !== pricingSettings;
+    editPricingRef.current = pricingSettings;
+    if (!base) editBaselineRef.current = { own: editSnapshot.own, settled: { ...editSnapshot.settled } };
+    else if (last) {
+      // Only the fields that changed in this render, by whom it changed them.
+      for (const [k, v] of Object.entries(editSnapshot.settled)) {
+        if (last[k] === v) continue;
+        if (userActRef.current && !pricingRender) editTouchedRef.current.add(k);
+        else if (!editTouchedRef.current.has(k)) base.settled[k] = v;
+      }
+    }
+    editLastRef.current = editSnapshot.settled;
+  }
+  const editDirty =
+    !!editSnapshot &&
+    !!editBaselineRef.current &&
+    (editSnapshot.own !== editBaselineRef.current.own ||
+      Object.entries(editSnapshot.settled).some(([k, v]) => editBaselineRef.current!.settled[k] !== v));
+  const [editLeaveOpen, setEditLeaveOpen] = useState(false);
+  const requestEditClose = () => (editDirty ? setEditLeaveOpen(true) : onClose());
+  useSystemBack(isEditing, () => {
+    if (editLeaveOpen) setEditLeaveOpen(false);
+    else if (quoteSheet) setQuoteSheet(null);
+    else requestEditClose();
+    return true;
+  });
+
   const closeInRail = useRailAction(isEditing ? undefined : requestClose, {
     label: t('Close quote wizard'),
     icon: <X />,
@@ -3136,7 +3240,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
   if (isEditing) {
     const editActions = (
       <div className="flex gap-2">
-        <PillButton variant="outline" fullWidth={false} className="px-4" onClick={onClose}>
+        <PillButton variant="outline" fullWidth={false} className="px-4" onClick={requestEditClose}>
           {t('Cancel')}
         </PillButton>
         <PillButton variant="outline" fullWidth={false} className="px-4" disabled={submitting} onClick={() => handleCreate(false)}>
@@ -3173,7 +3277,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
               </span>
             </div>
             <RailCover pane />
-            <HeaderAction pane label={t('Close edit quote modal')} icon={<X />} onClick={onClose} />
+            <HeaderAction pane label={t('Close edit quote modal')} icon={<X />} onClick={requestEditClose} />
           </div>
         </header>
 
@@ -3194,6 +3298,21 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
             {editActions}
           </>,
         )}
+        <UnsavedChangesSheet
+          open={editLeaveOpen}
+          title={t('Save your changes?')}
+          body={t('You changed this quote. Save to keep the changes, or discard them.')}
+          saving={submitting}
+          onKeepEditing={() => setEditLeaveOpen(false)}
+          onDiscard={() => {
+            setEditLeaveOpen(false);
+            onClose();
+          }}
+          onSave={() => {
+            setEditLeaveOpen(false);
+            handleCreate(false);
+          }}
+        />
       </motion.div>
     );
   }
@@ -3270,6 +3389,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
 
     const clientCard = (
       <ComposerCard n={1} title={t('Client & event')} done={doneClient}>
+        {acceptedNote}
         <div className="flex flex-wrap gap-2" role="group" aria-label={t('Event type')}>
           {EVENT_TYPE_OPTIONS.map(opt => (
             <Chip key={opt.value} size="md" selected={eventType === opt.value} title={opt.subtitle} onClick={() => setEventType(opt.value)}>
@@ -3493,18 +3613,8 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
             setDocLang(l);
           }}
         />
-        {allMusicians.length > 0 && (
-          <div className="flex items-center gap-3">
-            <Toggle
-              checked={askAvailability}
-              onCheckedChange={() => setAskAvailability(v => !v)}
-              aria-label={t('Ask the lineup for availability now')}
-            />
-            <span className="flex flex-col gap-0.5 min-w-0">
-              <span className="bw-label-md">{t('Ask the lineup now')}</span>
-              <span className="bw-body-sm text-muted-foreground">{t('Check who is free before you send')}</span>
-            </span>
-          </div>
+        {!isEditing && holdsDate && (
+          <span className="bw-body-sm text-muted-foreground">{t('Members are asked to keep the date free. They see only the day, time and place, not the client or the fee.')}</span>
         )}
       </ComposerPreview>
     );
@@ -3578,9 +3688,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
           open={leaveOpen}
           what="quote"
           draftHint={
-            askAvailability
-              ? t('Saved as a draft quote, not sent to the client. The musicians still get the availability check. Find it under Drafts on the home screen, in Quotes, and on its day in the calendar.')
-              : t("Saved as a draft quote that members can't see. Find it under Drafts on the home screen, in Quotes, and on its day in the calendar.")
+            t('Saved as a draft quote, not sent to the client. Members see only a hold card with the day, time and place. Find it under Drafts on the home screen, in Quotes, and on its day in the calendar.')
           }
           onSaveDraft={() => {
             setLeaveOpen(false);
@@ -3695,9 +3803,7 @@ export const QuoteCreationWizard: React.FC<QuoteCreationWizardProps> = ({
         open={leaveOpen}
         what="quote"
         draftHint={
-          askAvailability
-            ? t('Saved as a draft quote, not sent to the client. The musicians still get the availability check. Find it under Drafts on the home screen, in Quotes, and on its day in the calendar.')
-            : t("Saved as a draft quote that members can't see. Find it under Drafts on the home screen, in Quotes, and on its day in the calendar.")
+          t('Saved as a draft quote, not sent to the client. Members see only a hold card with the day, time and place. Find it under Drafts on the home screen, in Quotes, and on its day in the calendar.')
         }
         onSaveDraft={() => {
           setLeaveOpen(false);

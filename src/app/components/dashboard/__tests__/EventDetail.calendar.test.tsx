@@ -34,9 +34,14 @@ vi.mock('@/lib/services/events', async (orig) => ({
 vi.stubEnv('VITE_SUPABASE_URL', 'https://test.supabase.co');
 const cal = vi.hoisted(() => ({ openExternal: vi.fn() }));
 vi.mock('@/lib/nativeFiles', async (orig) => ({ ...(await orig<typeof import('@/lib/nativeFiles')>()), openExternal: cal.openExternal }));
+const lastOpened = () => cal.openExternal.mock.calls[cal.openExternal.mock.calls.length - 1]?.[0] as string | undefined;
+const evLink = vi.hoisted(() => ({ hook: vi.fn((..._a: unknown[]) => ({ token: 'd'.repeat(64), loading: false })) }));
 vi.mock('@/lib/memberCalendar', async (orig) => ({
   ...(await orig<typeof import('@/lib/memberCalendar')>()),
+  // The account's feed token: must never end up in a one-event link.
   useCalendarToken: () => ({ token: 'c'.repeat(64), loading: false }),
+  useEventCalendarToken: evLink.hook,
+  useCalendarLinkReview: () => false,
 }));
 vi.mock('@/lib/haptics', () => ({
   haptic: { tap: vi.fn(), medium: vi.fn(), confirm: vi.fn(), delete: vi.fn(), selection: vi.fn(), pickUp: vi.fn(), dragTick: vi.fn(), drop: vi.fn() },
@@ -110,7 +115,12 @@ describe('Event detail: add to calendar', () => {
   it('a member on the gig adds it to Apple Calendar (.ics) or Google Calendar', async () => {
     show(gig, { userResponse: 'accepted' });
     fireEvent.click(await screen.findByRole('button', { name: 'Add to calendar' }));
-    expect(cal.openExternal).toHaveBeenLastCalledWith(expect.stringMatching(new RegExp(`member-calendar\\?t=c{64}&l=en&e=${EVT}$`)));
+    // A link bound to this one event (182), not the account's feed token
+    // (forwarding it would hand over the whole calendar).
+    const file = lastOpened() as string;
+    expect(file).toMatch(/\/functions\/v1\/member-calendar\?o=d{64}&l=en$/);
+    expect(file).not.toContain('c'.repeat(64));
+    expect(evLink.hook).toHaveBeenLastCalledWith(EVT, '2099-12-12');
     fireEvent.click(screen.getByRole('button', { name: 'Google Calendar' }));
     const calls = cal.openExternal.mock.calls;
     const google = calls[calls.length - 1]?.[0] as string;
@@ -119,6 +129,22 @@ describe('Event detail: add to calendar', () => {
     expect(google).toContain('Wedding+Rossi+%C2%B7+Velvet+Static');
     // Never the fee.
     expect(google).not.toContain('1000');
+  });
+
+  it('one occurrence of a recurring rehearsal asks for a link to that date', async () => {
+    const rehearsal: EventData = {
+      ...gig,
+      title: 'Weekly rehearsal',
+      status: 'REHEARSAL',
+      eventType: 'rehearsal',
+      date: '2099-12-19',
+      is_recurring: true,
+      recurrence_rule: { frequency: 'weekly', interval: 1 },
+    } as EventData;
+    show(rehearsal, { userResponse: 'accepted' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to calendar' }));
+    expect(evLink.hook).toHaveBeenLastCalledWith(EVT, '2099-12-19');
+    expect(lastOpened()).toMatch(/member-calendar\?o=d{64}&l=en$/);
   });
 
   it('not for quotes, declined gigs, past gigs or unsaved events', async () => {

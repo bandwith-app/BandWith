@@ -149,18 +149,15 @@ export async function allowedRecipients(
 
   const remaining = unique.filter((id) => !allowed.has(id));
   if (remaining.length > 0) {
-    const { data: myChats } = await admin
-      .from("chat_participants")
-      .select("chat_id")
-      .eq("user_id", callerId);
-    const chatIds = (myChats ?? []).map((r: { chat_id: string }) => r.chat_id);
-    if (chatIds.length > 0) {
-      const { data } = await admin
-        .from("chat_participants")
-        .select("user_id")
-        .in("chat_id", chatIds)
-        .in("user_id", remaining);
-      (data ?? []).forEach((r: { user_id: string }) => allowed.add(r.user_id));
+    // Round 4 (#281): rows are kept when someone leaves the band or the
+    // lineup (175), so who shares a chat comes only from the rule. Round 5:
+    // one call for every chat (bw_chat_recipients_shared), not one per chat.
+    // Any error, a missing function included, adds nobody.
+    const { data: ok, error } = await admin.rpc("bw_chat_recipients_shared", { p_sender: callerId, p_targets: remaining });
+    if (error) {
+      console.error("allowedRecipients: bw_chat_recipients_shared failed", error.message);
+    } else if (Array.isArray(ok)) {
+      (ok as string[]).forEach((id) => remaining.includes(id) && allowed.add(id));
     }
   }
 
@@ -171,20 +168,47 @@ export async function allowedRecipients(
  * Recipients of a chat notice sent by a user: the other participants of
  * `chatId`, and only when the caller is in that chat too.
  */
-export async function chatRecipients(
+async function chatParticipantRecipients(
   admin: SupabaseClient,
   callerId: string,
   chatId: unknown,
   targetIds: string[],
 ): Promise<string[]> {
   if (typeof chatId !== "string" || chatId.length === 0) return [];
-  const { data } = await admin
-    .from("chat_participants")
-    .select("user_id")
-    .eq("chat_id", chatId);
-  const inChat = new Set((data ?? []).map((r: { user_id: string }) => r.user_id));
-  if (!inChat.has(callerId)) return [];
-  return [...new Set(targetIds)].filter((id) => id !== callerId && inChat.has(id));
+  // 175: band and event chats count only people who may still read them.
+  // Recipients come only from bw_chat_recipient_ids: any error, a missing
+  // function included (175 not applied), sends nothing (fail closed, Codex
+  // #289 r2; round 4: never the raw roster, whose kept rows 175 refuses).
+  const { data: allowed, error: rpcError } = await admin.rpc("bw_chat_recipient_ids", {
+    p_chat_id: chatId,
+    p_sender: callerId,
+  });
+  if (rpcError) {
+    console.error("chatRecipients: bw_chat_recipient_ids failed", rpcError.message);
+    return [];
+  }
+  if (!Array.isArray(allowed)) return [];
+  const ok = new Set(allowed as string[]);
+  return [...new Set(targetIds)].filter((id) => id !== callerId && ok.has(id));
+}
+
+// (Imported here, next to its only use: other PRs add imports at the top.)
+import { quoteChatReaders } from "./quote-chat.ts";
+
+/**
+ * The same, minus the people who may not read the chat any more: the event
+ * chat of a gig that is still a quote is for the band's admins (178), per
+ * recipient, whatever the participant rows say.
+ */
+export async function chatRecipients(
+  admin: SupabaseClient,
+  callerId: string,
+  chatId: unknown,
+  targetIds: string[],
+): Promise<string[]> {
+  const ids = await chatParticipantRecipients(admin, callerId, chatId, targetIds);
+  if (ids.length === 0 || typeof chatId !== "string") return ids;
+  return quoteChatReaders((fn, args) => admin.rpc(fn, args), chatId, ids);
 }
 
 export function errorResponse(error: unknown) {

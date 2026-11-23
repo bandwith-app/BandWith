@@ -9,7 +9,10 @@
  * duplicate to-dos or a rider).
  */
 import { supabase } from '@/lib/supabase';
-import { createSetlist, replaceSetlistSongs, updateSetlist } from '@/lib/services/songs';
+import { createSetlist } from '@/lib/services/songs';
+import { saveExistingGigSetlist, SetlistConflictError, type LoadedGigSetlist } from '@/lib/services/gigSetlistSave';
+import { keepRefused, LIVE_REFUSED_EVENT } from '@/lib/liveOutbox';
+import { sessionUserId } from '@/lib/sessionUser';
 import { syncEventTasks, type EventTaskDraft } from '@/lib/services/eventTasks';
 import { saveEventLineup, type LineupRow } from '@/lib/services/eventMemberMoney';
 import { persistComposerStage, type ComposerStagePayload } from '@/lib/services/composerStage';
@@ -20,6 +23,8 @@ export interface QueuedSetlist {
   songs: { song_id: string; position: number; set_number: number }[];
   /** Editing: every song was removed from the gig's setlist. */
   cleared?: boolean;
+  /** Editing: the setlist as the wizard loaded it (never overwrite a newer one). */
+  loaded?: LoadedGigSetlist | null;
 }
 
 export interface QueuedEventExtras {
@@ -53,18 +58,45 @@ export const lineupDiff = (
   };
 };
 
-const saveSetlist = async (eventId: string, setlist: QueuedSetlist): Promise<void> => {
+/**
+ * replayEventExtras' answer when a refused setlist found no room in the
+ * refused list (full, or no account to file it under): it is not dropped.
+ * The queue keeps it (only the setlist) and tries again later.
+ */
+export const SETLIST_WAITING = 'setlist-waiting';
+
+class RefusedListFullError extends Error {
+  code = 'BW_REFUSED_FULL';
+}
+
+const saveSetlist = async (eventId: string, setlist: QueuedSetlist, owner?: string | null): Promise<void> => {
   const { data: ev, error: readErr } = await supabase.from('events').select('setlist_id').eq('id', eventId).maybeSingle();
   if (readErr) throw readErr;
   const existingId = (ev as { setlist_id?: string | null } | null)?.setlist_id;
   if (existingId) {
     if (setlist.songs.length === 0 && !setlist.cleared) return;
-    const { error } = await replaceSetlistSongs(
-      existingId,
-      setlist.songs.map(({ song_id, set_number }) => ({ song_id, set_number })),
-    );
-    if (error) throw error;
-    await updateSetlist(existingId, { name: setlist.name, song_count: setlist.songs.length });
+    // Songs and count in one transaction (188); the setlist keeps its name.
+    const songs = setlist.songs.map(({ song_id, set_number }) => ({ song_id, set_number }));
+    try {
+      await saveExistingGigSetlist(existingId, songs, setlist.loaded);
+    } catch (err) {
+      // Someone else's setlist meanwhile: not written over it, and never
+      // thrown away: kept in the refused list (Settings › Offline & live)
+      // of the account that made the change (the queue's owner, not whoever
+      // is signed in now), and the app says so (LIVE_REFUSED_EVENT). No room
+      // there: it stays queued and the app asks to review the list.
+      if (err instanceof SetlistConflictError) {
+        const me = owner ?? (await sessionUserId());
+        const kept = !!me && keepRefused(me, { kind: 'gigSetlist', eventId, setlistId: setlist.loaded?.id ?? existingId ?? undefined, songs, reason: 'changed' });
+        if (!kept) {
+          if (me && typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent(LIVE_REFUSED_EVENT, { detail: { userId: me, kind: 'gigSetlist', full: true } }));
+          }
+          throw new RefusedListFullError('The refused list is full.');
+        }
+      }
+      throw err;
+    }
     return;
   }
   if (setlist.songs.length === 0) return;
@@ -93,19 +125,42 @@ const saveLineup = async (eventId: string, lineup: LineupRow[]): Promise<void> =
   if (error) throw error;
 };
 
-/** Saves the extras for `eventId`. Returns what failed (empty when all saved). */
-export async function replayEventExtras(eventId: string, extras: QueuedEventExtras): Promise<string[]> {
+/**
+ * What failed in a replay, by step name ('lineup', 'setlist', 'tasks',
+ * 'stage', 'rider'), with the first error (non-enumerable, so the list still
+ * compares as a plain array) for telling a lost connection from a rejection.
+ */
+export type ExtrasFailures = string[] & { readonly error?: unknown };
+
+/** Is there a rider for this gig already (a replay whose answer got lost)? */
+const hasRider = async (eventId: string): Promise<boolean> => {
+  const { data, error } = await supabase.from('contracts').select('id').eq('event_id', eventId).eq('type', 'rider').limit(1);
+  if (error) throw error;
+  return Array.isArray(data) && data.length > 0;
+};
+
+/**
+ * Saves the extras for `eventId`. Returns what failed (empty when all saved).
+ * Every step can run again: the queue keeps the failed ones (remainingExtras)
+ * and retries only those (audit 05 #6).
+ * `owner`: the account whose queue this is (a refused setlist is filed under
+ * it). The answer holds SETLIST_WAITING when the setlist must stay queued
+ * (#292): remainingExtras keeps the setlist for it, like a 'setlist' failure.
+ */
+export async function replayEventExtras(eventId: string, extras: QueuedEventExtras, owner?: string | null): Promise<ExtrasFailures> {
   const failed: string[] = [];
+  let firstError: unknown;
   const step = async (name: string, run: () => Promise<void>) => {
     try {
       await run();
     } catch (err) {
       console.warn(`[syncQueue] ${name} not saved for ${eventId}:`, err);
-      failed.push(name);
+      failed.push(err instanceof RefusedListFullError ? SETLIST_WAITING : name);
+      if (firstError === undefined) firstError = err;
     }
   };
   if (extras.lineup) await step('lineup', () => saveLineup(eventId, extras.lineup!));
-  if (extras.setlist) await step('setlist', () => saveSetlist(eventId, extras.setlist!));
+  if (extras.setlist) await step('setlist', () => saveSetlist(eventId, extras.setlist!, owner));
   if (extras.tasks && (extras.tasks.drafts.length > 0 || extras.tasks.originalIds.length > 0)) {
     await step('tasks', async () => {
       const { error } = await syncEventTasks(eventId, extras.tasks!.drafts, extras.tasks!.eventDate, extras.tasks!.originalIds);
@@ -113,13 +168,44 @@ export async function replayEventExtras(eventId: string, extras: QueuedEventExtr
     });
   }
   if (extras.stage) {
-    await step('stage', async () => {
-      const error = await persistComposerStage(eventId, extras.stage!.bandId, extras.stage!.payload, extras.stage!.gig);
-      if (error) throw new Error(error);
-    });
+    const { bandId, payload, gig } = extras.stage;
+    // Stage and rider apart, so a retry of one never adds a second rider.
+    if (payload.stage) {
+      await step('stage', async () => {
+        const error = await persistComposerStage(eventId, bandId, { stage: payload.stage, createRider: false }, gig);
+        if (error) throw new Error(error);
+      });
+    }
+    if (payload.createRider) {
+      await step('rider', async () => {
+        if (await hasRider(eventId)) return;
+        const error = await persistComposerStage(eventId, bandId, { stage: null, createRider: true }, gig);
+        if (error) throw new Error(error);
+      });
+    }
   }
-  return failed;
+  return Object.defineProperty(failed, 'error', { value: firstError, enumerable: false }) as ExtrasFailures;
 }
+
+/** The part of `extras` still to save after the steps in `failed` failed, or null when nothing is left. */
+export const remainingExtras = (extras: QueuedEventExtras, failed: readonly string[]): QueuedEventExtras | null => {
+  if (failed.length === 0) return null;
+  const left: QueuedEventExtras = {};
+  if (failed.includes('lineup') && extras.lineup) left.lineup = extras.lineup;
+  // SETLIST_WAITING (#292): no room in the refused list, the setlist stays queued too.
+  if ((failed.includes('setlist') || failed.includes(SETLIST_WAITING)) && extras.setlist) left.setlist = extras.setlist;
+  if (failed.includes('tasks') && extras.tasks) left.tasks = extras.tasks;
+  if (extras.stage && (failed.includes('stage') || failed.includes('rider'))) {
+    left.stage = {
+      ...extras.stage,
+      payload: {
+        stage: failed.includes('stage') ? extras.stage.payload.stage : null,
+        createRider: failed.includes('rider') && extras.stage.payload.createRider,
+      },
+    };
+  }
+  return Object.keys(left).length > 0 ? left : null;
+};
 
 /** An update queued for a not-yet-synced create: its extras replace the create's. */
 export const mergeExtras = (

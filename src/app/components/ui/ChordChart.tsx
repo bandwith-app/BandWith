@@ -40,13 +40,15 @@ const closingSign = (bar: ChartBar) =>
  * drawn by MusicSymbol: bar lines, repeats, endings, segno / coda, fermata,
  * time signature, the road map written on it ("D.C. al Coda", "3×", "Fine").
  */
-const Bar: React.FC<{ bar: ChartBar; muted: string; line: string }> = ({ bar, muted, line }) => {
+const Bar: React.FC<{ bar: ChartBar; muted: string; line: string; cell?: string }> = ({ bar, muted, line, cell }) => {
   const closing = closingSign(bar);
   const marks = textSymbols(bar.text);
   const top = !!(bar.ending || bar.segno || bar.coda || bar.fermata);
   return (
     <div
       data-bar
+      // Follow the tempo lights the bar being played (StageFollow: "section:bar").
+      data-cell={cell}
       className={cn(
         'relative min-w-0 overflow-hidden min-h-[2.4em] flex items-center gap-[0.3em] pl-[0.4em] pr-[0.25em] pt-[0.8em] pb-[0.35em]',
         !bar.repeatStart && cn('border-l', line),
@@ -127,7 +129,7 @@ export const ChordChartView: React.FC<{
     <div className={className ?? 'max-w-3xl mx-auto w-full flex flex-col gap-6 pt-4'} style={{ fontSize: size, lineHeight: 1.2 }}>
       {showSummary && summary && <p className={cn('bw-label-sm normal-case', muted)}>{summary}</p>}
       {chart.sections.map((s, i) => (
-        <section key={i} className="flex flex-col gap-2" aria-label={s.label ? tr('Section {name}', { name: s.label }) : undefined}>
+        <section key={i} data-chart-section={i} className="flex flex-col gap-2" aria-label={s.label ? tr('Section {name}', { name: s.label }) : undefined}>
           {s.label && (
             <h3 className={cn('bw-label-md uppercase flex items-center gap-2', muted)}>
               {/* A one-letter iReal mark is a rehearsal letter in a box; a name stays a heading. */}
@@ -136,7 +138,7 @@ export const ChordChartView: React.FC<{
           )}
           <div data-chart-grid className="grid grid-cols-4 gap-y-[0.5em]" style={{ containerType: 'inline-size' }}>
             {s.bars.map((b, j) => (
-              <Bar key={j} bar={b} muted={muted} line={line} />
+              <Bar key={j} bar={b} muted={muted} line={line} cell={`${i}:${j}`} />
             ))}
           </div>
         </section>

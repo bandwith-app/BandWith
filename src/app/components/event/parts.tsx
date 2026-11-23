@@ -51,6 +51,8 @@ export interface ResolvedMember {
   status: 'confirmed' | 'pending' | 'declined' | 'maybe';
   /** event_members.paid_at (057). undefined when the column is not available. */
   paidAt?: string | null;
+  /** The fees could not be loaded (05 #5): `fee` is not the real one, so nothing may save it. */
+  feeUnknown?: boolean;
 }
 
 export const MEMBER_STATUS: Record<ResolvedMember['status'], { label: string; color: string }> = {

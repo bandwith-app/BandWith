@@ -198,8 +198,143 @@ export const listOfflineKeys = async (prefix: string): Promise<string[]> => {
   return [...keys];
 };
 
-/** Removes every cached key `drop` says yes to (IndexedDB and the localStorage fallback). */
-const removeOfflineItemsWhere = async (drop: (key: string) => boolean): Promise<void> => {
+/**
+ * Chat messages written on this phone and not sent yet (#291), one list per
+ * account: `bw:chat_outbox:<uid>` = [{ chatId, clientId, body, createdAt,
+ * replyToId?, refused? }] in localStorage. `refused` (the server's reason,
+ * maybe ''): turned down, kept until Try again or Delete; still not sent.
+ * #291 reads and writes it only through readChatOutbox / writeChatOutbox.
+ */
+export const CHAT_OUTBOX_PREFIX = 'bw:chat_outbox:';
+export const chatOutboxKey = (userId: string): string => `${CHAT_OUTBOX_PREFIX}${userId}`;
+
+export interface ChatOutboxEntry {
+  chatId: string;
+  clientId: string;
+  body: string;
+  createdAt: string;
+  replyToId?: string | null;
+  refused?: string;
+}
+
+const isChatOutboxEntry = (x: unknown): x is ChatOutboxEntry => {
+  const o = x as Partial<ChatOutboxEntry> | null;
+  return !!o && typeof o === 'object' && typeof o.chatId === 'string' && typeof o.clientId === 'string' && typeof o.body === 'string' && typeof o.createdAt === 'string';
+};
+const chatOutboxEntries = (v: unknown): ChatOutboxEntry[] => (Array.isArray(v) ? v.filter(isChatOutboxEntry) : []);
+
+/** The account's chat outbox (extra fields kept, malformed entries skipped). Never throws. */
+export function readChatOutbox(userId: string | null | undefined): ChatOutboxEntry[] {
+  if (!userId) return [];
+  try {
+    return chatOutboxEntries(JSON.parse(localStorage.getItem(chatOutboxKey(userId)) || '[]'));
+  } catch {
+    return [];
+  }
+}
+
+/** Replaces the account's chat outbox; empty removes the key. Storage full or blocked: nothing written. */
+export function writeChatOutbox(userId: string | null | undefined, entries: ChatOutboxEntry[]): void {
+  if (!userId) return;
+  try {
+    if (entries.length) localStorage.setItem(chatOutboxKey(userId), JSON.stringify(entries));
+    else localStorage.removeItem(chatOutboxKey(userId));
+  } catch {
+    // Ignore
+  }
+}
+
+/**
+ * The account's chat outbox in both stores (localStorage, then an IndexedDB
+ * copy), one entry per client id. Never throws.
+ */
+export const readChatOutboxAll = async (userId: string | null | undefined): Promise<ChatOutboxEntry[]> => {
+  const all = readChatOutbox(userId);
+  if (!userId) return all;
+  try {
+    const ids = new Set(all.map((e) => e.clientId));
+    for (const e of chatOutboxEntries(await getOfflineItem<unknown>(chatOutboxKey(userId)))) {
+      if (!ids.has(e.clientId)) all.push(e);
+      ids.add(e.clientId);
+    }
+  } catch {
+    // Ignore
+  }
+  return all;
+};
+
+/** How many chat messages are not sent for `userId`, refused ones included (both stores). */
+export const readChatOutboxCount = async (userId: string | null | undefined): Promise<number> =>
+  (await readChatOutboxAll(userId)).length;
+
+/** Deletes one message (by client id) from the account's chat outbox, in both stores. */
+export const deleteChatOutboxEntry = async (userId: string | null | undefined, clientId: string): Promise<void> => {
+  if (!userId) return;
+  const local = readChatOutbox(userId).filter((e) => e.clientId !== clientId);
+  try {
+    const copy = await getOfflineItem<unknown>(chatOutboxKey(userId));
+    if (chatOutboxEntries(copy).some((e) => e.clientId === clientId)) {
+      const rest = chatOutboxEntries(copy).filter((e) => e.clientId !== clientId);
+      // Without IndexedDB these write localStorage: rewritten just below.
+      if (rest.length) await setOfflineItem(chatOutboxKey(userId), rest);
+      else await removeOfflineItem(chatOutboxKey(userId));
+    }
+  } catch {
+    // Ignore
+  }
+  writeChatOutbox(userId, local);
+};
+
+/**
+ * Kept per account until the person deals with them: the changes the server
+ * refused (Settings › Offline & live: Stage notes and orders, rehearsal notes
+ * #296) and the chat messages not sent yet (#291). No bulk wipe takes them,
+ * sign-out included; only deleting the account erases them (accountWrites.ts).
+ */
+export const KEEP_ON_SIGN_OUT_PREFIXES = ['bw:live_refused:', 'bw:rehearsal_notes_rejected:', CHAT_OUTBOX_PREFIX] as const;
+export const isKeptOnSignOut = (key: string): boolean => KEEP_ON_SIGN_OUT_PREFIXES.some((p) => key.startsWith(p));
+
+/**
+ * The options a sign-out clears this device with (AuthContext; #287 passes
+ * `keepPendingWrites: true`, which this file honours once #287 is in).
+ */
+export const SIGN_OUT_CLEAR = { keepPendingWrites: true } as const;
+
+type ClearCall = (prefix?: string, opts?: typeof SIGN_OUT_CLEAR) => Promise<void>;
+let probe: ((drop: (key: string) => boolean) => void) | null = null;
+
+/**
+ * Does a sign-out keep `key` on this device? One source of truth: it asks
+ * clearOfflineCache itself, as a dry run (nothing is removed), so the
+ * sign-out sheet's sentence always follows what the wipe does: refused
+ * changes and chat messages always stay; queued changes stay only when
+ * clearOfflineCache keeps pending writes (#287). Synchronous: the dry run
+ * never spans an await, so no other wipe can run inside it. `clear`: tests.
+ */
+export function signOutKeeps(key: string, clear: ClearCall = clearOfflineCache as ClearCall): boolean {
+  let erased = true; // not reached by the dry run: say "deleted", never promise more
+  probe = (drop) => {
+    erased = drop(key);
+  };
+  try {
+    // The key as prefix: only it is looked at, and no legacy step runs first.
+    void clear(key, SIGN_OUT_CLEAR).catch(() => {});
+  } finally {
+    probe = null;
+  }
+  return !erased;
+}
+
+/** Removes every cached key `drop` says yes to (IndexedDB and the localStorage fallback), never a kept one. */
+export const removeOfflineItemsWhere = async (dropAny: (key: string) => boolean): Promise<void> => {
+  const drop = (key: string) => !isKeptOnSignOut(key) && dropAny(key);
+  // signOutKeeps' dry run: answer, touch nothing.
+  if (probe) {
+    const answer = probe;
+    probe = null;
+    answer(drop);
+    return;
+  }
   if (isIndexedDBAvailable()) {
     try {
       const db = await getDB();
@@ -250,11 +385,39 @@ const removeOfflineItemsWhere = async (drop: (key: string) => boolean): Promise<
  * mutation queue (`bw:offline_queue:<userId>`) and the legacy un-prefixed
  * queue key, so one user's unsynced edits can never replay for the next user.
  */
-export const clearOfflineCache = async (prefix: string = 'bw:'): Promise<void> => {
+export const clearOfflineCache = async (
+  prefix: string = 'bw:',
+  opts?: {
+    keepPendingWrites?: boolean;
+    /** A deleted account: its own unsent changes go, never anyone else's. */
+    discardPendingWritesOf?: string | null;
+  },
+): Promise<void> => {
   if (prefix === 'bw:') {
     await removeOfflineItem(LEGACY_MUTATION_QUEUE_KEY);
   }
-  await removeOfflineItemsWhere((k) => k.startsWith(prefix));
+  const keep = opts?.keepPendingWrites === true;
+  const gone = opts?.discardPendingWritesOf?.toLowerCase() ?? null;
+  await removeOfflineItemsWhere(
+    (k) => k.startsWith(prefix) && !(keep && isPendingWriteKey(k) && pendingWriteAccount(k) !== gone),
+  );
+};
+
+/**
+ * Changes still waiting to be sent, one key per account (offline gig edits,
+ * rehearsal notes, Stage notes). Sign-out keeps them (audit 04 #9): they are
+ * sent at that account's next sign-in, and only for it. Read caches go;
+ * queues without an account (legacy, `anonymous`) go too, since the next
+ * account to sign in would adopt them.
+ */
+export const PENDING_WRITE_PREFIXES = ['bw:offline_queue:', 'bw:rehearsal_notes_outbox:', 'bw:live_outbox:'] as const;
+const ACCOUNT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const isPendingWriteKey = (key: string): boolean =>
+  PENDING_WRITE_PREFIXES.some((p) => key.startsWith(p) && ACCOUNT_ID.test(key.slice(p.length)));
+/** The account a pending-write key belongs to (lower case), or null. */
+export const pendingWriteAccount = (key: string): string | null => {
+  const p = PENDING_WRITE_PREFIXES.find((x) => key.startsWith(x) && ACCOUNT_ID.test(key.slice(x.length)));
+  return p ? key.slice(p.length).toLowerCase() : null;
 };
 
 // ─── Cached data and the role it was read for ───────────────────────────────

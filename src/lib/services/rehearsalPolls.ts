@@ -7,6 +7,7 @@ import { personName } from '@/lib/personName';
 import { t } from '@/lib/i18n';
 import { pollNotifyTargets } from '@/lib/pollPermissions';
 import { isProposalExpired } from '@/lib/proposalExpiry';
+import { newUuid } from '@/lib/uuid';
 
 export interface RehearsalPollOption {
   id: string;
@@ -68,6 +69,12 @@ export interface RehearsalPoll {
   /** 098: members asked to vote (empty = everyone) and the vote-by time. */
   invited_user_ids?: string[] | null;
   vote_by_time?: string | null;
+  /**
+   * When voting closes, as the database enforces it (creator's time zone,
+   * bw_poll_vote_deadlines, 195): an absolute ISO time, null without a
+   * deadline, undefined when not loaded (older database).
+   */
+  vote_deadline?: string | null;
   /** 102: members who answered "None of these work", with their profile. */
   unavailable?: { user_id: string; profile?: RehearsalPollVote['profile'] }[];
   /** The viewer answered "None of these work" (102). */
@@ -147,10 +154,19 @@ export async function getPollCosts(
 }
 
 /**
- * When voting closes (117): vote_by at vote_by_time (end of that day without
- * a time), in this device's time zone. Null when the poll has no deadline.
+ * When voting closes (117): the database's own deadline when loaded
+ * (vote_deadline, 195: vote_by at vote_by_time in the creator's time zone,
+ * audit 05 #11), else vote_by at vote_by_time (end of that day without a
+ * time) in this device's time zone. Null when the poll has no deadline.
  */
-export const pollVoteDeadline = (poll: { vote_by?: string | null; vote_by_time?: string | null } | null | undefined): Date | null => {
+export const pollVoteDeadline = (
+  poll: { vote_by?: string | null; vote_by_time?: string | null; vote_deadline?: string | null } | null | undefined,
+): Date | null => {
+  if (poll && poll.vote_deadline !== undefined) {
+    if (poll.vote_deadline === null) return null;
+    const at = new Date(poll.vote_deadline);
+    if (!isNaN(at.getTime())) return at;
+  }
   const day = String(poll?.vote_by || '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
   const time = String(poll?.vote_by_time || '').slice(0, 5);
@@ -160,12 +176,37 @@ export const pollVoteDeadline = (poll: { vote_by?: string | null; vote_by_time?:
 
 /** The vote-by deadline has passed: votes can no longer change (117). */
 export const isPollVotingClosed = (
-  poll: { vote_by?: string | null; vote_by_time?: string | null } | null | undefined,
+  poll: { vote_by?: string | null; vote_by_time?: string | null; vote_deadline?: string | null } | null | undefined,
   now: Date = new Date(),
 ): boolean => {
   const deadline = pollVoteDeadline(poll);
   return !!deadline && now.getTime() > deadline.getTime();
 };
+
+/**
+ * The deadline each poll's votes are checked against on the server (195).
+ * Empty map on an older database or a failed request: the app then reads
+ * vote_by / vote_by_time itself, as before.
+ */
+export async function getPollVoteDeadlines(pollIds: string[]): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  const ids = [...new Set(pollIds.filter(Boolean))];
+  if (ids.length === 0) return out;
+  try {
+    const res = await supabase.rpc('bw_poll_vote_deadlines', { p_poll_ids: ids });
+    const { data, error } = res ?? { data: null, error: null };
+    if (error) {
+      if (!isMissingRpc(error)) console.warn('Failed to load the poll deadlines:', error);
+      return out;
+    }
+    for (const r of (Array.isArray(data) ? data : []) as { poll_id: string; vote_deadline: string | null }[]) {
+      out.set(r.poll_id, r.vote_deadline ?? null);
+    }
+  } catch (err) {
+    console.warn('Failed to load the poll deadlines:', err);
+  }
+  return out;
+}
 
 /** Table for "None of these work" answers (migration 102). */
 const UNAVAILABLE_TABLE = 'rehearsal_poll_unavailable';
@@ -363,11 +404,110 @@ export const createMemberRehearsalProposal = async ({
   }
 };
 
+/** Another admin published (or declined) this proposal while the form was open. */
+export const POLL_ALREADY_PUBLISHED = 'poll_already_published';
+const alreadyPublishedError = (status?: string | null) =>
+  Object.assign(
+    new Error(
+      status && status !== 'polling' && status !== 'confirmed'
+        ? // Declined, expired or cancelled: it never became a poll (Claude #297 round 3).
+          t('This proposal is no longer open. Close and reopen it to see where it stands.')
+        : t('Another admin already turned this proposal into a poll. Close and reopen it to see the votes.'),
+    ),
+    { code: POLL_ALREADY_PUBLISHED },
+  );
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+type Slot = { proposed_date: string; start_time: string; end_time?: string | null };
+const slotKey = (o: { proposed_date?: unknown; start_time?: unknown; end_time?: unknown }) =>
+  `${String(o.proposed_date ?? '').slice(0, 10)}|${String(o.start_time ?? '').slice(0, 5)}|${o.end_time ? String(o.end_time).slice(0, 5) : ''}`;
+
+/** A new id for one publish request (kept by the form for its retries). */
+export const newPublishRequestId = (): string => newUuid();
+
+/**
+ * This device's "publish attempted" marker for a database before 195: the
+ * request id and the proposal's own suggestions, written before the status
+ * change. Only a retry of that same request may finish the publish.
+ */
+type PublishMarker = { clientId: string; suggestionIds: string[] };
+const markerKey = (pollId: string) => `bw-poll-publish:${pollId}`;
+function readMarker(pollId: string): PublishMarker | null {
+  try {
+    const raw = localStorage.getItem(markerKey(pollId));
+    const m = raw ? (JSON.parse(raw) as PublishMarker) : null;
+    return m && typeof m.clientId === 'string' && Array.isArray(m.suggestionIds) ? m : null;
+  } catch {
+    return null;
+  }
+}
+function writeMarker(pollId: string, m: PublishMarker | null) {
+  try {
+    if (m) localStorage.setItem(markerKey(pollId), JSON.stringify(m));
+    else localStorage.removeItem(markerKey(pollId));
+  } catch {
+    /* no storage: a cut-off publish then reads as "already published" */
+  }
+}
+
+/**
+ * A proposal that is already a poll, seen by a retry on a database before
+ * 195 (Codex B4 + Claude, #297 round 3). Only this device's own request
+ * (marker with the same id) is finished:
+ * - no option yet (cut off after the status change): add them;
+ * - only the suggestions it saw before the status change, with no vote
+ *   (cut off before it cleared them): clear them, then add the poll's;
+ * - exactly the options it sent, none of the suggestions (the answer was
+ *   lost): just notify.
+ * Anything else, or another request: null ("already published").
+ */
+async function resumePublish(
+  pollId: string,
+  slots: Slot[],
+  clientId: string,
+): Promise<{ band_id?: string; insert: boolean; clear: boolean } | { status: string } | null> {
+  const { data: poll } = await supabase
+    .from('rehearsal_polls')
+    .select('id, band_id, status')
+    .eq('id', pollId)
+    .maybeSingle();
+  const row = poll as { band_id?: string; status?: string } | null;
+  if (!row) return null;
+  if (row.status !== 'polling') return { status: String(row.status) };
+  const marker = readMarker(pollId);
+  if (!marker || marker.clientId !== clientId) return null;
+  const { data: options, error } = await supabase
+    .from('rehearsal_poll_options')
+    .select('id, proposed_date, start_time, end_time')
+    .eq('poll_id', pollId);
+  if (error) return null;
+  const list = (options ?? []) as Array<{ id?: string; proposed_date?: string; start_time?: string; end_time?: string | null }>;
+  if (list.length === 0) return { band_id: row.band_id, insert: true, clear: false };
+  const seen = new Set(marker.suggestionIds);
+  if (list.every((o) => o.id && seen.has(o.id))) {
+    const { count, error: votesError } = await supabase
+      .from('rehearsal_poll_votes')
+      .select('id', { count: 'exact', head: true })
+      .eq('poll_id', pollId);
+    if (votesError || count !== 0) return null;
+    return { band_id: row.band_id, insert: true, clear: true };
+  }
+  const mineOnly = list.every((o) => !o.id || !seen.has(o.id));
+  if (mineOnly && list.map(slotKey).sort().join(',') === slots.map(slotKey).sort().join(',')) {
+    return { band_id: row.band_id, insert: false, clear: false };
+  }
+  return null;
+}
+
 /**
  * 3. Admin creates a new poll or converts an existing member proposal into a poll.
  * Bulk-inserts candidate time slots into `rehearsal_poll_options`.
  * Notifies ALL band members.
  */
+/** The poll is published but its notices could not be sent (Codex #297 B2). */
+const notifyFailedError = (): Error =>
+  Object.assign(new Error(t("The poll is published, but the band couldn't be notified. Try again.")), { code: 'poll_notify_failed' });
+
 export const createOrPublishAdminPoll = async ({
   pollId,
   bandId,
@@ -381,8 +521,11 @@ export const createOrPublishAdminPoll = async ({
   focusSongIds,
   invitedUserIds,
   voteByTime,
+  clientId,
 }: {
   pollId?: string;
+  /** The publish request's id: the form keeps one per opening, so its own retry is recognised (Codex #297 round 3). */
+  clientId?: string;
   bandId: string;
   adminId: string;
   title: string;
@@ -414,32 +557,98 @@ export const createOrPublishAdminPoll = async ({
       ...(voteByTime !== undefined ? { vote_by_time: voteBy && voteByTime ? voteByTime : null } : {}),
     };
 
+    /** The band whose members are told: a proposal's own band, never the selected one (audit 05 #1). */
+    let notifyBandId = bandId;
+    /** Options already saved with the poll (one-step publish). */
+    let optionsSaved = false;
+    /**
+     * Who is told: the invite list stored with the poll (empty = the band).
+     * A publish that leaves invitedUserIds out keeps the stored list, so
+     * the form's value alone could tell uninvited members (Claude #297 r5).
+     */
+    let storedInvitees: string[] | null = invitedUserIds !== undefined ? invitees : null;
+
     if (pollId) {
-      // Converting an existing proposal: update status to polling
-      const { data: updated, error: updateError } = await supabase
-        .from('rehearsal_polls')
-        .update({
-          title: title.trim() || 'Rehearsal Availability Poll',
-          notes: notes?.trim() || null,
-          status: 'polling',
-          updated_at: new Date().toISOString(),
-          ...(voteBy !== undefined ? { vote_by: voteBy || null } : {}),
-          ...details,
-        })
-        .eq('id', pollId)
-        .select('id')
-        .single();
-
-      if (updateError) throw updateError;
-      activePollId = updated.id;
-
-      // Clean up previous options if any
-      await supabase.from('rehearsal_poll_options').delete().eq('poll_id', pollId);
+      // Converting a member's proposal: one transaction, only while it is
+      // still a proposal, so a second admin's stale form never deletes the
+      // options members voted on (195, audit 05 #8).
+      const fields = {
+        title: title.trim() || 'Rehearsal Availability Poll',
+        notes: notes?.trim() || null,
+        ...(voteBy !== undefined ? { vote_by: voteBy || null } : {}),
+        ...details,
+      };
+      const requestId = clientId || newPublishRequestId();
+      const res = await supabase.rpc('bw_publish_rehearsal_proposal', {
+        p_poll_id: pollId,
+        p_fields: fields,
+        p_options: timeSlots.map((slot) => ({
+          proposed_date: slot.proposed_date,
+          start_time: slot.start_time,
+          end_time: slot.end_time || null,
+        })),
+        p_client_id: requestId,
+      });
+      if (res?.error && !isMissingRpc(res.error)) throw res.error;
+      const out = (res?.error ? null : res?.data) as { published?: boolean; band_id?: string; status?: string; invited_user_ids?: unknown } | null;
+      if (out && typeof out.published === 'boolean') {
+        // published: this request did it (replayed: its answer was lost,
+        // the database knows its id). Not published: another request did,
+        // or the proposal was declined; nothing is sent (Codex #297 round 3).
+        if (!out.published) throw alreadyPublishedError(out.status);
+        if (out.band_id) notifyBandId = out.band_id;
+        if (Array.isArray(out.invited_user_ids)) storedInvitees = out.invited_user_ids.filter((u): u is string => typeof u === 'string');
+        optionsSaved = true;
+      } else {
+        // Database before 195: the step-by-step publish, still only while it
+        // is a proposal. This device notes the request and the suggestions
+        // it saw first, so only its own retry finishes a cut-off try.
+        // An earlier try of this same request changed the status: only then may it be finished.
+        const triedBefore = readMarker(pollId)?.clientId === requestId;
+        if (!triedBefore) {
+          const { data: seen } = await supabase.from('rehearsal_poll_options').select('id').eq('poll_id', pollId);
+          writeMarker(pollId, { clientId: requestId, suggestionIds: ((seen ?? []) as { id: string }[]).map((o) => o.id) });
+        }
+        const { data: updated, error: updateError } = await supabase
+          .from('rehearsal_polls')
+          .update({ ...fields, status: 'polling', updated_at: new Date().toISOString() })
+          .eq('id', pollId)
+          .eq('status', 'proposed')
+          .select('id, band_id');
+        if (updateError) throw updateError;
+        const row = (Array.isArray(updated) ? updated[0] : updated) as { id: string; band_id?: string } | undefined;
+        if (row) {
+          if (row.band_id) notifyBandId = row.band_id;
+          // Clean up the proposal's own suggestions (nobody votes on a proposal).
+          await supabase.from('rehearsal_poll_options').delete().eq('poll_id', pollId);
+        } else {
+          // Not a proposal any more: finish this admin's own cut-off or
+          // lost publish (Codex #297); any other poll: another admin's.
+          // This try did not change the status: unless an earlier try of
+          // the same request did, someone else published it.
+          if (!triedBefore) writeMarker(pollId, null);
+          const mine = triedBefore ? await resumePublish(pollId, timeSlots, requestId) : null;
+          if (!mine) {
+            const { data: now } = await supabase.from('rehearsal_polls').select('status').eq('id', pollId).maybeSingle();
+            throw alreadyPublishedError((now as { status?: string } | null)?.status);
+          }
+          if ('status' in mine) throw alreadyPublishedError(mine.status);
+          if (mine.band_id) notifyBandId = mine.band_id;
+          if (mine.clear) await supabase.from('rehearsal_poll_options').delete().eq('poll_id', pollId);
+          optionsSaved = !mine.insert;
+        }
+      }
+      activePollId = pollId;
     } else {
-      // Brand new poll from admin
+      // Brand new poll from admin. Its id is the form's request id, so a
+      // retry (its notices failed, or the answer was lost) finds it and only
+      // finishes the job: no second poll, no second set of options (Codex
+      // #297 r7 B4).
+      const newId = clientId && UUID_RE.test(clientId) ? clientId : undefined;
       const { data: created, error: createError } = await supabase
         .from('rehearsal_polls')
         .insert({
+          ...(newId ? { id: newId } : {}),
           band_id: bandId,
           created_by: adminId,
           creator_role: 'admin',
@@ -452,53 +661,84 @@ export const createOrPublishAdminPoll = async ({
         .select('id')
         .single();
 
-      if (createError) throw createError;
-      activePollId = created.id;
+      if (createError) {
+        if (!newId || String((createError as { code?: unknown }).code) !== '23505') throw createError;
+        // Already there: this admin's own poll in this band is a replay.
+        const { data: existing, error: readError } = await supabase
+          .from('rehearsal_polls')
+          .select('id, band_id, created_by, status, invited_user_ids')
+          .eq('id', newId)
+          .maybeSingle();
+        const row = existing as { band_id?: string; created_by?: string; status?: string; invited_user_ids?: unknown } | null;
+        if (readError || !row || row.created_by !== adminId || row.band_id !== bandId) throw createError;
+        if (row.status !== 'polling') throw alreadyPublishedError(row.status);
+        if (Array.isArray(row.invited_user_ids)) storedInvitees = row.invited_user_ids.filter((u): u is string => typeof u === 'string');
+        const { data: had, error: optionsReadError } = await supabase.from('rehearsal_poll_options').select('id').eq('poll_id', newId);
+        if (optionsReadError) throw optionsReadError;
+        optionsSaved = Array.isArray(had) && had.length > 0;
+        activePollId = newId;
+      } else {
+        activePollId = created.id;
+      }
     }
 
     if (!activePollId) throw new Error('Failed to resolve poll ID');
 
-    // Bulk insert options
-    const optionsPayload = timeSlots.map((slot) => ({
-      poll_id: activePollId,
-      proposed_date: slot.proposed_date,
-      start_time: slot.start_time,
-      end_time: slot.end_time || null,
-    }));
+    if (!optionsSaved) {
+      // Bulk insert options
+      const optionsPayload = timeSlots.map((slot) => ({
+        poll_id: activePollId,
+        proposed_date: slot.proposed_date,
+        start_time: slot.start_time,
+        end_time: slot.end_time || null,
+      }));
 
-    const { data: insertedOptions, error: optionsError } = await supabase
-      .from('rehearsal_poll_options')
-      .insert(optionsPayload)
-      .select();
+      const { error: optionsError } = await supabase
+        .from('rehearsal_poll_options')
+        .insert(optionsPayload)
+        .select();
 
-    if (optionsError) throw optionsError;
+      if (optionsError) throw optionsError;
+    }
 
     // Notify all active band members
     try {
-      const { data: members } = await supabase
+      if (storedInvitees === null) {
+        // Before 195, or no answer: the list as stored now. A failed read is
+        // never "everyone": the poll may be invite-only, and its title would
+        // reach members who are not on it (Codex #297 B2). Only a read that
+        // works and finds no list (a poll from before 098) means the band.
+        const { data: row, error: readErr } = await supabase.from('rehearsal_polls').select('invited_user_ids').eq('id', activePollId).maybeSingle();
+        if (readErr || !row) throw notifyFailedError();
+        const list = (row as { invited_user_ids?: unknown }).invited_user_ids;
+        if (list != null && !Array.isArray(list)) throw notifyFailedError();
+        storedInvitees = Array.isArray(list) ? list.filter((u): u is string => typeof u === 'string') : [];
+      }
+      const { data: members, error: membersErr } = await supabase
         .from('band_members')
         .select('user_id')
-        .eq('band_id', bandId)
+        .eq('band_id', notifyBandId)
         .eq('is_active', true);
+      if (membersErr) throw notifyFailedError();
 
       if (members && members.length > 0) {
         // Only the invited members when the poll has a list (098), never the
         // admin who published it.
         const uniqueMemberIds = pollNotifyTargets(
           members.map((m: { user_id: string }) => m.user_id),
-          invitees,
+          storedInvitees,
           adminId,
         );
 
         const notifPayload = uniqueMemberIds.map((memberId: string) => ({
           user_id: memberId,
-          band_id: bandId,
+          band_id: notifyBandId,
           type: 'rehearsal_poll' as const,
           title: 'Vote on Rehearsal Times',
           body: `New availability poll: "${title}". Tap to select your available dates!`,
           data: {
             poll_id: activePollId,
-            band_id: bandId,
+            band_id: notifyBandId,
             type: 'rehearsal_poll',
           },
         }));
@@ -506,9 +746,17 @@ export const createOrPublishAdminPoll = async ({
         if (notifPayload.length > 0) await createBulkNotifications(notifPayload, { sendPush: true });
       }
     } catch (notifErr) {
+      // Published, nobody told: say so and keep this device's marker, so
+      // Publish again finishes the job (it notifies, adds nothing).
+      if ((notifErr as { code?: string })?.code === 'poll_notify_failed') {
+        const { data: published } = await getRehearsalPoll(activePollId);
+        return { data: published, error: notifErr as Error };
+      }
       console.warn('Failed to send poll notifications:', notifErr);
     }
 
+    // Done: this device has nothing left to finish.
+    if (pollId) writeMarker(pollId, null);
     const { data: fullPoll } = await getRehearsalPoll(activePollId);
     return { data: fullPoll, error: null };
   } catch (error: any) {
@@ -1042,8 +1290,9 @@ export const getRehearsalPolls = async (
 
     const totalMembers = memberCount || 1;
 
-    // 5b. Room cost: the share for everyone, the total for admins (114).
-    const costs = await getPollCosts(polls, totalMembers);
+    // 5b. Room cost: the share for everyone, the total for admins (114),
+    // and when voting closes as the server enforces it (195).
+    const [costs, deadlines] = await Promise.all([getPollCosts(polls, totalMembers), getPollVoteDeadlines(pollIds)]);
 
     // 6. Map options and votes into polls
     const enrichedPolls: RehearsalPoll[] = polls.map((poll) => {
@@ -1076,6 +1325,7 @@ export const getRehearsalPolls = async (
         ...poll,
         room_cost: cost?.room_cost ?? null,
         room_cost_share: cost?.cost_share ?? null,
+        ...(deadlines.has(poll.id) ? { vote_deadline: deadlines.get(poll.id) ?? null } : {}),
         options: enrichedOptions,
         unavailable: pollUnavailable,
         declined_all: !!userId && pollUnavailable.some((u) => u.user_id === userId),

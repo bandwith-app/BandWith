@@ -94,6 +94,9 @@ export const markUnlocked = () => {
   unlockedThisRun = true;
 };
 
+/** The lock screen is (or is about to be) up: nothing may be sent from there, unlock first. */
+export const isAppLockedNow = (): boolean => isAppLockEnabled() && !unlockedThisRun;
+
 export type DeviceAuthKind = 'faceId' | 'touchId' | 'fingerprint' | 'iris' | 'passcode' | 'none';
 
 export interface DeviceAuthInfo {

@@ -15,6 +15,7 @@ import {
 import { ONLINE_DEPOSITS_ENABLED } from './pricing';
 import { safePaymentUrl } from '@/lib/quoteBalance';
 import { intlLocale, loadLocale, translate, type Locale, type TranslateVars } from '@/lib/i18n';
+import { buildTaggedPdf, recordCanvasText, type PdfDocInfo, type PdfTextRun } from './pdfDocument';
 
 export interface QuotePdfGenerationResult {
   pdfBlob: Blob;
@@ -23,8 +24,6 @@ export interface QuotePdfGenerationResult {
   fileName: string;
 }
 
-const A4_WIDTH_PT = 595.28;
-const A4_HEIGHT_PT = 841.89;
 const CANVAS_W = 1654; // 200 DPI A4 width
 const CANVAS_H = 2339; // 200 DPI A4 height
 
@@ -161,7 +160,13 @@ interface SingleQuotePageParams {
   mark?: string | null;
 }
 
-const renderSingleOptionQuotePage = (params: SingleQuotePageParams): string => {
+/** A drawn page: the picture, and its text for screen readers. */
+interface RenderedPage {
+  dataUrl: string;
+  text: PdfTextRun[];
+}
+
+const renderSingleOptionQuotePage = (params: SingleQuotePageParams): RenderedPage => {
   const { quote, bandName, settings, logoImg, signatureImg, optionOverride, lang, mark } = params;
   const tr = trIn(lang);
   const formatMoney = moneyIn(lang);
@@ -169,6 +174,7 @@ const renderSingleOptionQuotePage = (params: SingleQuotePageParams): string => {
   canvas.width = CANVAS_W;
   canvas.height = CANVAS_H;
   const ctx = canvas.getContext('2d')!;
+  const text = recordCanvasText(ctx);
 
   // White A4 background
   ctx.fillStyle = '#ffffff';
@@ -725,7 +731,7 @@ const renderSingleOptionQuotePage = (params: SingleQuotePageParams): string => {
   }
 
   drawMadeWith(ctx, mark);
-  return canvas.toDataURL('image/jpeg', 0.94);
+  return { dataUrl: canvas.toDataURL('image/jpeg', 0.94), text };
 };
 
 interface ProposalSummaryPageParams {
@@ -738,7 +744,7 @@ interface ProposalSummaryPageParams {
   mark?: string | null;
 }
 
-const renderProposalSummaryPage = (params: ProposalSummaryPageParams): string => {
+const renderProposalSummaryPage = (params: ProposalSummaryPageParams): RenderedPage => {
   const { quote, bandName, settings, logoImg, options, lang, mark } = params;
   const tr = trIn(lang);
   const formatMoney = moneyIn(lang);
@@ -746,6 +752,7 @@ const renderProposalSummaryPage = (params: ProposalSummaryPageParams): string =>
   canvas.width = CANVAS_W;
   canvas.height = CANVAS_H;
   const ctx = canvas.getContext('2d')!;
+  const text = recordCanvasText(ctx);
 
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
@@ -1020,115 +1027,15 @@ const renderProposalSummaryPage = (params: ProposalSummaryPageParams): string =>
   }
 
   drawMadeWith(ctx, mark);
-  return canvas.toDataURL('image/jpeg', 0.94);
+  return { dataUrl: canvas.toDataURL('image/jpeg', 0.94), text };
 };
 
 /**
- * Packs an array of JPEG Data URLs into a standards-compliant multi-page PDF 1.4 Blob.
+ * Packs JPEG pages into a multi-page PDF Blob; with `info`, a tagged one
+ * (title, language, the text of each page) that screen readers can read.
  */
-export const buildPdfBlobFromJpegDataUrls = (jpegDataUrls: string[]): Blob => {
-  const pageImages = jpegDataUrls.map((dataUrl) => {
-    const base64 = dataUrl.split(',')[1] || '';
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    return bytes;
-  });
-
-  const chunks: (string | Uint8Array)[] = [];
-  const offsets: number[] = [];
-  let byteLength = 0;
-
-  const pushStr = (str: string) => {
-    chunks.push(str);
-    byteLength += str.length;
-  };
-
-  const pushBytes = (bytes: Uint8Array) => {
-    chunks.push(bytes);
-    byteLength += bytes.byteLength;
-  };
-
-  const startObj = (id: number) => {
-    offsets[id] = byteLength;
-    pushStr(`${id} 0 obj\n`);
-  };
-
-  const endObj = () => {
-    pushStr('\nendobj\n');
-  };
-
-  pushStr('%PDF-1.4\n%\xFF\xFF\xFF\xFF\n');
-
-  // Object 1: Catalog
-  startObj(1);
-  pushStr('<< /Type /Catalog /Pages 2 0 R >>');
-  endObj();
-
-  // Each page uses 3 objects: Page (3 + i*3), ContentStream (4 + i*3), ImageXObject (5 + i*3)
-  const pageObjIds = pageImages.map((_, i) => 3 + i * 3);
-
-  // Object 2: Pages
-  startObj(2);
-  pushStr(`<< /Type /Pages /Kids [${pageObjIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pageImages.length} >>`);
-  endObj();
-
-  pageImages.forEach((imgBytes, i) => {
-    const pageId = 3 + i * 3;
-    const contentId = 4 + i * 3;
-    const imageId = 5 + i * 3;
-    const imgName = `/Im${i + 1}`;
-
-    // Page object
-    startObj(pageId);
-    pushStr(
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${A4_WIDTH_PT} ${A4_HEIGHT_PT}] /Resources << /XObject << ${imgName} ${imageId} 0 R >> >> /Contents ${contentId} 0 R >>`
-    );
-    endObj();
-
-    // Content stream drawing the full-bleed A4 image
-    const contentStream = `q\n${A4_WIDTH_PT} 0 0 ${A4_HEIGHT_PT} 0 0 cm\n${imgName} Do\nQ`;
-    startObj(contentId);
-    pushStr(`<< /Length ${contentStream.length} >>\nstream\n${contentStream}\nendstream`);
-    endObj();
-
-    // Image XObject
-    startObj(imageId);
-    pushStr(
-      `<< /Type /XObject /Subtype /Image /Width ${CANVAS_W} /Height ${CANVAS_H} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${imgBytes.byteLength} >>\nstream\n`
-    );
-    pushBytes(imgBytes);
-    pushStr('\nendstream');
-    endObj();
-  });
-
-  const totalObjs = 2 + pageImages.length * 3;
-  const xrefOffset = byteLength;
-
-  pushStr(`xref\n0 ${totalObjs + 1}\n`);
-  pushStr('0000000000 65535 f \n');
-  for (let id = 1; id <= totalObjs; id++) {
-    const offsetStr = String(offsets[id] || 0).padStart(10, '0');
-    pushStr(`${offsetStr} 00000 n \n`);
-  }
-
-  pushStr(`trailer\n<< /Size ${totalObjs + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`);
-
-  const blobParts = chunks.map((chunk) => {
-    if (typeof chunk === 'string') {
-      const arr = new Uint8Array(chunk.length);
-      for (let i = 0; i < chunk.length; i++) {
-        arr[i] = chunk.charCodeAt(i) & 0xff;
-      }
-      return arr;
-    }
-    return chunk;
-  });
-
-  return new Blob(blobParts as BlobPart[], { type: 'application/pdf' });
-};
+export const buildPdfBlobFromJpegDataUrls = (jpegDataUrls: string[], info: PdfDocInfo = {}): Blob =>
+  buildTaggedPdf(jpegDataUrls, info);
 
 /**
  * Generates the complete Event Quote PDF (1 page for single-option quotes, or N+1 pages for multi-option quotes with Proposal Summary).
@@ -1150,13 +1057,13 @@ export async function generateQuotePdf(
     loadImageSafe(settings.signature_url),
   ]);
 
-  const pageDataUrls: string[] = [];
+  const pages: RenderedPage[] = [];
   const options = quote.quoteOptions && quote.quoteOptions.length > 0 ? quote.quoteOptions : [];
 
   if (quote.includeProposalSummary && options.length > 0) {
     // Render one formal Event Quote page per package option
     for (const opt of options) {
-      pageDataUrls.push(
+      pages.push(
         renderSingleOptionQuotePage({
           quote,
           bandName,
@@ -1170,7 +1077,7 @@ export async function generateQuotePdf(
       );
     }
     // Render the final Event Proposal Summary comparison page
-    pageDataUrls.push(
+    pages.push(
       renderProposalSummaryPage({
         quote,
         bandName,
@@ -1183,7 +1090,7 @@ export async function generateQuotePdf(
     );
   } else {
     // Render single Event Quote page
-    pageDataUrls.push(
+    pages.push(
       renderSingleOptionQuotePage({
         quote,
         bandName,
@@ -1196,7 +1103,9 @@ export async function generateQuotePdf(
     );
   }
 
-  const pdfBlob = buildPdfBlobFromJpegDataUrls(pageDataUrls);
+  const pageDataUrls = pages.map((p) => p.dataUrl);
+  const title = [translate(lang, 'Event Quote'), quote.quoteNumber, bandName, quote.clientName].filter(Boolean).join(' · ');
+  const pdfBlob = buildPdfBlobFromJpegDataUrls(pageDataUrls, { title, lang, text: pages.map((p) => p.text) });
   const safeBand = (bandName || 'Band').replace(/[^a-zA-Z0-9_-]/g, '_');
   const safeClient = (quote.clientName || 'Client').replace(/[^a-zA-Z0-9_-]/g, '_');
   const docWord = translate(lang, 'Quote').normalize('NFD').replace(/[^a-zA-Z0-9_-]/g, '');

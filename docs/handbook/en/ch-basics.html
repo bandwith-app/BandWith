@@ -119,8 +119,8 @@
   <h3 id="art-welcome-tour" data-roles="admin,member,deputy">The welcome tour</h3>
   <p>The first time you open a band on a device, BandWith shows a short tour for your role. Move with <b class="ui">Next</b> and <b class="ui">Back</b>; the last card has <b class="ui">Done</b>. <b class="ui">Close tour</b> closes it at any time.</p>
   <div class="roles">
-    <div data-role="admin">Four cards: your band in one place, putting a gig on the calendar, who sees which fees, and your rates. The last one has <b class="ui">Configure rates</b>, which opens <b class="ui">Pricing, fees &amp; services</b>.</div>
-    <div data-role="member">Three cards: Home, answering a gig invitation, and the songs (chords, lyrics, your own notes and Stage mode).</div>
+    <div data-role="admin">Five cards: your band in one place, putting a gig on the calendar, setlists ready without signal, who sees which fees, and your rates. The last one has <b class="ui">Configure rates</b>, which opens <b class="ui">Pricing, fees &amp; services</b>.</div>
+    <div data-role="member">Four cards: Home, answering a gig invitation, the songs (chords, lyrics, your own notes and Stage mode), and setlists ready without signal.</div>
     <div data-role="deputy">Three cards on <b class="ui">Deputy gigs</b>: answering a request, what the band shares with you, and adding your deputy gigs to your calendar.</div>
   </div>
   <p>Each card has <b class="ui">Learn more in the Academy</b>, which opens the matching guide inside the app; close the guide to go back to the tour.</p>
@@ -343,8 +343,8 @@
 
   <h3 id="art-offline-mode" data-roles="admin,member,deputy">Using BandWith offline</h3>
   <p>Your bands, gigs and setlists stay available without a connection: the app shows what it last loaded on this device. A strip under the status bar says <b class="ui">You’re offline · showing cached info</b>.</p>
-  <p>Creating, editing or deleting a gig or rehearsal works offline. The app says <b class="ui">Saved offline • Will sync when connected</b> and the strip counts the waiting changes, for example <b class="ui">You’re offline · 2 changes will sync</b>.</p>
-  <p>When the connection comes back, the changes are sent on their own: the strip shows <b class="ui">Back online · 2 changes to sync</b> with a <b class="ui">Sync now</b> button, then <b class="ui">Back online · synced</b>.</p>
+  <p>Creating, editing or deleting a gig or rehearsal works offline. The app says <b class="ui">Saved offline • Will sync when connected</b> and the strip counts the waiting changes, for example <b class="ui">You’re offline · 2 changes waiting for signal</b>.</p>
+  <p>When the connection comes back, the changes are sent on their own: the strip shows <b class="ui">Back online · sending 2 changes</b> with a <b class="ui">Send now</b> button, then <b class="ui">Back online · up to date</b>. For Stage and Live mode, see <a data-ref="live-mode-offline">Use Stage and Live mode without signal</a>.</p>
   <p class="steps-title">Needs a connection</p>
   <ul>
     <li>Saving a quote (the event is saved offline, the quote itself is not).</li>
@@ -352,7 +352,7 @@
     <li>Answering invites and joining a band.</li>
     <li>Signing in for the first time on a device.</li>
   </ul>
-  <aside class="note tip">Signing out sends waiting changes first, which can take a few seconds. To be sure, sign out only once the strip says synced.</aside>
+  <aside class="note tip">Signing out sends waiting changes first, which can take a few seconds. To be sure, sign out only once the strip says up to date.</aside>
 
   <h2>Profile and settings</h2>
 
@@ -374,9 +374,10 @@
     <tbody>
       <tr><td><b class="ui">Notifications</b></td><td><b class="ui">Push notifications</b>, <b class="ui">Email notifications</b>, <b class="ui">Product news</b></td><td>Your account (all devices)</td></tr>
       <tr><td><b class="ui">Calendar sync</b></td><td>A private link to your events for <b class="ui">Apple Calendar</b>, <b class="ui">Google Calendar</b> or Outlook (<a data-ref="calendar-sync">Sync your events with your calendar</a>)</td><td>Your account (all devices)</td></tr>
+      <tr><td><b class="ui">Offline &amp; live</b></td><td><b class="ui">Automatic download</b>, <b class="ui">Wi-Fi only</b>, <b class="ui">Space used</b> for the setlists kept for no signal (<a data-ref="offline-and-live-settings">Change your offline choice in Settings</a>)</td><td>Mixed: <b class="ui">Automatic download</b> follows your account, the rest is this device</td></tr>
       <tr><td><b class="ui">Appearance</b></td><td>Theme: <b class="ui">Light</b>, <b class="ui">Dark</b>, <b class="ui">System</b></td><td>This device</td></tr>
       <tr><td><b class="ui">Units</b></td><td><b class="ui">Kilometres</b> or <b class="ui">Miles</b></td><td>This device</td></tr>
-      <tr><td><b class="ui">Privacy &amp; account</b></td><td><b class="ui">App lock</b>, <b class="ui">Anonymous usage statistics</b>, personal gig privacy, <b class="ui">Export my data</b>, Terms, Privacy Policy, <b class="ui">Delete account</b></td><td>Mixed (see <a data-ref="privacy-and-account-settings">Privacy &amp; account</a>)</td></tr>
+      <tr><td><b class="ui">Privacy &amp; account</b></td><td><b class="ui">App lock</b>, <b class="ui">Anonymous usage statistics</b>, <b class="ui">Send crash reports</b>, personal gig privacy, <b class="ui">Export my data</b>, Terms, Privacy Policy, <b class="ui">Delete account</b></td><td>Mixed (see <a data-ref="privacy-and-account-settings">Privacy &amp; account</a>)</td></tr>
       <tr><td><b class="ui">iPhone Duo</b></td><td><b class="ui">Laptop pose</b>; only on dual-screen phones</td><td>This device</td></tr>
       <tr><td><b class="ui">Language</b></td><td><b class="ui">Automatic</b> or one of six languages</td><td>This device, plus your pushes and emails</td></tr>
       <tr><td><b class="ui">Help &amp; support</b></td><td>Answers and what you can do in the app</td><td>-</td></tr>
@@ -454,6 +455,7 @@
   <ul>
     <li><b class="ui">App lock</b> (phones and tablets only): asks for Face ID, fingerprint or the device passcode when BandWith starts again after being closed. Per device (<a data-ref="app-lock">App lock</a>).</li>
     <li><b class="ui">Anonymous usage statistics</b> (Android and iOS apps only): off until the user says yes. BandWith asks once, after the first tour and any urgent popup (<b class="ui">No thanks</b> / <b class="ui">Allow</b>, same weight; closing the sheet asks again at the next launch). Only which screens are used and how often is shared, never songs, gigs, messages or contacts, and nothing for ads. Switching it off deletes what was collected on that device. Per device.</li>
+    <li><b class="ui">Send crash reports</b>: on unless the user switches it off, per device. When something goes wrong, the app sends the error, the screen it happened on and the app version (JavaScript errors to BandWith&#39;s own server; native crashes to Firebase Crashlytics only if the user also allowed <b class="ui">Anonymous usage statistics</b>), never songs, gigs, messages or contacts.</li>
     <li><b class="ui">Personal gigs stay private</b>: an info row, not a switch. Only you see the title and venue of your personal gigs; bands only see that you are busy (<a data-ref="personal-gigs">Personal gigs</a>).</li>
     <li><b class="ui">Export my data</b>: a JSON copy of what you own (<a data-ref="export-your-data">Export your data</a>).</li>
     <li><b class="ui">Terms of Service</b> and <b class="ui">Privacy Policy</b>: open the documents inside the app.</li>
@@ -477,7 +479,7 @@
   <p>If anything fails, the app says <b class="ui">Couldn’t export your data.</b> and makes no partial file.</p>
 
   <h3 id="art-delete-your-account" data-roles="admin,member,deputy">Delete your account</h3>
-  <aside class="note warning">This can’t be undone: your profile, personal gigs and messages are deleted. Export your data first if you want a copy.</aside>
+  <aside class="note warning">This can’t be undone: your profile, personal gigs and direct messages are deleted. Your messages in band, gig and group chats stay, shown as from a <b class="ui">Former member</b>. Export your data first if you want a copy.</aside>
   <ol class="steps">
     <li>Open the menu, tap <b class="ui">Settings &amp; account</b>, then <b class="ui">Privacy &amp; account</b>.</li>
     <li>In the red <b class="ui">Delete account</b> card, tap <b class="ui">Delete account</b>.</li>

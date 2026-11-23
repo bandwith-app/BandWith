@@ -3,6 +3,7 @@ import { keyboardSafeTap } from '@/lib/keyboardSafeTap';
 import { usePlan } from '@/lib/usePlan';
 import { limitFor } from '@/lib/plans';
 import { canCoManage, leaveBandBlock, memberInstrument } from '@/lib/bandMembership';
+import { deletionRefusalMessage } from '@/lib/deletionRefusal';
 import { Capacitor } from '@capacitor/core';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -200,7 +201,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
     const { error } = await removeMember(pendingRemoval.id);
     setRemoving(false);
     if (error) {
-      flashNotice(error.message || t('Could not remove the member. Try again.'));
+      flashNotice(deletionRefusalMessage(error) ?? (error.message || t('Could not remove the member. Try again.')));
       return;
     }
     // The database notifies the removed member and the band (migration 046).
@@ -232,7 +233,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
       setLeaving(false);
       setLeaveOpen(false);
       setDetailId(null);
-      flashNotice(t('Could not leave the band. Try again.'));
+      flashNotice(deletionRefusalMessage(error) ?? t('Could not leave the band. Try again.'));
       return;
     }
     // The database tells the band (046). Back to another band, or to the
@@ -276,7 +277,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
     }
     const { error } = await updateMemberRole(member.id, newRole);
     if (error) {
-      flashNotice(error.message || t('Could not change the role. Try again.'));
+      flashNotice(deletionRefusalMessage(error) ?? (error.message || t('Could not change the role. Try again.')));
       return;
     }
     setMembers((prev) =>

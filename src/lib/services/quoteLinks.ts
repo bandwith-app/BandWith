@@ -38,6 +38,8 @@ export type QuoteMessageKind = 'sent' | 'reminder' | 'updated';
 export type QuoteChannel = 'whatsapp' | 'sms' | 'email' | 'copy' | 'share';
 
 export interface QuoteLinkRow {
+  /** 183: a new recipient gets a new link (another id and token). */
+  id?: string;
   quote_id: string;
   token: string;
   lang: Locale;
@@ -59,6 +61,11 @@ export interface QuoteLinkRow {
   balance_at?: string | null;
   balance_sent_at?: string | null;
   balance_paid_at?: string | null;
+  /** 183 round 5: who the link was published for (null before 183, or before the first publish). */
+  recipient_name?: string | null;
+  recipient_email?: string | null;
+  /** 185: the balance the client was sent (what their page shows). */
+  balance_sent?: ClientBalance | null;
 }
 
 export type QuoteActivityKind =
@@ -88,6 +95,8 @@ export interface QuoteActivity {
   channel: QuoteChannel | null;
   version: number | null;
   created_at: string;
+  /** 183: the link the row belongs to (a conversation line stays on its client's link). */
+  link_id?: string | null;
 }
 
 type Result<T> = { data: T | null; error: Error | null };
@@ -96,9 +105,12 @@ const asError = (e: unknown): Error => planRefusal(e) ?? (e instanceof Error ? e
 
 const isLocale = (v: unknown): v is Locale => LANGUAGES.some((l) => l.id === v);
 
-/** The client's page. `preview` opens it without counting as "viewed". */
-export const quoteLinkUrl = (token: string, opts: { preview?: boolean } = {}) =>
-  `${APP_URL}/quote.html?t=${token}${opts.preview ? '&preview=1' : ''}`;
+/**
+ * The client's page. `preview` opens it without counting as "viewed";
+ * `previewKey` (185) shows the admin's draft balance on it.
+ */
+export const quoteLinkUrl = (token: string, opts: { preview?: boolean; previewKey?: string | null } = {}) =>
+  `${APP_URL}/quote.html?t=${token}${opts.preview ? '&preview=1' : ''}${opts.preview && opts.previewKey ? `&k=${opts.previewKey}` : ''}`;
 
 // ------------------------------------------------------------------ summary
 
@@ -205,7 +217,32 @@ export function clientQuoteItems(quote: Partial<Quote>, lang: Locale, defaults: 
  * (src/lib/services/quotePdf.ts), in `lang`. Nothing internal: no
  * musician names or fees, no internal notes.
  */
+/** FNV-1a, 32 bits: a short key, not a secret. */
+const contentHash = (text: string) => {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return `${h.toString(16).padStart(8, '0')}${text.length.toString(16)}`;
+};
+
+/**
+ * What the client sees, in their language. `contentKey` (round 4): the same
+ * quote in any language has the same key, so the server keeps the version
+ * (and the client's "I accept") when only the language changed.
+ */
 export function buildClientQuoteSnapshot(quote: Partial<Quote>, lang: Locale, defaults: SnapshotDefaults = {}): ClientQuoteSnapshot {
+  return {
+    ...snapshotIn(quote, lang, defaults),
+    contentKey: contentHash(JSON.stringify(snapshotIn(quote, 'en', defaults))),
+    // Round 6: the client it was built for, outside contentKey (a name fixed
+    // is not a new version). Checked by the server, never stored.
+    client: { name: String(quote.clientName || '').trim(), email: String(quote.clientEmail || '').trim() },
+  };
+}
+
+function snapshotIn(quote: Partial<Quote>, lang: Locale, defaults: SnapshotDefaults): ClientQuoteSnapshot {
   const tr = (s: string, vars?: TranslateVars) => translate(lang, s, vars);
   const currency = (quote.currency || 'EUR').toUpperCase();
   const sym = currencySymbol(currency);
@@ -329,30 +366,78 @@ export function clientLinkMessage(
 
 // ------------------------------------------------------------------ RPCs
 
+/**
+ * 183: the link was replaced (the client changed, or "New link") after the
+ * caller read its token, so the publish wrote nothing.
+ */
+export const isLinkChangedError = (e: unknown): boolean =>
+  /BW_LINK_CHANGED/.test(String((e as { message?: string } | null)?.message ?? ''));
+
+/** 183: another version was published after this one went out, so the send was not recorded. */
+export const isVersionChangedError = (e: unknown): boolean =>
+  /BW_VERSION_CHANGED/.test(String((e as { message?: string } | null)?.message ?? ''));
+
+/** A database before 183 has not the new optional parameter: call again without it. */
+const missingParam = (error: unknown) => (error as { code?: string } | null)?.code === 'PGRST202';
+
+/**
+ * Publish what the client sees. `token`: the link the caller read; when it
+ * has been replaced since, nothing is written and the error says so
+ * (isLinkChangedError), so a publish started for the old client never lands
+ * on the new client's link. Without a token (no link yet) as before.
+ */
 export async function publishQuoteLink(
   quoteId: string,
   snapshot: ClientQuoteSnapshot,
   lang: Locale,
   pdfUrl?: string | null,
+  token?: string | null,
+  /** Round 4: the version the screen shows; another one published since: refused (isVersionChangedError). */
+  version?: number | null,
 ): Promise<Result<{ token: string; status: QuoteLinkStatus; version: number; revoked: boolean }>> {
-  const { data, error } = await supabase.rpc('bw_quote_link_publish', {
-    p_quote_id: quoteId,
-    p_snapshot: snapshot,
-    p_lang: lang,
-    p_pdf_url: pdfUrl || null,
-  });
+  const args = { p_quote_id: quoteId, p_snapshot: snapshot, p_lang: lang, p_pdf_url: pdfUrl || null };
+  const extra = { ...(token ? { p_token: token } : {}), ...(typeof version === 'number' ? { p_version: version } : {}) };
+  let { data, error } = await supabase.rpc('bw_quote_link_publish', { ...args, ...extra });
+  // A database before 183 has no p_token / p_version: publish as before.
+  if (error && Object.keys(extra).length && missingParam(error)) {
+    ({ data, error } = await supabase.rpc('bw_quote_link_publish', args));
+  }
   if (error) return { data: null, error: asError(error) };
   const row = (Array.isArray(data) ? data[0] : data) as { token: string; status: QuoteLinkStatus; version: number; revoked: boolean } | null;
   return row?.token ? { data: row, error: null } : { data: null, error: new Error('No link') };
 }
 
-export async function markQuoteLinkSent(quoteId: string, kind: 'sent' | 'reminded', channel: QuoteChannel): Promise<Result<QuoteLinkStatus>> {
-  const { data, error } = await supabase.rpc('bw_quote_link_mark_sent', { p_quote_id: quoteId, p_kind: kind, p_channel: channel });
+/**
+ * Record a send. `sent`: the link (token) and the version that went out
+ * (183): when the link was replaced since, or another version published,
+ * nothing is recorded and the error says so (isLinkChangedError,
+ * isVersionChangedError).
+ */
+export async function markQuoteLinkSent(
+  quoteId: string,
+  kind: 'sent' | 'reminded',
+  channel: QuoteChannel,
+  sent?: { token?: string | null; version?: number | null },
+): Promise<Result<QuoteLinkStatus>> {
+  const args = { p_quote_id: quoteId, p_kind: kind, p_channel: channel };
+  const extra = {
+    ...(sent?.token ? { p_token: sent.token } : {}),
+    ...(typeof sent?.version === 'number' ? { p_version: sent.version } : {}),
+  };
+  let { data, error } = await supabase.rpc('bw_quote_link_mark_sent', { ...args, ...extra });
+  if (error && Object.keys(extra).length && missingParam(error)) ({ data, error } = await supabase.rpc('bw_quote_link_mark_sent', args));
   return error ? { data: null, error: asError(error) } : { data: data as QuoteLinkStatus, error: null };
 }
 
-export async function replyToQuoteClient(quoteId: string, body: string): Promise<Result<string>> {
-  const { data, error } = await supabase.rpc('bw_quote_reply', { p_quote_id: quoteId, p_body: body });
+/**
+ * The band's reply, on the link of the conversation it was written in
+ * (`token`, 183): when that link was replaced since (the quote went to
+ * another client) nothing is written and the error says so (isLinkChangedError).
+ */
+export async function replyToQuoteClient(quoteId: string, body: string, token?: string | null): Promise<Result<string>> {
+  const args = { p_quote_id: quoteId, p_body: body };
+  let { data, error } = await supabase.rpc('bw_quote_reply', token ? { ...args, p_token: token } : args);
+  if (error && token && missingParam(error)) ({ data, error } = await supabase.rpc('bw_quote_reply', args));
   return error ? { data: null, error: asError(error) } : { data: String(data), error: null };
 }
 
@@ -367,31 +452,104 @@ export async function revokeQuoteLink(quoteId: string): Promise<Result<boolean>>
 }
 
 const LINK_COLUMNS =
-  'quote_id, token, lang, status, version, version_at, pdf_url, pdf_version, sent_at, first_viewed_at, responded_at, accepted_name, accepted_version, decline_reason, revoked_at';
+  'id, quote_id, token, lang, status, version, version_at, pdf_url, pdf_version, sent_at, first_viewed_at, responded_at, accepted_name, accepted_version, decline_reason, revoked_at';
 // 168: read separately, so the quote detail keeps working before 168 is applied.
 const BALANCE_COLUMNS = 'balance, balance_version, balance_at, balance_sent_at, balance_paid_at';
+// 183 round 5: who the link was published for (the conversation's client).
+const RECIPIENT_COLUMNS = 'recipient_name, recipient_email';
+// 185: what the client was sent, read with a fallback before 185 is applied.
+const SENT_COLUMNS = 'balance_sent';
+
+export interface QuoteContact {
+  client_name: string | null;
+  client_email: string | null;
+  client_phone: string | null;
+  /** Round 4: the price saved now (a sheet opened on an older copy publishes nothing). */
+  total?: number | string | null;
+  currency?: string | null;
+}
+
+/** 183: who the quote is for, as saved now (the share sheet never sends from an older copy). */
+export async function getQuoteContact(quoteId: string): Promise<Result<QuoteContact | null>> {
+  const { data, error } = await supabase
+    .from('quotes')
+    .select('client_name, client_email, client_phone, total, currency')
+    .eq('id', quoteId)
+    .maybeSingle();
+  return error ? { data: null, error: asError(error) } : { data: (data as QuoteContact | null) ?? null, error: null };
+}
+
+const contactKey = (name?: string | null, email?: string | null, phone?: string | null) =>
+  [
+    (name || '').trim().replace(/\s+/g, ' ').toLowerCase(),
+    (email || '').trim().toLowerCase(),
+    (phone || '').replace(/[^0-9+]/g, ''),
+  ].join('|');
+
+/**
+ * 183: the quote a screen holds is for the client saved now. The wizard
+ * saves an empty name as "Client": "Client", in any case and on either
+ * side, is no name (round 10: as the server's check in 183).
+ */
+const noPlaceholderName = (name?: string | null) =>
+  (name || '').trim().replace(/\s+/g, ' ').toLowerCase() === 'client' ? '' : name;
+export const sameQuoteContact = (saved: QuoteContact, quote: Partial<Pick<Quote, 'clientName' | 'clientEmail' | 'clientPhone'>>) =>
+  contactKey(noPlaceholderName(saved.client_name), saved.client_email, saved.client_phone) ===
+  contactKey(noPlaceholderName(quote.clientName), quote.clientEmail, quote.clientPhone);
+
+/**
+ * Round 4: and its price as saved now (total and currency, when both sides
+ * have them): another admin's edit since this copy was made is never
+ * published from it.
+ */
+export const sameQuoteTerms = (
+  saved: QuoteContact,
+  quote: Partial<Pick<Quote, 'clientName' | 'clientEmail' | 'clientPhone' | 'total' | 'currency'>>,
+) => {
+  if (!sameQuoteContact(saved, quote)) return false;
+  const cents = (v: unknown) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Math.round(Number(v) * 100));
+  const [a, b] = [cents(saved.total), cents(quote.total)];
+  if (a !== null && b !== null && a !== b) return false;
+  const [x, y] = [(saved.currency || '').trim().toUpperCase(), (quote.currency || '').trim().toUpperCase()];
+  return !x || !y || x === y;
+};
 
 /** The link (if any) and the timeline of a quote. Admins only (RLS). */
 export async function getQuoteLinkState(quoteId: string): Promise<Result<{ link: QuoteLinkRow | null; activity: QuoteActivity[] }>> {
-  const [first, activity] = await Promise.all([
-    supabase.from('quote_links').select(`${LINK_COLUMNS}, ${BALANCE_COLUMNS}`).eq('quote_id', quoteId).maybeSingle(),
-    supabase
-      .from('quote_activity')
-      .select('id, kind, body, channel, version, created_at')
-      .eq('quote_id', quoteId)
-      .order('created_at', { ascending: true }),
+  const activityOf = (columns: string) =>
+    supabase.from('quote_activity').select(columns).eq('quote_id', quoteId).order('created_at', { ascending: true });
+  const linkOf = (columns: string) => supabase.from('quote_links').select(columns).eq('quote_id', quoteId).maybeSingle();
+  const [first, firstActivity] = await Promise.all([
+    linkOf(`${LINK_COLUMNS}, ${BALANCE_COLUMNS}, ${SENT_COLUMNS}, ${RECIPIENT_COLUMNS}`),
+    activityOf('id, kind, body, channel, version, created_at, link_id'),
   ]);
-  // Before 168 the balance columns don't exist: read the link without them.
-  const link = first.error && /balance/.test(first.error.message || '')
-    ? await supabase.from('quote_links').select(LINK_COLUMNS).eq('quote_id', quoteId).maybeSingle()
-    : first;
+  // Before 183 the timeline has no link_id: read it without.
+  const activity = firstActivity.error && /link_id/.test(firstActivity.error.message || '')
+    ? await activityOf('id, kind, body, channel, version, created_at')
+    : firstActivity;
+  // Before 183 / 185 / 168 the newer columns don't exist: drop the missing ones and read again.
+  let link = first;
+  let optional = { recipient: true, sent: true, balance: true };
+  for (let i = 0; i < 3 && link.error; i++) {
+    const message = link.error.message || '';
+    if (optional.recipient && /recipient_/.test(message)) optional = { ...optional, recipient: false };
+    else if (optional.sent && /balance_sent/.test(message)) optional = { ...optional, sent: false };
+    else if (optional.balance && /balance/.test(message)) optional = { recipient: optional.recipient, sent: false, balance: false };
+    else break;
+    link = await linkOf([
+      LINK_COLUMNS,
+      optional.balance ? BALANCE_COLUMNS : '',
+      optional.sent ? SENT_COLUMNS : '',
+      optional.recipient ? RECIPIENT_COLUMNS : '',
+    ].filter(Boolean).join(', '));
+  }
   if (link.error) return { data: null, error: asError(link.error) };
   if (activity.error) return { data: null, error: asError(activity.error) };
   const row = link.data as QuoteLinkRow | null;
   return {
     data: {
       link: row ? { ...row, lang: isLocale(row.lang) ? row.lang : 'en' } : null,
-      activity: (activity.data || []) as QuoteActivity[],
+      activity: (activity.data || []) as unknown as QuoteActivity[],
     },
     error: null,
   };
@@ -405,9 +563,12 @@ export async function getQuoteLinkState(quoteId: string): Promise<Result<{ link:
 export async function sendQuoteEmail(
   quoteId: string,
   kind: QuoteMessageKind | 'reply',
+  /** Round 4: the link the email is for; replaced since (another client): nothing is sent (code link_changed). */
+  linkId?: string | null,
 ): Promise<{ ok: boolean; code?: string; error?: Error }> {
+  const link = linkId ? { linkId } : {};
   const { data, error } = await supabase.functions.invoke('send-email', {
-    body: kind === 'reply' ? { type: 'quote_reply', data: { quoteId } } : { type: 'quote_link', data: { quoteId, kind } },
+    body: kind === 'reply' ? { type: 'quote_reply', data: { quoteId, ...link } } : { type: 'quote_link', data: { quoteId, kind, ...link } },
   });
   if (error) {
     let code: string | undefined;
@@ -426,6 +587,20 @@ export async function sendQuoteEmail(
 // ------------------------------------------------------------------ balance (168)
 
 /** Publish (or change) the balance on the client's page. */
+/**
+ * The admin's preview of a balance (185): kept as a draft, never on the
+ * client's page. Returns the key the preview page opens it with; null on a
+ * database before 185 (the preview then shows what the client has).
+ */
+export async function previewQuoteBalance(quoteId: string, balance: ClientBalance): Promise<Result<string | null>> {
+  const { data, error } = await supabase.rpc('bw_quote_balance_preview', { p_quote_id: quoteId, p_balance: balance });
+  if (error && (error.code === 'PGRST202' || error.code === '42883' || /could not find the function/i.test(error.message || ''))) {
+    return { data: null, error: null };
+  }
+  if (error) return { data: null, error: asError(error) };
+  return { data: typeof data === 'string' && /^[0-9a-f]{64}$/.test(data) ? data : null, error: null };
+}
+
 export async function publishQuoteBalance(
   quoteId: string,
   balance: ClientBalance,
@@ -438,10 +613,70 @@ export async function publishQuoteBalance(
     : { data: null, error: new Error('No link') };
 }
 
-export async function markQuoteBalanceSent(quoteId: string, kind: 'sent' | 'reminded', channel: QuoteChannel): Promise<Result<string>> {
-  const { data, error } = await supabase.rpc('bw_quote_balance_mark_sent', { p_quote_id: quoteId, p_kind: kind, p_channel: channel });
-  return error ? { data: null, error: asError(error) } : { data: String(data), error: null };
+/**
+ * #293 round 3 (185): another admin published a different balance between
+ * this send and its record, so the server recorded nothing.
+ */
+export const isBalanceChangedError = (e: unknown): boolean =>
+  /BW_BALANCE_CHANGED/.test(String((e as { message?: string } | null)?.message ?? e ?? ''));
+
+/**
+ * Records a balance send. `balanceVersion`: the balance_version the caller
+ * published and sent (185): a balance replaced meanwhile is refused
+ * (isBalanceChangedError) instead of being recorded as sent. A database
+ * before 185 doesn't know the parameter: recorded without it, as before.
+ */
+export async function markQuoteBalanceSent(
+  quoteId: string,
+  kind: 'sent' | 'reminded',
+  channel: QuoteChannel,
+  balanceVersion?: number | null,
+  /**
+   * #293 round 6 (185): true records an email's send before it goes out (the
+   * page shows this balance at once), false confirms it after. A database
+   * without it: true records the send as before (still ahead of the email)
+   * and `pending` comes back false, so the caller confirms nothing.
+   */
+  pending?: boolean,
+): Promise<Result<string> & { pending?: boolean }> {
+  const args = { p_quote_id: quoteId, p_kind: kind, p_channel: channel };
+  const missing = (e: { code?: string; message?: string } | null) =>
+    !!e && (e.code === 'PGRST202' || /could not find the function/i.test(e.message || ''));
+  const withVersion = balanceVersion != null ? { ...args, p_balance_version: balanceVersion } : args;
+  let usedPending = pending != null && balanceVersion != null;
+  let { data, error } = await supabase.rpc(
+    'bw_quote_balance_mark_sent',
+    usedPending ? { ...withVersion, p_pending: pending } : withVersion,
+  );
+  if (error && usedPending && missing(error)) {
+    usedPending = false;
+    if (pending === false) return { data: null, error: null, pending: false };
+    ({ data, error } = await supabase.rpc('bw_quote_balance_mark_sent', withVersion));
+  }
+  if (error && balanceVersion != null && missing(error)) {
+    ({ data, error } = await supabase.rpc('bw_quote_balance_mark_sent', args));
+  }
+  return error
+    ? { data: null, error: asError(error) }
+    : { data: data == null ? null : String(data), error: null, ...(pending != null ? { pending: usedPending && pending === true } : {}) };
 }
+
+/**
+ * #293 round 6 (185): the email of a send recorded first did not go out
+ * (the server said so): the client's page shows again what it showed
+ * before. Only that send (its version, still pending); false otherwise.
+ */
+export async function undoQuoteBalanceSend(quoteId: string, balanceVersion: number): Promise<Result<boolean>> {
+  const { data, error } = await supabase.rpc('bw_quote_balance_send_failed', { p_quote_id: quoteId, p_balance_version: balanceVersion });
+  return error ? { data: null, error: asError(error) } : { data: data === true, error: null };
+}
+
+/** send-email's codes that mean the email did not go out (a refusal before Resend, or Resend's own). */
+export const BALANCE_EMAIL_NOT_SENT = new Set([
+  'balance_changed', 'email_not_configured', 'too_soon', 'no_client_email', 'no_balance', 'link_changed',
+  // Claude r9: Resend refused it (send-email answers email_refused, 502).
+  'email_refused',
+]);
 
 /** The balance was received (or not after all): the gig made from the quote follows. */
 export async function markQuoteBalancePaid(quoteId: string, paid: boolean): Promise<Result<{ paid: boolean; event_id: string | null }>> {
@@ -507,8 +742,14 @@ export async function getBalanceGig(quoteId: string, eventId?: string | null): P
  * language, link and amount come from the database). Codes as
  * sendQuoteEmail, plus 'no_balance'.
  */
-export async function sendQuoteBalanceEmail(quoteId: string, kind: 'sent' | 'updated' | 'reminder') {
-  const { data, error } = await supabase.functions.invoke('send-email', { body: { type: 'quote_balance', data: { quoteId, kind } } });
+export async function sendQuoteBalanceEmail(
+  quoteId: string,
+  kind: 'sent' | 'updated' | 'reminder',
+  /** Round 4: the balance version the screen shows; another one on the page now: nothing is sent (code balance_changed). */
+  balanceVersion?: number | null,
+) {
+  const seen = typeof balanceVersion === 'number' ? { balanceVersion } : {};
+  const { data, error } = await supabase.functions.invoke('send-email', { body: { type: 'quote_balance', data: { quoteId, kind, ...seen } } });
   if (error) {
     let code: string | undefined;
     try {
@@ -533,15 +774,40 @@ export const QUOTE_STAGE_ORDER: ClientQuoteStage[] = ['sent', 'viewed', 'discuss
 // ------------------------------------------------------------------ after an edit
 
 /**
+ * 183: the band changed the client of a sent quote, so the server gave the
+ * link a new token (the old client's link stopped working) and put it back
+ * to draft. True until the quote is sent to the new client.
+ */
+/**
+ * 183: when the quote was last given to another client (the latest
+ * "recipient_changed" new link). The band's conversation labels client
+ * messages written before it as the previous client's, not the current one's.
+ */
+export const recipientChangedAt = (activity: QuoteActivity[]): string | null =>
+  activity.reduce<string | null>(
+    (at, a) => (a.kind === 'link_rotated' && a.body === 'recipient_changed' && (!at || a.created_at > at) ? a.created_at : at),
+    null,
+  );
+
+export const awaitingNewRecipient = (link: Pick<QuoteLinkRow, 'status'> | null | undefined, activity: QuoteActivity[]) =>
+  !!link && link.status === 'draft' && activity.some((a) => a.kind === 'link_rotated' && a.body === 'recipient_changed');
+
+/**
  * A sent quote was edited: publish the new version on the client's page,
  * with its PDF, in the language the client already got. Returns the new
  * version, or null when the quote has no sent link (nothing to do) or the
- * client already answered.
+ * client already answered. `newRecipient`: the client changed (183), the
+ * quote waits to be sent to the new one.
  */
-export async function republishClientQuote(quote: Quote, bandId: string, bandName: string): Promise<Result<number>> {
+export async function republishClientQuote(
+  quote: Quote,
+  bandId: string,
+  bandName: string,
+): Promise<Result<number> & { newRecipient?: boolean }> {
   const state = await getQuoteLinkState(quote.id);
   if (state.error) return { data: null, error: state.error };
   const link = state.data?.link;
+  if (awaitingNewRecipient(link, state.data?.activity ?? [])) return { data: null, error: null, newRecipient: true };
   if (!link || link.status === 'draft' || link.status === 'accepted') return { data: null, error: null };
   try {
     const [{ getBandPricing }, { generateQuotePdf, uploadQuotePdfForSharing }] = await Promise.all([
@@ -559,7 +825,10 @@ export async function republishClientQuote(quote: Quote, bandId: string, bandNam
     } catch (e) {
       console.warn('[quoteLinks] PDF of the new version not created:', e);
     }
-    const pub = await publishQuoteLink(quote.id, buildClientQuoteSnapshot(quote, link.lang, settings), link.lang, pdfUrl);
+    // The link and the version read above (round 5): replaced meanwhile (new
+    // client), or a newer version published while the PDF was made, nothing
+    // is published (a late PDF never overwrites newer terms).
+    const pub = await publishQuoteLink(quote.id, buildClientQuoteSnapshot(quote, link.lang, settings), link.lang, pdfUrl, link.token, link.version);
     return pub.error ? { data: null, error: pub.error } : { data: pub.data?.version ?? null, error: null };
   } catch (e) {
     return { data: null, error: asError(e) };

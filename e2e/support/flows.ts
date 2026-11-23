@@ -28,11 +28,17 @@ export const eventDetail = (app: App): Locator => app.page.locator('.bw-event-de
 /** Calendar tab → the event's card in the agenda → its detail. */
 export async function openEvent(app: App, title: string) {
   await app.tab('Calendar');
+  // The Calendar must be up before the card is looked for. On a slow machine
+  // Home is still mounted after the tab press, and in Duo Laptop pose its Band
+  // desk has an "Open <gig>" button that matches the title. The check below
+  // passed on that button, Home then went away, and the click waited on the
+  // Calendar's own card, which lies under the Planner there (CI 11-23).
+  await expect(app.page.getByRole('button', { name: app.t('Search events'), exact: true }).filter({ visible: true }).first()).toBeVisible();
   const card = app.page.getByRole('button', { name: new RegExp(escapeRe(title), 'i') }).first();
   // Duo Laptop pose shows the Planner (month grid + one day's agenda): an
   // event on another day is not on screen there, so find it like a user,
   // with Search.
-  const reachable = await card.click({ trial: true, timeout: 2500 }).then(() => true, () => false);
+  const reachable = await canBeTapped(card, 2500);
   if (!reachable) {
     await app.page.getByRole('button', { name: app.t('Search events'), exact: true }).filter({ visible: true }).first().click();
     await app.page.getByPlaceholder(app.t('Search title, venue, city, client…')).filter({ visible: true }).first().fill(title);
@@ -43,6 +49,43 @@ export async function openEvent(app: App, title: string) {
     return;
   }
   await openEventHere(app, title);
+}
+
+/**
+ * Could a tap land on `target` within `timeout`? On screen (scrolled into
+ * view), enabled, and the topmost element at its centre: what a trial click
+ * checks, without ever pressing. A trial click (Playwright 1.65.1) can press
+ * for real when its timeout cuts it short, which opened the event under the
+ * helper and sent it to Search (member-readonly, duo-open and phone-portrait).
+ */
+async function canBeTapped(target: Locator, timeout: number): Promise<boolean> {
+  const until = Date.now() + timeout;
+  // The same element must be tappable on two looks in a row: one look can
+  // land on a screen that is on its way out (see openEvent).
+  let seen = '';
+  for (;;) {
+    const sig = await target
+      .evaluate((el) => {
+        if (!(el instanceof HTMLElement) || !el.isConnected) return '';
+        if ((el as HTMLButtonElement).disabled || el.getAttribute('aria-disabled') === 'true') return '';
+        el.scrollIntoView({ block: 'center', inline: 'nearest' });
+        const r = el.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) return '';
+        const style = getComputedStyle(el);
+        if (style.visibility === 'hidden' || style.display === 'none' || style.pointerEvents === 'none') return '';
+        const x = r.left + r.width / 2;
+        const y = r.top + r.height / 2;
+        if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return '';
+        const top = document.elementFromPoint(x, y);
+        if (!top || !(top === el || el.contains(top))) return '';
+        return `${el.getAttribute('aria-label') ?? ''}|${el.getAttribute('aria-labelledby') ?? ''}|${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}`;
+      }, undefined, { timeout: Math.max(1, until - Date.now()) })
+      .catch(() => '');
+    if (sig && sig === seen) return true;
+    seen = sig;
+    if (Date.now() >= until) return false;
+    await new Promise((r) => setTimeout(r, 250));
+  }
 }
 
 async function expectEventOpen(app: App, title: string) {

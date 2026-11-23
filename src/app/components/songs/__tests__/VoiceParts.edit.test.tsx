@@ -47,11 +47,21 @@ vi.mock('@/lib/supabase', () => ({
           single: async () => ({ data: { id: 's1', band_id: 'b1', title: 'Hudson Line', key: 'F', lyrics: '# Chorus\n[F]Hold the line\nMorning comes', chord_chart: null }, error: null }),
         }),
       }),
+      // The save-if-unchanged chain (no 189): update → eq(id) → eq/is(updated_at) → select('id').
       update: (v: unknown) => {
         update(v);
-        return { eq: async () => ({ error: null }) };
+        const written = { data: [{ id: 's1' }], error: null };
+        const chain: Record<string, unknown> = {
+          eq: () => chain,
+          is: () => chain,
+          select: async () => written,
+          then: (ok: (r: typeof written) => unknown, no?: (e: unknown) => unknown) => Promise.resolve(written).then(ok, no),
+        };
+        return chain;
       },
     }),
+    // A database without 189: the editor compares, then updates.
+    rpc: async () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } }),
   },
 }));
 vi.mock('@/lib/services/setlistNotify', () => ({ notifySongUpdated: vi.fn() }));
@@ -87,6 +97,14 @@ describe('the Voice picker in the chord editor', () => {
     expect(screen.getByRole('button', { name: 'comes' }).querySelector('[data-voice]')).toBeNull();
   });
 
+  it('has a "?" for the guide to marking voice parts', async () => {
+    render(<ChordEditor />);
+    act(() => openChordEditor('s1'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Morning' }));
+    const voice = screen.getByRole('group', { name: 'Voice' });
+    expect(within(voice).getByRole('button', { name: 'Help for this screen' })).toHaveAttribute('data-academy', 'mark-voice-parts');
+  });
+
   it('draws the backing bar once per run of words, not on every word', async () => {
     render(<ChordEditor />);
     act(() => openChordEditor('s1'));
@@ -110,6 +128,9 @@ describe('the Voice picker in the chord editor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save chords' }));
     await waitFor(() => expect(update).toHaveBeenCalled());
     expect(update.mock.calls[0][0]).toEqual({ lyrics: '# Chorus\n[F]Hold {v2}the line{/v2}\nMorning comes' });
+    // The save itself finishes: saved, the editor closes, no error (a failure fails here, not after the test).
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Save chords' })).toBeNull());
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });
 

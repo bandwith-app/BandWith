@@ -1,3 +1,4 @@
+import { isFlagOn } from '@/lib/appFlags';
 import { supabase, getSafeUser } from '../supabase';
 import { parseLocalDate } from '@/lib/dates';
 import { getActiveSymbol } from '@/lib/currency';
@@ -19,6 +20,11 @@ export type NotificationType =
   | 'event_cancelled'
   | 'event_confirmed'
   | 'member_dropped_out'
+  // A possible gig (still a quote) to keep free, its new details, and the
+  // date free again (migration 178). Server-written, translated.
+  | 'date_hold'
+  | 'date_hold_changed'
+  | 'date_hold_released'
   // A deputy answered from the reply link (migration 084)
   | 'deputy_reply'
   // A deputy opened the app from their link (086): to the band's admins
@@ -92,6 +98,8 @@ export interface Notification {
   read: boolean;
   read_at?: string;
   archived?: boolean;
+  /** This device only: the copies of this invite the list hides (opening the bell marks them all read too). */
+  duplicate_ids?: string[];
   
   // Actions
   action_url?: string;
@@ -113,7 +121,7 @@ export type NotificationCategory = 'invites' | 'events' | 'finance' | 'members' 
 // Get category from notification type
 export const getNotificationCategory = (type: NotificationType): NotificationCategory => {
   if (type.startsWith('invite_')) return 'invites';
-  if (type.startsWith('event_') || type.startsWith('rehearsal_') || type.startsWith('deputy_')) return 'events';
+  if (type.startsWith('event_') || type.startsWith('rehearsal_') || type.startsWith('deputy_') || type.startsWith('date_hold')) return 'events';
   if (type.startsWith('quote_') || type.startsWith('payment_') || type === 'fee_changed') return 'finance';
   if (type.startsWith('member_')) return 'members';
   if (type.startsWith('song_') || type.startsWith('setlist_') || type.startsWith('task_')) return 'content';
@@ -135,6 +143,9 @@ export const getNotificationIcon = (type: NotificationType): string => {
     event_update: 'calendar',
     event_cancelled: 'calendar-x',
     event_confirmed: 'calendar-check',
+    date_hold: 'calendar',
+    date_hold_changed: 'calendar',
+    date_hold_released: 'calendar-x',
     // Quotes
     quote_received: 'file-text',
     quote_accepted: 'check',
@@ -208,6 +219,12 @@ export const getNotifications = async (options?: {
   offset?: number;
   /** The inbox: leave chat rows out, so `limit` counts inbox items only. */
   excludeChat?: boolean;
+  /**
+   * The inbox: also unread items older than the latest `limit` (up to this
+   * many), so opening the bell shows every unread item it marks read and
+   * the bell counts them all (audit 07 #10).
+   */
+  withOlderUnread?: number;
 }): Promise<{ data: Notification[] | null; error: Error | null }> => {
   try {
     const { data: { user } } = await getSafeUser();
@@ -227,6 +244,11 @@ export const getNotifications = async (options?: {
       query = query.not('type', 'in', CHAT_TYPES_FILTER);
     }
 
+    // Kill switch live_pack off (docs/flags.md): no "Download for offline" prompts.
+    if (!isFlagOn('live_pack')) {
+      query = query.neq('type', 'live_pack_ready');
+    }
+
     if (options?.limit) {
       query = query.limit(options.limit);
     }
@@ -235,21 +257,51 @@ export const getNotifications = async (options?: {
       query = query.range(options.offset, options.offset + (options.limit || 20) - 1);
     }
 
-    const { data, error } = await query;
+    const { data: page, error } = await query;
 
     if (error) throw error;
 
+    let data = page || [];
+    const oldest = data[data.length - 1]?.created_at;
+    if (options?.withOlderUnread && options.limit && !options.offset && !options.unreadOnly && data.length >= options.limit && oldest) {
+      let older = supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('read', false)
+        // lte: unread rows with the same time as the last row on the page
+        // would fall between the two requests (dupes are dropped below).
+        .lte('created_at', oldest)
+        .order('created_at', { ascending: false })
+        .limit(options.withOlderUnread);
+      if (options.excludeChat) older = older.not('type', 'in', CHAT_TYPES_FILTER);
+      const { data: unreadOlder } = await older;
+      if (unreadOlder?.length) {
+        const have = new Set(data.map((n: Notification) => n.id));
+        data = [...data, ...unreadOlder.filter((n: Notification) => !have.has(n.id))];
+      }
+    }
+
     // Deduplicate notifications (e.g. if push edge function and app both inserted an invite for the same event)
+    // A hidden copy still counts in the badge: the one shown carries every
+    // copy's id, shows unread while any copy is, and opening the bell marks
+    // them all read (Codex review #291 r3, r4).
     const deduped: Notification[] = [];
-    const seenEventInvites = new Set<string>();
+    const seenEventInvites = new Map<string, Notification>();
 
     for (const notif of data || []) {
       const eventId = notif.data?.event_id as string | undefined;
       if (notif.type === 'event_invite' && eventId) {
-        if (seenEventInvites.has(eventId)) {
+        const kept = seenEventInvites.get(eventId);
+        if (kept) {
+          kept.duplicate_ids = [...(kept.duplicate_ids ?? []), notif.id];
+          if (!notif.read) kept.read = false;
           continue;
         }
-        seenEventInvites.add(eventId);
+        const own = { ...notif };
+        seenEventInvites.set(eventId, own);
+        deduped.push(own);
+        continue;
       }
       deduped.push(notif);
     }
@@ -265,11 +317,13 @@ export const getUnreadCount = async (): Promise<{ data: number | null; error: Er
     const { data: { user } } = await getSafeUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { count, error } = await supabase
+    let query = supabase
       .from('notifications')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', user.id)
       .eq('read', false);
+    if (!isFlagOn('live_pack')) query = query.neq('type', 'live_pack_ready');
+    const { count, error } = await query;
 
     if (error) throw error;
 
@@ -303,6 +357,34 @@ export const markAsRead = async (notificationId: string): Promise<{ error: Error
   }
 };
 
+/** Unread inbox items (not chat rows) among those loaded: what opening the bell shows. */
+export const unreadInboxIds = (list: Array<{ id: string; type: string; read: boolean; duplicate_ids?: string[] }>): string[] =>
+  [...new Set(list
+    .filter((n) => !n.read && !isChatNotificationType(n.type))
+    .flatMap((n) => [n.id, ...(n.duplicate_ids ?? [])]))];
+
+/**
+ * Marks these notifications read (the ones the bell just showed). Opening
+ * the bell used to mark every unread row, also those it never showed
+ * (audit 07 #10).
+ */
+export const markIdsAsRead = async (ids: string[]): Promise<{ error: Error | null }> => {
+  try {
+    if (ids.length === 0) return { error: null };
+    const { data: { user } } = await getSafeUser();
+    if (!user) throw new Error('Not authenticated');
+    const { error } = await supabase
+      .from('notifications')
+      .update({ read: true, read_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+      .in('id', ids);
+    if (error) throw error;
+    return { error: null };
+  } catch (error: any) {
+    return { error };
+  }
+};
+
 /**
  * The bell's "mark all as read". Chat rows are not in the bell: they stay
  * unread until their chat is opened, so the icon badge keeps counting them.
@@ -312,7 +394,7 @@ export const markAllAsRead = async (): Promise<{ error: Error | null }> => {
     const { data: { user } } = await getSafeUser();
     if (!user) throw new Error('Not authenticated');
 
-    const { error } = await supabase
+    let query = supabase
       .from('notifications')
       .update({
         read: true,
@@ -321,7 +403,11 @@ export const markAllAsRead = async (): Promise<{ error: Error | null }> => {
       .eq('user_id', user.id)
       .eq('read', false)
       .not('type', 'in', CHAT_TYPES_FILTER);
+    // Kill switch live_pack off: the prompts are hidden from the inbox, so
+    // opening it doesn't read them (back on, they are still unread).
+    if (!isFlagOn('live_pack')) query = query.neq('type', 'live_pack_ready');
 
+    const { error } = await query;
     if (error) throw error;
 
     return { error: null };
@@ -484,6 +570,7 @@ export const subscribeToNotifications = (
         { event: 'INSERT', schema: 'public', table: 'notifications', filter },
         (payload) => {
           const notification = payload.new as Notification;
+          if (String(notification.type) === 'live_pack_ready' && !isFlagOn('live_pack')) return;
           if (notification.user_id === user.id) callback(notification);
         }
       )

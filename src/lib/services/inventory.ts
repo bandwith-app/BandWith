@@ -1,6 +1,8 @@
+import { serverErrorText } from '@/lib/deletionRefusal';
 import { supabase } from '../supabase';
 import { t } from '@/lib/i18n';
 import { planRefusal } from '@/lib/userError';
+import { parseAmount } from '@/lib/amount';
 
 /* ─────────────────────────────────────────────────────────────────────────
  * Gear / inventory (table `inventory`, migration 006).
@@ -110,7 +112,7 @@ const asError = (err: unknown, fallback: string) => {
   const e = err as { message?: string; code?: string } | null;
   // A database before 127 accepts only the original categories.
   if (e?.code === '23514' && /category/i.test(e.message || '')) return new Error(t("This category can't be saved yet. Pick another one."));
-  return new Error(e?.message || fallback);
+  return new Error(serverErrorText(err, fallback));
 };
 
 const blankToNull = (v?: string | null) => {
@@ -159,10 +161,11 @@ export const sameCategory = (a: string | null | undefined, b: string | null | un
   canonicalCategory(a).toLowerCase() === canonicalCategory(b).toLowerCase();
 
 export const parsePrice = (raw?: string): { value: number | null; error: string | null } => {
-  const cleaned = (raw ?? '').trim().replace(/\s/g, '').replace(',', '.');
+  // The price as the user writes it ("1.250,50" in German): src/lib/amount.ts.
+  const cleaned = (raw ?? '').trim();
   if (!cleaned) return { value: null, error: null };
-  const v = Number(cleaned);
-  if (!Number.isFinite(v) || v < 0) return { value: null, error: t('Enter a valid purchase price.') };
+  const v = parseAmount(cleaned);
+  if (v == null) return { value: null, error: t('Enter a valid purchase price.') };
   return { value: Math.round(v * 100) / 100, error: null };
 };
 

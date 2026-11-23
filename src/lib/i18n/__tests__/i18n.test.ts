@@ -20,6 +20,19 @@ const unescape = (s: string) => s.replace(/\\(.)/g, '$1');
 // t('Free', { context: 'day' }) needs its own "Free|day" entry.
 const CONTEXT_CALL = /\bt\(\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")\s*,\s*\{\s*context:\s*'(\w+)'/g;
 
+// A file can name the translator something else (`const tr = useT()`): its
+// calls are scanned too, so their keys can't slip past this test. A call
+// with a context needs only its "key|context" entry.
+const ALIAS = /\bconst\s+(\w+)\s*=\s*useT\(\)/g;
+const aliasCalls = (text: string) =>
+  [...new Set([...text.matchAll(ALIAS)].map((m) => m[1]).filter((n) => n !== 't'))].map(
+    (n) =>
+      new RegExp(
+        `\\b${n}\\(\\s*(?:'((?:[^'\\\\]|\\\\.)*)'|"((?:[^"\\\\]|\\\\.)*)")(?:\\s*,\\s*\\{\\s*context:\\s*'(\\w+)')?`,
+        'g',
+      ),
+  );
+
 const usedKeys = (() => {
   const keys = new Map<string, string>();
   for (const [file, text] of Object.entries(SOURCES)) {
@@ -27,6 +40,12 @@ const usedKeys = (() => {
     for (const m of text.matchAll(CALL)) {
       const key = unescape(m[1] ?? m[2]);
       if (!keys.has(key)) keys.set(key, file);
+    }
+    for (const re of aliasCalls(text)) {
+      for (const m of text.matchAll(re)) {
+        const key = unescape(m[1] ?? m[2]) + (m[3] ? `|${m[3]}` : '');
+        if (!keys.has(key)) keys.set(key, file);
+      }
     }
     for (const m of text.matchAll(CONTEXT_CALL)) {
       const key = `${unescape(m[1] ?? m[2])}|${m[3]}`;

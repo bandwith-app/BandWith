@@ -22,8 +22,9 @@ export interface Quote {
   
   // Client Info
   client_name: string;
-  client_email?: string;
-  client_phone?: string;
+  /** null clears it (183: an UPDATE drops undefined, so the old client's address stayed). */
+  client_email?: string | null;
+  client_phone?: string | null;
   client_company?: string;
   
   // Event Info
@@ -121,6 +122,8 @@ export interface Quote {
   created_by?: string;
   created_at: string;
   updated_at: string;
+  /** Write-only (183 round 4): when the editing screen read the quote; the server clears it. */
+  edit_base_at?: string | null;
 }
 
 export interface QuoteMusician {
@@ -312,12 +315,15 @@ export const updateQuote = async (
   updates: Partial<Quote>
 ): Promise<{ data: Quote | null; error: Error | null }> => {
   try {
-    const { data, error } = await supabase
-      .from('quotes')
-      .update(updates)
-      .eq('id', quoteId)
-      .select()
-      .single();
+    const run = (u: Partial<Quote>) => supabase.from('quotes').update(u).eq('id', quoteId).select().single();
+    let { data, error } = await run(updates);
+    // A database before 183 has no edit_base_at: the same edit without it.
+    // Round 6: and with the totals the app worked out (that database has no
+    // bw_quote_totals trigger, so it would keep the old ones).
+    if (error && updates.edit_base_at && /edit_base_at/.test(error.message || '')) {
+      const { edit_base_at: _base, ...rest } = updates;
+      ({ data, error } = await run({ ...rest, ...(compatTotals.get(updates) || {}) }));
+    }
 
     if (error) throw error;
 
@@ -325,6 +331,173 @@ export const updateQuote = async (
   } catch (error: any) {
     return { data: null, error };
   }
+};
+
+const isMissingRpc = (err: { code?: string; message?: string } | null): boolean =>
+  !!err && (err.code === 'PGRST202' || err.code === '42883' || /could not find the function/i.test(err.message || ''));
+
+/**
+ * Saves an edited quote's lineup (its `quote_musicians` rows) in one
+ * transaction (bw_quote_save_musicians, migration 185) and returns the rows
+ * saved, so the edit screens show what is stored. Editing a quote used to
+ * write only the `quotes` row: the old names and fees came back on reload
+ * and went into the gig made from the quote.
+ */
+export const saveQuoteMusicians = async (
+  quoteId: string,
+  musicians: Omit<QuoteMusician, 'id' | 'quote_id' | 'created_at'>[],
+): Promise<{ data: QuoteMusician[] | null; error: Error | null }> => {
+  const payload = musicians.map((m) => ({
+    user_id: m.user_id ?? null,
+    name: m.name,
+    instrument: m.instrument ?? null,
+    fee: roundCents(Number(m.fee) || 0),
+    is_external: !!m.is_external,
+    is_available: m.is_available !== false,
+  }));
+  const { data, error } = await supabase.rpc('bw_quote_save_musicians', { p_quote_id: quoteId, p_musicians: payload });
+  if (error && isMissingRpc(error)) {
+    // Database before 185: the same rows, written directly (admins only by
+    // RLS). The new rows go in first and the old ones go after, by id: a
+    // connection lost in between leaves the old lineup (or both), never none.
+    const old = await supabase.from('quote_musicians').select('id').eq('quote_id', quoteId);
+    if (old.error) return { data: null, error: new Error(old.error.message) };
+    const oldIds = ((old.data || []) as { id: string }[]).map((r) => r.id);
+    let saved: QuoteMusician[] = [];
+    if (payload.length > 0) {
+      const ins = await supabase.from('quote_musicians').insert(payload.map((m) => ({ ...m, quote_id: quoteId }))).select();
+      if (ins.error) return { data: null, error: new Error(ins.error.message) };
+      saved = (ins.data || []) as QuoteMusician[];
+    }
+    if (oldIds.length > 0) {
+      const del = await supabase.from('quote_musicians').delete().eq('quote_id', quoteId).in('id', oldIds);
+      if (del.error) {
+        // Take the new rows back (best effort): the quote keeps its old lineup.
+        if (saved.length > 0) await supabase.from('quote_musicians').delete().in('id', saved.map((r) => r.id));
+        return { data: null, error: new Error(del.error.message) };
+      }
+    }
+    return { data: saved, error: null };
+  }
+  if (error) return { data: null, error: new Error(error.message) };
+  return { data: (Array.isArray(data) ? data : []) as QuoteMusician[], error: null };
+};
+
+export interface QuoteLineupSaved {
+  musicians: QuoteMusician[];
+  /** The gig holding the quote's date, when there is one. */
+  eventId: string | null;
+  /** Its lineup was saved in the same transaction (it is tentative). */
+  synced: boolean;
+  /** It was confirmed meanwhile: its lineup was left as it is. */
+  confirmed: boolean;
+}
+
+/**
+ * #293 round 4: an edited quote's lineup and the lineup of the tentative
+ * gig that holds its date, in one transaction (bw_quote_save_lineup, 185):
+ * a musician replaced on the quote leaves the gig, so confirming the quote
+ * never confirms the old lineup. Before round 4's 185 the quote's lineup
+ * alone (synced false): the caller keeps the gig in step as before.
+ */
+export const saveQuoteLineup = async (
+  quoteId: string,
+  musicians: Omit<QuoteMusician, 'id' | 'quote_id' | 'created_at'>[],
+  /**
+   * Round 5: the lineup the editor opened with. The server refuses the save
+   * when someone else changed the lineup meanwhile (40001), so a removed
+   * musician or an old fee never comes back. Null: not known (no check).
+   */
+  base?: Omit<QuoteMusician, 'id' | 'quote_id' | 'created_at'>[] | null,
+): Promise<{ data: QuoteLineupSaved | null; error: Error | null }> => {
+  const rows = (list: Omit<QuoteMusician, 'id' | 'quote_id' | 'created_at'>[]) => list.map((m) => ({
+    user_id: m.user_id ?? null,
+    name: m.name,
+    instrument: m.instrument ?? null,
+    fee: roundCents(Number(m.fee) || 0),
+    is_external: !!m.is_external,
+    is_available: m.is_available !== false,
+  }));
+  const payload = rows(musicians);
+  const { data, error } = await supabase.rpc('bw_quote_save_lineup', {
+    p_quote_id: quoteId,
+    p_musicians: payload,
+    ...(Array.isArray(base) ? { p_base: rows(base) } : {}),
+  });
+  if (error && isMissingRpc(error)) {
+    const alone = await saveQuoteMusicians(quoteId, musicians);
+    return alone.data
+      ? { data: { musicians: alone.data, eventId: null, synced: false, confirmed: false }, error: null }
+      : { data: null, error: alone.error };
+  }
+  if (error) return { data: null, error: new Error(error.message) };
+  const r = (data || {}) as { musicians?: QuoteMusician[]; event_id?: string | null; synced?: boolean; confirmed?: boolean };
+  return {
+    data: { musicians: Array.isArray(r.musicians) ? r.musicians : [], eventId: r.event_id ?? null, synced: !!r.synced, confirmed: !!r.confirmed },
+    error: null,
+  };
+};
+
+/**
+ * #293 round 6: the lineup was changed by someone else while the editor was
+ * open (bw_quote_lineup_current, 185: 40001, hint BW_LINEUP_CHANGED).
+ * Nothing was saved: the quote and its lineup are reloaded.
+ */
+export const isLineupChangedError = (e: unknown): boolean => {
+  const x = e as { code?: string; hint?: string; message?: string } | null;
+  return !!x && (x.hint === 'BW_LINEUP_CHANGED' || /BW_LINEUP_CHANGED/.test(String(x.message || '')));
+};
+
+/** An error that keeps the server's code and hint (the screens read them). */
+const rpcError = (error: { message?: string; code?: string; hint?: string; details?: string }) =>
+  Object.assign(new Error(error.message || 'Request failed'), { code: error.code, hint: error.hint, details: error.details });
+
+/**
+ * #293 round 6: an edited quote and its changed lineup in one call
+ * (bw_quote_save_with_lineup, 185), so neither is saved without the other.
+ * Written one after the other, a quote saved over a lineup someone else
+ * changed kept their removed musician's fee in its total while the lineup
+ * was refused, and every retry was refused again. `lineup` null: only the
+ * quote (updateQuote, as before). A database without the function: the two
+ * calls of round 5.
+ */
+export const saveQuoteWithLineup = async (
+  quoteId: string,
+  updates: Partial<Quote>,
+  lineup: ReturnType<typeof changedQuoteLineup>,
+): Promise<{ data: Quote | null; lineup: QuoteLineupSaved | null; error: Error | null; lineupError?: Error | null }> => {
+  if (!lineup) {
+    const r = await updateQuote(quoteId, updates);
+    return { data: r.data, lineup: null, error: r.error };
+  }
+  const rows = (list: Omit<QuoteMusician, 'id' | 'quote_id' | 'created_at'>[]) => list.map((m) => ({
+    user_id: m.user_id ?? null,
+    name: m.name,
+    instrument: m.instrument ?? null,
+    fee: roundCents(Number(m.fee) || 0),
+    is_external: !!m.is_external,
+    is_available: m.is_available !== false,
+  }));
+  const { data, error } = await supabase.rpc('bw_quote_save_with_lineup', {
+    p_quote_id: quoteId,
+    p_updates: updates,
+    p_musicians: rows(lineup.musicians),
+    ...(Array.isArray(lineup.base) ? { p_base: rows(lineup.base) } : {}),
+  });
+  if (error && isMissingRpc(error)) {
+    const q = await updateQuote(quoteId, updates);
+    if (q.error || !q.data) return { data: null, lineup: null, error: q.error };
+    const l = await saveQuoteLineup(quoteId, lineup.musicians, lineup.base);
+    return { data: q.data, lineup: l.data, error: null, lineupError: l.error };
+  }
+  if (error) return { data: null, lineup: null, error: rpcError(error) };
+  const r = (data || {}) as { quote?: Quote; lineup?: { musicians?: QuoteMusician[]; event_id?: string | null; synced?: boolean; confirmed?: boolean } };
+  const l = r.lineup || {};
+  return {
+    data: r.quote ?? null,
+    lineup: { musicians: Array.isArray(l.musicians) ? l.musicians : [], eventId: l.event_id ?? null, synced: !!l.synced, confirmed: !!l.confirmed },
+    error: r.quote ? null : new Error('Quote not saved'),
+  };
 };
 
 /**
@@ -545,6 +718,92 @@ export const lineupFromQuoteMusicians = (
   return rows;
 };
 
+/**
+ * #293 round 3: a quote edited from Quotes keeps the tentative event that
+ * holds its date in step (the event screen's own edit already did): date,
+ * times, place, client, fee and currency, and, when `musicians` is given
+ * (the saved quote_musicians rows), the lineup with each musician's fee.
+ * Without this, accepting the quote confirmed the event as first saved.
+ * Only while the event is tentative: a confirmed gig is the band's own and
+ * is never touched. People taken off the quote leave the event; the others
+ * keep their answer. `data`: the event synced, null when there is none.
+ */
+export const syncQuoteHoldEvent = async (
+  quoteId: string,
+  q: Partial<AppQuote>,
+  musicians?: Pick<QuoteMusician, 'user_id' | 'instrument' | 'fee'>[] | null,
+  /**
+   * Round 5: who was on the quote's lineup before this save. Only they can
+   * leave the gig: someone added to it directly, the admin, a deputy stay.
+   * Not given: nobody leaves.
+   */
+  previousUserIds?: (string | null | undefined)[] | null,
+): Promise<{ data: string | null; error: Error | null; confirmed?: boolean }> => {
+  try {
+    const { data: link, error: linkErr } = await supabase
+      .from('quotes')
+      .select('converted_to_event_id')
+      .eq('id', quoteId)
+      .maybeSingle();
+    if (linkErr) throw linkErr;
+    const tentative = async (col: 'id' | 'quote_id', value: string) => {
+      const { data, error } = await supabase.from('events').select('id').eq(col, value).eq('status', 'tentative').limit(1);
+      if (error) throw error;
+      return Array.isArray(data) && data[0]?.id ? (data[0].id as string) : null;
+    };
+    const linked = (link as { converted_to_event_id?: string | null } | null)?.converted_to_event_id;
+    const eventId = (isUuid(linked) ? await tentative('id', linked as string) : null) || (await tentative('quote_id', quoteId));
+    if (!eventId) return { data: null, error: null };
+
+    const currency = String(q.currency || '');
+    const { data: updated, error: upErr } = await supabase
+      .from('events')
+      .update({
+        title: q.eventName || q.clientName || t('Quote Event'),
+        ...(q.eventDate ? { event_date: q.eventDate } : {}),
+        start_time: q.eventTimeStart || '20:00',
+        end_time: q.eventTimeEnd || null,
+        venue_name: q.venueName || 'TBD',
+        venue: q.venueName || 'TBD',
+        venue_city: q.venueCity || null,
+        venue_address: q.venueAddress || null,
+        indoor_outdoor: q.indoorOutdoor || null,
+        fee: q.total || 0,
+        ...(/^[A-Za-z]{3}$/.test(currency) ? { currency: currency.toUpperCase() } : {}),
+        client_name: q.clientName || null,
+      })
+      .eq('id', eventId)
+      .eq('status', 'tentative')
+      .select('id');
+    if (upErr) throw upErr;
+    // Round 4: confirmed by someone else since it was found: the gig is
+    // theirs now; nothing more is changed or deleted.
+    if (!Array.isArray(updated) || updated.length === 0) return { data: null, error: null, confirmed: true };
+
+    if (Array.isArray(musicians)) {
+      const { data: { user } } = await getSafeUser();
+      const wanted = lineupFromQuoteMusicians(musicians, user?.id);
+      const { data: current, error: readErr } = await supabase.from('event_members').select('user_id, status').eq('event_id', eventId);
+      if (readErr) throw readErr;
+      const answered = new Map(((current || []) as { user_id: string; status: string }[]).map((r) => [r.user_id, r.status]));
+      const keep = new Set(wanted.map((r) => r.user_id));
+      const before = new Set((previousUserIds || []).filter((id): id is string => !!id));
+      const gone = [...answered.keys()].filter((id) => !keep.has(id) && before.has(id));
+      if (gone.length > 0) {
+        const { error: delErr } = await supabase.from('event_members').delete().eq('event_id', eventId).in('user_id', gone);
+        if (delErr) throw delErr;
+      }
+      // Everyone's fee as on the quote; who already answered keeps the answer.
+      const rows = wanted.map((r) => ({ ...r, status: answered.get(r.user_id) || r.status }));
+      const { error: lineupErr } = await saveEventLineup(eventId, rows);
+      if (lineupErr) throw lineupErr;
+    }
+    return { data: eventId, error: null };
+  } catch (error: any) {
+    return { data: null, error: error instanceof Error ? error : new Error(error?.message || String(error)) };
+  }
+};
+
 export interface QuoteGigResult {
   eventId: string;
   /** A new gig was made (not the quote's tentative one, nor one made before). */
@@ -572,6 +831,9 @@ export const convertQuoteToEvent = async (quoteId: string): Promise<{ data: Quot
     let eventId = found;
     let lineupError = false;
     if (!eventId) {
+      // The gig is the current user's (round 8, Claude): the quote's author
+      // may have left, or be deleting their account.
+      const { data: { user } } = await getSafeUser();
       const { data: event, error: createError } = await supabase
         .from('events')
         .insert({
@@ -596,7 +858,7 @@ export const convertQuoteToEvent = async (quoteId: string): Promise<{ data: Quot
           notes: quote.client_notes,
           internal_notes: quote.internal_notes,
           quote_id: quoteId,
-          created_by: quote.created_by,
+          ...(user?.id ? { created_by: user.id } : {}),
         })
         // Only the id: after 078 step 2 the price and client columns of
         // events cannot be read back directly.
@@ -607,7 +869,6 @@ export const convertQuoteToEvent = async (quoteId: string): Promise<{ data: Quot
       eventId = event.id as string;
 
       // The quote's musicians and their fees become the gig's lineup.
-      const { data: { user } } = await getSafeUser();
       const lineup = lineupFromQuoteMusicians(quote.musicians, user?.id);
       if (lineup.length > 0) {
         const { error: saveError } = await saveEventLineup(eventId, lineup);
@@ -798,6 +1059,8 @@ export const isUuid = (value: unknown): value is string => typeof value === 'str
 const DB_STATUSES: QuoteStatus[] = ['draft', 'sent', 'viewed', 'accepted', 'declined', 'expired', 'negotiating', 'archived'];
 
 const textOrUndefined = (v?: string | null): string | undefined => (v && String(v).trim() ? String(v) : undefined);
+/** A field the wizard can clear: null, so an UPDATE clears it too (supabase-js drops undefined). */
+const textOrNull = (v?: string | null): string | null => textOrUndefined(v) ?? null;
 const intOrUndefined = (v?: number | null): number | undefined =>
   typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : undefined;
 const num = (v?: number | null): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
@@ -828,8 +1091,9 @@ export const appQuoteToDbRecord = (q: Partial<AppQuote>, bandId: string): Partia
     band_id: bandId,
     status: dbStatus,
     client_name: textOrUndefined(q.clientName) || 'Client',
-    client_email: textOrUndefined(q.clientEmail),
-    client_phone: textOrUndefined(q.clientPhone),
+    // Who the quote goes to: a cleared contact must reach the database (183).
+    client_email: textOrNull(q.clientEmail),
+    client_phone: textOrNull(q.clientPhone),
     client_company: textOrUndefined(q.clientCompany),
     event_name: textOrUndefined(q.eventName || q.eventTitle),
     event_type: textOrUndefined(q.eventType),
@@ -893,7 +1157,8 @@ export const appQuoteToDbRecord = (q: Partial<AppQuote>, bandId: string): Partia
     cancellation_policy: textOrUndefined(q.cancellationPolicy),
     cancellation_terms: textOrUndefined(q.cancellationTerms),
     internal_notes: textOrUndefined(q.internalNotes),
-    client_notes: textOrUndefined(q.clientNotes || q.notes),
+    // Round 5: a cleared note is cleared (never the old `notes` copy back).
+    client_notes: textOrUndefined('clientNotes' in q ? q.clientNotes : q.notes),
     special_terms: textOrUndefined(q.specialTerms),
     deposit_amount: q.depositRequired === false
       ? 0
@@ -903,6 +1168,71 @@ export const appQuoteToDbRecord = (q: Partial<AppQuote>, bandId: string): Partia
     sent_at: dbStatus === 'sent' ? q.sentAt || new Date().toISOString() : undefined,
   };
 };
+
+/**
+ * The columns an edit of an existing quote writes (round 4): only those
+ * whose value changed from `original`, the quote as the screen read it.
+ * A field the user cleared goes out as null (undefined would be left out of
+ * the UPDATE by supabase-js, and the old value, maybe the previous client's
+ * company or notes, would stay); a field the edit does not carry (not in
+ * `q`) keeps what the quote has. Never the band, the status or the send
+ * time: the wizard only echoes the status it was opened with, and writing
+ * it back could restore the old client's status after the server moved the
+ * quote on (183: new recipient). `edit_base_at`: when the screen read the
+ * quote, so the server refuses any edit made on a copy older than a change
+ * of client (183; Codex 11-22: notes or fees alone too, not only a contact).
+ */
+export const quoteUpdateRecord = (q: Partial<AppQuote>, bandId: string, original: Partial<AppQuote>): Partial<Quote> => {
+  const strip = (r: Partial<Quote>) => {
+    const { band_id: _band, status: _status, sent_at: _sentAt, ...rest } = r;
+    return rest as Record<string, unknown>;
+  };
+  const before = strip(appQuoteToDbRecord(original, bandId));
+  // Round 5: a key the edit has is one it carries, also when its value is
+  // undefined (the wizard sends a cleared phone, company or note that way):
+  // cleared, it goes out as null. Only a key it doesn't have keeps the
+  // quote's value.
+  const after = strip(appQuoteToDbRecord({ ...original, ...q }, bandId));
+  // Without the time the screen read the quote (never for a quote loaded
+  // from the database) the whole form goes out, as before round 4: the
+  // server then treats it as a full save.
+  const full = !original.updatedAt;
+  const out: Record<string, unknown> = {};
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    // Round 5: the totals are the server's (183, from the stored parts in
+    // the same UPDATE), so two admins' fee edits both count.
+    if (!full && SERVER_TOTALS.has(key)) continue;
+    if (!full && JSON.stringify(after[key] ?? null) === JSON.stringify(before[key] ?? null)) continue;
+    if (after[key] === undefined && KEEP_WHEN_UNSET.has(key)) continue;
+    out[key] = after[key] === undefined ? null : after[key];
+  }
+  if (!full) {
+    out.edit_base_at = original.updatedAt;
+    // Round 6: kept aside for a database before 183 (updateQuote's retry).
+    const totals: Record<string, unknown> = {};
+    for (const key of SERVER_TOTALS) {
+      if (key in after && JSON.stringify(after[key] ?? null) !== JSON.stringify(before[key] ?? null)) totals[key] = after[key] ?? null;
+    }
+    if (Object.keys(totals).length > 0) compatTotals.set(out, totals);
+  }
+  return out as Partial<Quote>;
+};
+
+/**
+ * Round 6: the totals an edit would have sent before 183 (worked out by the
+ * app), by the edit they belong to. Sent only when the database has no
+ * edit_base_at (no server totals): never to a database that computes them.
+ */
+const compatTotals = new WeakMap<object, Record<string, unknown>>();
+
+/** Computed by the database on an edit (183 round 5): never sent with one. */
+const SERVER_TOTALS = new Set(['subtotal', 'discount_amount', 'net_amount', 'vat_amount', 'total', 'deposit_amount']);
+
+/** Flags with a meaning of their own when unset (the column default), never cleared to null by an edit. */
+const KEEP_WHEN_UNSET = new Set([
+  'travel_included', 'accommodation_needed', 'meals_included', 'sound_included', 'lights_included',
+  'backline_included', 'deposit_required',
+]);
 
 /** Maps the wizard's musicians to `quote_musicians` rows (user_id only when it is a real profile id). */
 export const appMusiciansToDb = (
@@ -919,6 +1249,35 @@ export const appMusiciansToDb = (
       is_available: m.isAvailable !== false,
     }));
 
+/**
+ * Round 5: a lineup as one comparable value: who (round 6: with their
+ * profile), what they play, their fee, in any order (as bw_quote_lineup_key,
+ * 185). The editors save the lineup
+ * only when it differs from the one they opened with.
+ */
+export const quoteLineupKey = (musicians?: AppQuoteMusician[]): string =>
+  JSON.stringify(
+    appMusiciansToDb(musicians)
+      .map((m) => JSON.stringify([
+        // Round 6: who includes the profile (two of the same name are two people).
+        m.user_id ? String(m.user_id).toLowerCase() : '',
+        String(m.name || '').trim().toLowerCase(),
+        String(m.instrument || '').trim().toLowerCase(),
+        roundCents(Number(m.fee) || 0).toFixed(2),
+      ]))
+      .sort(),
+  );
+
+/** Round 5: the lineup to save (null: unchanged from the one opened, save nothing). */
+export const changedQuoteLineup = (
+  edited: AppQuoteMusician[] | undefined,
+  opened: AppQuoteMusician[] | undefined,
+): { musicians: ReturnType<typeof appMusiciansToDb>; base: ReturnType<typeof appMusiciansToDb> | null } | null => {
+  if (!edited) return null;
+  if (Array.isArray(opened) && quoteLineupKey(edited) === quoteLineupKey(opened)) return null;
+  return { musicians: appMusiciansToDb(edited), base: Array.isArray(opened) ? appMusiciansToDb(opened) : null };
+};
+
 /** Maps a `quotes` row to the app's camelCase quote used by the list, detail modal and PDF. */
 export const dbQuoteToAppQuote = (q: Quote & { musicians?: QuoteMusician[] }): AppQuote => ({
   ...((q.presentation as Partial<AppQuote>) || {}),
@@ -930,7 +1289,7 @@ export const dbQuoteToAppQuote = (q: Quote & { musicians?: QuoteMusician[] }): A
   status: (q.status?.toUpperCase() || 'DRAFT') as AppQuoteStatus,
   clientName: q.client_name,
   clientEmail: q.client_email || '',
-  clientPhone: q.client_phone,
+  clientPhone: q.client_phone ?? undefined,
   clientCompany: q.client_company,
   eventName: q.event_name || '',
   eventType: (q.event_type || 'other') as AppQuote['eventType'],

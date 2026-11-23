@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Folder, Plus } from '@/app/components/icons';
 import { FormError, PillButton, Selector } from '@/app/components/bw/Form';
@@ -63,11 +63,32 @@ export function setsFromGigSongs(songs: GigSetlistSong[]): DraftSet[] {
 const snapshot = (sets: DraftSet[]) =>
   JSON.stringify(sets.filter((s) => s.songs.length > 0).map((s) => s.songs.map((sg) => sg.songId)));
 
-/** Rows to save: empty sets drop out and the rest are numbered 1, 2, … */
-const rowsOf = (sets: DraftSet[]) =>
+/** The setlist as stored (its own set numbers), in play order: what a save expects to find (188). */
+// With each row's id: saved only over exactly these rows (188, Codex r6 B6).
+const loadedOrder = (songs: GigSetlistSong[]): { song_id: string; set_number: number; id?: string }[] =>
+  setsFromGigSongs(songs).flatMap((s) =>
+    s.songs.map((sg) => ({
+      ...(typeof sg.source?.id === 'string' && sg.source.id ? { id: sg.source.id } : {}),
+      song_id: sg.songId,
+      set_number: typeof sg.source?.setNumber === 'number' && sg.source.setNumber >= 1 ? Math.floor(sg.source.setNumber) : 1,
+    }))
+  );
+
+/**
+ * Rows to save: empty sets drop out and the rest are numbered 1, 2, …
+ * A song that was loaded names its row (188 keeps that row: the same song
+ * twice with the first removed leaves the second its own singers and notes).
+ */
+const rowsOf = (sets: DraftSet[]): { id?: string; song_id: string; set_number: number }[] =>
   sets
     .filter((s) => s.songs.length > 0)
-    .flatMap((s, i) => s.songs.map((sg) => ({ song_id: sg.songId, set_number: i + 1 })));
+    .flatMap((s, i) =>
+      s.songs.map((sg) => ({
+        ...(typeof sg.source?.id === 'string' && sg.source.id ? { id: sg.source.id } : {}),
+        song_id: sg.songId,
+        set_number: i + 1,
+      }))
+    );
 
 export interface GigSetlistDraft {
   sets: DraftSet[];
@@ -103,13 +124,19 @@ export function useGigSetlistDraft(opts: {
   const [error, setError] = useState<string | null>(null);
   const sets = draft ?? saved;
   const dirty = draft !== null && snapshot(draft) !== snapshot(saved);
+  // The setlist as it was when this draft started: the save is written only
+  // while the setlist is still that, never over someone else's newer one.
+  const draftRef = useRef<DraftSet[] | null>(null);
+  draftRef.current = draft;
+  const baseRef = useRef<{ song_id: string; set_number: number; id?: string }[] | null>(null);
 
   const update = useCallback(
     (fn: (prev: DraftSet[]) => DraftSet[]) => {
       setError(null);
+      if (draftRef.current === null) baseRef.current = loadedOrder(songs);
       setDraft((prev) => fn(prev ?? saved));
     },
-    [saved]
+    [saved, songs]
   );
 
   const reorder = useCallback(
@@ -171,8 +198,14 @@ export function useGigSetlistDraft(opts: {
       let id = setlistId || null;
       let before: SetlistEntry[] = [];
       if (id) {
-        const { error: err, previous } = await replaceSetlistSongs(id, rows);
+        const expected = baseRef.current ?? loadedOrder(songs);
+        const { error: err, previous, conflict } = await replaceSetlistSongs(id, rows, { expected: { songs: expected } });
         if (err) throw err;
+        if (conflict) {
+          // Nothing written: the draft stays for the admin to look at again.
+          setError(t('Someone else changed this setlist while you were editing. Your changes are still here, not saved yet.'));
+          return false;
+        }
         before = entriesFromRows(previous ?? []);
       } else {
         // A gig without a setlist yet: create it and link it to the gig.
@@ -180,7 +213,8 @@ export function useGigSetlistDraft(opts: {
         const name = eventTitle?.trim() ? t('{title} setlist', { title: eventTitle.trim() }) : t('Event setlist');
         const { data, error: err } = await createSetlist(
           { band_id: bandId, name, song_count: rows.length },
-          rows.map((r, i) => ({ ...r, position: i + 1 }))
+          // A new setlist: new rows, no ids from another one.
+          rows.map(({ song_id, set_number }, i) => ({ song_id, set_number, position: i + 1 }))
         );
         if (err || !data?.id) throw err || new Error(t('Could not save the setlist'));
         id = data.id;
@@ -194,6 +228,7 @@ export function useGigSetlistDraft(opts: {
           s.songs.map((sg) => ({ ...(sg.source ?? {}), id: undefined, songId: sg.songId, setNumber: i + 1, title: sg.title, artist: sg.artist }))
         );
       setDraft(null);
+      baseRef.current = null;
       haptic.confirm();
       onSaved(next, id);
       void notifySetlistSaved({ setlistId: id, eventId, change: diffSetlist(before, after) });
@@ -204,7 +239,7 @@ export function useGigSetlistDraft(opts: {
     } finally {
       setSaving(false);
     }
-  }, [draft, saving, dirty, setlistId, bandId, eventId, eventTitle, onSaved, t]);
+  }, [draft, saving, dirty, setlistId, bandId, eventId, eventTitle, onSaved, t, songs]);
 
   return { sets, dirty, saving, error, reorder, remove, removeSongs, add, addSet, load, discard, save };
 }

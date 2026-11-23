@@ -21,7 +21,7 @@ export interface DeputyGig {
   city?: string | null;
   address?: string | null;
   role?: string | null;
-  /** The reply page, so the entry leads back to the details. */
+  /** A page without any credential in it (the app), so the entry leads back to it. */
   url?: string | null;
   /** A rehearsal reads "Rehearsal 19:00–22:00" instead of "Show …". */
   kind?: 'gig' | 'rehearsal';
@@ -53,26 +53,29 @@ const hm = (v?: string | null): [number, number] | null => {
   return m ? [Number(m[1]), Number(m[2])] : null;
 };
 const pad = (n: number) => String(n).padStart(2, '0');
-const ymd = (d: Date) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
-const stamp = (d: Date) => `${ymd(d)}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
-const nextDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+// Floating wall-clock times (no TZID): the Dates here hold them as UTC, so
+// the device's time zone and its DST changes never move an hour (Claude
+// review #285 r7: a phone in New York wrote 0130 where the server wrote 0230).
+const ymd = (d: Date) => `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}`;
+const stamp = (d: Date) => `${ymd(d)}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}00`;
+const nextDay = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1));
 
 /** Start and end of the entry; no times means an all-day entry. */
 export function gigWindow(g: DeputyGig): { allDay: true; day: Date } | { allDay: false; start: Date; end: Date } {
   const [y, mo, d] = g.date.split('-').map(Number);
   const first = hm(g.loadIn) || hm(g.soundcheck) || hm(g.start);
-  if (!first) return { allDay: true, day: new Date(y, mo - 1, d) };
-  const start = new Date(y, mo - 1, d, first[0], first[1]);
+  if (!first) return { allDay: true, day: new Date(Date.UTC(y, mo - 1, d)) };
+  const start = new Date(Date.UTC(y, mo - 1, d, first[0], first[1]));
   const showStart = hm(g.start);
   const endHm = hm(g.end);
   let end: Date;
   if (endHm) {
-    end = new Date(y, mo - 1, d, endHm[0], endHm[1]);
+    end = new Date(Date.UTC(y, mo - 1, d, endHm[0], endHm[1]));
     // Past midnight: the show ends the next day.
-    if (end <= start) end.setDate(end.getDate() + 1);
+    if (end <= start) end.setUTCDate(end.getUTCDate() + 1);
   } else {
-    const base = showStart ? new Date(y, mo - 1, d, showStart[0], showStart[1]) : start;
-    if (base < start) base.setDate(base.getDate() + 1);
+    const base = showStart ? new Date(Date.UTC(y, mo - 1, d, showStart[0], showStart[1])) : new Date(start.getTime());
+    if (base < start) base.setUTCDate(base.getUTCDate() + 1);
     end = new Date(base.getTime() + 3 * 3600 * 1000);
   }
   return { allDay: false, start, end };
@@ -102,7 +105,11 @@ const details = (g: DeputyGig, l: GigLabels) =>
 /** "Title · Band", or just the title (personal gigs have no band). */
 const summary = (g: DeputyGig) => (g.bandName ? `${g.title} · ${g.bandName}` : g.title);
 
-const icsText = (s: string) => s.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/([,;])/g, '\\$1');
+// Every line break (\r\n, a lone \r, \n) becomes an escaped \n first, so a
+// text field can never start a property line of its own (Claude review of
+// #285 r5, M2).
+const icsText = (s: string) =>
+  s.replace(/\r\n?/g, '\n').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/([,;])/g, '\\$1');
 
 const bytes = (s: string) => new TextEncoder().encode(s).length;
 
@@ -130,12 +137,20 @@ export function gigEvent(
   g: DeputyGig,
   labels: GigLabels,
   uid: string,
-  opts: { now?: Date; updatedAt?: string | null; cancelled?: boolean; rrule?: string | null } = {},
+  opts: { now?: Date; updatedAt?: string | null; cancelled?: boolean; rrule?: string | null; exdates?: string[] } = {},
 ): string[] {
   const w = gigWindow(g);
   const when = w.allDay
     ? [`DTSTART;VALUE=DATE:${ymd(w.day)}`, `DTEND;VALUE=DATE:${ymd(nextDay(w.day))}`]
     : [`DTSTART:${stamp(w.start)}`, `DTEND:${stamp(w.end)}`];
+  // Dates deleted from the series: the same value type as DTSTART, at the
+  // entry's own start time (RFC 5545 matches EXDATE to an instance's start).
+  const exdates = opts.rrule
+    ? (opts.exdates ?? []).map((d) => {
+        const x = gigWindow({ ...g, date: d });
+        return x.allDay ? `EXDATE;VALUE=DATE:${ymd(x.day)}` : `EXDATE:${stamp(x.start)}`;
+      })
+    : [];
   const changed = opts.updatedAt ? new Date(opts.updatedAt) : null;
   // Minutes since 2026 fit an integer for centuries.
   const sequence = changed && !Number.isNaN(changed.getTime())
@@ -143,15 +158,16 @@ export function gigEvent(
     : 0;
   return [
     'BEGIN:VEVENT',
-    `UID:${uid}@bandwith`,
+    `UID:${uid.replace(/[\r\n]/g, '')}@bandwith`,
     `DTSTAMP:${utcStamp(opts.now ?? new Date())}`,
     `SEQUENCE:${sequence}`,
     ...when,
     opts.rrule ? `RRULE:${opts.rrule}` : '',
+    ...exdates,
     `SUMMARY:${icsText(summary(g))}`,
     location(g) ? `LOCATION:${icsText(location(g))}` : '',
     `DESCRIPTION:${icsText(details(g, labels))}`,
-    g.url ? `URL:${g.url}` : '',
+    g.url ? `URL:${g.url.replace(/[\r\n]/g, '')}` : '',
     `STATUS:${opts.cancelled ? 'CANCELLED' : 'CONFIRMED'}`,
     'END:VEVENT',
   ].filter(Boolean);
@@ -159,11 +175,22 @@ export function gigEvent(
 
 /**
  * A repeating rehearsal (events.recurrence_rule, as the app expands it in
- * EventsView: weekly / biweekly / monthly, interval, until, count) as an
- * RRULE, so the calendar repeats it by itself. Unknown rules: null (the
- * first date only).
+ * src/lib/recurrence.ts: weekly / biweekly / monthly, interval, until,
+ * count) as an RRULE, so the calendar repeats it by itself. Unknown rules:
+ * null (the first date only).
+ *
+ * Monthly from the 29th-31st (`start`): the app takes the last day of a
+ * month without that day (Jan 31 -> Feb 28 -> Mar 31; Jan 30 -> Feb 28 ->
+ * Mar 30), where a plain FREQ=MONTHLY skips that month. The 31st is
+ * BYMONTHDAY=-1, the month's last day; the 29th and 30th are BYMONTHDAY=28..day
+ * with BYSETPOS=-1, the latest of those days the month has: the day itself,
+ * else the month's last day.
+ *
+ * UNTIL takes DTSTART's value type (RFC 5545 3.3.10; Claude review of #285,
+ * round 4): a date for an all-day series, else a local date-time (these
+ * files are floating, no TZID) at the end of the last day.
  */
-export function recurrenceRule(rule: unknown): string | null {
+export function recurrenceRule(rule: unknown, start?: string | null, opts: { timed?: boolean } = {}): string | null {
   if (!rule || typeof rule !== 'object') return null;
   const r = rule as { freq?: unknown; frequency?: unknown; interval?: unknown; until?: unknown; count?: unknown };
   const freq = String(r.freq ?? r.frequency ?? '').toLowerCase();
@@ -175,9 +202,16 @@ export function recurrenceRule(rule: unknown): string | null {
     : freq === 'monthly' ? ['FREQ=MONTHLY', `INTERVAL=${every}`]
     : null;
   if (!parts) return null;
+  const day = Number(/^\d{4}-\d{2}-(\d{2})/.exec(start ?? '')?.[1]);
+  // The 31st is the month's last day (BYMONTHDAY=-1, Claude review of #285);
+  // the 29th and 30th the latest of 28..day the month has.
+  if (freq === 'monthly' && day === 31) parts.push('BYMONTHDAY=-1');
+  else if (freq === 'monthly' && (day === 29 || day === 30)) {
+    parts.push(`BYMONTHDAY=${Array.from({ length: day - 27 }, (_, i) => 28 + i).join(',')}`, 'BYSETPOS=-1');
+  }
   const until = /^(\d{4})-(\d{2})-(\d{2})/.exec(typeof r.until === 'string' ? r.until : '');
   const count = Number(r.count);
-  if (until) parts.push(`UNTIL=${until[1]}${until[2]}${until[3]}`);
+  if (until) parts.push(`UNTIL=${until[1]}${until[2]}${until[3]}${opts.timed ? 'T235959' : ''}`);
   else if (Number.isInteger(count) && count >= 1 && count <= 1000) parts.push(`COUNT=${count + 1}`);
   return parts.join(';');
 }
@@ -219,4 +253,197 @@ export function googleCalendarUrl(g: DeputyGig, labels: GigLabels): string {
     location: location(g),
   });
   return `https://calendar.google.com/calendar/render?${q.toString()}`;
+}
+
+// ------------------------------------------------------------- the feeds --
+// What the edge functions deputy-calendar and member-calendar serve, built
+// here so the tests can read it.
+
+/**
+ * One gig of the deputy's calendar (bw_deputy_calendar_feed, 182). `mine`:
+ * the request of the link. Older servers (bw_deputy_feed, 084) sent each
+ * request's reply token instead; it is never written into an entry.
+ */
+export interface DeputyFeedGig {
+  id: string;
+  mine?: boolean | null;
+  token?: string | null;
+  cancelled: boolean;
+  role: string | null;
+  event_title: string | null;
+  event_date: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  load_in_time: string | null;
+  soundcheck_time: string | null;
+  venue_name: string | null;
+  venue_city: string | null;
+  venue_address: string | null;
+  updated_at: string | null;
+}
+
+/**
+ * The deputy's calendar (one = only the gig of the link). Entries carry no
+ * link to the reply page: whoever sees a calendar entry (a shared or
+ * family calendar, a forwarded invite) must not get the fee or the power to
+ * change the answer. The page is reached from the message the band sent.
+ */
+export function deputyFeedCalendar(
+  feed: { band_name?: string | null; gigs?: DeputyFeedGig[] | null },
+  opts: { token: string; lang: string; one: boolean; site?: string; now?: Date },
+): string {
+  const labels = GIG_LABELS[opts.lang] ?? GIG_LABELS.en;
+  const band = feed.band_name || "BandWith";
+  const mine = (g: DeputyFeedGig) => g.mine ?? (!!g.token && g.token === opts.token);
+  const events = (feed.gigs ?? [])
+    .filter((g) => g.event_date && (!opts.one || mine(g)))
+    .map((g) =>
+      gigEvent(
+        {
+          title: g.event_title || labels.gig || "Gig",
+          bandName: band,
+          date: g.event_date as string,
+          loadIn: g.load_in_time,
+          soundcheck: g.soundcheck_time,
+          start: g.start_time,
+          end: g.end_time,
+          venue: g.venue_name,
+          city: g.venue_city,
+          address: g.venue_address,
+          role: g.role,
+        },
+        labels,
+        `deputy-${g.id}`,
+        { updatedAt: g.updated_at, cancelled: g.cancelled, now: opts.now },
+      )
+    );
+  return calendarFile(events, `${band} · BandWith`);
+}
+
+/** One event of bw_member_calendar_feed (165). */
+export interface MemberFeedEvent {
+  id: string;
+  type: "gig" | "rehearsal" | "personal";
+  title: string | null;
+  band_name: string | null;
+  event_date: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  load_in_time: string | null;
+  soundcheck_time: string | null;
+  venue_name: string | null;
+  venue_city: string | null;
+  venue_address: string | null;
+  role: string | null;
+  recurrence: unknown;
+  updated_at: string | null;
+}
+
+const ymdStr = (d: Date) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+
+/** The dates deleted from a series (recurrence_rule.skip_dates, #297): valid YYYY-MM-DD only. */
+export function skipDates(rule: unknown): string[] {
+  const list = rule && typeof rule === "object" ? (rule as { skip_dates?: unknown }).skip_dates : null;
+  return Array.isArray(list) ? [...new Set(list.filter((d): d is string => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)))].sort() : [];
+}
+
+/**
+ * A monthly series' date (YYYY-MM-DD), `k` months after its first (`start`),
+ * or null for a bad start. One rule, also in 182's bw_calendar_monthly_date
+ * and the app's repeatDates (#298): the first date's day, else that month's
+ * last day, always counted from the first date, so a short month carries
+ * nothing over (Jan 31 -> Feb 28 -> Mar 31; Codex review #285 round 5).
+ */
+export function monthlyDate(start: string, k: number): string | null {
+  const s = /^(\d{4})-(\d{2})-(\d{2})/.exec(start || "");
+  if (!s || !Number.isInteger(k) || k < 0) return null;
+  const [y, m, day] = [Number(s[1]), Number(s[2]) - 1, Number(s[3])];
+  // Day 0 of the following month is the last day of this one.
+  const last = new Date(Date.UTC(y, m + k + 1, 0, 12, 0, 0)).getUTCDate();
+  return ymdStr(new Date(Date.UTC(y, m + k, Math.min(day, last), 12, 0, 0)));
+}
+
+/**
+ * Whether `date` (YYYY-MM-DD) is one of the dates of a repeating rehearsal
+ * that starts on `start`, stepped the way the app's calendar steps it
+ * (src/lib/recurrence.ts: weekly / biweekly / monthly by interval, counted
+ * from the first date, a short month taking its last day; until; count =
+ * repeats after the first date). A deleted date (skip_dates) is none.
+ */
+export function isOccurrence(rule: unknown, start: string, date: string): boolean {
+  if (!rule || typeof rule !== "object") return false;
+  const r = rule as { freq?: unknown; frequency?: unknown; interval?: unknown; until?: unknown; count?: unknown };
+  const freq = String(r.freq ?? r.frequency ?? "").toLowerCase();
+  if (!["weekly", "biweekly", "monthly"].includes(freq)) return false;
+  const s = /^(\d{4})-(\d{2})-(\d{2})/.exec(start);
+  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  if (skipDates(rule).includes(date)) return false;
+  if (date === `${s[1]}-${s[2]}-${s[3]}`) return true;
+  const n = Number(r.interval);
+  const every = Number.isInteger(n) && n >= 1 && n <= 52 ? n : 1;
+  const until = /^(\d{4}-\d{2}-\d{2})/.exec(typeof r.until === "string" ? r.until : "")?.[1] ?? null;
+  const c = Number(r.count);
+  const count = Number.isInteger(c) && c >= 1 && c <= 1000 ? c : 1000;
+  const [y, m, day] = [Number(s[1]), Number(s[2]) - 1, Number(s[3])];
+  for (let i = 1; i <= count; i++) {
+    const d =
+      freq === "weekly" ? ymdStr(new Date(Date.UTC(y, m, day + 7 * every * i, 12, 0, 0)))
+      : freq === "biweekly" ? ymdStr(new Date(Date.UTC(y, m, day + 14 * i, 12, 0, 0)))
+      : (monthlyDate(start, every * i) as string);
+    if (until && d > until) return false;
+    if (d === date) return true;
+    if (d > date) return false;
+  }
+  return false;
+}
+
+/**
+ * The member's calendar, or one event as a file to import once (`one` =
+ * its id). One date of a repeating rehearsal (`occurrence`) is that date
+ * alone, without the series rule, under its own UID (also when the server
+ * already resolved it: bw_member_event_calendar sends that date without
+ * the rule). Null when that event (or that date of it) is not in the feed.
+ */
+export function memberFeedCalendar(
+  feedEvents: MemberFeedEvent[],
+  opts: { lang: string; site: string; one?: string | null; occurrence?: string | null; now?: Date },
+): string | null {
+  const labels = GIG_LABELS[opts.lang] ?? GIG_LABELS.en;
+  const one = opts.one || null;
+  const chosen = feedEvents.filter((e) => e.event_date && (!one || e.id === one));
+  if (one && chosen.length === 0) return null;
+  const events: string[][] = [];
+  for (const e of chosen) {
+    const timed = !gigWindow({ title: '', bandName: '', date: e.event_date as string, loadIn: e.load_in_time, soundcheck: e.soundcheck_time, start: e.start_time, end: e.end_time }).allDay;
+    const rrule = recurrenceRule(e.recurrence, e.event_date, { timed });
+    let occ = one && opts.occurrence ? opts.occurrence : null;
+    if (occ && rrule) {
+      if (!isOccurrence(e.recurrence, e.event_date as string, occ)) return null;
+    } else if (occ && occ !== e.event_date) {
+      // A one-off: a date that is not its own is ignored. (The server sends
+      // an occurrence already resolved to the event's date, rule removed.)
+      occ = null;
+    }
+    events.push(gigEvent(
+      {
+        title: e.title || (e.type === "rehearsal" ? labels.rehearsal : labels.gig) || "Gig",
+        bandName: e.band_name ?? "",
+        kind: e.type === "rehearsal" ? "rehearsal" : "gig",
+        date: occ ?? (e.event_date as string),
+        loadIn: e.load_in_time,
+        soundcheck: e.soundcheck_time,
+        start: e.start_time,
+        end: e.end_time,
+        venue: e.venue_name,
+        city: e.venue_city,
+        address: e.venue_address,
+        role: e.role,
+        url: opts.site,
+      },
+      labels,
+      occ ? `event-${e.id}-${occ.replace(/-/g, "")}` : `event-${e.id}`,
+      { updatedAt: e.updated_at, rrule: occ ? null : rrule, exdates: occ ? [] : skipDates(e.recurrence), now: opts.now },
+    ));
+  }
+  return calendarFile(events, one ? undefined : "BandWith", "Member");
 }

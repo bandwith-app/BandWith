@@ -119,8 +119,8 @@
   <h3 id="art-welcome-tour" data-roles="admin,member,deputy">Il tour di benvenuto</h3>
   <p>La prima volta che si apre una band su un dispositivo, BandWith mostra un breve tour dedicato al proprio ruolo. Si scorre con <b class="ui">Next</b> e <b class="ui">Back</b>; l'ultima scheda ha <b class="ui">Done</b>. <b class="ui">Close tour</b> lo chiude in qualsiasi momento.</p>
   <div class="roles">
-    <div data-role="admin">Quattro schede: la band in un unico posto, come mettere un gig in calendario, chi vede quali compensi e le tariffe. L'ultima ha <b class="ui">Configure rates</b>, che apre <b class="ui">Pricing, fees &amp; services</b>.</div>
-    <div data-role="member">Tre schede: la Home, come rispondere a un invito a un gig, e i brani (accordi, testi, note personali e modalità Stage).</div>
+    <div data-role="admin">Cinque schede: la band in un unico posto, come mettere un gig in calendario, le scalette pronte anche senza segnale, chi vede quali compensi e le tariffe. L'ultima ha <b class="ui">Configure rates</b>, che apre <b class="ui">Pricing, fees &amp; services</b>.</div>
+    <div data-role="member">Quattro schede: la Home, come rispondere a un invito a un gig, i brani (accordi, testi, note personali e modalità Stage) e le scalette pronte anche senza segnale.</div>
     <div data-role="deputy">Tre schede su <b class="ui">Deputy gigs</b>: rispondere a una richiesta, cosa condivide la band con il sostituto, e aggiungere i propri gig da sostituto al calendario.</div>
   </div>
   <p>Ogni scheda ha <b class="ui">Learn more in the Academy</b>, che apre la guida corrispondente dentro l'app; chiusa la guida si torna al tour.</p>
@@ -343,8 +343,8 @@
 
   <h3 id="art-offline-mode" data-roles="admin,member,deputy">Usare BandWith offline</h3>
   <p>Band, gig e scalette restano disponibili senza connessione: l'app mostra quanto caricato per ultimo su quel dispositivo. Una striscia sotto la barra di stato indica <b class="ui">You’re offline · showing cached info</b>.</p>
-  <p>Creare, modificare o eliminare un gig o una prova funziona offline. L'app conferma <b class="ui">Saved offline • Will sync when connected</b> e la striscia conta le modifiche in attesa, ad es. <b class="ui">You’re offline · 2 changes will sync</b>.</p>
-  <p>Al ritorno della connessione le modifiche partono da sole: la striscia mostra <b class="ui">Back online · 2 changes to sync</b> con il pulsante <b class="ui">Sync now</b>, poi <b class="ui">Back online · synced</b>.</p>
+  <p>Creare, modificare o eliminare un gig o una prova funziona offline. L'app conferma <b class="ui">Saved offline • Will sync when connected</b> e la striscia conta le modifiche in attesa, ad es. <b class="ui">You’re offline · 2 changes waiting for signal</b>.</p>
+  <p>Al ritorno della connessione le modifiche partono da sole: la striscia mostra <b class="ui">Back online · sending 2 changes</b> con il pulsante <b class="ui">Send now</b>, poi <b class="ui">Back online · up to date</b>. Per Stage e Live mode vedi <a data-ref="live-mode-offline">Stage e Live mode senza segnale</a>.</p>
   <p class="steps-title">Richiedono la connessione</p>
   <ul>
     <li>Salvare un preventivo (l'evento si salva offline, il preventivo no).</li>
@@ -352,7 +352,7 @@
     <li>Rispondere agli inviti e unirsi a una band.</li>
     <li>Il primo accesso su un dispositivo.</li>
   </ul>
-  <aside class="note tip">All'uscita dall'account le modifiche in attesa vengono inviate prima, il che può richiedere qualche secondo. Per sicurezza conviene uscire solo quando la striscia indica synced.</aside>
+  <aside class="note tip">All'uscita dall'account le modifiche in attesa vengono inviate prima, il che può richiedere qualche secondo. Per sicurezza conviene uscire solo quando la striscia indica up to date.</aside>
 
   <h2>Profilo e impostazioni</h2>
 
@@ -374,9 +374,10 @@
     <tbody>
       <tr><td><b class="ui">Notifications</b></td><td><b class="ui">Push notifications</b>, <b class="ui">Email notifications</b>, <b class="ui">Product news</b></td><td>Account (tutti i dispositivi)</td></tr>
       <tr><td><b class="ui">Calendar sync</b></td><td>Un link privato ai propri eventi per <b class="ui">Apple Calendar</b>, <b class="ui">Google Calendar</b> o Outlook (<a data-ref="calendar-sync">Sincronizzare gli eventi con il calendario</a>)</td><td>Account (tutti i dispositivi)</td></tr>
+      <tr><td><b class="ui">Offline &amp; live</b></td><td><b class="ui">Automatic download</b>, <b class="ui">Wi-Fi only</b>, <b class="ui">Space used</b> per le setlist conservate per l'assenza di segnale (<a data-ref="offline-and-live-settings">Cambiare la scelta offline nelle Impostazioni</a>)</td><td>Misto: <b class="ui">Automatic download</b> segue l'account, il resto vale per il dispositivo</td></tr>
       <tr><td><b class="ui">Appearance</b></td><td>Tema: <b class="ui">Light</b>, <b class="ui">Dark</b>, <b class="ui">System</b></td><td>Questo dispositivo</td></tr>
       <tr><td><b class="ui">Units</b></td><td><b class="ui">Kilometres</b> o <b class="ui">Miles</b></td><td>Questo dispositivo</td></tr>
-      <tr><td><b class="ui">Privacy &amp; account</b></td><td><b class="ui">App lock</b>, <b class="ui">Anonymous usage statistics</b>, riservatezza dei gig personali, <b class="ui">Export my data</b>, Termini, Privacy Policy, <b class="ui">Delete account</b></td><td>Misto (vedi <a data-ref="privacy-and-account-settings">Privacy e account</a>)</td></tr>
+      <tr><td><b class="ui">Privacy &amp; account</b></td><td><b class="ui">App lock</b>, <b class="ui">Anonymous usage statistics</b>, <b class="ui">Send crash reports</b>, riservatezza dei gig personali, <b class="ui">Export my data</b>, Termini, Privacy Policy, <b class="ui">Delete account</b></td><td>Misto (vedi <a data-ref="privacy-and-account-settings">Privacy e account</a>)</td></tr>
       <tr><td><b class="ui">iPhone Duo</b></td><td><b class="ui">Laptop pose</b>; solo sui telefoni a doppio schermo</td><td>Questo dispositivo</td></tr>
       <tr><td><b class="ui">Language</b></td><td><b class="ui">Automatic</b> o una delle sei lingue</td><td>Questo dispositivo, più push ed email</td></tr>
       <tr><td><b class="ui">Help &amp; support</b></td><td>Risposte e funzioni disponibili nell'app</td><td>-</td></tr>
@@ -454,6 +455,7 @@
   <ul>
     <li><b class="ui">App lock</b> (solo telefoni e tablet): chiede Face ID, impronta o codice del dispositivo quando BandWith riparte dopo essere stata chiusa. Vale per dispositivo (<a data-ref="app-lock">Blocco app</a>).</li>
     <li><b class="ui">Anonymous usage statistics</b> (solo app Android e iOS): spente finché l'utente non dice di sì. BandWith lo chiede una volta, dopo il primo tour e gli eventuali avvisi urgenti (<b class="ui">No thanks</b> / <b class="ui">Allow</b>, stesso peso; chiudere il foglio senza rispondere lo fa richiedere al lancio successivo). Si condivide solo quali schermate si usano e quanto spesso, mai brani, gig, messaggi o contatti, e niente per la pubblicità. Spegnerle cancella quanto raccolto su quel dispositivo. Vale per dispositivo.</li>
+    <li><b class="ui">Send crash reports</b> (in italiano «Invia segnalazioni di errore»): attiva finché l&#39;utente non la spegne, per dispositivo. Quando qualcosa va storto l&#39;app invia l&#39;errore, la schermata in cui è successo e la versione dell&#39;app (gli errori JavaScript al server di BandWith; i crash nativi a Firebase Crashlytics solo se l&#39;utente ha accettato anche <b class="ui">Anonymous usage statistics</b>), mai brani, gig, messaggi o contatti.</li>
     <li><b class="ui">Personal gigs stay private</b>: una riga informativa, non un interruttore. Solo l'utente vede titolo e luogo dei propri gig personali; le band vedono solo che è occupato (<a data-ref="personal-gigs">Gig personali</a>).</li>
     <li><b class="ui">Export my data</b>: una copia JSON di ciò che appartiene all'utente (<a data-ref="export-your-data">Esportare i dati</a>).</li>
     <li><b class="ui">Terms of Service</b> e <b class="ui">Privacy Policy</b>: aprono i documenti dentro l'app.</li>
@@ -477,7 +479,7 @@
   <p>In caso di errore l'app indica <b class="ui">Couldn’t export your data.</b> e non crea file parziali.</p>
 
   <h3 id="art-delete-your-account" data-roles="admin,member,deputy">Eliminare l'account</h3>
-  <aside class="note warning">L'operazione è irreversibile: profilo, gig personali e messaggi vengono eliminati. Conviene esportare prima i dati se se ne vuole una copia.</aside>
+  <aside class="note warning">L'operazione è irreversibile: profilo, gig personali e messaggi privati vengono eliminati. I messaggi nelle chat della band, dei gig e di gruppo restano, mostrati come di un <b class="ui">Former member</b>. Conviene esportare prima i dati se se ne vuole una copia.</aside>
   <ol class="steps">
     <li>Dal menu toccare <b class="ui">Settings &amp; account</b>, poi <b class="ui">Privacy &amp; account</b>.</li>
     <li>Nella scheda rossa <b class="ui">Delete account</b> toccare <b class="ui">Delete account</b>.</li>

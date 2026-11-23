@@ -3,6 +3,7 @@ import { EVENT_MEMBER_COLUMNS, getEventMemberMoney, withMoney } from './eventMem
 import { EVENT_PUBLIC_COLUMNS, attachEventPrivate, getEventPrivate, privateFieldsOf } from './eventPrivate';
 import { todayLocal, toLocalDateString } from '../dates';
 import { t } from '@/lib/i18n';
+import { mergeRecurrenceRule, sameCadence } from '../recurrenceSkips';
 
 // Types
 export type EventType = 'gig' | 'rehearsal' | 'wedding' | 'corporate' | 'private' | 'festival' | 'other';
@@ -320,6 +321,9 @@ export const createEvent = async (
       venue_city: eventData.venue_city || null,
       client_name: eventData.client_name || null,
       fee: eventData.fee != null ? eventData.fee : 0,
+      // The fee's currency when the caller names one (a quote's date on
+      // hold: the quote's); otherwise the column default applies (EUR).
+      ...(eventData.currency ? { currency: eventData.currency } : {}),
       price: (eventData as any).price != null ? (eventData as any).price : 0,
       // "Fee TBD" from the wizard; otherwise the column default applies.
       ...(eventData.payment_status ? { payment_status: eventData.payment_status } : {}),
@@ -389,6 +393,23 @@ export const updateEvent = async (
       fee: updates.fee != null ? updates.fee : undefined,
       price: (updates as any).price != null ? (updates as any).price : undefined,
     };
+    // A repeat rewritten from its cadence (wizard, overview card, offline
+    // replay) keeps the stored rule's other keys: dates deleted on their own
+    // (skip_dates) do not come back (Codex #297 B2).
+    const nextRule = (updates as any).recurrence_rule;
+    if (nextRule && typeof nextRule === 'object') {
+      const { data: stored, error: readErr } = await supabase
+        .from('events')
+        .select('id, recurrence_rule')
+        .eq('id', eventId)
+        .maybeSingle();
+      if (readErr) throw readErr;
+      const storedRule = (stored as any)?.recurrence_rule;
+      // Same repeat as stored (a rename, a time change): the rule is not
+      // written, so it can never undo a date deleted meanwhile (Codex #297 round 3).
+      if (sameCadence(storedRule, nextRule)) delete (sanitizedUpdates as any).recurrence_rule;
+      else (sanitizedUpdates as any).recurrence_rule = mergeRecurrenceRule(storedRule, nextRule);
+    }
 
     const { data, error } = await supabase
       .from('events')

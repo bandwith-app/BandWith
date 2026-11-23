@@ -1,6 +1,6 @@
-import { buildPdfBlobFromJpegDataUrls } from './quotePdf';
+import { buildTaggedPdf, recordCanvasText, type PdfTextRun } from './pdfDocument';
 import { formatHoursMinutes } from '@/lib/songGenres';
-import { t } from '@/lib/i18n';
+import { getLocale, t } from '@/lib/i18n';
 
 /**
  * Setlist → printable PDF (A4, one or more pages): set by set, with the
@@ -48,6 +48,8 @@ export function generateSetlistPdf(opts: {
 }): { blob: Blob; fileName: string } {
   const { name, bandName, songs, madeWith } = opts;
   const pages: string[] = [];
+  // The text of each page, for screen readers (the pages are pictures).
+  const pageText: PdfTextRun[][] = [];
   const total = songs.reduce((a, s) => a + (s.durationSeconds || 0), 0);
   const sets = [...new Set(songs.map((s) => s.setNumber || 1))].sort((a, b) => a - b);
   const multiSet = sets.length > 1;
@@ -80,6 +82,7 @@ export function generateSetlistPdf(opts: {
     canvas.width = W;
     canvas.height = H;
     ctx = canvas.getContext('2d')!;
+    pageText.push(recordCanvasText(ctx));
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, W, H);
     ctx.textBaseline = 'alphabetic';
@@ -142,15 +145,18 @@ export function generateSetlistPdf(opts: {
       c.fillText(String(n).padStart(2, '0'), M, y + 44);
       const right = [s.key, s.bpm ? `${s.bpm} BPM` : null, clock(s.durationSeconds)].filter(Boolean).join('  ·  ');
       c.font = `400 26px ${MONO}`;
-      c.textAlign = 'right';
-      c.fillText(right, W - M, y + 44);
       const rightW = c.measureText(right).width;
-      c.textAlign = 'left';
       const textX = M + 80;
       const maxW = W - M - rightW - 40 - textX;
+      // Drawn in reading order (the PDF's text follows it): title, then key · BPM · time.
       c.fillStyle = INK;
       c.font = `700 36px ${SANS}`;
       c.fillText(fit(c, s.title || t('Untitled'), maxW), textX, y + 44);
+      c.fillStyle = MUTED;
+      c.font = `400 26px ${MONO}`;
+      c.textAlign = 'right';
+      c.fillText(right, W - M, y + 44);
+      c.textAlign = 'left';
       if (s.artist) {
         c.fillStyle = MUTED;
         c.font = `400 26px ${SANS}`;
@@ -170,5 +176,9 @@ export function generateSetlistPdf(opts: {
   finishPage();
 
   const safe = (name || 'Setlist').replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'Setlist';
-  return { blob: buildPdfBlobFromJpegDataUrls(pages), fileName: `Setlist_${safe}.pdf` };
+  const title = [name || t('Setlist'), bandName].filter(Boolean).join(' · ');
+  return {
+    blob: buildTaggedPdf(pages, { title, lang: getLocale(), text: pageText }),
+    fileName: `Setlist_${safe}.pdf`,
+  };
 }

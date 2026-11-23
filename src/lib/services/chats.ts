@@ -1,18 +1,53 @@
 import { supabase, getSafeUser } from '../supabase';
 import { sendPushToUsers } from './notifications';
+import { deletionRefusalMessage } from '@/lib/deletionRefusal';
 import { personName } from '@/lib/personName';
 import { isDirectChatBetween, type DirectChatFacts } from '@/lib/directChat';
 import { t, loadLocale, translate } from '@/lib/i18n';
 import { mentionedUserIds } from '@/lib/chatMentions';
 import { localeOf, groupByLocale } from '@/lib/recipientLocale';
 import { clearedAtByChat, visibleAfterClear } from '@/lib/chatSearch';
+import { attachReplies, replyTargetIds, type ReplyTarget } from '@/lib/chatMessages';
+
+/**
+ * The database has no such function yet (migration not applied): use the
+ * older path. Only when the error names `fn` (#281 r4): an unrelated
+ * PGRST202 / 42883 (a function `fn` itself calls) is a real error.
+ */
+const isMissingFunction = (
+  error: { code?: string; message?: string; details?: string; hint?: string } | null | undefined,
+  fn: string,
+): boolean =>
+  !!error &&
+  (error.code === 'PGRST202' || error.code === '42883') &&
+  `${error.message ?? ''} ${error.details ?? ''} ${error.hint ?? ''}`.includes(fn);
+
+// Lineup answers that take a musician off a gig (as the server's notices, 046).
+const OFF_THE_GIG = new Set(['declined', 'dropped_out', 'removed']);
+
+/**
+ * Off the gig: 175's / 181's set, trimmed and in any case (#281, #289;
+ * 'Dropped_Out' or ' Declined' is off too). Same name as #289's set.
+ */
+export const isOffTheGig = (status: string | null | undefined): boolean =>
+  OFF_THE_GIG.has((status ?? '').trim().toLowerCase());
+
+/** PostgREST filter: a band membership with is_active NULL counts as active (coalesce(is_active, true)). */
+export const ACTIVE_MEMBER = 'is_active.is.null,is_active.eq.true';
 
 /** A chat rule said no (who may write to whom). The message is translated and safe to show. */
 export class ChatRuleError extends Error {}
 
+/** Another account is signed in than the one that wrote the message: not sent, it waits for its writer. */
+export class ChatSenderChangedError extends Error {
+  constructor() {
+    super('Signed in as someone else');
+  }
+}
+
 /** What to show for a chat error: the rule when one said no, never raw server text. */
 export const chatErrorMessage = (error: unknown, fallback: string): string =>
-  error instanceof ChatRuleError ? error.message : fallback;
+  error instanceof ChatRuleError ? error.message : deletionRefusalMessage(error) ?? fallback;
 
 // ============================================
 // TYPES
@@ -57,7 +92,8 @@ export interface ChatParticipant {
 export interface Message {
   id: string;
   chat_id: string;
-  sender_id: string;
+  /** NULL: a former member (account deleted, migration 180). */
+  sender_id: string | null;
   content: string;
   message_type: string;
   attachments?: unknown[];
@@ -69,6 +105,16 @@ export interface Message {
   created_at: string;
   reply_to_id?: string;
   reply_to?: Message; // The quoted message
+  /** This device only: sending it failed; the bubble offers Try again. */
+  failed?: boolean;
+  /** This device only: no connection; sent by itself once back online. */
+  queued?: boolean;
+  /** This device only: why the server refused it (shown with "Not sent"). */
+  fail_reason?: string;
+  /** This device only: came by Realtime; no page has confirmed what came before it. */
+  live?: boolean;
+  /** Set by the sending device (192): Try again never saves a second copy. */
+  client_id?: string | null;
   sender?: {
     id: string;
     full_name?: string;
@@ -126,7 +172,16 @@ export const markChatsDelivered = async (force = false): Promise<void> => {
 
 export const getChats = async (
   bandId?: string
-): Promise<{ data: ChatWithDetails[] | null; error: Error | null }> => {
+): Promise<{
+  data: ChatWithDetails[] | null;
+  error: Error | null;
+  /**
+   * Every chat this account may still use (before the band filter and the
+   * cleared-history hiding). Only set when every lookup that decides it
+   * succeeded (Claude #291 CR6 M3): "Not sent" texts outside it are pruned.
+   */
+  allChatIds?: string[];
+}> => {
   try {
     const { data: { user } } = await getSafeUser();
     if (!user) throw new Error('Not authenticated');
@@ -139,7 +194,7 @@ export const getChats = async (
 
     if (partError) throw partError;
     if (!participations || participations.length === 0) {
-      return { data: [], error: null };
+      return { data: [], error: null, allChatIds: [] };
     }
 
     const chatIds = participations.map(p => p.chat_id);
@@ -209,23 +264,27 @@ export const getChats = async (
 
     // Enforce business rules:
     // Members should only be allowed to text admins or band/event they're in.
-    const { data: myBandMemberships } = await supabase
+    // A membership with is_active NULL is active; a failed lookup fails the
+    // list (it must not drop band chats, Claude #291 CR6 M3).
+    const { data: myBandMemberships, error: myBandsError } = await supabase
       .from('band_members')
       .select('band_id, role')
       .eq('user_id', user.id)
-      .eq('is_active', true);
+      .or(ACTIVE_MEMBER);
+    if (myBandsError) throw myBandsError;
 
     const myBandIds = (myBandMemberships || []).map((b: any) => b.band_id);
     const myAdminBandIds = new Set((myBandMemberships || []).filter((b: any) => b.role === 'admin').map((b: any) => b.band_id));
     const allMyBandIds = new Set(myBandIds);
 
-    const { data: myEventMemberships } = await supabase
+    const { data: myEventMemberships, error: myEventsError } = await supabase
       .from('event_members')
       .select('event_id, status')
       .eq('user_id', user.id);
+    if (myEventsError) throw myEventsError;
     const myEventIds = new Set(
       (myEventMemberships || [])
-        .filter((m: any) => m.status !== 'declined')
+        .filter((m: any) => !isOffTheGig(m.status))
         .map((m: any) => m.event_id)
     );
 
@@ -237,13 +296,14 @@ export const getChats = async (
 
     let otherAdminUserIdsInSharedBands = new Set<string>();
     if (directOtherUserIds.length > 0 && myBandIds.length > 0) {
-      const { data: otherAdmins } = await supabase
+      const { data: otherAdmins, error: otherAdminsError } = await supabase
         .from('band_members')
         .select('user_id, band_id')
         .in('user_id', directOtherUserIds)
         .in('band_id', myBandIds)
         .eq('role', 'admin')
-        .eq('is_active', true);
+        .or(ACTIVE_MEMBER);
+      if (otherAdminsError) throw otherAdminsError;
       otherAdminUserIdsInSharedBands = new Set((otherAdmins || []).map((o: any) => o.user_id));
     }
 
@@ -318,7 +378,8 @@ export const getChats = async (
           .from('messages')
           .select('*', { count: 'exact', head: true })
           .eq('chat_id', chat.id)
-          .neq('sender_id', user.id);
+          // A former member's message has no sender and is still unread.
+          .or(`sender_id.is.null,sender_id.neq.${user.id}`);
 
         if (lastReadAt && clearedAt) {
           const cutOff = new Date(lastReadAt) > new Date(clearedAt) ? lastReadAt : clearedAt;
@@ -350,7 +411,7 @@ export const getChats = async (
     const validChats = chatsWithDetails.filter(Boolean) as ChatWithDetails[];
     // This device now has these messages: let the senders see ✓✓.
     void markChatsDelivered();
-    return { data: validChats, error: null };
+    return { data: validChats, error: null, allChatIds: allowedChats.map((c) => c.id) };
   } catch (error: any) {
     return { data: null, error };
   }
@@ -400,10 +461,24 @@ export const getChat = async (
       .in('id', partIds);
     const profileMap = new Map((profilesData || []).map((p: any) => [p.id, { id: p.id, full_name: p.full_name, avatar_url: p.avatar_url }]));
 
+    // A direct chat's newest message (#282 round 9): its sender tells a live
+    // account from a former member in the header (directChatName).
+    let lastMessage: Message | undefined;
+    if (chat.type === 'direct') {
+      const { data: last } = await supabase
+        .from('messages')
+        .select('id, chat_id, sender_id, created_at')
+        .eq('chat_id', chatId)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (Array.isArray(last) && last[0]) lastMessage = last[0] as unknown as Message;
+    }
+
     return {
       data: {
         ...chat,
         name: resolvedName,
+        last_message: lastMessage,
         logo_url: bandInfo?.logo_url || (chat as any).logo_url,
         band: bandInfo || undefined,
         participants: (chatParticipants || []).map((p: any) => ({
@@ -498,6 +573,56 @@ const findExistingDirectChat = async (userId1: string, userId2: string): Promise
   }
 };
 
+/**
+ * Of `userIds`, the active members of the band. Band and gig chats are for
+ * the band's current members (175): anyone else is skipped by the server,
+ * and older servers refused the whole insert because of them.
+ *
+ * `failClosed` (the restore path in sendMessage, round 9): when the
+ * membership can't be read, or the band itself couldn't be read
+ * (`bandId` undefined, see gigBandId), nobody is returned. Other callers
+ * keep the list and let the server trim it.
+ */
+const stillInBand = async (
+  bandId: string | null | undefined,
+  userIds: string[],
+  { failClosed = false }: { failClosed?: boolean } = {},
+): Promise<string[]> => {
+  const ids = [...new Set(userIds.filter(Boolean))];
+  if (failClosed && bandId === undefined) return [];
+  if (!bandId || ids.length === 0) return ids;
+  const { data, error } = await supabase
+    .from('band_members')
+    .select('user_id')
+    .eq('band_id', bandId)
+    // NULL counts as active, as in the database (coalesce(is_active, true)).
+    .or('is_active.is.null,is_active.eq.true')
+    .in('user_id', ids);
+  if (error) {
+    // The server applies the same rule: better a list it trims than none
+    // (except on the restore path, which then restores nobody).
+    console.warn('[chats] Could not check band membership:', error.message);
+    return failClosed ? [] : ids;
+  }
+  const active = new Set((data || []).map((m: { user_id: string }) => m.user_id));
+  return ids.filter((id) => active.has(id));
+};
+
+/**
+ * The band of a gig chat: the chat's own, else its event's. null: no band
+ * (a personal gig); undefined: the event couldn't be read.
+ */
+const gigBandId = async (eventId: string | null | undefined, bandId: string | null | undefined): Promise<string | null | undefined> => {
+  if (bandId) return bandId;
+  if (!eventId) return null;
+  const { data, error } = await supabase.from('events').select('band_id').eq('id', eventId).maybeSingle();
+  if (error) {
+    console.warn("[chats] Could not read the gig's band:", error.message);
+    return undefined;
+  }
+  return (data as { band_id?: string | null } | null)?.band_id ?? null;
+};
+
 export const createChat = async (
   data: {
     type: ChatType;
@@ -523,7 +648,7 @@ export const createChat = async (
         .from('band_members')
         .select('band_id, role, user_id')
         .in('user_id', [user.id, targetUserId])
-        .eq('is_active', true);
+        .or(ACTIVE_MEMBER);
 
       if (memErr) throw memErr;
 
@@ -547,13 +672,14 @@ export const createChat = async (
         return { data: null, error: new ChatRuleError(t('Direct messaging is only available with band admins.')) };
       }
     } else if (data.type === 'band' && data.band_id) {
-      const { data: bm } = await supabase
+      const { data: bm, error: bmError } = await supabase
         .from('band_members')
         .select('id')
         .eq('band_id', data.band_id)
         .eq('user_id', user.id)
-        .eq('is_active', true)
+        .or(ACTIVE_MEMBER)
         .maybeSingle();
+      if (bmError) throw bmError;
 
       if (!bm) {
         return { data: null, error: new ChatRuleError(t('You can only message in bands you are an active member of.')) };
@@ -561,23 +687,25 @@ export const createChat = async (
     } else if (data.type === 'event' && data.event_id) {
       let allowed = false;
       if (data.band_id) {
-        const { data: bm } = await supabase
+        const { data: bm, error: bmError } = await supabase
           .from('band_members')
           .select('role')
           .eq('band_id', data.band_id)
           .eq('user_id', user.id)
-          .eq('is_active', true)
+          .or(ACTIVE_MEMBER)
           .maybeSingle();
+        if (bmError) throw bmError;
         if (bm?.role === 'admin') allowed = true;
       }
       if (!allowed) {
-        const { data: em } = await supabase
+        const { data: em, error: emError } = await supabase
           .from('event_members')
           .select('id, status')
           .eq('event_id', data.event_id)
           .eq('user_id', user.id)
           .maybeSingle();
-        if (em && em.status !== 'declined') allowed = true;
+        if (emError) throw emError;
+        if (em && !isOffTheGig(em.status)) allowed = true;
       }
       if (!allowed) {
         return { data: null, error: new ChatRuleError(t('You can only message in events you are participating in.')) };
@@ -601,6 +729,43 @@ export const createChat = async (
           ], { onConflict: 'chat_id,user_id' });
 
         return { data: existingChat, error: null };
+      }
+    }
+
+    // Band and gig chats: one per band / gig, found or created on the server
+    // in one step (193). The lookup below could not see a chat the caller had
+    // not joined yet, so a band admin outside a gig's lineup made a second
+    // gig chat (audit 07 #6). It stays only for a database without 193.
+    if ((data.type === 'band' && data.band_id) || (data.type === 'event' && data.event_id)) {
+      const { data: opened, error: openError } = await supabase.rpc('bw_open_group_chat', {
+        p_type: data.type,
+        p_band_id: data.band_id ?? null,
+        p_event_id: data.event_id ?? null,
+        p_name: data.name ?? null,
+      });
+      if (!openError && opened) {
+        const { created, ...chat } = opened as Chat & { created?: boolean };
+        const others = allParticipants.filter((id) => id !== user.id);
+        if (created && others.length > 0) {
+          const { error: partError } = await supabase
+            .from('chat_participants')
+            .upsert(others.map((userId) => ({ chat_id: chat.id, user_id: userId })), { onConflict: 'chat_id,user_id', ignoreDuplicates: true });
+          if (partError) console.warn('[createChat] Participant insert warning:', partError.message);
+        }
+        return { data: chat as Chat, error: null };
+      }
+      if (openError && !isMissingFunction(openError, 'bw_open_group_chat')) {
+        if ((openError as { code?: string }).code === '42501') {
+          return {
+            data: null,
+            error: new ChatRuleError(
+              data.type === 'band'
+                ? t('You can only message in bands you are an active member of.')
+                : t('You can only message in events you are participating in.'),
+            ),
+          };
+        }
+        throw openError;
       }
     }
 
@@ -648,6 +813,22 @@ export const createChat = async (
       }
     }
 
+    // Round 4: never a second band / gig chat. Without 193 the lookups above
+    // see only chats the caller is already in, so ask the server (175)
+    // whether one exists anyway, and stop when it does or can't say. (No
+    // such function: a database before 175, the older behaviour.)
+    if ((data.type === 'band' && data.band_id) || (data.type === 'event' && data.event_id)) {
+      const { data: exists, error: existsError } = await supabase.rpc('bw_group_chat_exists', {
+        p_type: data.type,
+        p_band_id: data.band_id ?? null,
+        p_event_id: data.event_id ?? null,
+      });
+      if (exists === true || (existsError && !isMissingFunction(existsError, 'bw_group_chat_exists'))) {
+        if (existsError) console.warn('[createChat] Could not check for an existing chat:', existsError.message);
+        return { data: null, error: new ChatRuleError(t("Couldn't open the chat right now. Please try again in a moment.")) };
+      }
+    }
+
     // Create new chat
     console.log('[createChat] Creating new chat of type:', data.type);
     const { data: chat, error: chatError } = await supabase
@@ -664,19 +845,29 @@ export const createChat = async (
 
     if (chatError) throw chatError;
 
-    // Add participants (including creator) - non-critical, don't block
-    const participantInserts = allParticipants.map(userId => ({
-      chat_id: chat.id,
-      user_id: userId,
-      cleared_at: null,
-    }));
-
-    const { error: partError } = await supabase
+    // The creator first, on their own: without that row nobody can use the
+    // new chat (one former member in a single insert of the whole lineup
+    // used to make it fail, Codex #281 r2). Then the others, for band and
+    // gig chats only those still in the band.
+    const { error: selfError } = await supabase
       .from('chat_participants')
-      .insert(participantInserts);
+      .insert([{ chat_id: chat.id, user_id: user.id, cleared_at: null }]);
+    if (selfError) {
+      console.warn('[createChat] Could not join the new chat:', selfError.message);
+      return { data: null, error: new Error(selfError.message) };
+    }
 
-    if (partError) {
-      console.warn('[createChat] Participant insert warning:', partError.message);
+    let others = allParticipants.filter((id) => id !== user.id);
+    if (data.type === 'band' || data.type === 'event') {
+      others = await stillInBand(data.type === 'event' ? await gigBandId(data.event_id, data.band_id) : data.band_id, others);
+    }
+    if (others.length > 0) {
+      const { error: partError } = await supabase
+        .from('chat_participants')
+        .insert(others.map((userId) => ({ chat_id: chat.id, user_id: userId, cleared_at: null })));
+      if (partError) {
+        console.warn('[createChat] Could not add the other participants:', partError.message);
+      }
     }
 
     return { data: chat, error: null };
@@ -689,9 +880,67 @@ export const createChat = async (
 // MESSAGES CRUD
 // ============================================
 
+/**
+ * Loads the quoted message (text and author) of every reply in `rows`
+ * (audit 07 #11). `clearedAt`: when the reader deleted this chat; left out,
+ * it is looked up (only when a row is a reply).
+ */
+const withReplies = async (chatId: string, rows: Message[], clearedAt?: string | null): Promise<Message[]> => {
+  const ids = replyTargetIds(rows);
+  if (ids.length === 0) return rows;
+  try {
+    let cut = clearedAt;
+    if (cut === undefined) {
+      // Fail closed (Codex review #291 r3): without the reader's cut-off a
+      // quote from before they deleted the chat could show. No quotes then.
+      const { data: { user } } = await getSafeUser();
+      if (!user) return rows;
+      const { data: mine, error: cutError } = await supabase
+        .from('chat_participants')
+        .select('cleared_at')
+        .eq('chat_id', chatId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (cutError) return rows;
+      cut = (mine as { cleared_at?: string | null } | null)?.cleared_at ?? null;
+    }
+    // '*': messages.deleted may be missing on older databases.
+    const { data: quoted } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('chat_id', chatId)
+      .in('id', ids);
+    // A deleted message's text is never quoted (Codex review #291 r3).
+    const targets = ((quoted || []) as ReplyTarget[]).map((q): ReplyTarget => ({
+      id: q.id,
+      sender_id: q.sender_id,
+      created_at: q.created_at,
+      ...(q.deleted === true ? { content: t('Message deleted'), deleted: true } : { content: q.content }),
+    }));
+    const authorIds = [...new Set(targets.map((q) => q.sender_id).filter(Boolean))];
+    if (authorIds.length > 0) {
+      const known = new Map(rows.filter((m) => m.sender).map((m) => [m.sender_id, m.sender]));
+      const missing = authorIds.filter((a) => !known.has(a));
+      if (missing.length > 0) {
+        const { data: people } = await supabase.from('profiles').select('id, full_name, email, avatar_url').in('id', missing);
+        for (const p of (people || []) as NonNullable<Message['sender']>[]) known.set(p.id, p);
+      }
+      for (const q of targets) q.sender = known.get(q.sender_id);
+    }
+    return attachReplies(rows, targets, cut);
+  } catch {
+    return rows;
+  }
+};
+
 export const getMessages = async (
   chatId: string,
-  options?: { limit?: number; before?: string }
+  options?: {
+    limit?: number;
+    before?: string;
+    /** Forward from this time (inclusive), oldest first: catching up after a gap (07 #7). */
+    after?: string;
+  }
 ): Promise<{ data: Message[] | null; error: Error | null }> => {
   try {
     console.log('[getMessages] Fetching messages for chat:', chatId);
@@ -700,12 +949,14 @@ export const getMessages = async (
     // Check if current user previously cleared / deleted this chat
     let clearedAt: string | null = null;
     if (user) {
-      const { data: myPart } = await supabase
+      const { data: myPart, error: cutError } = await supabase
         .from('chat_participants')
         .select('cleared_at')
         .eq('chat_id', chatId)
         .eq('user_id', user.id)
         .maybeSingle();
+      // Unknown cut-off: show nothing rather than history the reader deleted.
+      if (cutError) throw cutError;
       if (myPart?.cleared_at) clearedAt = myPart.cleared_at;
     }
     
@@ -715,7 +966,7 @@ export const getMessages = async (
       .from('messages')
       .select(`*`)
       .eq('chat_id', chatId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: !!options?.after });
 
     if (clearedAt) {
       query = query.gt('created_at', clearedAt);
@@ -727,6 +978,10 @@ export const getMessages = async (
 
     if (options?.before) {
       query = query.lt('created_at', options.before);
+    }
+
+    if (options?.after) {
+      query = query.gte('created_at', options.after);
     }
 
     const { data, error } = await query;
@@ -753,23 +1008,38 @@ export const getMessages = async (
       }
     }
 
+    // Replies carry their quote (audit 07 #11).
+    const quoted = await withReplies(chatId, rows as Message[], clearedAt);
+
     // Return in ascending order for display
-    return { data: rows.reverse(), error: null };
+    return { data: options?.after ? quoted : quoted.reverse(), error: null };
   } catch (error: any) {
     console.error('[getMessages] Exception:', error);
     return { data: null, error };
   }
 };
 
+/** A database without 192's messages.client_id (or its unique index): send as before. */
+const isMissingClientId = (e: { code?: string; message?: string }) =>
+  e.code === 'PGRST204' || e.code === '42703' || e.code === '42P10'
+  || /client_id|no unique or exclusion constraint/i.test(e.message || '');
+
 export const sendMessage = async (
   chatId: string,
   content: string,
   messageType: string = 'text',
-  replyToId?: string // Optional: ID of message being replied to
+  replyToId?: string, // Optional: ID of message being replied to
+  clientId?: string, // This bubble's id on the device: Try again never saves a second copy
+  // Who wrote it: never sent as anyone else (Claude #291 r5). Null (a
+  // message whose sender is gone, #282) counts as not given, like undefined.
+  expectedSenderId?: string | null,
 ): Promise<{ data: Message | null; error: Error | null }> => {
   try {
     const { data: { user } } = await getSafeUser();
     if (!user) throw new Error('Not authenticated');
+    if (expectedSenderId && user.id.toLowerCase() !== expectedSenderId.toLowerCase()) {
+      return { data: null, error: new ChatSenderChangedError() };
+    }
 
     // Get chat to find band_id, type, event_id, name, created_by
     const { data: chat, error: chatError } = await supabase
@@ -778,6 +1048,11 @@ export const sendMessage = async (
       .eq('id', chatId)
       .single();
 
+ // The chat is not there for this account (gone, or no longer theirs):
+    // a no, so the composer locks (Claude #291 r5), not a hiccup.
+    if (chatError && (chatError as { code?: string }).code === 'PGRST116') {
+      return { data: null, error: new ChatRuleError(t('You no longer have access to this chat.')) };
+    }
     if (chatError) throw chatError;
     
     // Ensure the sender is an active participant (keeping cleared_at: older
@@ -805,28 +1080,41 @@ export const sendMessage = async (
         .from('band_members')
         .select('user_id')
         .eq('band_id', chat.band_id)
-        .eq('is_active', true);
+        .or(ACTIVE_MEMBER);
       if (bMembers && bMembers.length > 0) {
-        await supabase
+        const { error: addError } = await supabase
           .from('chat_participants')
           .upsert(
             bMembers.map(bm => ({ chat_id: chatId, user_id: bm.user_id })),
             { onConflict: 'chat_id,user_id', ignoreDuplicates: true }
           );
+        if (addError) console.warn('[sendMessage] Could not add the band to its chat:', addError.message);
       }
     } else if (chat.type === 'event' && chat.event_id) {
-      const { data: eMembers } = await supabase
+      // Still on the gig (OFF_THE_GIG, trimmed and in any case, as #289 and
+      // the server) and still in the band: a lineup row outlives leaving the
+      // band (175 / 181; Codex review #291 r3; the server skips them too,
+      // 193). Lineup, membership or the gig's band unknown: nobody is restored.
+      const { data: eMembers, error: lineupError } = await supabase
         .from('event_members')
-        .select('user_id')
-        .eq('event_id', chat.event_id)
-        .neq('status', 'declined');
-      if (eMembers && eMembers.length > 0) {
-        await supabase
+        .select('user_id, status')
+        .eq('event_id', chat.event_id);
+      if (lineupError) console.warn('[sendMessage] Could not read the lineup:', lineupError.message);
+      const onGig = lineupError
+        ? []
+        : ((eMembers || []) as { user_id: string | null; status: string | null }[])
+            .filter((em) => !!em.user_id && !isOffTheGig(em.status))
+            .map((em) => em.user_id as string);
+      // Membership or the gig's band unknown: nobody is restored (round 9).
+      const lineup = await stillInBand(await gigBandId(chat.event_id, chat.band_id), onGig, { failClosed: true });
+      if (lineup.length > 0) {
+        const { error: addError } = await supabase
           .from('chat_participants')
           .upsert(
-            eMembers.map(em => ({ chat_id: chatId, user_id: em.user_id })),
+            lineup.map((userId) => ({ chat_id: chatId, user_id: userId })),
             { onConflict: 'chat_id,user_id', ignoreDuplicates: true }
           );
+        if (addError) console.warn('[sendMessage] Could not add the lineup to the gig chat:', addError.message);
       }
     } else if (chat.type === 'direct') {
       const otherParticipant = (participants || []).find((p: any) => p.user_id !== user.id);
@@ -852,11 +1140,14 @@ export const sendMessage = async (
     if (chat.type === 'direct') {
       const otherParticipant = (participants || []).find((p: any) => p.user_id !== user.id);
       if (otherParticipant) {
-        const { data: sharedMemberships } = await supabase
+        const { data: sharedMemberships, error: sharedError } = await supabase
           .from('band_members')
           .select('band_id, role, user_id')
           .in('user_id', [user.id, otherParticipant.user_id])
-          .eq('is_active', true);
+          .or(ACTIVE_MEMBER);
+        // Not checked (no connection) is not a no: the send fails as a
+        // network error and waits, it never says "only with admins".
+        if (sharedError) throw sharedError;
 
         const userBands = new Map<string, string>();
         const otherBands = new Map<string, string>();
@@ -879,13 +1170,14 @@ export const sendMessage = async (
         }
       }
     } else if (chat.type === 'band' && chat.band_id) {
-      const { data: bm } = await supabase
+      const { data: bm, error: bmError } = await supabase
         .from('band_members')
         .select('id')
         .eq('band_id', chat.band_id)
         .eq('user_id', user.id)
-        .eq('is_active', true)
+        .or(ACTIVE_MEMBER)
         .maybeSingle();
+      if (bmError) throw bmError;
 
       if (!bm) {
         return { data: null, error: new ChatRuleError(t('You can only message in bands you are an active member of.')) };
@@ -893,42 +1185,72 @@ export const sendMessage = async (
     } else if (chat.type === 'event' && chat.event_id) {
       let allowed = false;
       if (chat.band_id) {
-        const { data: bm } = await supabase
+        const { data: bm, error: bmError } = await supabase
           .from('band_members')
           .select('role')
           .eq('band_id', chat.band_id)
           .eq('user_id', user.id)
-          .eq('is_active', true)
+          .or(ACTIVE_MEMBER)
           .maybeSingle();
+        if (bmError) throw bmError;
         if (bm?.role === 'admin') allowed = true;
       }
       if (!allowed) {
-        const { data: em } = await supabase
+        const { data: em, error: emError } = await supabase
           .from('event_members')
           .select('id, status')
           .eq('event_id', chat.event_id)
           .eq('user_id', user.id)
           .maybeSingle();
-        if (em && em.status !== 'declined') allowed = true;
+        if (emError) throw emError;
+        if (em && !isOffTheGig(em.status)) allowed = true;
       }
       if (!allowed) {
         return { data: null, error: new ChatRuleError(t('You can only message in events you are participating in.')) };
       }
     }
 
-    const { data, error } = await supabase
-      .from('messages')
-      .insert({
-        chat_id: chatId,
-        sender_id: user.id,
-        content,
-        band_id: chat.band_id,
-        reply_to_id: replyToId || null,
-      })
-      .select('*')
-      .single();
+    const row = {
+      chat_id: chatId,
+      sender_id: user.id,
+      content,
+      band_id: chat.band_id,
+      reply_to_id: replyToId || null,
+    };
+    const insertPlain = () => supabase.from('messages').insert(row).select('*').single();
+    let data: Message | null = null;
+    let error: unknown = null;
+    if (clientId) {
+      // One copy per bubble (Claude review #291 r4): a send that timed out
+      // after the insert landed, then Try again, saved it twice. The unique
+      // (sender_id, client_id) index (192) skips the copy; the saved one is
+      // read back and the rest runs again (send-push announces it once).
+      const up = await supabase
+        .from('messages')
+        .upsert({ ...row, client_id: clientId }, { onConflict: 'sender_id,client_id', ignoreDuplicates: true })
+        .select('*');
+      if (up.error && isMissingClientId(up.error)) {
+        ({ data, error } = await insertPlain());
+      } else if (up.error) {
+        error = up.error;
+      } else if (Array.isArray(up.data) && up.data.length > 0) {
+        data = up.data[0] as Message;
+      } else {
+        ({ data, error } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('chat_id', chatId)
+          .eq('sender_id', user.id)
+          .eq('client_id', clientId)
+          .maybeSingle());
+        if (!error && !data) error = new Error('Message not saved');
+      }
+    } else {
+      ({ data, error } = await insertPlain());
+    }
 
     if (error) throw error;
+    if (!data) throw new Error('Message not saved');
 
     // Update chat's updated_at
     await supabase
@@ -982,7 +1304,11 @@ export const sendMessage = async (
           user.id,
         );
         const plain = otherParticipants.filter((id: string) => !mentioned.includes(id));
+        // Who and which message (180, round 5): an account deletion finds
+        // its notices by these ids, never by the sender's name.
+        const ids = { sender_id: user.id, message_id: data?.id };
         const common = {
+          ...ids,
           senderName,
           content: content.substring(0, 120),
           chatId,
@@ -992,6 +1318,8 @@ export const sendMessage = async (
           bandName,
           subtitle,
           channel_id: 'bandwith_messages',
+          // The server checks this is our own new message (audit 02 #7).
+          message_id: data?.id,
         };
 
         // Send push notification (Edge Function also creates in-app notifications)
@@ -1020,7 +1348,8 @@ export const sendMessage = async (
       console.warn('[sendMessage] Notification error (non-critical):', notifErr);
     }
 
-    return { data, error: null };
+    const [saved] = await withReplies(chatId, [data as Message]);
+    return { data: saved, error: null };
   } catch (error: any) {
     return { data: null, error };
   }
@@ -1176,7 +1505,8 @@ export const subscribeToChat = (
 
         if (data) {
           console.log('[subscribeToChat] Delivering message to UI');
-          onMessage(data as Message);
+          const [message] = await withReplies(chatId, [data as Message]);
+          onMessage(message);
         }
       }
     )
@@ -1191,7 +1521,11 @@ export const subscribeToChat = (
 };
 
 export const subscribeToNewMessages = (
-  onMessage: (message: Message & { chat_id: string }) => void
+  onMessage: (message: Message & { chat_id: string }) => void,
+  options?: {
+    /** Every status the channel reports ('SUBSCRIBED' when joined, again after a drop). */
+    onStatus?: (status: string) => void;
+  }
 ) => {
   // Realtime postgres_changes respects RLS, so only messages from chats the
   // user participates in are delivered (requires RLS enabled on messages —
@@ -1219,7 +1553,7 @@ export const subscribeToNewMessages = (
         }
       }
     )
-    .subscribe();
+    .subscribe((status) => options?.onStatus?.(status));
 
   return () => {
     supabase.removeChannel(channel);
@@ -1355,7 +1689,7 @@ export const searchChatsAndMessages = async (
           chat_type: chatInfo?.type as ChatType,
           message_id: msg.id,
           message_content: msg.content,
-          message_sender: msg.sender_id === user.id ? t('You') : (msg.sender_id && senders.get(msg.sender_id)) || t('Unknown'),
+          message_sender: msg.sender_id === user.id ? t('You') : !msg.sender_id ? t('Former member') : senders.get(msg.sender_id) || t('Unknown'),
           message_date: msg.created_at,
           match_text: msg.content,
         });

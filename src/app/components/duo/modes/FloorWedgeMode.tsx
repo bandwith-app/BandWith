@@ -17,10 +17,12 @@ import { keyLabel, type SongChart } from '@/lib/ireal';
 import { useT } from '@/lib/i18n';
 import { exitBrowserFullScreen, requestBrowserFullScreen, useStageBarHidden, useStageSongOnly } from '@/lib/stageChrome';
 import { StageClickButton, StageClickFrame, useStageClickUi, type StageClickControls } from '@/app/components/dashboard/StageClick';
+import { FollowCountdown, FollowLeaderButtons, FollowTempoSwitch, useFollowTempo, type StageFollowPlayhead } from '@/app/components/dashboard/StageFollow';
+import { CountInButton, CountInSheetButton } from '@/app/components/dashboard/StageCountIn';
 import { useSessionSeconds } from '@/app/components/dashboard/RehearsalSession';
 import type { RehearsalSessionControls } from '@/app/components/event/useRehearsalSession';
 import { formatClock } from '@/lib/rehearsalSession';
-import type { StageBleStatus } from '@/lib/stageBleNotice';
+import { followLabel, type StageBleStatus } from '@/lib/stageBleNotice';
 import { StageBleNoticeLine } from '@/app/components/event/StageBleNoticeLine';
 import { NoteSheetsHost, WedgeNotesPad, useNoteSheets, type LiveNotes } from '@/app/components/dashboard/RehearsalNotes';
 
@@ -51,6 +53,9 @@ export interface WedgeSong {
   lyrics?: string | null;
   /** songs.chord_chart (also the time signature for the click's accent). */
   chart?: SongChart | null;
+  /** Follow the tempo (171): songs.time_signature and songs.line_timing. */
+  timeSignature?: string | null;
+  lineTiming?: unknown;
 }
 
 export interface FloorWedgeModeProps {
@@ -75,17 +80,30 @@ export interface FloorWedgeModeProps {
     isLeader: boolean;
     following: boolean;
     leaderSeen: boolean;
+    /** The leader's phone is in Stage mode and reachable, song picked or not. */
+    leaderHere?: boolean;
     connected: boolean;
     /** Bluetooth link (native apps): 'leading' for the admin, 'connected' for a member. */
     bluetooth?: StageBleStatus;
     /** Leader: phones linked over Bluetooth. */
     bluetoothFollowers?: number;
+    /** Leader: leading with no key pair. */
+    bluetoothUnsigned?: boolean;
     /** Allow Bluetooth / turn it on. */
     fixBluetooth?: () => void | Promise<void>;
     onToggle: (on: boolean) => void;
   };
   /** Visual metronome (useStageLive().click): the button on the Deck, the glow above the wedge. */
   click?: StageClickControls;
+  /** Follow the tempo (useStageLive().playhead): a big "Chorus in 4" instead of the lyrics; the leader's buttons on the Deck. */
+  playhead?: StageFollowPlayhead;
+  /** The leader's Count in (StageCountIn), next to the click; the countdown itself is Stage mode's, above the wedge. */
+  countIn?: { counting: boolean; onPress: () => void } | null;
+  /**
+   * Count-in options (this phone's vibration and sound; leader: Count in
+   * anyway, the band's direction). The setlist row's button is under the wedge.
+   */
+  countInOptions?: () => void;
   /** When the set started (elapsed time); defaults to when the mode mounted. */
   startedAt?: Date | number;
   /** See FoldSplit. Default 125 (above Stage mode). */
@@ -123,6 +141,9 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   skipped,
   follow,
   click,
+  playhead,
+  countIn,
+  countInOptions,
   startedAt,
   // Set inline, so the wedge stays when a hub (search, Calendar) lies under
   // Stage mode: the Laptop rule hides inline-less page splits while a hub is open.
@@ -226,6 +247,9 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   }, [index, showLyrics, shownView, songOnly]);
   const next = index + 1 < count ? songs[index + 1] : null;
   const clickUi = useStageClickUi(click, song);
+  // Follow the tempo (StageFollow): read from the floor, the countdown takes the lyrics' place.
+  const tempoSong = useMemo(() => (song ? { ...song, lyrics: content.lyrics } : null), [song, content.lyrics]);
+  const tempo = useFollowTempo({ playhead, song: tempoSong, isLeader: !!follow?.isLeader, click });
   const start = startedAt !== undefined ? new Date(startedAt).getTime() : mountedAt;
   const session = sessionProp?.enabled && sessionProp.status !== 'idle' ? sessionProp : undefined;
   const sessionSeconds = useSessionSeconds(session?.state ?? null, session?.status ?? 'idle');
@@ -248,7 +272,17 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
           {elapsed}
         </span>
       </div>
-      {songOnly && song ? (
+      {tempo.active && song ? (
+        <>
+          <p className="bw-fold-clear flex items-baseline gap-2 min-w-0" aria-live="polite">
+            <span className="bw-num text-[13px] font-medium shrink-0 text-white/50">
+              {String(index + 1).padStart(2, '0')}/{String(count).padStart(2, '0')}
+            </span>
+            <span className="bw-label-md normal-case truncate min-w-0 text-accent">{song.title}</span>
+          </p>
+          <FollowCountdown follow={tempo} className="flex-1" />
+        </>
+      ) : songOnly && song ? (
         <div
           ref={lyricsRef}
           data-song-only-body
@@ -351,8 +385,9 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   );
 
   const deck = songOnly ? (
-    <div className="min-h-full flex flex-col px-4 pt-3 pb-3 text-white">
-      <div className={cn('grid gap-3 flex-1 min-h-[88px]', click ? 'grid-cols-[auto_1fr_auto_1fr]' : 'grid-cols-[auto_1fr_1fr]')}>
+    <div className="min-h-full flex flex-col gap-3 px-4 pt-3 pb-3 text-white">
+      <FollowLeaderButtons follow={tempo} accent="var(--accent)" big className="justify-center" />
+      <div className={cn('grid gap-3 flex-1 min-h-[88px]', click && countIn ? 'grid-cols-[auto_1fr_auto_auto_1fr]' : click || countIn ? 'grid-cols-[auto_1fr_auto_1fr]' : 'grid-cols-[auto_1fr_1fr]')}>
         <button
           type="button"
           onClick={showAll}
@@ -382,6 +417,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
             accent="var(--accent)"
           />
         )}
+        {countIn && <CountInButton counting={countIn.counting} onPress={countIn.onPress} className="h-full" />}
         <DeckButton
           size="pad"
           tone="accent"
@@ -397,7 +433,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
   ) : (
     <div className="min-h-full flex flex-col gap-3 px-4 pt-3 pb-3 text-white">
       {(follow || hasLyrics || ownChrome || sessionToggle) && (
-        <div className="flex items-center justify-between gap-3 min-h-11 shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 min-h-11 shrink-0">
           {hasLyrics ? (
             <button
               type="button"
@@ -416,6 +452,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
           ) : (
             <span />
           )}
+          <FollowTempoSwitch follow={tempo} accent="var(--accent)" />
           {sessionToggle && (
             <button
               type="button"
@@ -456,15 +493,10 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
               )}
             >
               <span aria-hidden className={cn('w-2 h-2 rounded-full', follow.following ? 'bg-accent-foreground' : 'border border-white')} />
-              {!follow.following
-                ? t('Follow leader')
-                : !follow.leaderSeen
-                  ? t('Waiting for leader')
-                  : !follow.connected && follow.bluetooth !== 'connected'
-                    ? t('Offline')
-                    : t('Following leader')}
+              {followLabel(follow)}
             </button>
           )}
+          {countInOptions && <CountInSheetButton onPress={countInOptions} />}
           {ownChrome && (
             <span className="flex items-center gap-2 shrink-0">
               <button
@@ -503,6 +535,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
           online={follow.connected}
           isLeader={follow.isLeader}
           followers={follow.bluetoothFollowers}
+          unsigned={follow.bluetoothUnsigned}
           onFix={follow.fixBluetooth}
         />
       )}
@@ -566,7 +599,8 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
           onMark={() => notes.controls.mark({ songId: song?.songId ?? null, songTitle: song?.title ?? null, markedAtS: notes.elapsed() })}
         />
       )}
-      <div className={cn('grid gap-3 flex-1 min-h-[88px]', click ? 'grid-cols-[1fr_auto_1fr]' : 'grid-cols-2')}>
+      <FollowLeaderButtons follow={tempo} accent="var(--accent)" big className="justify-center" />
+      <div className={cn('grid gap-3 flex-1 min-h-[88px]', click && countIn ? 'grid-cols-[1fr_auto_auto_1fr]' : click || countIn ? 'grid-cols-[1fr_auto_1fr]' : 'grid-cols-2')}>
         <DeckButton
           size="pad"
           tone="muted"
@@ -587,6 +621,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
             accent="var(--accent)"
           />
         )}
+        {countIn && <CountInButton counting={countIn.counting} onPress={countIn.onPress} className="h-full" />}
         <DeckButton
           size="pad"
           tone="accent"

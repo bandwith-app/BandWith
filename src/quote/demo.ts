@@ -80,7 +80,7 @@ export function demoQuoteApi(state: string) {
       ],
     };
   }
-  if (state === 'accepted' || state === 'deposit_paid') v = { ...v, status: 'accepted', accepted_name: 'Leo M.', accepted_at: ago(20), deposit_paid: state === 'deposit_paid' };
+  if (state === 'accepted' || state === 'deposit_paid') v = { ...v, status: 'accepted', accepted_name: 'Leo M.', accepted_at: ago(20), deposit_paid: state === 'deposit_paid', deposit_paid_amount: state === 'deposit_paid' ? 1500 : null, deposit_paid_currency: state === 'deposit_paid' ? 'EUR' : null };
   // 168: the band asked for the final balance (and, for balance_paid, recorded it).
   if (state === 'balance' || state === 'balance_paid') {
     v = {

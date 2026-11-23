@@ -250,8 +250,8 @@ const basics: AreaText = {
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Vier Karten: deine Band an einem Ort, einen Gig in den Kalender eintragen, wer welche Gagen sieht, und deine Preise. Die letzte Karte hat **Preise festlegen**, das **Preise, Gagen & Leistungen** öffnet." },
-            { role: "member", text: "Drei Karten: Start, auf eine Gig-Einladung antworten und die Songs (Akkorde, Texte, deine Notizen und Bühnenmodus)." },
+            { role: "admin", text: "Fünf Karten: deine Band an einem Ort, einen Gig in den Kalender eintragen, Setlists bereit auch ohne Netz, wer welche Gagen sieht, und deine Preise. Die letzte Karte hat **Preise festlegen**, das **Preise, Gagen & Leistungen** öffnet." },
+            { role: "member", text: "Vier Karten: Start, auf eine Gig-Einladung antworten, die Songs (Akkorde, Texte, deine Notizen und Bühnenmodus) und Setlists bereit auch ohne Netz." },
             { role: "deputy", text: "Drei Karten zu **Vertretungs-Gigs**: auf eine Anfrage antworten, was die Band mit dir teilt und wie du deine Vertretungs-Gigs in deinen Kalender holst." },
           ],
         },
@@ -484,7 +484,7 @@ const basics: AreaText = {
             ["Kennzahlen (2 × 2)", "**BESTÄTIGTE GIGS**, **NÄCHSTE PROBEN**, **OFFENE ANGEBOTE**, **EINNAHMEN**", "**BESTÄTIGTE GIGS**, **NÄCHSTE PROBEN**, **KOMMENDE GAGEN**, **VERDIENT GESAMT** (nur deine eigenen Gagen)"],
             ["**Zu erledigen**", "Fällige **Auszahlungen** nach einem Auftritt (alle Musiker) und **Probenplanung** (Umfragen und Vorschläge)", "**Deine Gagen** (nur was dir zusteht) und offene Probenumfragen"],
             ["**Nächster Soundcheck** / **Meine Setlist**", "Nicht angezeigt", "Zeiten deines nächsten Gigs, **Load-in-Karte**, die Zahl der Songs und **Setlist ansehen**"],
-            ["**Demnächst**", "Die nächsten 3 Gigs und Proben; der erste Gig zeigt **Show-Bereitschaft** und **Go live**", "Die nächsten 3 Gigs und Proben; Gigs zeigen **Deine Gage**"],
+            ["**Demnächst**", "Die nächsten 3 Gigs und Proben; der erste Gig zeigt **Show-Bereitschaft** und **Bühne**", "Die nächsten 3 Gigs und Proben; Gigs zeigen **Deine Gage**"],
             ["**Entwürfe**", "Deine unfertigen Gigs, Proben und Angebote ([[drafts]])", "Nur wenn du eigene Entwürfe hast"],
             ["**Schnellzugriff**", "**Repertoire**, **Mitglieder**, **Equipment**, **To-dos**, **Verträge**", "**Repertoire**, **Mitglieder**"],
             ["Wachstum", "**Gigs diesen Monat**, **Einnahmen vs Vormonat**, **Kalender ansehen**, **Statistiken ansehen**", "Nicht angezeigt"],
@@ -498,7 +498,7 @@ const basics: AreaText = {
             "**OFFENE ANGEBOTE** und **EINNAHMEN** (Admins) öffnen die Karten zu Angeboten und Finanzen.",
             "**Alle ansehen** neben **Demnächst** öffnet den Kalender.",
             "**Auszahlungen prüfen** (Admin) öffnet Gage und Auszahlungen des Gigs; **Gage ansehen** (Mitglied) zeigt deine eigene.",
-            "Eine Karte unter **Demnächst** öffnet den Termin. **Go live** öffnet den Gig im Bühnenmodus.",
+            "Eine Karte unter **Demnächst** öffnet den Termin. **Bühne** öffnet den Gig im Bühnenmodus.",
             "Der Pfeil neben **Schnellzugriff** öffnet alle Band-Ressourcen.",
           ],
         },
@@ -668,11 +668,11 @@ const basics: AreaText = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["offline", "keine Verbindung", "synchronisieren", "Flugmodus", "zwischengespeichert", "Sync"],
-      related: ["drafts", "sign-in", "sign-out"],
+      related: ["drafts", "sign-in", "sign-out", "live-mode-offline", "changes-without-signal"],
       body: [
         { type: "p", text: "Deine Bands, Gigs und Setlists bleiben auch ohne Verbindung verfügbar: Die App zeigt, was sie zuletzt auf diesem Gerät geladen hat. Ein Streifen unter der Statusleiste zeigt **Offline · gespeicherte Daten**." },
-        { type: "p", text: "Einen Gig oder eine Probe erstellen, bearbeiten oder löschen klappt auch offline. Die App meldet **Offline gespeichert • Wird bei Verbindung synchronisiert** und der Streifen zählt die wartenden Änderungen: **Offline · 2 Änderungen ausstehend**." },
-        { type: "p", text: "Kommt die Verbindung zurück, werden die Änderungen von selbst gesendet. Der Streifen zeigt **Wieder online · 2 Änderungen ausstehend** mit einem Button **Jetzt synchronisieren** und danach **Wieder online · synchronisiert**." },
+        { type: "p", text: "Einen Gig oder eine Probe erstellen, bearbeiten oder löschen klappt auch offline. Die App meldet **Offline gespeichert • Wird bei Verbindung synchronisiert** und der Streifen zählt die wartenden Änderungen: **Offline · wartet auf Empfang: 2 Änderungen**." },
+        { type: "p", text: "Kommt die Verbindung zurück, werden die Änderungen von selbst gesendet. Der Streifen zeigt **Wieder online · wird gesendet: 2 Änderungen** mit einem Button **Jetzt senden** und danach **Wieder online · alles aktuell**. Zum Bühnen- und Live-Modus siehe [[live-mode-offline]]." },
         {
           type: "list",
           title: "Braucht eine Verbindung",
@@ -683,7 +683,7 @@ const basics: AreaText = {
             "Die erste Anmeldung auf einem Gerät.",
           ],
         },
-        { type: "note", tone: "tip", text: "Beim Abmelden werden wartende Änderungen zuerst gesendet, das kann ein paar Sekunden dauern. Wenn du sichergehen willst, melde dich erst ab, wenn der Streifen „synchronisiert“ zeigt." },
+        { type: "note", tone: "tip", text: "Beim Abmelden werden wartende Änderungen zuerst gesendet, das kann ein paar Sekunden dauern. Wenn du sichergehen willst, melde dich erst ab, wenn der Streifen „alles aktuell“ zeigt." },
       ],
     },
 
@@ -718,7 +718,7 @@ const basics: AreaText = {
       roles: ["admin", "member", "deputy"],
       kind: "reference",
       keywords: ["Einstellungen", "Optionen", "Präferenzen", "App-Einstellungen"],
-      related: ["calendar-sync", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
+      related: ["calendar-sync", "offline-and-live-settings", "notification-settings", "appearance-and-units", "change-language", "privacy-and-account-settings", "help-and-about", "duo-laptop-pose"],
       body: [
         { type: "p", text: "Öffne das Menü (den letzten Tab) und tippe auf **Einstellungen & Konto**. **Einstellungen** listet die Bereiche auf:" },
         {
@@ -727,9 +727,10 @@ const basics: AreaText = {
           rows: [
             ["**Mitteilungen**", "**Push-Mitteilungen**, **E-Mail-Mitteilungen**, **Produktneuigkeiten**", "Dein Konto (alle Geräte)"],
             ["**Kalender-Sync**", "Ein privater Link zu deinen Terminen für **Apple Kalender**, **Google Kalender** oder Outlook ([[calendar-sync]])", "Dein Konto (alle Geräte)"],
+            ["**Offline & live**", "**Automatischer Download**, **Nur über WLAN**, **Belegter Speicher** für die Setlists, die für Orte ohne Empfang gespeichert sind ([[offline-and-live-settings]])", "Gemischt: **Automatischer Download** folgt deinem Konto, der Rest gilt für dieses Gerät"],
             ["**Darstellung**", "Design: **Hell**, **Dunkel**, **System**", "Dieses Gerät"],
             ["**Einheiten**", "**Kilometer** oder **Meilen**", "Dieses Gerät"],
-            ["**Datenschutz & Konto**", "**App-Sperre**, **Anonyme Nutzungsstatistiken**, Details privater Gigs verbergen, **Meine Daten exportieren**, Nutzungsbedingungen, Datenschutzerklärung, **Konto löschen**", "Gemischt (siehe [[privacy-and-account-settings]])"],
+            ["**Datenschutz & Konto**", "**App-Sperre**, **Anonyme Nutzungsstatistiken**, **Absturzberichte senden**, Details privater Gigs verbergen, **Meine Daten exportieren**, Nutzungsbedingungen, Datenschutzerklärung, **Konto löschen**", "Gemischt (siehe [[privacy-and-account-settings]])"],
             ["**iPhone Duo**", "**Laptop-Haltung**. Nur auf Dual-Screen-Handys", "Dieses Gerät"],
             ["**Sprache**", "**Automatisch** oder eine von sechs Sprachen", "Dieses Gerät sowie deine Push-Mitteilungen und E-Mails"],
             ["**Hilfe & Support**", "Antworten und was du in der App tun kannst", "-"],
@@ -883,7 +884,8 @@ const basics: AreaText = {
           type: "list",
           items: [
             "**App-Sperre** (nur Handys und Tablets): fragt nach Face ID, Fingerabdruck oder Gerätecode, wenn BandWith nach dem Schließen neu startet. Gilt pro Gerät ([[app-lock]]).",
-            "**Anonyme Nutzungsstatistiken** (nur Android- und iOS-Apps): aus, bis du zustimmst. BandWith fragt einmal, nach der ersten Tour; die Antwort kannst du hier jederzeit ändern. Geteilt wird nur, welche Bildschirme wie oft genutzt werden, nie deine Songs, Gigs, Nachrichten oder Kontakte und nichts für Werbung. Ausschalten löscht, was auf diesem Gerät gesammelt wurde. Gilt pro Gerät.",
+            "**Anonyme Nutzungsstatistiken** (nur Android- und iOS-Apps): aus, bis du zustimmst. BandWith fragt einmal, nach der ersten Tour; die Antwort kannst du hier jederzeit ändern. Geteilt wird nur, welche Bildschirme wie oft genutzt werden, nie deine Songs, Gigs, Nachrichten oder Kontakte und nichts für Werbung. Ausschalten löscht, was auf diesem Gerät gesammelt wurde. Gilt pro Gerät. Mit einem Ja senden die Handy-Apps auch die Absturzdetails, falls die App abstürzt.",
+            "**Absturzberichte senden**: an, solange du es nicht ausschaltest. Wenn etwas schiefgeht, sendet BandWith den Fehler, den Bildschirm, auf dem er passiert ist, und die App-Version, damit er behoben werden kann. Nie deine Songs, Gigs, Nachrichten oder Kontakte. Gilt pro Gerät. In den Handy-Apps gehen vollständige Absturzdetails nur mit eingeschalteten **Anonymen Nutzungsstatistiken** raus.",
             "**Private Gigs bleiben privat**: eine Infozeile, kein Schalter. Titel und Ort deiner privaten Gigs siehst nur du; Bands sehen nur, dass du beschäftigt bist ([[personal-gigs]]).",
             "**Meine Daten exportieren**: eine JSON-Kopie von allem, was dir gehört ([[export-your-data]]).",
             "**Nutzungsbedingungen** und **Datenschutzerklärung**: öffnen die Dokumente direkt in der App.",
@@ -926,13 +928,13 @@ const basics: AreaText = {
     {
       id: "delete-your-account",
       title: "Dein Konto löschen",
-      summary: "Entferne dein Profil, deine privaten Gigs und Nachrichten endgültig.",
+      summary: "Entferne dein Profil, deine privaten Gigs und Direktnachrichten endgültig.",
       roles: ["admin", "member", "deputy"],
       kind: "task",
       keywords: ["Konto löschen", "Konto schließen", "Konto entfernen", "Daten löschen"],
       related: ["export-your-data", "privacy-and-account-settings", "make-admin"],
       body: [
-        { type: "note", tone: "warning", text: "Das lässt sich nicht rückgängig machen. Dein Profil, deine privaten Gigs und Nachrichten werden gelöscht. Exportiere vorher deine Daten, wenn du eine Kopie möchtest." },
+        { type: "note", tone: "warning", text: "Das lässt sich nicht rückgängig machen. Dein Profil, deine privaten Gigs und Direktnachrichten werden gelöscht. Deine Nachrichten in Band-, Gig- und Gruppenchats bleiben und erscheinen als **Ehemaliges Mitglied**. Exportiere vorher deine Daten, wenn du eine Kopie möchtest." },
         {
           type: "steps",
           items: [
@@ -1051,7 +1053,7 @@ const basics: AreaText = {
             "Prüfe, ob jeder Musiker eine **Gig-Einladung** bekommen hat. Im Gig zeigt **BESETZUNG**, wer geantwortet hat; **EINLADUNG OFFEN** heißt: noch nicht ([[answer-a-gig-invitation]]).",
             "Öffne im Gig den **EVENT-CHAT**, um mit der Besetzung die Logistik zu klären ([[event-and-rehearsal-chats]]).",
             "Öffne **RIDER & BÜHNE**, um das Rider-PDF vorzubereiten und mit der Location zu teilen ([[rider-and-stage]]).",
-            "Öffne am Tag selbst den Gig auf Start und tippe auf **Go live** für den Bühnenmodus ([[stage-mode]]).",
+            "Öffne am Tag selbst den Gig auf Start und tippe auf **Bühne** für den Bühnenmodus ([[stage-mode]]).",
           ],
         },
         { type: "note", tone: "privacy", text: "Jeder Musiker sieht in der Einladung und im Gig nur seine eigene Gage. Außer den Admins sieht niemand die anderen Gagen oder was der Kunde zahlt." },
@@ -1325,7 +1327,7 @@ const basics: AreaText = {
     { term: "Seitliche Leiste", definition: "Auf einem Dual-Screen-Handy die Spalte neben dem Bildschirm mit den Tabs, Zurück, Suche und deinem Profil.", see: "duo-closed" },
     { term: "Buch", definition: "Ein Dual-Screen-Handy, aufgeklappt wie ein Buch: zwei Seiten, Listen links und Details rechts.", see: "duo-book" },
     { term: "Laptop-Haltung", definition: "Ein halb aufgeklappt stehendes Dual-Screen-Handy: die obere Hälfte (Display) zum Lesen, die untere Hälfte (Deck) zum Tippen.", see: "duo-laptop-pose" },
-    { term: "Offline-Streifen", definition: "Die Leiste unter der Statusleiste, die anzeigt, dass du offline bist und wie viele Änderungen noch synchronisiert werden.", see: "offline-mode" },
+    { term: "Offline-Streifen", definition: "Die Leiste unter der Statusleiste, die anzeigt, dass du offline bist und wie viele Änderungen auf Empfang warten.", see: "offline-mode" },
   ],
 };
 

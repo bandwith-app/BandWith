@@ -48,6 +48,16 @@ export async function listDeputies(bandId: string) {
   return { data: (data || []) as Deputy[], error };
 }
 
+/** One deputy as the server has them now (null once deleted). */
+export async function getDeputy(id: string) {
+  const { data, error } = await supabase
+    .from('band_deputies')
+    .select('id, band_id, name, instrument, phone, email, notes, default_fee, user_id, created_at')
+    .eq('id', id)
+    .maybeSingle();
+  return { data: (data ?? null) as Deputy | null, error };
+}
+
 export async function saveDeputy(bandId: string, input: DeputyInput, id?: string) {
   const row = clean(input);
   const q = id
@@ -250,7 +260,20 @@ export async function pingDeputyRequest(requestId: string) {
  */
 export async function unlinkDeputy(deputyId: string) {
   const { data, error } = await supabase.rpc('bw_deputy_unlink', { p_deputy_id: deputyId });
-  return { data: (data as 'unlinked' | 'not_linked' | null) ?? null, error };
+  // 'revoked' (182): no account, the links were rotated; 'not_linked': a
+  // server before 182, nothing changed.
+  return { data: (data as 'unlinked' | 'revoked' | 'not_linked' | null) ?? null, error };
+}
+
+/**
+ * Admin: "Revoke sent links" for a deputy with no account (182). New reply
+ * and calendar links for every request; never unlinks anyone. 'linked':
+ * they joined from the app meanwhile, nothing changed (Codex review #285
+ * round 5).
+ */
+export async function revokeDeputyLinks(deputyId: string) {
+  const { data, error } = await supabase.rpc('bw_deputy_revoke_links', { p_deputy_id: deputyId });
+  return { data: (data as 'revoked' | 'linked' | null) ?? null, error };
 }
 
 export type DeputyClaimStatus = 'linked' | 'already' | 'taken' | 'member' | 'not_found';
@@ -272,7 +295,12 @@ export type DeputyChangeKey = 'date' | 'load_in' | 'soundcheck' | 'start' | 'end
 /** One request as the deputy sees it (bw_deputy_request_view + id and token). */
 export interface DeputyGig {
   id: string;
+  /** The reply token: answers and shows the fee. Never in a calendar. */
   token: string;
+  /** Read-only key of the calendar subscription (182); absent before 182. */
+  calendar_token?: string | null;
+  /** Read-only key of this gig's calendar file (182); absent before 182. */
+  gig_calendar_token?: string | null;
   status: DeputyRequestStatus;
   deputy_name: string;
   role: string | null;

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { authErrorKind, authErrorMessage } from '../authErrors';
 import { parseStoredSession, isOfflineAuthError } from '../authSession';
 import { setLocalePref } from '../i18n';
+import { passwordUpdateWithToken } from '../recoveryProof';
 
 describe('auth errors in the app language', () => {
   beforeEach(() => setLocalePref('en'));
@@ -21,7 +22,7 @@ describe('auth errors in the app language', () => {
     expect(authErrorKind(new TypeError('Load failed'))).toBe('network');
     expect(authErrorKind({ message: 'For security purposes, you can only request this after 52 seconds.' })).toBe('rate_limit');
     expect(authErrorKind({ message: 'User already registered' })).toBe('already_registered');
-    expect(authErrorKind({ status: 500, message: 'Something odd' })).toBe('unknown');
+    expect(authErrorKind({ status: 400, message: 'Something odd' })).toBe('unknown');
     expect(authErrorKind(null)).toBe('unknown');
   });
 
@@ -29,6 +30,27 @@ describe('auth errors in the app language', () => {
     expect(authErrorMessage({ code: 'invalid_credentials', message: 'Invalid login credentials' })).toBe('Wrong email or password.');
     expect(authErrorMessage({ message: 'Something odd' })).toBe('Something went wrong. Please try again.');
     expect(authErrorMessage(new TypeError('Failed to fetch'))).toBe('Check your connection and try again.');
+  });
+
+  // Codex review #287 round 8 (M1): a 503 (or no answer) while setting the
+  // new password is passing: the connection guidance, never the generic error.
+  it('a server error or a lost connection during the password reset says to try again', async () => {
+    const answer = (status: number) => async () => new Response(JSON.stringify({ message: 'upstream connect error' }), { status });
+    for (const status of [500, 502, 503, 504]) {
+      const { error } = await passwordUpdateWithToken('https://x.supabase.co', 'k', answer(status) as unknown as typeof fetch)('new-password-1', 'tok');
+      expect(authErrorKind(error), String(status)).toBe('network');
+      expect(authErrorMessage(error)).toBe('Check your connection and try again.');
+    }
+    const lost = await passwordUpdateWithToken('https://x.supabase.co', 'k', (async () => {
+      throw new Error('The request timed out.');
+    }) as unknown as typeof fetch)('new-password-1', 'tok');
+    expect(authErrorKind(lost.error)).toBe('network');
+    // Refusals keep their own sentences.
+    const weak = await passwordUpdateWithToken('https://x.supabase.co', 'k', (async () =>
+      new Response(JSON.stringify({ code: 'weak_password', msg: 'Password is too weak' }), { status: 422 })) as unknown as typeof fetch)('a', 'tok');
+    expect(authErrorKind(weak.error)).toBe('weak_password');
+    setLocalePref('it');
+    expect(authErrorMessage({ status: 503 })).not.toBe(authErrorMessage({ message: 'x' }));
   });
 
   it('translates', () => {

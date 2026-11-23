@@ -1,6 +1,7 @@
 import React from 'react';
 import { Capacitor } from '@capacitor/core';
-import { beatAt, beatsInBar, type ClickState } from '@/lib/stageClick';
+import { beatAt, clickForSong, type ClickState } from '@/lib/stageClick';
+import { songMeter } from '@/lib/meter';
 import { haptic } from '@/lib/haptics';
 import { cn } from '@/app/components/ui/utils';
 import { useT } from '@/lib/i18n';
@@ -48,11 +49,12 @@ export const StageClickFrame: React.FC<{ state: ClickState; offset: number; acce
       if (pos.beat < 0) {
         el.style.opacity = '0';
       } else {
-        // Flash, then fade over the beat; the downbeat flashes brighter.
-        const peak = pos.downbeat ? 1 : 0.7;
+        // Flash, then fade over the beat; the downbeat flashes brighter,
+        // the small ticks inside a 6/8 or 7/8 beat only faintly.
+        const peak = pos.downbeat ? 1 : pos.onBeat ? 0.7 : 0.28;
         const level = Math.min(1, 0.12 + peak * Math.exp(-pos.phase * 5));
         el.style.opacity = level.toFixed(3);
-        el.style.setProperty('--bw-click-width', `${pos.downbeat ? 20 : 14}px`);
+        el.style.setProperty('--bw-click-width', `${pos.downbeat ? 20 : pos.onBeat ? 14 : 8}px`);
         if (!still) el.style.setProperty('--bw-click-turn', `${((pos.beat + pos.phase) * 45) % 360}deg`);
       }
       raf = requestAnimationFrame(draw);
@@ -90,7 +92,7 @@ export interface StageClickControls {
   state: ClickState | null;
   mine: boolean;
   offset: number;
-  setOn: (on: boolean, opts?: { bpm: number; beats: number; bars?: number | null }) => void;
+  setOn: (on: boolean, opts?: { bpm: number; beats: number; bars?: number | null; groups?: number[] | null; startAt?: number }) => void;
 }
 
 /**
@@ -100,7 +102,7 @@ export interface StageClickControls {
  */
 export function useStageClickUi(
   click: StageClickControls | undefined,
-  song: { id?: string; bpm?: number | null; chart?: { time?: string } | null } | null | undefined,
+  song: { id?: string; bpm?: number | null; timeSignature?: string | null; chart?: { time?: string; sections?: { bars: { text?: string }[] }[] } | null } | null | undefined,
 ) {
   const state = click?.state ?? null;
   const running = !!state?.on && !!song && (state.songId == null || state.songId === song.id);
@@ -114,7 +116,7 @@ export function useStageClickUi(
     if (!click) return;
     if (running && !click.mine) return setHidden((h) => !h);
     if (running) return click.setOn(false);
-    if (song?.bpm) click.setOn(true, { bpm: song.bpm, beats: beatsInBar(song.chart?.time) });
+    if (song?.bpm) click.setOn(true, clickForSong(song.bpm, songMeter(song)));
   };
   const onDone = () => {
     if (state) setDone(state.seq);

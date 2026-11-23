@@ -5,6 +5,7 @@ import { useOptionalAuth } from '@/lib/AuthContext';
 import { useT } from '@/lib/i18n';
 import { assignedParts, instrumentVoicePart, isMyPart, type VocalParts, type VoicePart } from '@/lib/voiceParts';
 import { cn } from './utils';
+import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 
 /**
  * Voice parts on screen (plan §5.1). Each part is a shape plus a colour
@@ -205,6 +206,8 @@ export const VoiceLegend: React.FC<{
           {t('Highlight my part')}
         </button>
       )}
+      {/* Someone with a part: what Highlight my part does; otherwise the marks themselves. */}
+      <AcademyHelpButton article={mine ? 'highlight-my-part' : 'voice-parts'} size="sm" variant="event" className={cn(!mine && 'ml-auto', muted)} />
       {dims && !seen && (
         <p role="note" className="basis-full flex flex-wrap items-center gap-x-3 gap-y-1 font-sans bw-body-sm normal-case tracking-normal">
           <span className={muted}>{t('Lines you don’t sing are dimmed. Tap “Highlight my part” to see them all.')}</span>

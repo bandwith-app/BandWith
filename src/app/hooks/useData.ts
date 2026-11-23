@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { onAppResume } from '@/lib/appResume';
 import { startSafetyNetPoll } from '@/lib/safetyNetPoll';
+import { createChatSync, CHAT_LIST_FALLBACK_POLL_MS } from '@/lib/chatSync';
 import { useAuth } from '@/lib/AuthContext';
+import { useFlag } from '@/lib/appFlags';
 import * as bandsService from '@/lib/services/bands';
 import * as eventsService from '@/lib/services/events';
 import * as quotesService from '@/lib/services/quotes';
@@ -9,11 +11,13 @@ import * as songsService from '@/lib/services/songs';
 import * as notificationsService from '@/lib/services/notifications';
 import * as transactionsService from '@/lib/services/transactions';
 import * as chatsService from '@/lib/services/chats';
+import { dropRefusedOutsideChats } from '@/lib/chatOutbox';
 import * as rehearsalPollsService from '@/lib/services/rehearsalPolls';
 import { supabase, getSafeUser } from '@/lib/supabase';
 import { getOfflineItem, setOfflineItem, getCacheKey, onCachedRolesChanged } from '@/lib/offline/storage';
 import { getPendingMutations } from '@/lib/offline/syncQueue';
 import { getIsNetworkOnline } from '@/lib/offline/useNetworkStatus';
+import { DATE_HOLDS_CHANGED, refreshesDateHolds } from '@/lib/dateHolds';
 
 // ============================================
 // CACHE RULES
@@ -783,6 +787,8 @@ export const useNotifications = (options?: {
   limit?: number;
   /** Inbox only: chat rows stay out of the list (and of realtime inserts). */
   excludeChat?: boolean;
+  /** Inbox only: unread items older than `limit` come too (up to this many). */
+  withOlderUnread?: number;
   onNewEventInvite?: (notification: notificationsService.Notification) => void;
   onNewRehearsalPoll?: (notification: notificationsService.Notification) => void;
 }) => {
@@ -797,6 +803,9 @@ export const useNotifications = (options?: {
   onNewRehearsalPollRef.current = options?.onNewRehearsalPoll;
   const excludeChatRef = useRef(options?.excludeChat);
   excludeChatRef.current = options?.excludeChat;
+  // Kill switch live_pack (docs/flags.md): flipping it asks the list again
+  // (the service leaves the "keep it offline" prompts out while it's off).
+  const livePackOn = useFlag('live_pack');
 
   const fetchNotifications = useCallback(async (isBackground = false) => {
     if (!isAuthenticated) { setLoading(false); return; }
@@ -812,7 +821,8 @@ export const useNotifications = (options?: {
     }
     setError(error);
     setLoading(false);
-  }, [isAuthenticated, JSON.stringify(options)]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- livePackOn: asked again when it flips
+  }, [isAuthenticated, JSON.stringify(options), livePackOn]);
 
   useEffect(() => {
     fetchNotifications();
@@ -841,6 +851,8 @@ export const useNotifications = (options?: {
         if ((notification.type === 'rehearsal_poll' || notification.type === 'rehearsal_proposal') && onNewRehearsalPollRef.current) {
           onNewRehearsalPollRef.current(notification);
         }
+        // A date on hold came, changed or is free again (178): the Home card reloads.
+        if (refreshesDateHolds(notification.type)) window.dispatchEvent(new CustomEvent(DATE_HOLDS_CHANGED));
       },
       // On UPDATE - update existing notification (e.g., marked as read)
       (updatedNotification) => {
@@ -862,14 +874,28 @@ export const useNotifications = (options?: {
     return startSafetyNetPoll(() => fetchNotifications(true));
   }, [isAuthenticated, fetchNotifications]);
 
-  return { notifications, loading, error, refetch: fetchNotifications, setNotifications };
+  // Off: out of the list at once, before the new answer comes.
+  const visible = useSwitchedOffHidden(notifications);
+  return { notifications: visible, loading, error, refetch: fetchNotifications, setNotifications };
 };
+
+/**
+ * Kill switch live_pack off (docs/flags.md): its "keep it offline" prompts
+ * leave a list at once, the inbox's or a snapshot of it. The same array until
+ * the list or the switch changes, so effects keyed on it don't run again.
+ */
+export function useSwitchedOffHidden<T extends { type?: unknown }>(list: T[]): T[] {
+  const livePackOn = useFlag('live_pack');
+  return useMemo(() => (livePackOn ? list : list.filter((n) => String(n.type) !== 'live_pack_ready')), [list, livePackOn]);
+}
 
 export const useUnreadCount = () => {
   const { isAuthenticated } = useAuth();
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
+  // Kill switch live_pack (docs/flags.md): counted again when it flips.
+  const livePackOn = useFlag('live_pack');
   const fetchCount = useCallback(async () => {
     if (!isAuthenticated) { setLoading(false); return; }
     
@@ -877,7 +903,8 @@ export const useUnreadCount = () => {
     const { data } = await notificationsService.getUnreadCount();
     setCount(data || 0);
     setLoading(false);
-  }, [isAuthenticated]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- livePackOn: counted again when it flips
+  }, [isAuthenticated, livePackOn]);
 
   useEffect(() => {
     fetchCount();
@@ -1493,16 +1520,20 @@ export const useChats = (bandId?: string) => {
     if (!isAuthenticated) { setLoading(false); return; }
     
     setLoading(true);
-    const { data, error } = await chatsService.getChats(bandId);
+    const { data, error, allChatIds } = await chatsService.getChats(bandId);
     if (bandRef.current !== bandId) return;
     // A failed refetch (offline, network blip) keeps the list on screen.
     if (data) {
       setChats(data);
       setOfflineItem(cacheKey, data).catch(() => {});
     }
+    // "Not sent" messages for a chat this account can no longer use go
+    // (Claude #291 r5; waiting ones stay), only after a complete list
+    // (CR6 M3: every chat of the account, whatever band is shown).
+    if (data && allChatIds && user?.id) void dropRefusedOutsideChats(user.id, allChatIds);
     setError(error);
     setLoading(false);
-  }, [isAuthenticated, bandId, cacheKey]);
+  }, [isAuthenticated, bandId, cacheKey, user?.id]);
 
   useEffect(() => {
     fetchChats();
@@ -1512,10 +1543,15 @@ export const useChats = (bandId?: string) => {
   useEffect(() => {
     if (!isAuthenticated) { setLoading(false); return; }
 
+    // The list (last message, unread badge) follows Realtime. A message that
+    // arrived while the socket was down was never refetched (audit 07 #8):
+    // now the list is fetched again when the channel (re)joins and slowly
+    // while it is down (src/lib/chatSync.ts).
+    const sync = createChatSync(fetchChats, CHAT_LIST_FALLBACK_POLL_MS);
     const unsubscribe = chatsService.subscribeToNewMessages(() => {
       // Refetch chats to update last message and unread counts
       fetchChats();
-    });
+    }, { onStatus: (status) => sync.onStatus(status) });
 
     // Ticks in the list: refresh (debounced) when someone receives/reads.
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1529,6 +1565,7 @@ export const useChats = (bandId?: string) => {
     const offResume = onAppResume(() => { fetchChats(); });
 
     return () => {
+      sync.stop();
       unsubscribe();
       unsubscribeReceipts();
       clearTimeout(timer);

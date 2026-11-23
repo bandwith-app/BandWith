@@ -73,6 +73,11 @@
       <tr><td><b class="ui">Duration</b></td><td>Minuti e secondi in due caselle (min : sec). Serve per i totali delle setlist.</td></tr>
       <tr><td><b class="ui">BPM</b></td><td>Tempo, fino a 3 cifre. Lo usa il click dello Stage mode.</td></tr>
       <tr><td><b class="ui">Key</b></td><td>Testo libero, ad es. C maj. Compare nell'elenco, sul palco e nel controllo di trasposizione del lettore.</td></tr>
+      <!-- <draft live-tempo> -->
+      <tr><td><b class="ui">Time signature</b></td><td>4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 o 7/8. Lo usano il click e il count-in. Se non è scelto, quello della griglia accordi, altrimenti 4/4 (vedi <a data-ref="song-live-settings">Preparare un brano per il count-in</a>).</td></tr>
+      <tr><td><b class="ui">Count-in</b></td><td><b class="ui">1 bar</b> o <b class="ui">2 bars</b>, e quanti movimenti prima parte il brano (<b class="ui">Starts on the downbeat</b> se nessuno).</td></tr>
+      <tr><td><b class="ui">Played with a backing track</b></td><td>Sul palco il brano non ha count-in: è la base a far partire la band.</td></tr>
+      <!-- </draft> -->
       <tr><td><b class="ui">Tap</b>, <b class="ui">BPM from the recording</b>, ÷2 / ×2</td><td>Strumenti sotto BPM per trovare il tempo (vedi <a data-ref="transpose-and-tempo">Trasporre e trovare il tempo</a>).</td></tr>
       <tr><td><b class="ui">Transpose for the band</b></td><td>Sposta tonalità, accordi della partitura e accordi nel testo per tutti. Compare solo se c'è qualcosa da trasporre.</td></tr>
       <tr><td><b class="ui">Genre</b></td><td>Etichette scelte tra i generi della band, oppure una nuova con il chip tratteggiato <b class="ui">Genre</b> e poi <b class="ui">Add genre</b>. I generi filtrano la libreria quando si compone una setlist.</td></tr>
@@ -144,6 +149,7 @@
     <li>Una riga vuota separa le strofe.</li>
     <li>L'accordo va tra parentesi quadre subito prima della parola su cui cade: <code>[Am]word</code>. Nel lettore compare sopra quella parola.</li>
     <li>All'interno di una riga funzionano <code>**bold**</code> e <code>*italic*</code>.</li>
+    <li>Le parti vocali sono segni attorno alle parole: <code>{v2}…{/v2}</code> seconda voce, <code>{bv}…{/bv}</code> cori, <code>{all}…{/all}</code> tutti, <code>{sp}…{/sp}</code> parlato (vedi <a data-ref="voice-parts">Le parti vocali nel testo</a>).</li>
     <li>È accettato anche JSON, ad esempio un elenco di righe o un elenco di sezioni con nome e righe.</li>
   </ul>
   <p class="steps-title">Cosa sistema l'app al salvataggio</p>
@@ -244,6 +250,7 @@
     <li>Tocca una parola: la barra in basso mostra <b class="ui">Chord on “…”</b> e gli accordi già usati nel brano.</li>
     <li>Tocca un accordo per posarlo sulla parola, oppure ne scrive uno nuovo in <b class="ui">New chord, e.g. F#m7</b> e tocca <b class="ui">Add</b>. <b class="ui">No chord</b> lo rimuove, <b class="ui">Done</b> chiude la barra.</li>
     <li>Per spostare un accordo lo trascina su un'altra parola.</li>
+    <li>Per segnare chi canta una riga usa <b class="ui">Voice</b> nella stessa barra (vedi <a data-ref="mark-voice-parts">Segnare chi canta una riga</a>).</li>
     <li>Per riutilizzare gli accordi di una strofa tocca <b class="ui">Copy chords from…</b> sopra una sezione e sceglie la sezione di origine.</li>
     <li>Se il brano ha una partitura iReal, <b class="ui">From iReal (…)</b> sopra una sezione stende sulle sue righe gli accordi della sezione corrispondente della partitura.</li>
     <li><b class="ui">Undo</b> in alto a destra annulla l'ultimo passo; al termine si tocca <b class="ui">Save chords</b>.</li>
@@ -260,6 +267,93 @@
     <div data-role="admin">Modifica gli accordi della band per tutti.</div>
     <div data-role="member">Non ha l'editor degli accordi; propone una correzione con <b class="ui">Suggest a change</b> (vedi <a data-ref="suggest-a-change-to-a-song">Suggerire una modifica</a>).</div>
   </div>
+
+  <h2>Le parti vocali</h2>
+
+  <h3 id="art-voice-parts" data-roles="admin,member">Le parti vocali nel testo</h3>
+  <p>Quando un brano ha più voci, il testo può indicare chi canta quali parole. Ogni parte ha un suo aspetto, fatto di forma e colore, così si legge sul palco buio, sotto il sole e anche da chi non distingue i colori.</p>
+  <table class="grid">
+    <thead><tr><th>Parte</th><th>Aspetto</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Lead</b></td><td>Testo normale. Le righe senza parte sono della voce principale.</td></tr>
+      <tr><td><b class="ui">2nd voice</b></td><td>Una linea colorata sotto le parole.</td></tr>
+      <tr><td><b class="ui">Backing</b></td><td>Corsivo, più tenue, con una barra colorata a sinistra.</td></tr>
+      <tr><td><b class="ui">All</b></td><td>Grassetto: cantano tutti.</td></tr>
+      <tr><td><b class="ui">Spoken</b></td><td>Maiuscoletto, in grigio.</td></tr>
+    </tbody>
+  </table>
+  <p class="steps-title">Dove si vedono</p>
+  <ul>
+    <li>Nel lettore del brano, nello Stage mode e nel Live mode, in Song only e sulla spia da palco dei dispositivi a doppio schermo.</li>
+    <li>Una legenda in cima al brano elenca le parti usate e chi canta ognuna, ad es. “Backing · Sam, Alex”. Compare solo se il brano ha delle parti.</li>
+    <li>Anche senza segnale: le parti viaggiano con la setlist sul telefono (vedi <a data-ref="live-mode-offline">Stage e Live mode senza segnale</a>).</li>
+    <li>Una nota di prova su una riga indica la parte, ad es. “Backing · line 3”.</li>
+  </ul>
+  <p class="steps-title">Come si scrivono</p>
+  <ul>
+    <li>Non serve scrivere nulla a mano: le parti le segna l'admin nell'editor degli accordi (vedi <a data-ref="mark-voice-parts">Segnare chi canta una riga</a>).</li>
+    <li>Nel testo una parte è un breve segno attorno alle parole: <code>{v2}…{/v2}</code> seconda voce, <code>{bv}…{/bv}</code> cori, <code>{all}…{/all}</code> tutti, <code>{sp}…{/sp}</code> parlato. La voce principale non ha segni.</li>
+    <li>Ad esempio <code>{bv}(ooh, [Am]yeah){/bv}</code> è una riga di cori con un accordo su “yeah”.</li>
+    <li>Una parte copre una riga intera o alcune sue parole, mai più di una riga. L'app mette in ordine i segni quando il brano viene salvato.</li>
+    <li>Le note personali e le note di prova restano sulla loro riga quando si aggiungono le parti.</li>
+  </ul>
+  <!-- SCREENSHOT PLACEHOLDER: voice-parts-stage@phone (integrated pass) -->
+
+  <h3 id="art-mark-voice-parts" data-roles="admin">Segnare chi canta una riga</h3>
+  <p>Nell'editor degli accordi si tocca una riga o alcune parole e si sceglie Lead, 2nd voice, Backing, All o Spoken.</p>
+  <ol class="steps">
+    <li>Nel Repertoire si tocca la riga del brano e poi <b class="ui">Edit chords</b>.</li>
+    <li>Si tocca una parola della riga da segnare: la barra in basso mostra <b class="ui">Voice</b> sopra gli accordi.</li>
+    <li>Con <b class="ui">Whole line</b> si segna tutta la riga. Per segnare solo alcune parole si tocca <b class="ui">Just these words</b> e poi le altre parole della stessa riga.</li>
+    <li>Si tocca una parte: <b class="ui">Lead</b>, <b class="ui">2nd voice</b>, <b class="ui">Backing</b>, <b class="ui">All</b> o <b class="ui">Spoken</b>. Le parole prendono subito il suo aspetto.</li>
+    <li>Per togliere una parte si tocca una sua parola e si sceglie <b class="ui">Lead</b>.</li>
+    <li>Si tocca <b class="ui">Save chords</b>.</li>
+  </ol>
+  <p class="steps-title">I suggerimenti dell'app</p>
+  <ul>
+    <li>In un testo incollato o importato, una riga tutta tra parentesi, come “(ooh, yeah)”, sembra di cori; una riga che inizia con “All:” o “Tutti:” sembra di tutti insieme.</li>
+    <li>L'editor degli accordi e la scheda del brano lo dicono, ad es. <b class="ui">“2 lines look like backing vocals or all together.”</b></li>
+    <li><b class="ui">Mark the voice parts</b> le segna. Finché non lo si tocca non cambia nulla.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Segna le parti per tutta la band.</div>
+    <div data-role="member">Vede le parti. Per chiedere una modifica usa <b class="ui">Suggest a change</b> (vedi <a data-ref="suggest-a-change-to-a-song">Suggerire una modifica</a>).</div>
+  </div>
+  <!-- SCREENSHOT PLACEHOLDER: voice-picker@phone (integrated pass) -->
+
+  <h3 id="art-who-sings-what" data-roles="admin">Dire chi canta cosa</h3>
+  <p>Ogni parte vocale va ai membri che la cantano, per tutti i gig o solo per una setlist.</p>
+  <ol class="steps">
+    <li>Si apre un brano con parti vocali: nel lettore, oppure nello Stage o nel Live mode.</li>
+    <li>Nella legenda in cima al testo si tocca <b class="ui">Who sings what</b>.</li>
+    <li>Sotto ogni parte si toccano i membri che la cantano; toccando di nuovo un nome lo si toglie.</li>
+    <li>Su un gig si sceglie <b class="ui">Every gig</b> per salvarlo sul brano, oppure <b class="ui">This gig only</b> per questa setlist, ad es. quando canta un deputy.</li>
+    <li>Si tocca <b class="ui">Save</b>.</li>
+  </ol>
+  <ul>
+    <li>La prima volta le parti sono già compilate dallo strumento di ogni membro: “Backing vocals” va ai cori, “Lead vocals” alla voce principale.</li>
+    <li>Per tornare alle parti del brano su un gig si apre <b class="ui">This gig only</b> e si tocca <b class="ui">Use the song’s parts</b>.</li>
+    <li>I nomi compaiono nella legenda e ogni cantante vede la propria parte evidenziata (vedi <a data-ref="highlight-my-part">Evidenziare la propria parte</a>).</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Decide chi canta cosa, per il brano o per un solo gig.</div>
+    <div data-role="member">Vede i nomi nella legenda, senza poterli cambiare.</div>
+  </div>
+  <!-- SCREENSHOT PLACEHOLDER: who-sings-what@phone (integrated pass) -->
+
+  <h3 id="art-highlight-my-part" data-roles="admin,member">Evidenziare la propria parte</h3>
+  <p>Le righe che si cantano restano luminose e le altre si attenuano un po', sul proprio dispositivo.</p>
+  <ol class="steps">
+    <li>Si apre un brano con parti vocali nel lettore, nello Stage mode o nel Live mode.</li>
+    <li><b class="ui">Highlight my part</b> nella legenda è attivo: le proprie righe restano luminose, le altre si attenuano un po'.</li>
+    <li>La prima volta un avviso spiega che le righe non cantate sono attenuate; si tocca <b class="ui">Got it</b>.</li>
+    <li>Per vedere tutte le righe uguali si tocca <b class="ui">Highlight my part</b> e lo si spegne; toccandolo di nuovo si riaccende.</li>
+  </ol>
+  <ul>
+    <li>La propria parte viene da <b class="ui">Who sings what</b>; se lì non c'è nulla, dallo strumento nella band: con “Backing vocals” si vedono evidenziati i cori.</li>
+    <li>Le righe che cantano tutti (<b class="ui">All</b>) restano sempre luminose.</li>
+    <li>L'interruttore compare solo se il brano ha una parte per sé. Vale su quel dispositivo e per tutti i brani.</li>
+  </ul>
 
   <h2>Importare, ascoltare e annotare</h2>
 
@@ -672,7 +766,7 @@
     <li>Lo schermo resta acceso finché lo Stage mode è aperto.</li>
     <li><b class="ui">Full screen</b> (il pulsante con i quattro angoli in alto, nella barra laterale sui dispositivi a doppio schermo) nasconde le barre dell’app, la barra laterale e la barra di stato del telefono, e tiene lo schermo acceso. Con testi o griglie nella setlist mostra solo il brano (<b class="ui">Song only</b>); senza, la setlist prende tutto lo schermo e <b class="ui">Exit full screen</b> o Indietro lo chiude.</li>
     <li>Senza setlist compare <b class="ui">“No setlist attached to this gig.”</b></li>
-    <li>Nelle app per telefono e tablet, aprendo il gig la setlist con testi e partiture viene conservata sul dispositivo, così lo Stage mode funziona senza internet. Con il logout la copia viene rimossa.</li>
+    <li>Nelle app per telefono e tablet le setlist dei prossimi 7 giorni restano sul dispositivo, così lo Stage mode funziona senza segnale (vedi <a data-ref="live-mode-offline">Stage e Live mode senza segnale</a>).</li>
     <li>Senza internet e senza copia sul dispositivo compare <b class="ui">“Offline: the setlist couldn’t be loaded.”</b> con <b class="ui">Try again</b>.</li>
   </ul>
   <div class="roles">
@@ -741,12 +835,109 @@
   </table>
   <ul>
     <li>Il click è solo visivo, senza suono, e non blocca i tocchi sullo schermo.</li>
-    <li>I battiti per battuta derivano dall'indicazione di tempo della partitura iReal del brano, altrimenti sono 4.</li>
+    <!-- <draft live-tempo> -->
+    <li>I battiti per battuta derivano dal <b class="ui">Time signature</b> del brano, altrimenti dalla griglia accordi, altrimenti 4/4. In 6/8 e 12/8 lampeggia sui movimenti puntati. Per l'attacco della band vedi <a data-ref="count-in">Contare l'attacco della band</a>.</li>
+    <!-- </draft> -->
     <li>Un brano senza BPM non può avviare il click (<b class="ui">No BPM for this song</b>); il BPM si aggiunge nel modulo del brano.</li>
     <li>Passando a un altro brano, il click del brano precedente si nasconde.</li>
     <li>I telefoni restano allineati entro circa 20–40 ms: adatto a un count-in e come riferimento di tempo, non come click in-ear.</li>
     <li>Il click della band richiede internet: non viene trasmesso via Bluetooth.</li>
   </ul>
+
+  <!-- <draft live-tempo> Scritto dal piano (§4, §6) e dalla PR #272 prima di D1, B2 e B4: da verificare sull'interfaccia finale. -->
+  <h2>Count-in e Follow the tempo</h2>
+
+  <h3 id="art-song-live-settings" data-roles="admin">Preparare un brano per il count-in</h3>
+  <aside class="note draft">Scritto prima che la funzione fosse finita, partendo dal piano. Verificare ogni etichetta sull’app prima di farci affidamento.</aside>
+  <p>Un brano riceve il tempo in chiave (metro), la durata del count-in, un'eventuale anacrusi e l'indicazione se lo fa partire una base.</p>
+  <ol class="steps">
+    <li>Dal menu del brano si tocca <b class="ui">Edit</b> e poi <b class="ui">Next</b> fino a <b class="ui">Details · optional</b>.</li>
+    <li>Sotto <b class="ui">BPM</b> e <b class="ui">Key</b> si sceglie il <b class="ui">Time signature</b>: 4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 o 7/8.</li>
+    <li>In <b class="ui">Count-in</b> si sceglie <b class="ui">1 bar</b> o <b class="ui">2 bars</b>. Due battute servono ai brani lenti: la prima conta a metà tempo.</li>
+    <li>Se il brano parte prima del primo movimento della battuta, si tocca + finché indica quanti movimenti prima (<b class="ui">Starts 2 beats early</b>); − torna a <b class="ui">Starts on the downbeat</b>.</li>
+    <li>Se è una base a far partire la band, si attiva <b class="ui">Played with a backing track</b>: sul palco il brano non ha count-in.</li>
+    <li>Si tocca <b class="ui">Save now</b>.</li>
+  </ol>
+  <ul>
+    <li>Senza un metro scelto il brano usa quello della griglia accordi (<b class="ui">From the chord chart.</b>), altrimenti 4/4.</li>
+    <li>Il click e il count-in seguono il metro: 6/8 e 12/8 si contano a movimenti puntati, come li contano i musicisti.</li>
+    <li>Il <b class="ui">BPM</b> è il movimento che si conta: la semiminima in 4/4, 3/4 o 5/8, il movimento puntato in 6/8, 9/8 e 12/8.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Imposta metro, count-in e base per la band.</div>
+    <div data-role="member">Vede il risultato sul palco, senza poterlo cambiare.</div>
+  </div>
+  <!-- SCREENSHOT PLACEHOLDER: song-live-fields@phone (integrated pass) -->
+
+  <h3 id="art-count-in" data-roles="admin,member">Contare l'attacco della band</h3>
+  <aside class="note draft">Scritto prima che la funzione fosse finita, partendo dal piano. Verificare ogni etichetta sull’app prima di farci affidamento.</aside>
+  <p>Il leader tocca Count in e su ogni telefono parte lo stesso conto alla rovescia nel tempo del brano, fino al GO in cui entra la band.</p>
+  <ol class="steps">
+    <li>Nello Stage o nel Live mode si va sul brano.</li>
+    <li>Si tocca <b class="ui">Count in</b>.</li>
+    <li>Dopo 1,5 secondi ogni telefono in Stage mode mostra a tutto schermo il conto alla rovescia nel tempo del brano: un grande numero su ogni movimento e un anello che si riempie battuta dopo battuta.</li>
+    <li>La band entra sul <b class="ui">GO</b>; il conto sparisce da solo.</li>
+    <li>Per fermarlo prima della fine si tocca <b class="ui">Stop</b>: si ferma su tutti i telefoni.</li>
+  </ol>
+  <table class="grid">
+    <thead><tr><th>Metro</th><th>Cosa mostra il conto</th></tr></thead>
+    <tbody>
+      <tr><td>4/4</td><td>4 3 2 1 GO</td></tr>
+      <tr><td>3/4</td><td>3 2 1 GO</td></tr>
+      <tr><td>2/4</td><td>2 1 GO</td></tr>
+      <tr><td>5/4</td><td>5 4 3 2 1 GO</td></tr>
+      <tr><td>6/8, 12/8</td><td>I movimenti puntati come numeri grandi (2 o 4), gli ottavi come puntini.</td></tr>
+      <tr><td>5/8, 7/8</td><td>I movimenti raggruppati come nella griglia, ad es. 2+2+3: corto, corto, lungo.</td></tr>
+    </tbody>
+  </table>
+  <ul>
+    <li>Con <b class="ui">2 bars</b> sul brano, la prima battuta conta a metà tempo (“1 — 2 —”) e la seconda a tempo.</li>
+    <li>Un brano che parte qualche movimento prima chiude il conto con il <b class="ui">GO</b> sulla sua prima nota, non sull'1.</li>
+    <li>La band sceglie la direzione: conto alla rovescia (4 3 2 1, il predefinito) o conteggio classico (1 2 3 4).</li>
+    <li>Con <b class="ui">Follow the tempo</b> attivo, il brano parte sul <b class="ui">GO</b>; un click già avviato prosegue a tempo.</li>
+    <li>Facoltativi su ogni telefono: vibrazione a ogni movimento (più forte sul primo) e conteggio a voce o click in cuffia, mai dall'altoparlante del telefono se non lo si sceglie.</li>
+    <li>Un brano con <b class="ui">Played with a backing track</b> non ha il pulsante <b class="ui">Count in</b>; l'admin può comunque avviarlo dal menu del brano. Mentre la regia suona l'audio del brano, il count-in non viene proposto.</li>
+    <li>Un telefono che riceve il messaggio in ritardo entra nel conto sul movimento giusto. Senza segnale il count-in arriva ai telefoni vicini via Bluetooth. I telefoni restano allineati entro circa 20–40 ms.</li>
+  </ul>
+  <div class="roles">
+    <div data-role="admin">Avvia e ferma il count-in per tutta la band.</div>
+    <div data-role="member">Lo vede sul proprio telefono e sceglie vibrazione o cuffia per il proprio dispositivo.</div>
+  </div>
+  <!-- SCREENSHOT PLACEHOLDER: stage-count-in@phone (integrated pass) -->
+
+  <h3 id="art-follow-the-tempo" data-roles="admin,member">Seguire il tempo</h3>
+  <aside class="note draft">Scritto prima che la funzione fosse finita, partendo dal piano. Verificare ogni etichetta sull’app prima di farci affidamento.</aside>
+  <p>Una volta attivo, la griglia, la struttura o il testo si muovono con il brano, a tempo con il telefono del leader.</p>
+  <ol class="steps">
+    <li>Nello Stage o nel Live mode si aprono le scelte di vista della scheda del brano (dove si sceglie <b class="ui">Lyrics &amp; chords</b> o <b class="ui">Chord chart</b>).</li>
+    <li>Si attiva <b class="ui">Follow the tempo</b>. È spento di serie e vale su quel dispositivo.</li>
+    <li>Quando il leader fa partire il brano con <b class="ui">Count in</b> o con il click, lo schermo si muove con lui.</li>
+  </ol>
+  <table class="grid">
+    <thead><tr><th>Vista</th><th>Cosa si muove</th></tr></thead>
+    <tbody>
+      <tr><td><b class="ui">Chord chart</b></td><td>Si illumina la battuta corrente e la griglia scorre per tenerla in vista.</td></tr>
+      <tr><td>Struttura</td><td>Si evidenzia la sezione corrente; una striscia in alto dice cosa viene dopo (“Next: Bridge in 4 bars”).</td></tr>
+      <tr><td><b class="ui">Lyrics &amp; chords</b>, <b class="ui">Lyrics</b>, <b class="ui">Song only</b></td><td>Si evidenzia la riga corrente e il testo scorre morbido. Senza la temporizzazione delle righe avanza sezione per sezione.</td></tr>
+      <tr><td>Spia da palco</td><td>Un grande conto alla rovescia verso la sezione successiva (“Chorus in 4”).</td></tr>
+    </tbody>
+  </table>
+  <p class="steps-title">Guidarlo</p>
+  <ol class="steps">
+    <li>Si fa partire il brano con <b class="ui">Count in</b> o con il click: la battuta 1 parte su ogni telefono nello stesso istante.</li>
+    <li>Se la band suona una parte più lunga o più corta, si tocca la sezione, la battuta o la riga in cui si è: tutti saltano lì.</li>
+    <li><b class="ui">Hold</b> ripete la sezione corrente (un vamp, un assolo) finché non lo si tocca di nuovo.</li>
+    <li><b class="ui">Stop</b> lo termina; passare a un altro brano lo ferma comunque.</li>
+  </ol>
+  <ul>
+    <li>Solo il leader sposta il punto della band; i membri accendono o spengono la vista sul proprio telefono.</li>
+    <li>Per seguire il tempo un brano ha bisogno del BPM (“Add a BPM to follow this song”).</li>
+    <li>Ritornelli, finali alternativi, D.C., D.S., segno e coda della griglia vengono svolti in ordine. Una corona attende il tocco del leader.</li>
+    <li>Per seguire riga per riga l'admin imposta nel brano la temporizzazione delle righe con <b class="ui">Sync lines</b>: battendo il tempo sulla registrazione o indicando le battute di ogni riga.</li>
+    <li>In prova <b class="ui">Play at 80%</b> rallenta insieme click e scorrimento; il BPM del brano resta lo stesso.</li>
+  </ul>
+  <!-- SCREENSHOT PLACEHOLDER: stage-follow-tempo@phone (integrated pass) -->
+  <!-- </draft> -->
 
   <h3 id="art-stage-manager" data-roles="admin,member">Suonare l’audio dei brani dalla regia</h3>
   <p>Il portatile o il tablet di un admin, collegato al mixer, fa da regia (nell’app in inglese <i>Stage manager</i>): è l’unico dispositivo che suona l’audio dei brani. Quando suona un brano, tutti gli schermi in Stage mode passano a quel brano, anche fuori dall’ordine della scaletta. I telefoni dei membri non suonano mai.</p>
@@ -799,7 +990,7 @@
   <p>Nelle app per iPhone, iPad e Android il telefono dell'admin trasmette anche via Bluetooth il brano corrente e l'ordine. I telefoni dei membri nelle vicinanze li ricevono senza abbinamento e senza internet.</p>
   <p class="steps-title">Preparazione prima del gig</p>
   <ol class="steps">
-    <li>Tutti aprono il gig almeno una volta con la connessione attiva: l'app conserva sul telefono la setlist (con testi e partiture) e la chiave Bluetooth del gig.</li>
+    <li>Tutti hanno la setlist sul telefono: con un sì al download (vedi <a data-ref="live-mode-offline">Stage e Live mode senza segnale</a>) o aprendo il gig una volta online. La chiave Bluetooth del gig arriva con lei.</li>
     <li>Si attiva il Bluetooth e si consente a BandWith di usarlo.</li>
     <li>Sul palco tutti aprono lo Stage mode. Il leader mostra <b class="ui">Bluetooth</b> o <b class="ui">Live · BT</b>; i membri mostrano <b class="ui">· BT</b> dopo l'etichetta del follow.</li>
   </ol>
@@ -821,6 +1012,106 @@
   <div class="devnote" data-devices="web">Funzionano la sincronizzazione via internet e il click; niente Bluetooth né copia offline della setlist. Lo schermo intero nasconde anche le barre del browser, dove il browser lo permette.</div>
   <p>Il tasto Indietro di Android ed Esc chiudono prima lo Stage mode, non il gig sottostante.</p>
 
+  <h2>Senza segnale</h2>
+
+  <h3 id="art-live-mode-offline" data-roles="admin,member">Stage e Live mode senza segnale</h3>
+  <p>In molti locali il segnale non c'è. Nelle app per telefono e tablet BandWith conserva sul dispositivo le setlist dei 7 giorni successivi, così Stage mode e Live mode si aprono e funzionano senza internet.</p>
+  <p class="steps-title">Cosa resta sul dispositivo</p>
+  <ul>
+    <li>Ogni gig e prova dei prossimi 7 giorni a cui si partecipa e che ha una setlist. I gig rifiutati restano fuori.</li>
+    <li>Per ogni brano: titolo, artista, tonalità, BPM, il testo con accordi e parti vocali, la griglia accordi e chi canta cosa.</li>
+    <li>Le proprie note e i propri file su quei brani. Nessuna nota di altri.</li>
+    <li>Mai compensi, contratti o preventivi.</li>
+  </ul>
+  <p class="steps-title">La prima volta basta un sì</p>
+  <ol class="steps">
+    <li>Circa una settimana prima del gig arriva una push, ad es. “La scaletta di sabato, pronta anche senza segnale · Scarica testi, accordi e strutture per The Loft, Brooklyn (12 brani). Tocca per vedere cosa include.” (la push segue la lingua dell'utente).</li>
+    <li>Toccandola si apre il gig con un foglio: <b class="ui">Have the setlist with you, even without signal.</b> Spiega cosa viene conservato, dove e quanto spazio occupa all'incirca.</li>
+    <li><b class="ui">Download and keep it automatic</b>: questa setlist e le prossime arrivano da sole, senza altre domande.</li>
+    <li><b class="ui">Only this gig</b> (per una prova <b class="ui">Only this rehearsal</b>) conserva solo questa.</li>
+    <li><b class="ui">Not now</b>: l'app lo richiede ancora una volta, il giorno prima.</li>
+  </ol>
+  <p class="steps-title">Nella pagina del gig</p>
+  <ul>
+    <li>Sotto la setlist, <b class="ui">Offline ready · updated …</b> indica che la setlist è sul dispositivo e aggiornata.</li>
+    <li><b class="ui">Not on this device yet</b> indica che non c'è ancora: <b class="ui">Download for offline</b> la scarica finché c'è segnale. La prima volta lo stesso foglio chiede come.</li>
+    <li>Se il download non riesce: <b class="ui">“Couldn’t download it. Try again with internet.”</b></li>
+  </ul>
+  <p class="steps-title">Sul palco senza segnale</p>
+  <ul>
+    <li>Il gig o la prova si aprono come sempre, e così <b class="ui">Open stage mode</b> e <b class="ui">Go live</b> nella Home, dalla copia sul dispositivo.</li>
+    <li>Un'etichetta in alto indica <b class="ui">Offline · content from …</b>, con l'ora in cui la copia è stata salvata.</li>
+    <li>I cambi di brano del leader arrivano comunque via Bluetooth (vedi <a data-ref="stage-bluetooth-sync">Stage mode senza internet (Bluetooth)</a>).</li>
+    <li>Note e modifiche restano in attesa sul telefono e partono quando torna il segnale (vedi <a data-ref="changes-without-signal">Le modifiche fatte senza segnale</a>).</li>
+  </ul>
+  <p class="steps-title">Si aggiorna da sola</p>
+  <ul>
+    <li>Quando un admin cambia la setlist o uno dei suoi brani, la copia si aggiorna all'apertura dell'app, al suo ritorno in primo piano e in background quando il telefono lo consente.</li>
+    <li>La copia viene rimossa il giorno dopo il gig, quando si lascia la band o cambia il ruolo, e al logout.</li>
+  </ul>
+  <aside class="note privacy">La copia sta solo sul dispositivo ed è solo di chi lo usa. Gli admin vedono se un telefono è pronto, mai cosa contiene.</aside>
+  <div class="roles">
+    <div data-role="admin">Riceve la stessa domanda la prima volta e in più vede chi nella band è pronto (vedi <a data-ref="offline-members-ready">Vedere chi ha la setlist senza segnale</a>).</div>
+    <div data-role="member">Dice sì una volta; poi le setlist arrivano da sole.</div>
+    <div data-role="deputy">I deputy non ricevono le setlist della band, quindi per loro non viene conservato nulla.</div>
+  </div>
+  <div class="devnote" data-devices="web">Sul web l'app ha bisogno di internet per aprirsi, quindi senza segnale non si usa: sul palco serve l'app per telefono o tablet.</div>
+  <!-- SCREENSHOT PLACEHOLDER: live-pack-consent@phone (integrated pass) -->
+  <!-- SCREENSHOT PLACEHOLDER: live-offline-ready@phone (integrated pass) -->
+
+  <h3 id="art-offline-and-live-settings" data-roles="admin,member">Cambiare la scelta offline nelle Impostazioni</h3>
+  <p>Si accendono o spengono i download automatici, si aspetta il Wi-Fi, si vede lo spazio occupato e si elimina ciò che è conservato.</p>
+  <ol class="steps">
+    <li>Dal menu si tocca <b class="ui">Settings &amp; account</b> e poi <b class="ui">Offline &amp; live</b>.</li>
+    <li><b class="ui">Automatic download</b> acceso: ogni setlist dei prossimi 7 giorni arriva da sola. Spento: ogni gig chiede prima.</li>
+    <li><b class="ui">Wi-Fi only</b> acceso: i download automatici aspettano il Wi-Fi su quel dispositivo.</li>
+    <li><b class="ui">Space used</b> mostra quante setlist sono conservate e quanto spazio occupano, ad es. “2 setlists · 1.4 MB”.</li>
+    <li>Per liberare spazio si tocca <b class="ui">Delete all</b> e di nuovo <b class="ui">Delete all</b> per confermare. Le setlist tornano quando si apre il gig con segnale.</li>
+  </ol>
+  <ul>
+    <li><b class="ui">Automatic download</b> segue l'account su tutti i dispositivi; <b class="ui">Wi-Fi only</b> e ciò che è conservato valgono solo per quel dispositivo.</li>
+    <li>Il testo di una setlist pesa poco; la maggior parte dello spazio la occupano i propri file sui brani.</li>
+  </ul>
+  <!-- SCREENSHOT PLACEHOLDER: settings-offline-live@phone (integrated pass) -->
+
+  <h3 id="art-offline-members-ready" data-roles="admin">Vedere chi ha la setlist senza segnale</h3>
+  <p>Su un gig o una prova si vede quanti membri hanno la setlist sul telefono e si ricorda agli altri di scaricarla.</p>
+  <ol class="steps">
+    <li>Si apre il gig o la prova. Sotto la setlist c'è <b class="ui">Offline: … of … members ready</b>.</li>
+    <li>Se sono tutti pronti compare “Everyone has the setlist on their phone.” e non serve altro.</li>
+    <li>Altrimenti si tocca la riga: elenca chi non è ancora pronto.</li>
+    <li>Si tocca <b class="ui">Remind</b> accanto a un nome: riceve una push che gli chiede di scaricarla, e il pulsante diventa <b class="ui">Reminded</b>.</li>
+  </ol>
+  <ul>
+    <li>Un membro è pronto quando l'app sul suo telefono o tablet ha l'ultima versione di questa setlist. Dopo una modifica alla setlist, i telefoni tornano a contare quando si sono aggiornati.</li>
+    <li>Ogni membro riceve al massimo un promemoria ogni 6 ore per lo stesso gig.</li>
+    <li>Chi usa solo l'app web non può essere pronto: la copia per l'assenza di segnale sta nelle app per telefono e tablet.</li>
+  </ul>
+  <aside class="note privacy">Gli admin vedono solo se un telefono è pronto, mai cosa contiene né le note di nessuno.</aside>
+
+  <h3 id="art-changes-without-signal" data-roles="admin,member">Le modifiche fatte senza segnale</h3>
+  <p>Senza segnale si continua a lavorare nello Stage e nel Live mode. Ciò che si scrive viene salvato subito sul telefono e inviato appena torna il segnale.</p>
+  <p class="steps-title">Cosa resta in attesa sul telefono</p>
+  <ul>
+    <li>Le note personali su un brano (vedi <a data-ref="my-notes-and-files">Le mie note e i miei file su un brano</a>).</li>
+    <li>Una <b class="ui">Note for the band</b> e le modifiche suggerite a un brano.</li>
+    <li>Le note e i segni di prova.</li>
+    <li>Il nuovo ordine della setlist deciso dal leader nello Stage mode.</li>
+  </ul>
+  <p class="steps-title">Cosa si vede</p>
+  <ul>
+    <li>Una barra in alto, ad es. <b class="ui">You’re offline · 2 changes waiting for signal</b>; senza nulla in attesa, <b class="ui">You’re offline · showing cached info</b>.</li>
+    <li>Dopo che il leader ha trascinato un brano senza segnale, lo stato indica <b class="ui">Saved on this phone</b>, poi <b class="ui">Saved</b> quando arriva alla setlist della band.</li>
+    <li>Al ritorno del segnale: <b class="ui">Back online · sending 2 changes</b>, poi <b class="ui">Back online · up to date</b>. <b class="ui">Send now</b> nella barra invia subito.</li>
+  </ul>
+  <p class="steps-title">Quando parte</p>
+  <ul>
+    <li>Appena torna il segnale, quando si riapre l'app e ogni 30 secondi finché qualcosa è in attesa.</li>
+    <li>Chiudere l'app non perde nulla: parte alla prossima apertura con segnale.</li>
+  </ul>
+  <aside class="note tip">I membri vicini vedono subito il nuovo ordine del leader via Bluetooth, prima ancora che sia salvato.</aside>
+  <!-- SCREENSHOT PLACEHOLDER: stage-offline-banner@phone (integrated pass) -->
+
   <h2>Domande frequenti</h2>
   <dl class="faq">
     <dt>I membri possono modificare brani o setlist?</dt>
@@ -836,7 +1127,13 @@
     <dt>La band riceve una notifica per ogni brano spostato?</dt>
     <dd>No. Nulla viene inviato prima del salvataggio; poi ognuno riceve un'unica push che riassume le modifiche.</dd>
     <dt>Lo Stage mode funziona senza internet?</dt>
-    <dd>Nelle app per telefono e tablet sì, se il gig è stato aperto una volta online: il telefono del leader mantiene la band sincronizzata via Bluetooth. Sul web serve internet.</dd>
+    <dd>Nelle app per telefono e tablet sì. Con un sì al download le setlist dei prossimi 7 giorni restano sul telefono, e il telefono del leader tiene la band sullo stesso brano via Bluetooth. Sul web serve internet.</dd>
+    <dt>Il telefono scarica le setlist senza chiedere?</dt>
+    <dd>No. La prima volta lo chiede un foglio. Con <b class="ui">Download and keep it automatic</b> le setlist successive arrivano da sole; si cambia quando si vuole in Settings › <b class="ui">Offline &amp; live</b>.</dd>
+    <dt>Le setlist sul telefono contengono compensi o contratti?</dt>
+    <dd>No. Solo testi, accordi, strutture, parti vocali e le proprie note e file. Compensi, contratti, preventivi e note degli altri membri non finiscono mai sul telefono.</dd>
+    <dt>Perché alcune righe del testo sono attenuate?</dt>
+    <dd>È attivo <b class="ui">Highlight my part</b>: le righe che non si cantano sono un po' attenuate. Toccandolo in cima al brano si vedono tutte.</dd>
     <dt>Il click si sente?</dt>
     <dd>No, è solo visivo: un bagliore sul bordo dello schermo a ogni battito.</dd>
     <dt>Perché il telefono smette di seguire il leader?</dt>
@@ -845,5 +1142,9 @@
     <dd>Viene eliminato con i file allegati e il membro riceve una push con la motivazione, se indicata.</dd>
     <dt>Perché sul web il forum di iReal Pro non si apre dentro l'app?</dt>
     <dd>Il forum non può essere mostrato dentro una pagina web, quindi si apre in una finestra a parte. Lì si copia un link e si tocca <b class="ui">Paste link</b>, oppure si trascina il link sulla casella.</dd>
+    <!-- <draft live-tempo> -->
+    <dt>Perché su un brano manca il pulsante Count in?</dt>
+    <dd>Il brano è impostato come <b class="ui">Played with a backing track</b>: è la base a far partire la band. L'admin può comunque avviare un count-in dal menu del brano.</dd>
+    <!-- </draft> -->
   </dl>
 </section>

@@ -50,6 +50,8 @@ const en = {
   expiredBody: 'Write to {band} below if you’d still like to go ahead.',
   staleTitle: 'The quote was just updated.',
   staleBody: 'Check the new version before you accept it.',
+  unavailableTitle: 'This date is no longer available.',
+  unavailableBody: 'Ask the band for a new quote.',
   chatTitle: 'Questions or changes?',
   chatBody: 'Write to {band}. Their answer appears on this page: keep the link to come back.',
   you: 'You',
@@ -95,6 +97,7 @@ const en = {
   depositRow: "Deposit",
   depositPaidTitle: "Deposit received. Thank you!",
   depositPaidBody: "{band} recorded your deposit of {amount}. The date is confirmed.",
+  depositPaidBodyNoAmount: "{band} recorded your deposit. The date is confirmed.",
 };
 
 export type QuoteStrings = typeof en;
@@ -146,6 +149,8 @@ const it: QuoteStrings = {
   expiredBody: 'Scrivi a {band} qui sotto se vuoi comunque procedere.',
   staleTitle: 'Il preventivo è appena stato aggiornato.',
   staleBody: 'Controlla la nuova versione prima di accettarla.',
+  unavailableTitle: 'Questa data non è più disponibile.',
+  unavailableBody: 'Chiedi alla band un nuovo preventivo.',
   chatTitle: 'Domande o modifiche?',
   chatBody: 'Scrivi a {band}. La risposta compare in questa pagina: conserva il link per tornarci.',
   you: 'Tu',
@@ -191,6 +196,7 @@ const it: QuoteStrings = {
   depositRow: "Acconto",
   depositPaidTitle: "Acconto ricevuto. Grazie!",
   depositPaidBody: "{band} ha registrato il tuo acconto di {amount}. La data è confermata.",
+  depositPaidBodyNoAmount: "{band} ha registrato il tuo acconto. La data è confermata.",
 };
 
 const es: QuoteStrings = {
@@ -240,6 +246,8 @@ const es: QuoteStrings = {
   expiredBody: 'Escribe a {band} aquí abajo si aun así quieres seguir adelante.',
   staleTitle: 'El presupuesto se acaba de actualizar.',
   staleBody: 'Revisa la nueva versión antes de aceptarla.',
+  unavailableTitle: 'Esta fecha ya no está disponible.',
+  unavailableBody: 'Pide a la banda un nuevo presupuesto.',
   chatTitle: '¿Preguntas o cambios?',
   chatBody: 'Escribe a {band}. Su respuesta aparece en esta página: guarda el enlace para volver.',
   you: 'Tú',
@@ -285,6 +293,7 @@ const es: QuoteStrings = {
   depositRow: "Anticipo",
   depositPaidTitle: "Anticipo recibido. ¡Gracias!",
   depositPaidBody: "{band} ha registrado tu anticipo de {amount}. La fecha está confirmada.",
+  depositPaidBodyNoAmount: "{band} ha registrado tu anticipo. La fecha está confirmada.",
 };
 
 const fr: QuoteStrings = {
@@ -334,6 +343,8 @@ const fr: QuoteStrings = {
   expiredBody: 'Écrivez à {band} ci-dessous si vous souhaitez quand même continuer.',
   staleTitle: 'Le devis vient d’être mis à jour.',
   staleBody: 'Vérifiez la nouvelle version avant de l’accepter.',
+  unavailableTitle: 'Cette date n’est plus disponible.',
+  unavailableBody: 'Demandez un nouveau devis au groupe.',
   chatTitle: 'Des questions ou des changements ?',
   chatBody: 'Écrivez à {band}. Leur réponse s’affiche sur cette page : gardez le lien pour revenir.',
   you: 'Vous',
@@ -379,6 +390,7 @@ const fr: QuoteStrings = {
   depositRow: "Acompte",
   depositPaidTitle: "Acompte reçu. Merci !",
   depositPaidBody: "{band} a enregistré votre acompte de {amount}. La date est confirmée.",
+  depositPaidBodyNoAmount: "{band} a enregistré votre acompte. La date est confirmée.",
 };
 
 const de: QuoteStrings = {
@@ -428,6 +440,8 @@ const de: QuoteStrings = {
   expiredBody: 'Schreib {band} unten, wenn du trotzdem weitermachen möchtest.',
   staleTitle: 'Das Angebot wurde gerade aktualisiert.',
   staleBody: 'Sieh dir die neue Version an, bevor du sie annimmst.',
+  unavailableTitle: 'Dieser Termin ist nicht mehr verfügbar.',
+  unavailableBody: 'Bitte die Band um ein neues Angebot.',
   chatTitle: 'Fragen oder Änderungen?',
   chatBody: 'Schreib {band}. Die Antwort erscheint auf dieser Seite: Behalte den Link, um zurückzukommen.',
   you: 'Du',
@@ -473,6 +487,7 @@ const de: QuoteStrings = {
   depositRow: "Anzahlung",
   depositPaidTitle: "Anzahlung erhalten. Danke!",
   depositPaidBody: "{band} hat eure Anzahlung von {amount} erfasst. Der Termin ist bestätigt.",
+  depositPaidBodyNoAmount: "{band} hat eure Anzahlung erfasst. Der Termin ist bestätigt.",
 };
 
 const pt: QuoteStrings = {
@@ -522,6 +537,8 @@ const pt: QuoteStrings = {
   expiredBody: 'Escreva para {band} aqui embaixo se ainda quiser seguir em frente.',
   staleTitle: 'O orçamento acabou de ser atualizado.',
   staleBody: 'Confira a nova versão antes de aceitar.',
+  unavailableTitle: 'Esta data não está mais disponível.',
+  unavailableBody: 'Peça à banda um novo orçamento.',
   chatTitle: 'Perguntas ou alterações?',
   chatBody: 'Escreva para {band}. A resposta aparece nesta página: guarde o link para voltar.',
   you: 'Você',
@@ -567,6 +584,7 @@ const pt: QuoteStrings = {
   depositRow: "Sinal",
   depositPaidTitle: "Sinal recebido. Obrigado!",
   depositPaidBody: "{band} registrou o seu sinal de {amount}. A data está confirmada.",
+  depositPaidBodyNoAmount: "{band} registrou o seu sinal. A data está confirmada.",
 };
 
 export const QUOTE_STRINGS: Record<QuoteLang, QuoteStrings> = { en, it, es, fr, de, pt };

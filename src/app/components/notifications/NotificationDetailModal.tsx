@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft,
@@ -27,8 +27,10 @@ import { parseLocalDate } from '@/lib/dates';
 import { HeaderAction, IconButton, NavBackButton, Card, Tag } from '@/app/components/bw/Screen';
 import { RailCover } from '@/lib/railActions';
 import { useRailLayout } from '@/lib/deviceRegions';
+import { useFocusTrap } from '@/lib/focusTrap';
 import { PillButton, Selector } from '@/app/components/bw/Form';
-import { getActiveSymbol as sym, useCurrency } from '@/lib/currency';
+import { currencySymbol, useCurrency } from '@/lib/currency';
+import { useOptionalBand } from '@/lib/BandContext';
 import { findCalendarEvent, findEventConflicts, type CalendarEventLike } from '@/lib/eventConflicts';
 import { notificationBandId, notificationTarget, notificationTargetLabel } from '@/lib/notificationRouting';
 import { SwipeRow } from '@/app/components/bw/SwipeRow';
@@ -41,7 +43,7 @@ import { localizePushLabel, pushLanguage } from '@/lib/pushLabels';
 /** The row's subtitle ("Gig Alert · Summer Fest") with its label in the app language. */
 const subtitleOf = (data?: Record<string, unknown> | null): string | null =>
   data?.subtitle ? localizePushLabel(String(data.subtitle), pushLanguage(getLocale())) ?? null : null;
-import { inviteFeeToShow } from '@/lib/inviteFee';
+import { inviteFeeCurrency, inviteFeeToShow } from '@/lib/inviteFee';
 import { notificationTypeLine } from '@/lib/notificationTypeLine';
 import { useAuth } from '@/lib/AuthContext';
 import { useLineupSoFar } from '@/app/hooks/useLineupSoFar';
@@ -169,6 +171,10 @@ function getNotificationMeta(type: string, data?: Record<string, unknown>): Noti
       onDark: true,
     };
   }
+  // A possible gig to keep free (178): no title, client or fee in it.
+  if (kind.startsWith('date_hold')) {
+    return { label: t('Possible gig'), icon: Calendar, fill: 'bg-accent-gig text-accent-gig-foreground', onDark: false };
+  }
   if (kind === 'event_invite') {
     return { label: t('Gig invitation'), icon: Music, fill: 'bg-accent-gig text-accent-gig-foreground', onDark: false };
   }
@@ -239,20 +245,23 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
   const [openRowId, setOpenRowId] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const t = useT();
-  useCurrency(); // re-render money labels when the band currency changes
+  const { code: activeCurrency } = useCurrency(); // re-render money labels when the band currency changes
+  const bandsForCurrency = useOptionalBand()?.bands;
   /** Band a notification comes from, when the user is in several. */
   const bandOf = (n: NotificationData): string | null => {
     const id = bandNames ? notificationBandId(n) : undefined;
     return (id && bandNames?.[id]) || null;
   };
-  const [viewingIndex, setViewingIndex] = useState<number | null>(null);
+  // The item open in detail, by id: the list can change under it (a refetch, a switched-off
+  // feature's items hidden), and an index would then point at another item or at nothing.
+  const [viewingId, setViewingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [isAddingToCalendar, setIsAddingToCalendar] = useState(false);
 
-  // When modal closes or when hub is opened (notification is null), always reset viewingIndex and filter
+  // When modal closes or when hub is opened (notification is null), always reset the open item and filter
   useEffect(() => {
     if (!isOpen || !notification) {
-      setViewingIndex(null);
+      setViewingId(null);
     }
     if (!isOpen) {
       setFilter('all');
@@ -264,6 +273,12 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
 
   const allNotifications =
     notifications.length > 0 ? notifications : notification ? [notification] : [];
+  const viewed = viewingId ? allNotifications.find((n) => n.id === viewingId) ?? null : null;
+  // The open item left the list: back to the list (never a blank detail).
+  useEffect(() => {
+    if (viewingId && !viewed) setViewingId(null);
+  }, [viewingId, viewed]);
+  const viewingIndex = viewed ? allNotifications.indexOf(viewed) : null;
   const isListView = viewingIndex === null && !notification;
 
   // iPhone Duo open (Figma "Open · Notifications / Activity | Notifications /
@@ -272,6 +287,14 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
   // page is shown until you pick another.
   const { twoPane } = useRailLayout();
   const split = twoPane && !notification;
+  // Two pages: the list and the detail are one modal dialog with one focus
+  // trap, so the keyboard moves between them.
+  const splitRef = useRef<HTMLDivElement | null>(null);
+  useFocusTrap(splitRef, isOpen && split);
+  // One page: the inbox is a modal dialog with its own trap. Folding the Duo
+  // swaps one trap for the other in one go: focus moves into the new frame.
+  const pageRef = useRef<HTMLDivElement | null>(null);
+  useFocusTrap(pageRef, isOpen && !split);
 
   // Filtered notifications
   const displayedNotifications = filter === 'unread'
@@ -285,8 +308,8 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
   const autoIndex = split && viewingIndex === null && firstDetail ? allNotifications.indexOf(firstDetail) : null;
 
   // Determine which notification to show in detail view
-  const detailNotif = viewingIndex !== null
-    ? allNotifications[viewingIndex]
+  const detailNotif = viewed
+    ? viewed
     : autoIndex !== null
       ? allNotifications[autoIndex]
       : notification;
@@ -298,32 +321,42 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
   const inviteLineup = useLineupSoFar(inviteEventId, detailNotif ? notificationBandId(detailNotif) : null, authUser?.id);
 
   // Auto-mark notification as read when viewed in detail (not the one the
-  // open display shows by itself next to the list).
+  // open display shows by itself next to the list). Once per notification
+  // while the inbox is open: the item on screen is a snapshot that stays
+  // "unread", and the parent passes a new callback on every render, so this
+  // used to write and refetch in a loop (audit 07 #9).
+  const markedReadRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (isOpen && autoIndex === null && detailNotif && !detailNotif.read && onMarkAsRead) {
+    if (!isOpen) markedReadRef.current.clear();
+  }, [isOpen]);
+  useEffect(() => {
+    if (isOpen && autoIndex === null && detailNotif && !detailNotif.read && onMarkAsRead && !markedReadRef.current.has(detailNotif.id)) {
+      markedReadRef.current.add(detailNotif.id);
       onMarkAsRead(detailNotif.id);
     }
   }, [isOpen, autoIndex, detailNotif?.id, detailNotif?.read, onMarkAsRead]);
 
   const handleClose = () => {
-    setViewingIndex(null);
+    setViewingId(null);
     setFilter('all');
     onClose();
   };
 
-  const backToList = () => setViewingIndex(null);
+  const backToList = () => setViewingId(null);
   // Android Back and Escape from an opened item return to the list, like its
   // Back button (two pages show both, so there it closes the inbox).
   useSystemBack(isOpen && viewingIndex !== null && !split, backToList);
 
   const handleAction = (action: string, notificationId?: string) => {
-    setViewingIndex(null);
+    setViewingId(null);
     onAction?.(action, notificationId || detailNotif?.id);
   };
 
   const handleDelete = (id?: string) => {
-    setViewingIndex(null);
-    onDelete?.(id || detailNotif?.id);
+    const target = id || detailNotif?.id;
+    setViewingId(null);
+    // Never "delete without an id": that must not mean all of them.
+    if (target) onDelete?.(target);
   };
 
   const handleAddToCalendar = async () => {
@@ -452,8 +485,7 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
                     </div>
                   ) : (
                     <ul className="flex flex-col gap-3">
-                      {displayedNotifications.map((notif, i) => {
-                        const originalIndex = allNotifications.findIndex(n => n.id === notif.id);
+                      {displayedNotifications.map((notif) => {
                         const isRead = notif.read;
                         const meta = getNotificationMeta(notif.type, notif.data);
                         const IconComponent = meta.icon;
@@ -477,7 +509,7 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
                                   onNavigate(notif);
                                   return;
                                 }
-                                setViewingIndex(originalIndex >= 0 ? originalIndex : i);
+                                setViewingId(notif.id);
                               }}
                               className={cn(
                                 'w-full text-left p-4 rounded-[24px] flex items-start gap-3 active:scale-[0.99] transition-transform',
@@ -641,7 +673,7 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
                               {inviteFeeToShow(d) != null && (
                                 <KV
                                   k={t('Allocated fee')}
-                                  v={`${sym()}${inviteFeeToShow(d)!.toLocaleString(intlLocale())}`}
+                                  v={`${currencySymbol(inviteFeeCurrency(d, detailNotif ? notificationBandId(detailNotif) : null, bandsForCurrency as { id?: string; pricing_currency?: string }[] | undefined, activeCurrency))}${inviteFeeToShow(d)!.toLocaleString(intlLocale())}`}
                                 />
                               )}
                             </>
@@ -770,6 +802,8 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
       {isOpen && !split && (
         <motion.div
           key={"notifications"}
+          ref={pageRef}
+          tabIndex={-1}
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 12 }}
@@ -777,7 +811,12 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
           // Laptop pose: like the full-screen forms (`.bw-fold-form`), the
           // header holds the Display and the rows scroll on the Deck, so no
           // row lies across the fold.
-          className="bw-pane-detail bw-fold-form fixed inset-0 z-[101] flex flex-col bg-background text-foreground overflow-x-hidden"
+          // A modal dialog: the bell (the Duo rail, the iPad sidebar) can open
+          // it over a sheet, whose focus trap then hands over to it.
+          role="dialog"
+          aria-modal="true"
+          aria-label={isListView || !detailNotif ? t('Notifications') : cleanNotificationTitle(detailNotif.title)}
+          className="bw-pane-detail bw-fold-form fixed inset-0 z-[101] flex flex-col bg-background text-foreground overflow-x-hidden outline-none"
           style={{ overscrollBehaviorX: 'none' }}
         >
           {/* ═══ HEADER ═══ */}
@@ -808,13 +847,25 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
         </motion.div>
       )}
       {isOpen && split && (
+        <div
+          key={"notifications-split"}
+          ref={splitRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('Notifications')}
+          tabIndex={-1}
+          // Holds both pages (each placed by its own pane class); touches go
+          // to them, not to this frame.
+          className="outline-none"
+          style={{ position: 'fixed', inset: 0, zIndex: 101, pointerEvents: 'none' }}
+        >
         <motion.div
           key={"notifications-list"}
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 12 }}
           transition={{ duration: durations.normal, ease: easings.smooth }}
-          className="bw-pane-hub fixed inset-0 z-[101] flex flex-col bg-background text-foreground overflow-x-hidden"
+          className="bw-pane-hub pointer-events-auto fixed inset-0 z-[101] flex flex-col bg-background text-foreground overflow-x-hidden"
           style={{ overscrollBehaviorX: 'none' }}
         >
           {/* ═══ HEADER ═══ */}
@@ -827,15 +878,17 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
             </div>
           </div>
         </motion.div>
-      )}
-      {isOpen && split && detailNotif && (
+        <AnimatePresence>
+      {detailNotif && (
         <motion.div
           key={"notifications-detail"}
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 12 }}
           transition={{ duration: durations.normal, ease: easings.smooth }}
-          className="bw-pane-detail fixed inset-0 z-[101] flex flex-col bg-background text-foreground overflow-x-hidden"
+          role="region"
+          aria-label={cleanNotificationTitle(detailNotif.title)}
+          className="bw-pane-detail pointer-events-auto fixed inset-0 z-[101] flex flex-col bg-background text-foreground overflow-x-hidden"
           style={{ overscrollBehaviorX: 'none' }}
         >
           {/* ═══ HEADER ═══ */}
@@ -855,6 +908,9 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
             </div>
           </div>
         </motion.div>
+      )}
+        </AnimatePresence>
+        </div>
       )}
     </AnimatePresence>
   );

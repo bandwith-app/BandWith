@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase, RECOVERY_FLAG } from '@/lib/supabase';
+import { clearRecoveryProof, hasRecoveryProofForLink, pageLinkCode } from '@/lib/recoveryProof';
 import { Loader2 } from '@/app/components/icons';
 import { t, useT } from '@/lib/i18n';
 import { AuthScreen, Kicker, PillButton } from '@/app/components/bw/Form';
@@ -33,6 +34,9 @@ export default function AuthCallback() {
   const [status, setStatus] = useState<'processing' | 'redirecting'>('processing');
   const [problem, setProblem] = useState<AuthCallbackProblem | null>(null);
   const isRecovery = new URLSearchParams(window.location.search).get(RECOVERY_FLAG) === '1';
+  // Read before any await (Codex review #287 round 3): the auth library
+  // removes `code` from the URL after its exchange, maybe before this renders.
+  const [linkCode] = useState(() => pageLinkCode());
 
   useEffect(() => {
     let cancelled = false;
@@ -102,6 +106,23 @@ export default function AuthCallback() {
           }
         }
 
+        if (isRecovery) {
+          // A reset link opened where nobody asked for it: the library keeps
+          // the session already here (maybe someone else's) and the new
+          // password would go to that account (audit 04 #2). Only its own
+          // PASSWORD_RECOVERY event proves the link signed this account in.
+          const { data: { session: now } } = await supabase.auth.getSession();
+          // For this link only, exchanged by this tab: an older proof here
+          // (someone's unfinished reset) or a reset finished in another tab
+          // (the library broadcasts its event) says nothing about this link.
+          if (!hasRecoveryProofForLink(now?.user?.id, code ?? linkCode)) {
+            console.warn('[AuthCallback] Reset link not exchanged here');
+            clearRecoveryProof();
+            fail({ code: 'pkce_code_verifier_not_found' });
+            return;
+          }
+        }
+
         if (cancelled) return;
         setStatus('redirecting');
 
@@ -118,7 +139,7 @@ export default function AuthCallback() {
     // normal sign-in.
     const cleanupAndRedirect = (signedIn: boolean) => {
       if (cancelled) return;
-      const isRecovery = signedIn && new URLSearchParams(window.location.search).get(RECOVERY_FLAG) === '1';
+      const isRecoveryLink = signedIn && new URLSearchParams(window.location.search).get(RECOVERY_FLAG) === '1';
       // Replace the URL to remove all OAuth params, preventing
       // isAuthCallback() from triggering again after redirect
       window.history.replaceState(
@@ -128,7 +149,7 @@ export default function AuthCallback() {
       );
       // Redirect to app root, keeping only the password-recovery flag so the
       // app can ask for a new password.
-      window.location.href = isRecovery
+      window.location.href = isRecoveryLink
         ? `${window.location.origin}/?${RECOVERY_FLAG}=1`
         : window.location.origin;
     };

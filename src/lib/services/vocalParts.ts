@@ -31,13 +31,22 @@ export async function fetchSetlistVocalParts(rowIds: string[]): Promise<Record<s
   }
 }
 
+/**
+ * No row written: the row is gone (taken out of the setlist, or replaced by
+ * another admin's save) or not this user's to change. Never a "saved".
+ */
+const notWritten = () =>
+  Object.assign(new Error('Who sings what was not saved: the song is no longer there. Reopen it and try again.'), { code: 'PGRST116' });
+
 export async function saveSongVocalParts(songId: string, parts: VocalParts | null): Promise<{ error: unknown }> {
-  const { error } = await supabase.from('songs').update({ vocal_parts: parts }).eq('id', songId);
-  return { error };
+  const { data, error } = await supabase.from('songs').update({ vocal_parts: parts }).eq('id', songId).select('id');
+  if (error) return { error };
+  return { error: Array.isArray(data) && data.length > 0 ? null : notWritten() };
 }
 
 /** null goes back to the song's assignment. */
 export async function saveSetlistVocalParts(setlistSongId: string, parts: VocalParts | null): Promise<{ error: unknown }> {
-  const { error } = await supabase.from('setlist_songs').update({ vocal_parts: parts }).eq('id', setlistSongId);
-  return { error };
+  const { data, error } = await supabase.from('setlist_songs').update({ vocal_parts: parts }).eq('id', setlistSongId).select('id');
+  if (error) return { error };
+  return { error: Array.isArray(data) && data.length > 0 ? null : notWritten() };
 }

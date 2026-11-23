@@ -1,3 +1,4 @@
+import { serverErrorText } from '@/lib/deletionRefusal';
 import React, { useState } from 'react';
 import { uuidToNumericId } from '@/lib/numericId';
 import { motion } from 'motion/react';
@@ -17,6 +18,7 @@ import { todayLocal } from '../../../../lib/dates';
 import { parseLocalDate } from '@/lib/dates';
 import { getActiveSymbol as sym, useCurrency } from '@/lib/currency';
 import { useT, intlLocale, localDecimal } from '@/lib/i18n';
+import { parseAmount } from '@/lib/amount';
 
 interface FinanceExpandedProps {
   bandId: string;
@@ -70,12 +72,18 @@ export const FinanceExpanded: React.FC<FinanceExpandedProps> = ({
 
   const handleAddTransaction = async () => {
     if (!txTitle.trim() || !txAmount) return;
+    // The amount as the user writes it ("1.250,50" in German): src/lib/amount.ts.
+    const amount = parseAmount(txAmount);
+    if (amount == null) {
+      setTxError(t('Enter an amount, like {example}.', { example: localDecimal('1250.50') }));
+      return;
+    }
     setSaving(true);
 
     const { error } = await createTransaction({
       band_id: bandId,
       title: txTitle.trim(),
-      amount: parseFloat(String(txAmount).replace(/\s/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')),
+      amount,
       type: txType,
       category: txCategory as any,
       date: txDate,
@@ -83,7 +91,7 @@ export const FinanceExpanded: React.FC<FinanceExpandedProps> = ({
     });
 
     if (error) {
-      setTxError(error.message || t('Could not save the transaction'));
+      setTxError(serverErrorText(error, t('Could not save the transaction')));
     } else {
       setTxError(null);
       setShowAddTransaction(false);

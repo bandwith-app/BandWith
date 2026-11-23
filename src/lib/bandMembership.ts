@@ -4,6 +4,7 @@
  * default fee are read and edited.
  */
 import { canUse, type Entitlements } from '@/lib/plans';
+import { parseAmount } from '@/lib/amount';
 
 /**
  * Whether one more admin fits the band's plan (paid plans, limit `admins`).
@@ -32,6 +33,16 @@ export function leaveBandBlock(members: MemberRow[], userId: string | null | und
 }
 
 /**
+ * A co-admin's account deletion holds the band's last-admin check (180). The
+ * server's message is plain English for older builds; the code is the hint
+ * (and was the message before 180 round 4).
+ */
+export function isDeletionHold(error: { message?: string; hint?: string } | null | undefined): boolean {
+  if (!error) return false;
+  return error.hint === 'account_deletion_in_progress' || /account_deletion_in_progress/.test(error.message ?? '');
+}
+
+/**
  * The instrument to show for a band member: the band's own entry
  * (band_members.instrument), else the one on their profile. Members who
  * joined by invite have no band entry until an admin sets one.
@@ -47,9 +58,10 @@ export function memberInstrument(member: {
 export function parseFeeInput(text: string): { value: number | null; invalid: boolean } {
   const s = text.trim();
   if (!s) return { value: null, invalid: false };
-  const n = Number(s.replace(',', '.'));
-  if (!Number.isFinite(n) || n < 0) return { value: null, invalid: true };
-  return { value: Math.round(n * 100) / 100, invalid: false };
+  // The amount as the user writes it ("1.250,50" in German): src/lib/amount.ts.
+  const n = parseAmount(s);
+  if (n == null) return { value: null, invalid: true };
+  return { value: n, invalid: false };
 }
 
 /** Notices the database sends the band when its roster changes (migration 046). */

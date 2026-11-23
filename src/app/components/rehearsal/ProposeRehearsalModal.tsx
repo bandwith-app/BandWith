@@ -9,6 +9,7 @@ import {
   type ProposalEligibility,
 } from '@/lib/services/rehearsalPolls';
 import { useT, intlLocale, shortWeekday } from '@/lib/i18n';
+import { serverErrorText } from '@/lib/deletionRefusal';
 
 const DAYS_OF_WEEK = [
   { key: 'Mon', label: 'Mon' },
@@ -108,7 +109,7 @@ export const ProposeRehearsalModal: React.FC<ProposeRehearsalModalProps> = ({
       });
 
       if (submitErr) {
-        setError(submitErr.message || t('Failed to submit proposal. Please try again.'));
+        setError(serverErrorText(submitErr, t('Failed to submit proposal. Please try again.')));
         return;
       }
 

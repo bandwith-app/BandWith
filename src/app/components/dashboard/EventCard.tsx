@@ -6,6 +6,7 @@ import { EventMark, type EventKind } from '@/app/components/bw/EventMark';
 import { parseLocalDate } from '@/lib/dates';
 import { getActiveSymbol as sym, useCurrency } from '@/lib/currency';
 import { useT, dateName } from '@/lib/i18n';
+import type { DateHold } from '@/lib/dateHolds';
 
 export interface EventData {
   id: number;
@@ -37,7 +38,9 @@ export interface EventData {
   quoteId?: string;
   quoteStatus?: string;
   is_recurring?: boolean;
-  recurrence_rule?: { freq?: string; frequency?: string; interval?: number; until?: string; count?: number };
+  recurrence_rule?: { freq?: string; frequency?: string; interval?: number; until?: string; count?: number; skip_dates?: string[]; [key: string]: unknown };
+  /** Opened on a later date of a repeating rehearsal: the series' first date (Codex #297). */
+  seriesDate?: string;
   memberUserIds?: string[];
   memberFeeMap?: Record<string, string>;
   /** DB financial/contact fields (events table) */
@@ -55,6 +58,8 @@ export interface EventData {
   draftOf?: 'gig' | 'rehearsal' | 'quote';
   /** lib/wizardDrafts id, for gig and rehearsal drafts. */
   draftId?: string;
+  /** A date on hold (178) in a member's calendar: day, time and place only. */
+  holdOf?: DateHold;
 }
 
 interface EventCardProps {

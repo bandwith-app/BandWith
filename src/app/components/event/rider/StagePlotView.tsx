@@ -185,9 +185,13 @@ export const StagePlotView: React.FC<{
     onChange?.(moveItem(plot, p.id!, x, y));
   };
 
+  // When a finger or the mouse last let go of an item: the click the browser
+  // sends right after is that same tap, already handled.
+  const pointerUpAt = useRef(0);
   const onUp = (e: React.PointerEvent) => {
     const p = press.current;
     if (!p || e.pointerId !== p.pointerId) return;
+    pointerUpAt.current = Date.now();
     if (p.lifted) {
       if (p.moved) haptic.tap();
       else setSelected(p.id);
@@ -196,6 +200,46 @@ export const StagePlotView: React.FC<{
       setSelected(p.id && p.id !== selected ? p.id : null);
     }
     clearPress();
+  };
+
+  // Keyboard (web, iPad with a keyboard, screen readers): every item is a
+  // control. Enter or Space selects it (rename, remove), arrows move it,
+  // Shift + arrow in bigger steps, Escape lets it go.
+  const hintId = React.useId();
+  const markName = (item: PlotItem): string =>
+    item.kind === 'player'
+      ? [item.label, item.code && item.code !== '??' ? item.code : ''].filter(Boolean).join(' · ') || t('Other musician')
+      : item.kind === 'wedge'
+        ? t('Wedge')
+        : item.kind === 'speaker'
+          ? t('Speaker')
+          : t('DI box');
+  // A click with no pointer press before it (a screen reader activating the
+  // button) selects the item like Enter.
+  const onMarkClick = (item: PlotItem) => {
+    if (Date.now() - pointerUpAt.current < 700) return;
+    setSelected(selected === item.id ? null : item.id);
+  };
+  const onMarkKey = (e: React.KeyboardEvent, item: PlotItem) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      setSelected(selected === item.id ? null : item.id);
+      return;
+    }
+    if (e.key === 'Escape' && selected === item.id) {
+      // Only the selection: the sheet or screen around stays open.
+      e.preventDefault();
+      setSelected(null);
+      return;
+    }
+    // Alt/Ctrl/Meta with an arrow belong to the system (Alt+Left is Back).
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    const step = e.shiftKey ? 0.1 : 0.02;
+    const d =
+      e.key === 'ArrowLeft' ? [-step, 0] : e.key === 'ArrowRight' ? [step, 0] : e.key === 'ArrowUp' ? [0, -step] : e.key === 'ArrowDown' ? [0, step] : null;
+    if (!d) return;
+    e.preventDefault();
+    onChange?.(moveItem(plot, item.id, clamp01(item.x + d[0]), clamp01(item.y + d[1])));
   };
 
   const selectedItem = plot.items.find((i) => i.id === selected) || null;
@@ -233,7 +277,8 @@ export const StagePlotView: React.FC<{
     <div className={cn('flex flex-col gap-2', className)}>
       <div
         ref={box}
-        role="img"
+        // Editable: a group of controls (an image hides what is inside it).
+        role={editable ? 'group' : 'img'}
         aria-label={t('Stage plot: {names}', {
           names:
             plot.items
@@ -257,6 +302,10 @@ export const StagePlotView: React.FC<{
             size={size}
             selected={editable && selected === item.id}
             lifted={liftedId === item.id}
+            name={editable ? markName(item) : undefined}
+            describedBy={editable ? hintId : undefined}
+            onKeyDown={editable ? (e) => onMarkKey(e, item) : undefined}
+            onClick={editable ? () => onMarkClick(item) : undefined}
             onPointerDown={
               editable
                 ? (e) => {
@@ -267,6 +316,11 @@ export const StagePlotView: React.FC<{
             }
           />
         ))}
+        {editable && (
+          <span id={hintId} hidden>
+            {t('Enter to edit, arrow keys to move.')}
+          </span>
+        )}
         {addAt && (
           <>
             <span
@@ -395,6 +449,7 @@ export const StagePlotView: React.FC<{
           ) : (
             <p className="bw-body-sm text-muted-foreground">
               {t('Hold an item, then drag it to move it. Tap it to rename or remove it. Hold an empty spot to add one there.')}{' '}
+              {t('With a keyboard: Tab to an item, Enter to edit it, arrow keys to move it.')}{' '}
               {t('Saving adds the channels of new instruments and DI boxes to the input list, and removes those of deleted ones.')}
             </p>
           )}
@@ -413,8 +468,25 @@ const PlotMark: React.FC<{
   /** Picked up by a long press: drawn a little bigger, with a shadow. */
   lifted?: boolean;
   onPointerDown?: (e: React.PointerEvent) => void;
-}> = ({ item, size, selected, lifted, onPointerDown }) => {
+  /** Editable: the item is a control with this name (keyboard, screen readers). */
+  name?: string;
+  describedBy?: string;
+  onKeyDown?: (e: React.KeyboardEvent) => void;
+  onClick?: () => void;
+}> = ({ item, size, selected, lifted, onPointerDown, name, describedBy, onKeyDown, onClick }) => {
   const d = DIAMETER[size];
+  const control = name
+    ? {
+        role: 'button',
+        tabIndex: 0,
+        'aria-label': name,
+        'aria-pressed': !!selected,
+        'aria-describedby': describedBy,
+        onKeyDown,
+        onClick,
+      }
+    : { 'aria-hidden': true as const };
+  const focusRing = name ? 'outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-foreground focus-visible:ring-offset-white' : '';
   const style: React.CSSProperties = { left: `${item.x * 100}%`, top: `${item.y * 100}%` };
   const ring = selected ? 'ring-2 ring-offset-2 ring-foreground ring-offset-white' : '';
   const grab = cn(
@@ -424,9 +496,10 @@ const PlotMark: React.FC<{
   if (item.kind === 'player') {
     return (
       <div
-        className={cn('absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1', grab)}
+        className={cn('absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1 rounded-full', grab, focusRing)}
         style={{ ...style, width: d }}
         onPointerDown={onPointerDown}
+        {...(name ? control : null)}
       >
         <span
           className={cn(
@@ -451,10 +524,10 @@ const PlotMark: React.FC<{
     const w = size === 'xs' ? 4 : size === 'sm' ? 12 : 16;
     return (
       <span
-        className={cn('absolute -translate-x-1/2 -translate-y-1/2 rounded-[4px] bg-black', ring, grab)}
+        className={cn('absolute -translate-x-1/2 -translate-y-1/2 rounded-[4px] bg-black', ring, grab, focusRing)}
         style={{ ...style, width: w, height: w * 2.8 }}
         onPointerDown={onPointerDown}
-        aria-hidden
+        {...control}
       />
     );
   }
@@ -465,10 +538,11 @@ const PlotMark: React.FC<{
           'absolute -translate-x-1/2 -translate-y-1/2 rounded-[3px] border-[1.5px] border-black text-black flex items-center justify-center font-mono',
           ring,
           grab,
+          focusRing,
         )}
         style={{ ...style, width: size === 'xs' ? 6 : 22, height: size === 'xs' ? 6 : 14, fontSize: 7 }}
         onPointerDown={onPointerDown}
-        aria-hidden
+        {...control}
       >
         {size !== 'xs' && 'DI'}
       </span>
@@ -478,10 +552,10 @@ const PlotMark: React.FC<{
   const w = size === 'xs' ? 8 : size === 'sm' ? 22 : 30;
   return (
     <span
-      className={cn('absolute -translate-x-1/2 -translate-y-1/2 rounded-[5px] border-[1.5px] border-black bg-white', ring, grab)}
+      className={cn('absolute -translate-x-1/2 -translate-y-1/2 rounded-[5px] border-[1.5px] border-black bg-white', ring, grab, focusRing)}
       style={{ ...style, width: w, height: Math.round(w * 0.45) }}
       onPointerDown={onPointerDown}
-      aria-hidden
+      {...control}
     />
   );
 };

@@ -1,6 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { encodeStageState, toBase64, STAGE_BLE_CHARACTERISTIC } from '@/lib/stageBle';
+import {
+  encodeSignedState,
+  encodeStageState,
+  toBase64,
+  STAGE_BLE_CHARACTERISTIC,
+  STAGE_BLE_SIGNED_CHARACTERISTIC,
+} from '@/lib/stageBle';
+import { generateSigner } from '@/lib/stageSign';
 import { STAGE_BLE_CLOCK_CHARACTERISTIC, STAGE_BLE_LIVE_CHARACTERISTIC, encodeClock } from '@/lib/stageBleSync';
 import { nowMs } from '@/lib/stageClick';
 
@@ -12,6 +19,8 @@ if (!globalThis.crypto?.subtle) {
 }
 
 const KEY = toBase64(new Uint8Array(32).map((_, i) => i * 3));
+/** The gig's key pair (migration 190): the leader signs its state and clock. */
+const SIGNER = await generateSigner();
 const IDS = ['a1', 'b2'];
 /** The simulated leader's clock runs this far ahead of the member's. */
 const AHEAD_MS = 500;
@@ -22,6 +31,14 @@ const ble = vi.hoisted(() => ({
   clockReads: 0,
   enabledCb: null as null | ((on: boolean) => void),
   disconnectCbs: [] as Array<() => void>,
+  /** iOS (plugin 8.3.0): every read's value is also delivered to the notification callback. */
+  echo: false,
+  stateReads: 0,
+  /** Overrides for one test: the leader's clock (ms ahead), a slow or broken clock read, the state's seq. */
+  aheadMs: null as number | null,
+  clockDelay: 0,
+  clockBroken: false,
+  stateSeq: 3,
 }));
 
 vi.mock('@capacitor-community/bluetooth-le', () => ({
@@ -37,6 +54,15 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
     }),
     disconnect: vi.fn(async () => {}),
     requestConnectionPriority: vi.fn(async () => {}),
+    getServices: vi.fn(async () => [
+      {
+        uuid: 'gig',
+        characteristics: (ble.oldLeader
+          ? [STAGE_BLE_CHARACTERISTIC]
+          : [STAGE_BLE_CHARACTERISTIC, STAGE_BLE_SIGNED_CHARACTERISTIC, STAGE_BLE_CLOCK_CHARACTERISTIC]
+        ).map((uuid) => ({ uuid, properties: {}, descriptors: [] })),
+      },
+    ]),
     startNotifications: vi.fn(async (_id: string, _s: string, char: string, cb: (v: DataView) => void) => {
       ble.notify.set(char, cb);
     }),
@@ -45,15 +71,23 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
         // A leader on an older app has no clock characteristic.
         if (ble.oldLeader) throw new Error('Characteristic not found.');
         ble.clockReads++;
+        if (ble.clockDelay) await new Promise((r) => setTimeout(r, ble.clockDelay));
+        if (ble.clockBroken) return new DataView(new ArrayBuffer(3));
         // The leader stamps on arrival (5 ms each way).
         await new Promise((r) => setTimeout(r, 5));
-        const frame = await encodeClock(nowMs() + AHEAD_MS, KEY);
+        const frame = await encodeClock(nowMs() + (ble.aheadMs ?? AHEAD_MS), SIGNER.private);
         await new Promise((r) => setTimeout(r, 5));
         return new DataView(frame.buffer);
       }
-      if (char !== STAGE_BLE_CHARACTERISTIC) return new DataView(new ArrayBuffer(0));
-      const bytes = (await encodeStageState({ seq: 3, from: 'lead', songId: 'b2', order: null }, IDS, KEY))!;
-      return new DataView(bytes.buffer);
+      const signed = char === STAGE_BLE_SIGNED_CHARACTERISTIC && !ble.oldLeader;
+      if (char !== STAGE_BLE_CHARACTERISTIC && !signed) return new DataView(new ArrayBuffer(0));
+      ble.stateReads++;
+      const state = { seq: ble.stateSeq, from: 'lead', songId: 'b2', order: null };
+      const bytes = signed ? (await encodeSignedState(state, IDS, SIGNER.private))! : (await encodeStageState(state, IDS, KEY))!;
+      const view = new DataView(bytes.buffer);
+      const cb = ble.notify.get(char);
+      if (ble.echo && cb) setTimeout(() => cb(view), 0);
+      return view;
     }),
     write: vi.fn(async () => {
       throw new Error('members never write (an Android write can crash when Bluetooth turns off)');
@@ -63,12 +97,14 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
     }),
     stopEnabledNotifications: vi.fn(async () => {}),
   },
+  BluetoothLe: { disconnect: vi.fn(async () => {}) },
   ConnectionPriority: { CONNECTION_PRIORITY_BALANCED: 0, CONNECTION_PRIORITY_HIGH: 1, CONNECTION_PRIORITY_LOW_POWER: 2 },
 }));
 
 const native = vi.hoisted(() => ({
   start: vi.fn(async (_o: Record<string, string>) => ({ state: 'on' })),
   update: vi.fn(async () => {}),
+  updateSigned: vi.fn(async () => {}),
   stop: vi.fn(async () => {}),
   now: vi.fn(async () => ({ now: 0 })),
   setClock: vi.fn(async (_o: { offset: number }) => {}),
@@ -76,18 +112,33 @@ const native = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/stageBleNative', () => ({
+  STAGE_KEY_EVENT: 'bw:stage-key',
   StageBle: native,
   stageBleAvailable: () => true,
   stageKey: async () => KEY,
+  stageVerifyKey: async () => ({ public: SIGNER.public, version: 1 }),
+  fetchVerifyKey: async () => ({ answer: { public: SIGNER.public, version: 1 }, server: true }),
+  forgetStageKeys: () => {},
+  keptVerifyKey: () => ({ public: SIGNER.public, version: 1 }),
+  stageSigner: async () => ({ ...SIGNER, version: 1 }), signerRefused: () => false, previousStageKey: () => null,
+  fetchStageKey: async () => ({ key: KEY, denied: false }),
 }));
 
-const { useStageBle } = await import('../useStageBle');
+const { useStageBle, forgetSignedLeaders, forgetScanStarts } = await import('../useStageBle');
 
 beforeEach(() => {
+  forgetSignedLeaders();
+  forgetScanStarts();
   ble.oldLeader = false;
   ble.notify.clear();
   ble.clockReads = 0;
   ble.disconnectCbs = [];
+  ble.echo = false;
+  ble.stateReads = 0;
+  ble.aheadMs = null;
+  ble.clockDelay = 0;
+  ble.clockBroken = false;
+  ble.stateSeq = 3;
   vi.clearAllMocks();
 });
 
@@ -99,10 +150,33 @@ describe('useStageBle clock over Bluetooth', () => {
     );
     await waitFor(() => expect(result.current.status).toBe('connected'));
     await waitFor(() => expect(result.current.clock?.sample).toBeTruthy(), { timeout: 3000 });
-    expect(onState).toHaveBeenCalled();
+    // The state waited for the clock: it applies right after.
+    await waitFor(() => expect(onState).toHaveBeenCalled());
     expect(result.current.clock!.from).toBe('lead');
     // The fastest of the burst's round trips wins (timers in a busy test run are uneven).
     await waitFor(() => expect(Math.abs(result.current.clock!.sample!.offset - AHEAD_MS)).toBeLessThan(15), { timeout: 3000 });
+    unmount();
+  });
+
+  it('member on iOS: a read echoed to the notification callback does not trigger another read (idle band, no battery drain)', async () => {
+    ble.echo = true;
+    const onState = vi.fn();
+    const { result, unmount } = renderHook(() =>
+      useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: false, onState }),
+    );
+    await waitFor(() => expect(result.current.status).toBe('connected'));
+    await waitFor(() => expect(result.current.clock?.sample).toBeTruthy(), { timeout: 3000 });
+    await new Promise((r) => setTimeout(r, 500));
+    // The first read on connecting and one once the clock is measured (the state waited for it),
+    // nothing after while the leader changes nothing.
+    expect(ble.stateReads).toBe(2);
+    // A real change notification (the 4-byte seq) still reads.
+    const seq = new DataView(new ArrayBuffer(4));
+    seq.setUint32(0, 4);
+    await act(async () => ble.notify.get(STAGE_BLE_SIGNED_CHARACTERISTIC)!(seq));
+    await waitFor(() => expect(ble.stateReads).toBe(3));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(ble.stateReads).toBe(3);
     unmount();
   });
 
@@ -163,14 +237,74 @@ describe('useStageBle clock over Bluetooth', () => {
     );
     await waitFor(() => expect(onState).toHaveBeenCalled());
     await new Promise((r) => setTimeout(r, 300));
-    expect(result.current.status).toBe('connected');
+    // Followed, with the line asking to update the leader's app.
+    expect(result.current.status).toBe('old-leader');
     expect(result.current.clock).toBeNull();
     // It doesn't keep reading a characteristic that isn't there.
     await new Promise((r) => setTimeout(r, 1000));
     expect(ble.clockReads).toBe(0);
     const { BleClient } = await import('@capacitor-community/bluetooth-le');
-    expect(vi.mocked(BleClient.read).mock.calls.filter((c) => c[2] === STAGE_BLE_CLOCK_CHARACTERISTIC).length).toBe(1);
+    // Its band-key clock (if any) isn't trusted any more: not even read.
+    expect(vi.mocked(BleClient.read).mock.calls.filter((c) => c[2] === STAGE_BLE_CLOCK_CHARACTERISTIC).length).toBe(0);
     unmount();
+  });
+
+  it("member: the leader's first state waits for its clock to be measured (Codex on #280)", async () => {
+    ble.clockDelay = 400;
+    const onState = vi.fn();
+    const { result, unmount } = renderHook(() =>
+      useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: false, onState }),
+    );
+    await waitFor(() => expect(ble.stateReads).toBeGreaterThan(0));
+    await new Promise((r) => setTimeout(r, 200));
+    // Read, but not applied: the clock isn't known yet.
+    expect(onState).not.toHaveBeenCalled();
+    await waitFor(() => expect(result.current.clock?.sample).toBeTruthy(), { timeout: 3000 });
+    await waitFor(() => expect(onState).toHaveBeenCalled());
+    unmount();
+  });
+
+  it('member: a leader whose clock turns out more than 5 minutes off is never followed, and the member is told', async () => {
+    ble.aheadMs = -6 * 60_000;
+    const onState = vi.fn();
+    const { result, unmount } = renderHook(() =>
+      useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: false, onState }),
+    );
+    await waitFor(() => expect(result.current.status).toBe('clock-off'), { timeout: 3000 });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(onState).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("member: a clock that can't be measured doesn't hold the song for ever (the 5-minute rule then)", async () => {
+    ble.clockBroken = true;
+    const onState = vi.fn();
+    const { unmount } = renderHook(() =>
+      useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: false, onState }),
+    );
+    await new Promise((r) => setTimeout(r, 500));
+    expect(onState).not.toHaveBeenCalled();
+    await waitFor(() => expect(onState).toHaveBeenCalled(), { timeout: 5000 });
+    unmount();
+  });
+
+  it('member: with the clock measured, a seq only ~30 s beyond it counts (Claude on #280)', async () => {
+    const seqAt = (ms: number) => Math.floor((Date.now() + ms - Date.UTC(2024, 0, 1)) / 100);
+    // A minute ahead of the measured clock (half a second ahead): made up.
+    ble.stateSeq = seqAt(60_000);
+    const onState = vi.fn();
+    const { result, unmount } = renderHook(() =>
+      useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: false, onState }),
+    );
+    await waitFor(() => expect(result.current.clock?.sample).toBeTruthy(), { timeout: 3000 });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(onState).not.toHaveBeenCalled();
+    unmount();
+    // 10 s ahead: fine.
+    ble.stateSeq = seqAt(10_000);
+    const second = renderHook(() => useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: false, onState }));
+    await waitFor(() => expect(onState).toHaveBeenCalled(), { timeout: 3000 });
+    second.unmount();
   });
 
   it("leader: serves the clock and live characteristics and tells the plugin the app's clock", async () => {
@@ -183,7 +317,8 @@ describe('useStageBle clock over Bluetooth', () => {
     expect(native.start.mock.calls[0][0]).toMatchObject({
       clockUuid: STAGE_BLE_CLOCK_CHARACTERISTIC,
       liveUuid: STAGE_BLE_LIVE_CHARACTERISTIC,
-      key: KEY,
+      signedUuid: STAGE_BLE_SIGNED_CHARACTERISTIC,
+      signKey: SIGNER.private,
     });
     expect(Math.abs(native.setClock.mock.calls[0][0].offset - 1000)).toBeLessThan(5);
     unmount();

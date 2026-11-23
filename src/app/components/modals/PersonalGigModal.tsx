@@ -13,6 +13,7 @@ import { enqueueMutation } from '@/lib/offline/syncQueue';
 import { isOfflineError, reportNetworkStatus, getIsNetworkOnline } from '@/lib/offline/useNetworkStatus';
 import { todayLocal } from '../../../lib/dates';
 import { useT } from '@/lib/i18n';
+import { serverErrorText } from '@/lib/deletionRefusal';
 
 interface PersonalGigModalProps {
   isOpen: boolean;
@@ -254,7 +255,7 @@ export const PersonalGigModal: React.FC<PersonalGigModalProps> = ({
         return;
       }
       console.error('Failed to save personal gig:', err);
-      setError(err?.message || t('Failed to save personal gig. Please try again.'));
+      setError(serverErrorText(err, t('Failed to save personal gig. Please try again.')));
     } finally {
       setIsSubmitting(false);
     }

@@ -9,6 +9,7 @@ import {
   Lock,
   Music,
   UserCheck,
+  WifiOff,
   X,
 } from '@/app/components/icons';
 import { PillButton, Selector } from '@/app/components/bw/Form';
@@ -80,6 +81,18 @@ const STEPS = (t: (s: string) => string): Record<AcademyRole, TourStep[]> => ({
       article: 'create-a-gig',
     },
     {
+      label: t('On stage'),
+      title: t('Ready without signal'),
+      content: t('Each member’s phone keeps the setlists of the next 7 days, with lyrics, chords and voice parts. It works with no signal.'),
+      highlights: [
+        t('See who has the setlist on their phone'),
+        t('Mark who sings each line'),
+        t('Changes made with no signal go out later'),
+      ],
+      icon: WifiOff,
+      article: 'live-mode-offline',
+    },
+    {
       label: t('Privacy'),
       title: t('Fees stay private'),
       content: t('Each member sees only their own fee and the logistics. Quotes, totals and finances stay with the admins.'),
@@ -140,6 +153,18 @@ const STEPS = (t: (s: string) => string): Record<AcademyRole, TourStep[]> => ({
       ],
       icon: Music,
       article: 'repertoire-overview',
+    },
+    {
+      label: t('On stage'),
+      title: t('Ready without signal'),
+      content: t('Say yes once and the setlists of your next 7 days stay on your phone, ready when there is no signal.'),
+      highlights: [
+        t('Highlight my part dims the lines you don’t sing'),
+        t('Changes made with no signal go out later'),
+        t('Change it in Settings › Offline & live'),
+      ],
+      icon: WifiOff,
+      article: 'live-mode-offline',
     },
   ],
   deputy: [

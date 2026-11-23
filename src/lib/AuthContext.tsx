@@ -6,13 +6,14 @@ import React, {
   ReactNode,
 } from 'react';
 import { User, Session, AuthError } from '@supabase/supabase-js';
-import { supabase, getSafeUser, getSessionOfflineSafe, signIn, signUp, signOut, resetPassword, signInWithOAuth, updatePassword, RECOVERY_FLAG } from './supabase';
-import { callbackProblem, callbackProblemText, callbackUrlError, markLaunchUrlHandled, wasLaunchUrlHandled } from './authCallback';
+import { supabase, getSafeUser, getSessionOfflineSafe, signIn, signUp, signOut, resetPassword, signInWithOAuth, updatePasswordWithToken, RECOVERY_FLAG } from './supabase';
+import { callbackProblem, callbackProblemText, callbackUrlError, markLaunchUrlHandled, recoveryRefusedText, wasLaunchUrlHandled } from './authCallback';
 import { Capacitor } from '@capacitor/core';
 import { cleanupPresence } from './services/presence';
-import { clearOfflineCache, getOfflineItem, setOfflineItem, getCacheKey } from './offline/storage';
-import { clearStageCache } from './stageBleNative';
-import { unregisterPushToken } from './services/pushNotifications';
+import { clearOfflineCache as clearOfflineCacheOf, getOfflineItem, setOfflineItem, getCacheKey } from './offline/storage';
+import { clearStageCache, setStageCacheUser } from './stageBleNative';
+import { flushQueuedPushRevocations, forgetPushAccount, subscribeToPush, unregisterPushToken } from './services/pushNotifications';
+import { clearRecoveryProof, hasAnyRecoveryProof, hasRecoveryProof, updatePasswordForProvenAccount } from './recoveryProof';
 import { syncAppBadge } from './services/appBadge';
 import { realName } from '@/lib/personName';
 
@@ -60,7 +61,8 @@ interface AuthContextType {
   ) => Promise<{ error: AuthError | null; session: Session | null; existing: boolean }>;
   signInWithGoogle: () => Promise<{ error: AuthError | null }>;
   signInWithApple: () => Promise<{ error: AuthError | null }>;
-  signOut: () => Promise<{ error: AuthError | null }>;
+  /** `discardPendingWrites`: the account is gone (deleted), drop its unsent changes too. */
+  signOut: (opts?: { discardPendingWrites?: boolean }) => Promise<{ error: AuthError | null }>;
   resetPassword: (email: string) => Promise<{ error: AuthError | null }>;
   /** True after the user opened a password-reset link: the app must ask for a new password. */
   isPasswordRecovery: boolean;
@@ -85,6 +87,22 @@ export const useAuth = () => {
 
 /** Like useAuth, but undefined outside an AuthProvider (shared views, tests). */
 export const useOptionalAuth = (): AuthContextType | undefined => useContext(AuthContext);
+
+/**
+ * A deleted account's own keys left on this device (its refused changes and
+ * unsent messages, which sign-out keeps): removed. The fallback when
+ * signOutWipe can't load (Claude r8 M2); other accounts' keys stay.
+ */
+const dropAccountLists = (gone: string | null) => {
+  if (!gone) return;
+  const end = `:${gone.toLowerCase()}`;
+  try {
+    const keys = Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i) ?? '');
+    for (const k of keys) if (k.startsWith('bw:') && k.toLowerCase().endsWith(end)) localStorage.removeItem(k);
+  } catch {
+    /* storage blocked */
+  }
+};
 
 /**
  * Sends the signed-in user's queued offline edits (a few seconds at most) and
@@ -116,9 +134,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  // The flag alone is not enough (audit 04 #2): the reset link must have
+  // signed this account in here (recoveryProof.ts).
   const [isPasswordRecovery, setIsPasswordRecovery] = useState<boolean>(() => {
     try {
-      return new URLSearchParams(window.location.search).get(RECOVERY_FLAG) === '1';
+      return new URLSearchParams(window.location.search).get(RECOVERY_FLAG) === '1' && hasAnyRecoveryProof();
     } catch {
       return false;
     }
@@ -217,6 +237,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  // Push revocations left by an offline sign-out (audit 04 #6): now, and
+  // whenever the network comes back.
+  useEffect(() => {
+    const flush = () => {
+      void flushQueuedPushRevocations().catch(() => {});
+    };
+    // Back online: what waited after a network error goes at once (#287 r8).
+    const flushOnline = () => {
+      void flushQueuedPushRevocations({ online: true }).catch(() => {});
+    };
+    flush();
+    window.addEventListener('online', flushOnline);
+    return () => window.removeEventListener('online', flushOnline);
+  }, []);
+
   useEffect(() => {
     const initializeAuth = async () => {
       try {
@@ -228,6 +263,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (session) {
           setSession(session);
           setUser(session.user);
+          setStageCacheUser(session.user.id);
           const cachedProfile = await getOfflineItem<Profile>(getCacheKey(session.user.id, 'global', 'user_profile'));
           if (cachedProfile) {
             setProfile(cachedProfile);
@@ -237,6 +273,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           if (profileData) {
             setProfile(profileData);
           }
+        } else {
+          // No session at start: no Bluetooth key stays (#288), no pushes show (#287).
+          clearStageCache();
+          void forgetPushAccount().catch(() => {});
+          // Signed out since the last run (no stored session, even offline): the sign-out
+          // clean-up, an admin's private key included (Codex + Claude on #288), and the device
+          // shows no account's pushes (Codex review #287 round 6). Both source checks
+          // (authStageSession.test, pushRevocation.test) read this branch from its first line.
         }
       } catch (error) {
         console.error('Error initializing auth:', error);
@@ -246,6 +290,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
 
     initializeAuth();
+    // A sign-out whose recordings deletion didn't finish (app closed, 3 s budget): finished now;
+    // then the older builds' recordings move into the signed-in account's folder (#296 round 6).
+    void import('./regiaAudio').then((m) => m.finishPendingAudioCleanup()).catch(() => {});
 
     const {
       data: { subscription },
@@ -253,13 +300,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (event === 'PASSWORD_RECOVERY') {
         setIsPasswordRecovery(true);
       }
+      // Every end of a session, also a refused refresh or a deleted account,
+      // not only the sign-out button: the device shows none of its pushes
+      // (Codex review #287 round 6).
+      if (event === 'SIGNED_OUT') void forgetPushAccount().catch(() => {});
       // The initial state is initializeAuth's: offline, the library reports no
       // session here although the stored one is still valid.
       if (event === 'INITIAL_SESSION' && !session) return;
-      if (event === 'SIGNED_IN') setAuthError(null);
+      if (event === 'SIGNED_IN') {
+        setAuthError(null);
+        // Older builds' Stage recordings left unclaimed (no session at the first launch): maybe another account's, deleted (#296 round 6).
+        void import('./regiaAudio').then((m) => m.legacyAudioSignedIn()).catch(() => {});
+      }
 
       setSession(session);
       setUser(session?.user ?? null);
+      // Expired or revoked (not only the sign-out button): the same clean-up as the button's.
+      if (event === 'SIGNED_OUT') clearStageCache();
+      setStageCacheUser(session?.user?.id);
 
       // Quick sign-in keeps the refresh token, which Supabase rotates.
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session && Capacitor.isNativePlatform()) {
@@ -277,6 +335,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }, 0);
       } else if (event === 'SIGNED_OUT') {
         setProfile(null);
+        // Any sign-out (an expired or revoked session too): the Stage recordings go (#296 round 3).
+        void import('./regiaAudio').then((m) => m.clearDownloadedAudio()).catch(() => {});
       }
     });
 
@@ -403,14 +463,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return { error };
   };
 
-  const handleSignOut = async () => {
+  const handleSignOut = async (opts?: { discardPendingWrites?: boolean }) => {
     // Offline edits not sent yet: try now, while the session is still valid.
     // What still can't be sent is kept on this device for this account only
     // (its own queue key) and syncs at its next sign-in, instead of being
     // wiped with the offline cache below.
-    const pendingQueue = await takeUnsyncedQueue(user?.id);
-    // Before the session ends: this device must stop receiving this account's pushes.
-    await unregisterPushToken();
+    const pendingQueue = opts?.discardPendingWrites ? null : await takeUnsyncedQueue(user?.id);
+    // After the sign-out, read caches go; each account's unsent changes stay
+    // for its next sign-in (audit 04 #9). A deleted account drops only its
+    // own: other people's notes on a shared tablet stay (Codex review #287).
+    const clearOfflineCache = () =>
+      clearOfflineCacheOf('bw:', {
+        keepPendingWrites: true,
+        discardPendingWritesOf: opts?.discardPendingWrites ? user?.id ?? null : null,
+      });
+    // Before the session ends: this device must stop receiving this account's
+    // pushes (offline: on the device now, on the server once online). A
+    // deleted account's token row is gone: the device only (#287 r8, M2).
+    await unregisterPushToken(user?.id, { accountGone: !!opts?.discardPendingWrites });
     // The next person on this device must not see this account's badge or
     // message previews in Notification Center (0 also clears delivered ones).
     syncAppBadge(0);
@@ -427,13 +497,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
     const { error } = await signOut({ keepDeviceSession });
     if (!error) {
+      // The band's private recordings downloaded for Stage go too, downloads on their way included
+      // (audit 06 #2). Awaited: the app navigates as soon as this returns (#296 B4); 3 s at most.
+      await Promise.race([
+        import('./regiaAudio').then((m) => m.clearDownloadedAudio()).catch(() => {}),
+        new Promise((r) => setTimeout(r, 3000)),
+      ]);
       setUser(null);
       setProfile(null);
+      clearRecoveryProof();
       setSession(null);
       clearStageCache();
-      clearOfflineCache()
-        .then(() => (pendingQueue ? setOfflineItem(pendingQueue.key, pendingQueue.items) : undefined))
+      // Refused notes stay for this account (#296 round 8): read before the clear, put back after.
+      // Awaited, every step (main, three-way sign-out with #287/#292): nothing of it runs after this
+      // returns, so what follows (a deleted account's discardAccountWrites) always comes last.
+      // A deleted account (Claude r8 M2): nothing of it is kept or put back, deletion always wins.
+      const gone = opts?.discardPendingWrites ? user?.id ?? null : null;
+      await import('./signOutWipe')
+        .then(
+          (m) => m.keepingSignOutLists(() => clearOfflineCache(), { gone }),
+          // Its chunk not there (offline, an old cache): the clear still runs, a deleted account's lists still go.
+          () => clearOfflineCache().then(() => dropAccountLists(gone)),
+        )
+        .then(() => (pendingQueue && !gone ? setOfflineItem(pendingQueue.key, pendingQueue.items) : undefined))
         .catch(() => {});
+    } else if (user?.id) {
+      // Still signed in: the device gets this account's pushes again, with
+      // its native account (Claude review #287 round 5, M3).
+      void subscribeToPush(user.id).catch(() => {});
     }
     return { error };
   };
@@ -456,13 +547,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // The flag stays on until "Continue", so the "Password updated" screen shows.
   const completePasswordRecovery = async (newPassword: string) => {
-    const { error } = await updatePassword(newPassword);
-    if (!error) stripRecoveryFlag();
-    return { error };
+    // Only the account the reset link signed in (audit 04 #2), with exactly
+    // the session its exchange returned in this tab: the shared session can
+    // be switched by another tab at any moment (Codex review #287 rounds 3-4).
+    const { error } = await updatePasswordForProvenAccount(newPassword, user?.id, {
+      update: updatePasswordWithToken,
+    });
+    if (error && (error as { code?: string }).code === 'recovery_not_verified') {
+      return { error: new AuthError(recoveryRefusedText(), 403, 'recovery_not_verified') };
+    }
+    if (error) {
+      const e = error as { message?: string; status?: number; code?: string };
+      // The token's session ended (an hour after the link): same advice.
+      if (e.status === 401 || e.status === 403) return { error: new AuthError(recoveryRefusedText(), e.status, 'recovery_not_verified') };
+      return { error: new AuthError(e.message || 'Password change failed', e.status, e.code) };
+    }
+    stripRecoveryFlag();
+    return { error: null };
   };
 
   const dismissPasswordRecovery = () => {
     stripRecoveryFlag();
+    clearRecoveryProof();
     setIsPasswordRecovery(false);
   };
 
@@ -483,6 +589,60 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     await refreshProfile();
   };
 
+  // Changes still waiting on this phone (notes, suggestions, a setlist order):
+  // asked first, "Send now" or "Sign out anyway" (signOutGate.ts); closed,
+  // still signed in. A deleted account is not asked: all it left on this
+  // device goes first (accountWrites.ts), so nothing is sent or written back.
+  const signOutAfterAsking = async (opts?: { discardPendingWrites?: boolean }, again?: { cantKeep?: boolean }): Promise<Awaited<ReturnType<typeof handleSignOut>> & { cancelled?: true }> => {
+    if (opts?.discardPendingWrites) {
+      const { discardAccountWrites } = await import('./accountWrites');
+      await discardAccountWrites(user?.id);
+    } else {
+      const asked = user?.id ?? null;
+      const { askSignOutChoice } = await import('./signOutGate');
+      const choice = await askSignOutChoice(asked, again);
+      if (choice === 'cancel') return { error: null, cancelled: true as const };
+      // Answered for the account it was asked about only: another tab signed
+      // someone else in meanwhile → no sign-out, nothing cleared. Can't tell
+      // (token expired, no signal): the confirmed sign-out goes ahead, on this
+      // device, and keeps what the keep list keeps; never called off unseen.
+      if (asked) {
+        let now: string | null = null;
+        try {
+          now = (await getSessionOfflineSafe()).session?.user?.id ?? null;
+        } catch {
+          now = null;
+        }
+        if (now && now !== asked) return { error: null, cancelled: true as const };
+        // Only now, for the account asked about: erased only once it is
+        // known to be the one signed in; kept as refused whenever the
+        // sign-out goes ahead (the wipe would delete them).
+        if (choice === 'erase' && now === asked) {
+          const { discardRefusedChanges } = await import('./liveOutbox');
+          discardRefusedChanges(asked);
+        }
+        if (choice === 'keep-queued') {
+          const { keepQueuedAsRefused, queuedNotKeptOnSignOut, waitingChanges } = await import('./liveOutbox');
+          // Room checked before anything moves (another tab may have filled
+          // the list since the sheet's check); not all kept: asked again, the
+          // sheet says unlock to send. The wipe never deletes what waits.
+          if (queuedNotKeptOnSignOut(asked) > 0) return signOutAfterAsking(opts, { cantKeep: true });
+          // Storage full partway: each change is either kept as refused or stays queued; nothing is lost.
+          keepQueuedAsRefused(asked);
+          if (waitingChanges(asked) > 0) return signOutAfterAsking(opts, { cantKeep: true });
+        }
+      }
+    }
+    const gone = opts?.discardPendingWrites ? user?.id : null;
+    const res = await (handleSignOut as (o?: typeof opts) => ReturnType<typeof handleSignOut>)(opts);
+    // A send answered while signing out (a refusal, a queue write): it goes too.
+    if (gone && !res.error) {
+      const { discardAccountWrites } = await import('./accountWrites');
+      await discardAccountWrites(gone);
+    }
+    return res;
+  };
+
   const value: AuthContextType = {
     user,
     profile,
@@ -495,9 +655,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signUp: handleSignUp,
     signInWithGoogle: handleSignInWithGoogle,
     signInWithApple: handleSignInWithApple,
-    signOut: handleSignOut,
+    signOut: signOutAfterAsking,
     resetPassword: handleResetPassword,
-    isPasswordRecovery,
+    isPasswordRecovery: isPasswordRecovery && (user ? hasRecoveryProof(user.id) : hasAnyRecoveryProof()),
     completePasswordRecovery,
     dismissPasswordRecovery,
     refreshProfile,

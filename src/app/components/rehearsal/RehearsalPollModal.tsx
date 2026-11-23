@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Calendar, Clock, Sparkles, Send, ChevronLeft, ChevronRight, MapPin, Plus, Check } from '@/app/components/icons';
 import { useBand } from '@/lib/BandContext';
+import { getBandRoster } from '@/lib/services/bands';
 import { SongPicker, type PickedSong } from '@/app/components/ui/SongPicker';
 import { useFocusSuggestions } from './useFocusSuggestions';
 import { getActiveSymbol as sym } from '@/lib/currency';
@@ -16,12 +17,14 @@ import { VenueAutocomplete } from '@/app/components/ui/VenueAutocomplete';
 import { venueFields } from '@/lib/services/location';
 import {
   createOrPublishAdminPoll,
+  newPublishRequestId,
   cleanNotesWithoutDays,
   type RehearsalPoll,
 } from '@/lib/services/rehearsalPolls';
 import { toLocalDateString } from '../../../lib/dates';
 import { personName, personInitials } from '@/lib/personName';
 import { useT, intlLocale, shortWeekday } from '@/lib/i18n';
+import { serverErrorText } from '@/lib/deletionRefusal';
 import { useBandFreeDays, useCandidateFreeCounts, slotKey } from '@/lib/bandAvailability';
 import { FreeDots, FreeHeatLegend, FreeLabel, freeTone, heatStyle } from '@/app/components/ui/FreeHeat';
 import { ComposerCard, ComposerPreview, ComposerShell, Segmented, useComposerLayout } from '@/app/components/composer/Composer';
@@ -86,20 +89,50 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
   useEffect(() => {
     if (isOpen) void refreshMembers?.();
   }, [isOpen]);
+  // Another band's proposal (band A selected, B's proposal opened): B's
+  // roster, loaded here; never A's (Codex #297 B4).
+  const otherBand = !!bandId && selectedBand?.id !== bandId;
+  const [otherMembers, setOtherMembers] = useState<{ user_id: string | null; profile: any }[] | null>(null);
+  // Band B's roster could not be loaded: Publish stays off (an empty list
+  // would invite everyone), and the sheet says why (Claude #297 round 3).
+  const [rosterFailed, setRosterFailed] = useState(false);
+  useEffect(() => {
+    if (!isOpen || !otherBand) return;
+    let live = true;
+    setOtherMembers(null);
+    setRosterFailed(false);
+    void getBandRoster(bandId).then(
+      ({ data, error }) => {
+        if (!live) return;
+        if (error || !data) setRosterFailed(true);
+        else setOtherMembers(data);
+      },
+      () => { if (live) setRosterFailed(true); },
+    );
+    return () => { live = false; };
+  }, [isOpen, otherBand, bandId]);
   const roster = useMemo(
     () =>
-      selectedBand?.id === bandId
-        ? (selectedBand.members || [])
-            .filter((m) => !!m.user_id)
-            .map((m) => ({
-              id: m.user_id as string,
-              name: personName(m.profile, t('Band member')),
-              initials: personInitials(m.profile, '?'),
-            }))
-            .filter((m, i, all) => all.findIndex((x) => x.id === m.id) === i)
-        : [],
-    [selectedBand, bandId]
+      ((otherBand ? otherMembers : selectedBand?.members) || [])
+        .filter((m) => !!m.user_id)
+        .map((m) => ({
+          id: m.user_id as string,
+          name: personName(m.profile, t('Band member')),
+          initials: personInitials(m.profile, '?'),
+        }))
+        .filter((m, i, all) => all.findIndex((x) => x.id === m.id) === i),
+    [selectedBand, otherBand, otherMembers]
   );
+  // Who votes is band B's: publishing before its roster is in would send an
+  // empty or wrong invite list (Claude #297 round 3).
+  const rosterLoading = otherBand && otherMembers === null;
+  const rosterNote = otherBand && rosterFailed ? t("Couldn't load this band's members. Close and reopen to try again.") : null;
+  // One id per opening of the form: a retry of the same publish is recognised (Codex #297 round 3).
+  const publishRequestId = React.useRef<string>('');
+  if (!publishRequestId.current) publishRequestId.current = newPublishRequestId();
+  useEffect(() => {
+    if (isOpen) publishRequestId.current = newPublishRequestId();
+  }, [isOpen, initialProposal?.id]);
   const invitedIds = excluded.length === 0 ? [] : roster.filter((m) => !excluded.includes(m.id)).map((m) => m.id);
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
@@ -350,6 +383,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
   };
 
   const handlePublish = async () => {
+    if (rosterLoading) return;
     if (!title.trim()) {
       setError(t('Please give your poll a title.'));
       return;
@@ -366,7 +400,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
     setSubmitting(true);
     setError(null);
 
-    const { error: publishErr } = await createOrPublishAdminPoll({
+    const { data: published, error: publishErr } = await createOrPublishAdminPoll({
       pollId: initialProposal?.id,
       bandId,
       adminId,
@@ -379,6 +413,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
       focusSongIds: focusSongs.map(s => s.id),
       invitedUserIds: invitedIds,
       voteByTime: voteBy ? voteByTime || null : null,
+      clientId: publishRequestId.current,
       timeSlots: timeSlots.map((s) => ({
         proposed_date: s.proposed_date,
         start_time: s.start_time,
@@ -388,8 +423,11 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
 
     setSubmitting(false);
 
+    // A new poll saved whose notices failed: Try again is that same poll
+    // (its id is the request id), never a second one (Codex #297 r7 B4).
+    if (publishErr && !initialProposal?.id && published?.id) publishRequestId.current = published.id;
     if (publishErr) {
-      setError(publishErr.message || t('Failed to publish poll.'));
+      setError(serverErrorText(publishErr, t('Failed to publish poll.')));
       return;
     }
 
@@ -548,6 +586,10 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
               setFocusSongs(prev => (prev.some(s => s.id === song.id) ? prev : [...prev, { id: song.id, title: song.title }]));
             }}
             selectedIds={focusSongs.map(s => s.id)}
+            // The poll's band, which may not be the selected one (B4); only
+            // its admins open this builder.
+            bandId={bandId}
+            bandAdmin
             theme="blue"
             zIndex={zIndex}
           />
@@ -823,7 +865,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
         size="lg"
         onClick={handlePublish}
         loading={submitting}
-        disabled={timeSlots.length === 0 || !title.trim() || (!!voteBy && !voteByOk)}
+        disabled={rosterLoading || timeSlots.length === 0 || !title.trim() || (!!voteBy && !voteByOk)}
         icon={<Send className="w-5 h-5" />}
         style={{ backgroundColor: 'var(--accent-gig)', color: 'var(--accent-gig-fg)' }}
       >
@@ -849,7 +891,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
         className={landscape ? 'sticky top-0 min-h-[min(720px,calc(100dvh-140px))]' : undefined}
         footer={
           <>
-            {error && <FormError>{error}</FormError>}
+            {(error || rosterNote) && <FormError>{error || rosterNote}</FormError>}
             {publishButton}
           </>
         }
@@ -1032,7 +1074,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
           </header>
 
           <div className="w-full max-w-xl mx-auto px-4 pt-5 pb-6 flex flex-col gap-4">
-            {error && <FormError>{error}</FormError>}
+            {(error || rosterNote) && <FormError>{error || rosterNote}</FormError>}
 
             {/* Converting banner */}
             {initialProposal && (
@@ -1273,7 +1315,7 @@ export const RehearsalPollModal: React.FC<RehearsalPollModalProps> = ({
             <PillButton
               onClick={handlePublish}
               loading={submitting}
-              disabled={timeSlots.length === 0}
+              disabled={rosterLoading || timeSlots.length === 0}
               icon={<Send className="w-[18px] h-[18px]" />}
             >
               {submitting ? t('Publishing…') : t('Publish poll')}

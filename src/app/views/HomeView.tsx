@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { ArrowUpRight, EyeOff, MapPin } from '@/app/components/icons';
-import { Metric, DotText, SectionHeader, ActionTile, UpcomingRow, eventKindOf, PillButton, Card } from '@/app/components/bw';
+import { Metric, DotText, SectionHeader, ActionTile, UpcomingRow, eventKindOf, PillButton, Card, BwSheet } from '@/app/components/bw';
 import { cn } from '@/app/components/ui/utils';
 import { HomeSkeleton } from '@/app/components/ui/HomeSkeleton';
 import { dashboardContainerVariants, dashboardItemVariants } from '@/styles/motion';
@@ -26,11 +26,16 @@ import { useBandNotes } from '@/app/components/event/useBandNotes';
 import { useBandFlag } from '@/lib/flags';
 import { toPractise } from '@/lib/toPractise';
 import { openSongPage } from '@/lib/services/rehearsalNotes';
+import { repeatDates } from '@/lib/recurrence';
 import { usePayoutsDue } from '@/app/hooks/usePayoutsDue';
 import { personName, personInitials } from '@/lib/personName';
 import { money } from '@/lib/currency';
+import { isSkippedOccurrence } from '@/lib/recurrenceSkips';
 import { LaunchNoticeCard } from '@/app/components/plans/LaunchNoticeCard';
 import { PlanEndingCard } from '@/app/components/plans/PlanEndingCard';
+import { DateHoldCard, DateHoldList } from '@/app/components/dashboard/DateHoldCard';
+import { useMyDateHolds } from '@/app/hooks/useDateHolds';
+import { DATE_HOLDS_CHANGED, holdDay, holdPlace, holdTime } from '@/lib/dateHolds';
 
 /** Pill in a half-width slot: one line when it fits, else the label wraps
  *  inside it instead of running out ("Mapa de montaje", "Kalender ansehen"). */
@@ -76,7 +81,8 @@ interface HomeViewProps {
   onQuickAction?: (action: string) => void;
   onViewChange?: (tab: string) => void;
   onFilterEvents?: (filter: string) => void;
-  onSelectEvent?: (eventId: string) => void;
+  /** date: the date tapped, for one date of a repeating rehearsal (Codex #297 B1). */
+  onSelectEvent?: (eventId: string, date?: string) => void;
   /** "Go live" on the next gig: opens it in Stage mode. */
   onGoLive?: (eventId: string) => void;
   isAdmin?: boolean;
@@ -354,36 +360,32 @@ export const HomeView: React.FC<HomeViewProps> = ({
       const isRecurring = Boolean(e.is_recurring || e.recurrence_rule || (e.recurrence && e.recurrence !== 'once'));
 
       // If base event date is today or future, add it
-      if (d && d >= todayStr) {
+      if (d && d >= todayStr && !isSkippedOccurrence(e, d)) {
         expandedList.push(e);
       }
 
-      // If recurring rehearsal, generate its future weekly occurrences
-      if (isRehearsal && isRecurring && d) {
+      // If recurring rehearsal, generate its future weekly occurrences. Only
+      // from the series row: a date already expanded is not a new series
+      // start (Codex #285 M1: Jan 31 monthly showed a phantom Mar 28).
+      // AuthenticatedApp marks its dates with `occurrence_of`; the id check
+      // stays for dates built without the mark (EventsView's `<id>-occ-<date>`).
+      if (isRehearsal && isRecurring && d && !e.occurrence_of && !String(e.id ?? '').includes('-occ-')) {
         const rule = e.recurrence_rule || {};
         const freq = (rule.freq || rule.frequency || e.recurrence || 'weekly').toLowerCase();
-        const [y, m, day] = d.split('-').map(Number);
         const until = rule.until ? new Date(rule.until) : new Date(now.getFullYear(), now.getMonth() + 4, 0);
         const maxCount = rule.count || 24;
-        let cursor = new Date(y, m - 1, day, 12, 0, 0);
-        let generated = 0;
-        while (cursor <= until && generated < maxCount) {
-          if (freq === 'weekly') cursor.setDate(cursor.getDate() + 7 * (rule.interval || 1));
-          else if (freq === 'biweekly') cursor.setDate(cursor.getDate() + 14);
-          else if (freq === 'monthly') cursor.setMonth(cursor.getMonth() + (rule.interval || 1));
-          else break;
-          if (cursor > until) break;
+        for (const cursor of repeatDates(d, { ...rule, frequency: freq }, until, maxCount)) {
           const occDate = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
-          if (occDate >= todayStr && occDate !== d) {
+          if (occDate >= todayStr && occDate !== d && !isSkippedOccurrence(e, occDate)) {
             expandedList.push({
               ...e,
               id: `${e.id || e.eventId}-occ-${occDate}`,
               eventId: e.eventId || e.id,
+              occurrence_of: e.eventId || e.id,
               event_date: occDate,
               date: occDate,
             });
           }
-          generated++;
         }
       }
     });
@@ -453,6 +455,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
     setPractisedHere((s) => (s.has(id) ? s : new Set(s).add(id)));
     bandNotes.practised(id, value);
   };
+  // Possible gigs still at quote stage (178): members keep the date free.
+  const [dateHolds] = useMyDateHolds(!isSolo);
+  // Duo Laptop pose: Home sits under the desk, so a hold opens in a sheet.
+  const [holdSheetId, setHoldSheetId] = useState<string | null>(null);
+  const holdInSheet = dateHolds?.find((h) => h.eventId === holdSheetId) ?? null;
   const payoutsDueRaw = usePayoutsDue(isSolo ? null : contextBand?.id, currentUserId, !!isAdmin);
   const payoutGigs = useMemo(() => payoutsDueRaw ?? [], [payoutsDueRaw]);
   const payoutPeople = useMemo(() => {
@@ -528,6 +535,17 @@ export const HomeView: React.FC<HomeViewProps> = ({
         onSelect: onOpenPoll ? () => onOpenPoll(p) : undefined,
       });
     }
+    // Possible gigs to keep free (178): day · time · place, nothing else.
+    for (const h of dateHolds || []) {
+      items.push({
+        id: `hold-${h.eventId}`,
+        title: t('Possible gig – keep the date free'),
+        detail: [holdDay(h.date), holdTime(h), holdPlace(h)].filter(Boolean).join(' · '),
+        kind: 'gig',
+        urgent: !h.myAnswer,
+        onSelect: () => setHoldSheetId(h.eventId),
+      });
+    }
     // Payouts due after a show (admin: the musicians; member: their own fee).
     for (const g of payoutGigs) {
       items.push({
@@ -543,9 +561,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
     }
     // Gigs waiting on your RSVP.
     if (currentUserId && eventMembersMap) {
+      // One item per event. The dates of a repeating rehearsal (`occurrence_of`)
+      // share the series' line-up; the first one listed (the list runs by date)
+      // stands for it, also when the series row itself is already past.
+      const asked = new Set<string>();
       for (const e of dashboardData?.upcomingEvents || []) {
-        const id = String(e.eventId || e.id || '');
-        if (!id || id.includes('-occ-')) continue;
+        const id = String(e.occurrence_of || e.eventId || e.id || '');
+        if (!id || id.includes('-occ-') || asked.has(id)) continue;
+        asked.add(id);
         const me = (eventMembersMap[id] || []).find((m) => m.userId === currentUserId);
         if (me?.status !== 'pending') continue;
         const raw = e.event_date || e.date;
@@ -558,7 +581,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             .join(' · '),
           kind: (e.event_type || e.eventType) === 'rehearsal' ? 'rehearsal' : 'gig',
           urgent: true,
-          onSelect: onSelectEvent ? () => onSelectEvent(id) : undefined,
+          onSelect: onSelectEvent ? () => onSelectEvent(id, raw || undefined) : undefined,
         });
       }
     }
@@ -573,10 +596,20 @@ export const HomeView: React.FC<HomeViewProps> = ({
       });
     }
     return items;
-  }, [activePolls, onOpenPoll, payoutGigs, isAdmin, onReviewPayouts, currentUserId, eventMembersMap, dashboardData?.upcomingEvents, onSelectEvent, t, practiseGroups, contextBand?.id]);
+  }, [activePolls, dateHolds, onOpenPoll, payoutGigs, isAdmin, onReviewPayouts, currentUserId, eventMembersMap, dashboardData?.upcomingEvents, onSelectEvent, t, practiseGroups, contextBand?.id]);
 
   // Each create button shows only when the host passes its handler (role rules live there).
   const bandDesk = (
+    <>
+    <BwSheet
+      open={!!holdInSheet}
+      onClose={() => setHoldSheetId(null)}
+      overline={holdInSheet?.bandName || undefined}
+      title={t('Possible gig')}
+      portal
+    >
+      {holdInSheet && <DateHoldCard hold={holdInSheet} onShowToast={onShowToast} onGone={() => setHoldSheetId(null)} />}
+    </BwSheet>
     <BandDeskMode
       nextGig={deskNextGig}
       isAdmin={!!isAdmin}
@@ -589,6 +622,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       onCreateTask={onCreateTask}
       onOpenAnalytics={isAdmin && onQuickAction ? () => onQuickAction('View Analytics') : undefined}
     />
+    </>
   );
 
   if (dashboardLoading && !dashboardData?.eventStats && !dashboardData?.memberStats) {
@@ -769,6 +803,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </motion.div>
       )}
 
+      {/* ═══ DATES ON HOLD (178): a possible gig, day · time · place only ═══ */}
+      {dateHolds && dateHolds.length > 0 && (
+        <motion.div variants={dashboardItemVariants} className="flex flex-col gap-3" data-testid="date-holds">
+          <SectionHeader title={t('Possible gigs')} />
+          <DateHoldList holds={dateHolds} activeBandId={contextBand?.id} onShowToast={onShowToast} onChanged={() => window.dispatchEvent(new CustomEvent(DATE_HOLDS_CHANGED))} />
+        </motion.div>
+      )}
+
       {/* ═══ ACTION CENTER (payouts due, rehearsal polls & proposals) ═══ */}
       {(activePolls.length > 0 || payoutGigs.length > 0) && (
         <motion.div variants={dashboardItemVariants} className="flex flex-col gap-8">
@@ -848,7 +890,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               if (mapQuery) {
                 openMaps(mapQuery);
               } else if (nextMemberGig && onSelectEvent) {
-                onSelectEvent(nextMemberGig.eventId || nextMemberGig.id);
+                onSelectEvent(nextMemberGig.eventId || nextMemberGig.id, nextMemberGig.event_date || nextMemberGig.date || undefined);
               } else {
                 onViewChange?.('Events');
               }
@@ -923,7 +965,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               const valid = d && !isNaN(d.getTime());
               const eventId: string | undefined = event.eventId || event.id;
               const open = () => {
-                if (onSelectEvent && eventId) onSelectEvent(eventId);
+                if (onSelectEvent && eventId) onSelectEvent(eventId, rawDate || undefined);
                 else onViewChange?.('Events');
               };
               const row = (

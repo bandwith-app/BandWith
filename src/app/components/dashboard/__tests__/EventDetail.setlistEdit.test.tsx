@@ -119,10 +119,16 @@ describe('EventDetail setlist editing in the overview', () => {
       fireEvent.click(screen.getByRole('button', { name: /^Save$/i }));
     });
     expect(mocks.replaceSetlistSongs).toHaveBeenCalledTimes(1);
-    expect(mocks.replaceSetlistSongs).toHaveBeenCalledWith('sl-a', [
-      { song_id: 's2', set_number: 1 },
-      { song_id: 's1', set_number: 1 },
-    ]);
+    // Only over the rows as loaded (188 checks row ids, Codex r6 B6), and
+    // each song names its row, so it keeps its own singers (Codex 11-22).
+    expect(mocks.replaceSetlistSongs).toHaveBeenCalledWith(
+      'sl-a',
+      [
+        { id: 'r2', song_id: 's2', set_number: 1 },
+        { id: 'r1', song_id: 's1', set_number: 1 },
+      ],
+      { expected: { songs: [{ id: 'r1', song_id: 's1', set_number: 1 }, { id: 'r2', song_id: 's2', set_number: 1 }] } },
+    );
     expect(mocks.notifySetlistSaved).toHaveBeenCalledTimes(1);
     expect(mocks.notifySetlistSaved).toHaveBeenCalledWith({
       setlistId: 'sl-a',

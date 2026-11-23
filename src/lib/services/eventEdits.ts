@@ -12,7 +12,7 @@ import { supabase } from '@/lib/supabase';
 import { updateEvent } from './events';
 import { saveEventLineup, type LineupRow } from './eventMemberMoney';
 import { notifyEventMembersCreated, notifyEventMembersRemoved } from './notifications';
-import { syncEventTasks, type EventTaskDraft } from './eventTasks';
+import { syncEventTasks, withTaskClientIds, type EventTaskDraft } from './eventTasks';
 import { enqueueMutation } from '@/lib/offline/syncQueue';
 import { isOfflineError } from '@/lib/offline/networkErrors';
 import { lineupDiff, type QueuedEventExtras } from '@/lib/offline/eventExtras';
@@ -128,6 +128,8 @@ export async function saveTasksEdit(
   originalIds: string[],
   title: string,
 ): Promise<EditSaveResult> {
+  // Ids of new to-dos chosen now, so the queue keeps the ones a cut-off try sent.
+  withTaskClientIds(drafts);
   const queue = () => queueEdit(eventId, {}, title, { tasks: { drafts, originalIds, eventDate } });
   if (offlineNow()) return queue();
   const { error } = await syncEventTasks(eventId, drafts, eventDate, originalIds);

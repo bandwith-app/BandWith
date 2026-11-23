@@ -24,13 +24,16 @@ import type { RehearsalPoll } from '@/lib/services/rehearsalPolls';
 import { EventsSkeleton } from '@/app/components/ui/EventsSkeleton';
 import { parseLocalDate } from '@/lib/dates';
 import { DotMeter, DotText, EventMark, SectionHeader, type EventKind } from '@/app/components/bw';
+import { DateHoldCard } from '@/app/components/dashboard/DateHoldCard';
 import { FIT, FitText } from '@/app/components/bw/FitText';
 import { getActiveSymbol as sym, useCurrency } from '@/lib/currency';
 import { PlannerMode, type PlannerEvent } from '@/app/components/duo';
 import { keyboardSafeTap } from '@/lib/keyboardSafeTap';
+import { isSkippedOccurrence, occurrenceOn } from '@/lib/recurrenceSkips';
 import { useSystemBack } from '@/lib/backStack';
 import { eventWarningKeys, isQuoteEvent } from '@/lib/eventVisibility';
 import { ALL_BANDS, PERSONAL, bandFilterCanCreate, bandFilterShowsFees, feeForViewer, matchesBandFilter, type BandFilterOption } from '@/lib/bandFilter';
+import { repeatDates } from '@/lib/recurrence';
 
 interface EventsViewProps {
   loading?: boolean;
@@ -132,6 +135,9 @@ const tagLabel = (tag: string): string => {
 };
 
 
+
+/** A date on hold in the month grid: neutral, like an empty day but marked. */
+const HOLD_CELL_BG = 'color-mix(in srgb, var(--fg) 16%, transparent)';
 
 const calendarKind = (event: EventData, isPast = false): EventKind => {
   if (isPast) return 'past';
@@ -443,7 +449,12 @@ export const EventsView: React.FC<EventsViewProps> = ({
 
       if (titleMatch || locMatch || clientMatch || notesMatch) {
         seen.add(key);
-        matches.push(e);
+        // A repeating rehearsal: its next date still on from today (a
+        // started series is not a past result); none left, its last state:
+        // the first date, unless that was deleted (Codex / Claude #297).
+        const next = (e as any).is_recurring ? (occurrenceOn(e as any, null, todayStr) as EventData | null) : e;
+        const live = next ?? (isSkippedOccurrence(e as any, e.date) ? null : e);
+        if (live) matches.push(live);
       }
     });
 
@@ -478,6 +489,8 @@ export const EventsView: React.FC<EventsViewProps> = ({
       if (!normDate) {
         // Undated drafts or unscheduled events stay in upcoming
         upcoming.push(event);
+      } else if (isSkippedOccurrence(event as any, normDate)) {
+        // This date of a repeating rehearsal was deleted on its own (audit 05 #4).
       } else if (normDate >= todayStr) {
         upcoming.push(event);
       } else {
@@ -490,19 +503,11 @@ export const EventsView: React.FC<EventsViewProps> = ({
         const rule = rec.recurrence_rule;
         const freq = (rule.freq || rule.frequency || '').toLowerCase();
         if (freq) {
-          const [y, m, day] = normDate.split('-').map(Number);
           const until = rule.until ? new Date(rule.until) : new Date(new Date().getFullYear() + 1, 11, 31);
           const maxCount = rule.count || 24;
-          let cursor = new Date(y, m - 1, day, 12, 0, 0);
-          let generated = 0;
-          while (cursor <= until && generated < maxCount) {
-            if (freq === 'weekly') cursor.setDate(cursor.getDate() + 7 * (rule.interval || 1));
-            else if (freq === 'biweekly') cursor.setDate(cursor.getDate() + 14);
-            else if (freq === 'monthly') cursor.setMonth(cursor.getMonth() + (rule.interval || 1));
-            else break;
-            if (cursor > until) break;
+          for (const cursor of repeatDates(normDate, rule, until, maxCount)) {
             const occDate = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
-            if (occDate >= todayStr && occDate !== normDate) {
+            if (occDate >= todayStr && occDate !== normDate && !isSkippedOccurrence(rec, occDate)) {
               upcoming.push({
                 ...event,
                 id: `${event.id}-occ-${occDate}` as any,
@@ -510,7 +515,6 @@ export const EventsView: React.FC<EventsViewProps> = ({
                 date: occDate,
               });
             }
-            generated++;
           }
         }
       }
@@ -597,6 +601,7 @@ export const EventsView: React.FC<EventsViewProps> = ({
       const key = `${dateObj.getFullYear()}-${dateObj.getMonth()}-${dateObj.getDate()}`;
       if (!map[key]) map[key] = [];
       const occDate = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+      if (isSkippedOccurrence(ev as any, occDate)) return;
       const evForDay: EventData = {
         ...ev,
         date: occDate,
@@ -623,17 +628,7 @@ export const EventsView: React.FC<EventsViewProps> = ({
         if (!freq) return;
         const until = rule.until ? new Date(rule.until) : new Date(new Date().getFullYear() + 2, 11, 31);
         const maxCount = rule.count || 104;
-        let cursor = new Date(y, m - 1, day, 12, 0, 0);
-        let generated = 0;
-        while (cursor <= until && generated < maxCount) {
-          if (freq === 'weekly') cursor.setDate(cursor.getDate() + 7 * (rule.interval || 1));
-          else if (freq === 'biweekly') cursor.setDate(cursor.getDate() + 14);
-          else if (freq === 'monthly') cursor.setMonth(cursor.getMonth() + (rule.interval || 1));
-          else break;
-          if (cursor > until) break;
-          addToMap(ev, new Date(cursor));
-          generated++;
-        }
+        for (const occ of repeatDates(normD, rule, until, maxCount)) addToMap(ev, occ);
       }
     });
     return map;
@@ -669,6 +664,7 @@ export const EventsView: React.FC<EventsViewProps> = ({
           venue: ev.venueName || (ev.location && ev.location !== 'TBD' ? ev.location : null),
           fee: feeForViewer(ev.band_id, Number.isFinite(fee) && fee > 0 ? fee : null, adminOfBand),
           draft: !!ev.draftOf,
+          hold: !!ev.holdOf,
         });
       });
     });
@@ -803,6 +799,17 @@ export const EventsView: React.FC<EventsViewProps> = ({
 
 
   const renderEventCard = (event: EventData, isPast: boolean = false) => {
+    // A date on hold (178): the same neutral card and answers as on Home.
+    if (event.holdOf) {
+      return (
+        <DateHoldCard
+          key={event.id}
+          hold={event.holdOf}
+          showBand={bands.length > 1}
+          onShowToast={onShowToast}
+        />
+      );
+    }
     const status = event.status?.toUpperCase();
     const isRehearsal = status === 'REHEARSAL';
     const isGig = status === 'CONFIRMED' || status === 'COMPLETED';
@@ -1031,14 +1038,19 @@ export const EventsView: React.FC<EventsViewProps> = ({
 
           let style: React.CSSProperties = { backgroundColor: 'color-mix(in srgb, var(--fg) 8%, transparent)', color: 'var(--fg)' };
           // Real events lead the day; a day with only drafts is desaturated and dashed.
+          // A date on hold (178) is neutral: dashed, no event colour.
           const onlyDrafts = hasEvents && eventsOnDay.every((e) => !!e.draftOf);
-          if (hasEvents) {
-            const primary = eventsOnDay.find((e) => !e.draftOf) || eventsOnDay[0];
+          const onlyHolds = hasEvents && eventsOnDay.every((e) => !!e.holdOf);
+          const cellColor = (e: EventData) => (e.holdOf ? HOLD_CELL_BG : `var(--accent-${calendarKind(e, isPastDay)})`);
+          if (onlyHolds) {
+            style = { backgroundColor: HOLD_CELL_BG, color: 'var(--fg)', outline: '1.5px dashed currentColor', outlineOffset: -3 };
+          } else if (hasEvents) {
+            const primary = eventsOnDay.find((e) => !e.draftOf && !e.holdOf) || eventsOnDay.find((e) => !e.holdOf) || eventsOnDay[0];
             const k = calendarKind(primary, isPastDay);
             style = { backgroundColor: `var(--accent-${k})`, color: `var(--accent-${k}-fg)` };
             if (multipleEvents) {
               const ordered = [primary, ...eventsOnDay.filter((e) => e !== primary)];
-              const colors = [...new Set(ordered.map((e) => `var(--accent-${calendarKind(e, isPastDay)})`))];
+              const colors = [...new Set(ordered.map(cellColor))];
               if (colors.length > 1) style = { ...style, background: `linear-gradient(135deg, ${colors[0]} 50%, ${colors[1]} 50%)` };
             }
             if (onlyDrafts) {
@@ -1053,7 +1065,7 @@ export const EventsView: React.FC<EventsViewProps> = ({
               key={`${year}-${month}-${day}`}
               type="button"
               disabled={!isInteractive}
-              aria-label={`${dateName(new Date(year, month, day), { weekday: 'long', month: 'long', day: 'numeric' })}${hasEvents ? `, ${eventsOnDay.length > 1 ? t('{count} events', { count: eventsOnDay.length }) : t('{count} event', { count: eventsOnDay.length })}` : ''}${onlyDrafts ? `, ${t('draft')}` : ''}${isToday ? `, ${t('today')}` : ''}`}
+              aria-label={`${dateName(new Date(year, month, day), { weekday: 'long', month: 'long', day: 'numeric' })}${hasEvents ? `, ${eventsOnDay.length > 1 ? t('{count} events', { count: eventsOnDay.length }) : t('{count} event', { count: eventsOnDay.length })}` : ''}${onlyDrafts ? `, ${t('draft')}` : ''}${onlyHolds ? `, ${t('Possible gig')}` : ''}${isToday ? `, ${t('today')}` : ''}`}
               aria-current={isToday ? 'date' : undefined}
               onClick={() => {
                 if (!isInteractive) return;
@@ -1251,7 +1263,9 @@ export const EventsView: React.FC<EventsViewProps> = ({
                                   onClick={() => { setDayPickerEvents(null); onEventClick(ev); }}
                                   className="w-full flex items-center gap-3 rounded-[16px] bg-sheet-foreground/[0.08] p-3 text-left cursor-pointer active:scale-[0.99] transition-transform"
                                 >
-                                  <EventMark kind={kind} size={24} />
+                                  <span className={ev.holdOf ? 'saturate-0 opacity-70' : undefined}>
+                                    <EventMark kind={kind} size={24} />
+                                  </span>
                                   <span className="flex-1 min-w-0 flex flex-col gap-0.5">
                                     <span className="bw-h3 truncate">{ev.title}</span>
                                     <span className="bw-body-sm text-sheet-foreground/70 truncate">

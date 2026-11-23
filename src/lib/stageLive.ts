@@ -11,6 +11,11 @@
 
 /** Realtime topic of a gig's Stage mode channel (see migration 085). */
 export const stageTopic = (eventId: string) => `stage:event:${eventId}`;
+/**
+ * The gig's clock topic (migration 191): every band member may broadcast here,
+ * so a member's clock pings reach the leader (the stage topic is admin-only).
+ */
+export const stageClockTopic = (eventId: string) => `stage-clock:event:${eventId}`;
 
 export interface StageLiveState {
   /** Lamport clock: one more than the highest seq the sender had seen. */
@@ -37,6 +42,28 @@ const SEQ_EPOCH_MS = Date.UTC(2024, 0, 1);
  */
 export const nextSeq = (last: number | null | undefined, now: number = Date.now()) =>
   Math.min(0xffffffff, Math.max((last ?? 0) + 1, Math.floor((now - SEQ_EPOCH_MS) / 100)));
+
+/**
+ * A leader's clock measured further off than this (either way) is not taken:
+ * that phone's states never count, and the member says the times are far
+ * apart (main session's rule). Within it, seqs are judged with the offset.
+ */
+export const MAX_CLOCK_OFFSET_MS = 5 * 60_000;
+/** The offset if it may be used, else null (see MAX_CLOCK_OFFSET_MS). */
+export const usableOffset = (offset: number) => (Math.abs(offset) <= MAX_CLOCK_OFFSET_MS ? offset : null);
+
+/** How far a seq may run ahead of this phone's clock (a leader's clock not measured yet): 5 minutes. */
+export const SEQ_AHEAD_MAX = 3_000;
+/** With the leader's clock measured, how far a seq may run beyond it: 30 seconds (Claude on #280). */
+export const SEQ_AHEAD_MEASURED = 300;
+
+/**
+ * A seq that could come from a leader's clock. One far ahead (say 0xFFFFFFFF)
+ * is made up: it would win over every real state for the rest of the gig.
+ * Bluetooth states can be made by anyone with the band key, so they're checked.
+ */
+export const seqPlausible = (seq: number, now: number = Date.now(), ahead: number = SEQ_AHEAD_MAX) =>
+  seq <= Math.floor((now - SEQ_EPOCH_MS) / 100) + ahead;
 
 /** True when `next` should replace `current` (it is newer). */
 export const isNewer = (next: Pick<StageLiveState, 'seq' | 'from'>, current: Pick<StageLiveState, 'seq' | 'from'> | null) =>

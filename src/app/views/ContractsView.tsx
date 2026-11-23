@@ -29,7 +29,7 @@ import type { StageData } from '@/lib/stagePlot';
 import { DeleteChatSheet } from '@/app/components/chat/DeleteChatSheet';
 import {
   STATUS_LABEL,
-  buildContractPdf,
+  buildContractPdfReady,
   buildSendMessage,
   contractFileName,
   createContract,
@@ -469,8 +469,7 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ onBack, bandId, pr
       const stage = await stageFor(contract);
       const bandWith = bandWithFooter(await fetchBandPlan(bandId).catch(() => null));
       const lang = docLanguageFor(contract.client_email || contract.client_name);
-      await loadLocale(lang);
-      const blob = buildContractPdf(contract, { bandName, lang, stage, bandWith });
+      const blob = await buildContractPdfReady(contract, { bandName, lang, stage, bandWith });
       const { result, location } = await saveFile(blob, contractFileName(contract));
       if (result === 'saved') setNotice(t('PDF saved to {location}', { location: String(location) }));
       else if (result === 'downloaded') setNotice(t('PDF downloaded'));
@@ -539,7 +538,7 @@ export const ContractsView: React.FC<ContractsViewProps> = ({ onBack, bandId, pr
       const { subject, body } = buildSendMessage(contract, bandName, sendLang);
       const stage = await stageFor(contract);
       const bandWith = bandWithFooter(await fetchBandPlan(bandId).catch(() => null));
-      const blob = buildContractPdf(contract, { bandName, lang: sendLang, stage, bandWith });
+      const blob = await buildContractPdfReady(contract, { bandName, lang: sendLang, stage, bandWith });
       const result = await shareFile(blob, contractFileName(contract), { title: subject, text: body, dialogTitle: t('Send to client') });
       if (result === 'cancelled') return;
       if (result === 'shared') {

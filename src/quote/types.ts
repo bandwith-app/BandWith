@@ -19,6 +19,14 @@ export interface ClientQuoteOption {
 
 export interface ClientQuoteSnapshot {
   v: 1;
+  /** Round 4 (183): the same in every language; the server keeps the version when only the language changed. */
+  contentKey?: string;
+  /**
+   * Round 6: who this summary is for (the quote's client when it was built).
+   * The server checks it against the quote at publish and never stores it
+   * (the page never gets it).
+   */
+  client?: { name: string; email: string };
   ref: string;
   title: string;
   eventType?: string | null;
@@ -85,6 +93,8 @@ export interface ClientBalance {
   total: number;
   /** Already received: "Deposit received", "Already paid". */
   received: { label: string; amount: number }[];
+  /** Of that, the other payments the admin typed (not the deposit), so the next request starts from them. */
+  other?: number;
   /** What is still due. */
   amount: number;
   amountLabel: string;
@@ -137,6 +147,12 @@ export interface QuoteLinkView {
   balance_paid_at?: string | null;
   /** 168: the band recorded the deposit as received (accepted quotes only). */
   deposit_paid?: boolean;
+  /** 183: the amount the band recorded as received (absent before 183 or when not recorded). */
+  deposit_paid_amount?: number | null;
+  /** 183: its currency (the gig's), when it differs from the quote's it is shown in it. */
+  deposit_paid_currency?: string | null;
   /** respond: the quote changed since the client loaded it; nothing was recorded. */
   stale?: boolean;
+  /** 187 round 10: the quote's event was cancelled or deleted: no accept (absent before 187). */
+  unavailable?: boolean;
 }

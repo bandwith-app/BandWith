@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, lazy, Suspense, useCallback } from "react"
 import { useAuth } from "@/lib/AuthContext";
 import { useBand } from "@/lib/BandContext";
 import AuthCallback from "./auth/callback";
+import { SigningOutScreen, useSigningOut } from "./components/layout/SigningOutScreen";
+import { useForgetSignOutFailed } from "./hooks/useSignOutFailedNotice";
 import { Capacitor } from "@capacitor/core";
 import { App as CapacitorApp } from "@capacitor/app";
 import { isOpenedFileUrl, receiveChartFile } from '@/lib/chartInbox';
@@ -15,9 +17,11 @@ import {
   useDeputyClaim,
 } from "@/lib/deputyClaim";
 import { listMyDeputyGigs } from "@/lib/services/deputies";
+import { useServerTimezoneSync } from "@/lib/deviceTimeZone";
 import { supabase } from "@/lib/supabase";
 import { appLockSupported, markUnlocked, shouldLockOnLaunch } from "@/lib/appLock";
 import { useServerLocaleSync } from "@/lib/i18n/serverLocale";
+import { useDeletionSignOut } from "@/lib/useDeletionSignOut";
 
 const AuthenticatedApp = lazy(() => import("./AuthenticatedApp"));
 const SetNewPasswordScreen = lazy(
@@ -71,8 +75,12 @@ const isAuthCallback = (): boolean => {
 
 export default function App() {
   const { isAuthenticated, loading: authLoading, userMode, profile, isPasswordRecovery, user, signOut } = useAuth();
+  // 180: the server says this account is being deleted: the same sign-out.
+  useDeletionSignOut(signOut);
   // The server writes some pushes (deputies) in the language of the app.
   useServerLocaleSync(isAuthenticated && !isPasswordRecovery ? user?.id : null, profile?.preferred_language);
+  // And "today" in the device's zone (vote deadlines, date moves; Codex #297 r8).
+  useServerTimezoneSync(isAuthenticated && !isPasswordRecovery ? user?.id : null, profile?.timezone);
   const { startOnboarding, goToStep, resetOnboarding, path: onboardingPath, joinedEarly } = useOnboarding();
   const deputyClaim = useDeputyClaim();
   const { bands, loading: bandsLoading, refreshBands, error: bandsError } = useBand();
@@ -258,6 +266,15 @@ export default function App() {
       console.warn("No bands returned after onboarding. This usually means a DB schema/RLS issue.");
     }
   }, [bands.length, bandsLoading, authLoading]);
+
+  // A failed sign-out is wiping this device (signOutWipe, #296 round 12): until its reload only
+  // "Signing out…" shows. No sign-in form and no auth callback, so nobody signs in while a sync
+  // pass for the account that left may still be running (it would go on as the new account).
+  const signingOut = useSigningOut();
+  useForgetSignOutFailed(!authLoading && !isAuthenticated); // signed out after a wipe that threw: nothing to say (signOutNotice.ts)
+  if (signingOut) {
+    return <SigningOutScreen />;
+  }
 
   // If the URL indicates an OAuth callback, render the callback page
   // which extracts the session from the URL and redirects to the app root

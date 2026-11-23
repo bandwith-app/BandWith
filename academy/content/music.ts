@@ -155,6 +155,11 @@ const music: AreaModule = {
             ["**Duration**", "Minutes and seconds in two boxes (min : sec). Used for setlist totals."],
             ["**BPM**", "Tempo, up to 3 digits. Stage mode's click uses it."],
             ["**Key**", "Free text, e.g. C maj. Shown in the list, on stage and in the reader's transpose control."],
+            // <draft live-tempo>
+            ["**Time signature**", "4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 or 7/8. The click and the count-in use it. With none picked, the chord chart's, else 4/4. See [[song-live-settings]]."],
+            ["**Count-in**", "**1 bar** or **2 bars**, and how many beats early the song starts (**Starts on the downbeat** when none)."],
+            ["**Played with a backing track**", "The song gets no count-in on stage: the track starts the band."],
+            // </draft>
             ["**Tap**, **BPM from the recording**, ÷2 / ×2", "Tools under BPM to find the tempo. See [[transpose-and-tempo]]."],
             ["**Transpose for the band**", "Moves the key, the chord chart and the chords in the lyrics for everyone. Shown only when there is something to transpose."],
             ["**Genre**", "Tags to pick from the band's genres, or a new one with the dashed **Genre** chip, then **Add genre**. Genres filter the library when you build a setlist."],
@@ -274,7 +279,7 @@ const music: AreaModule = {
       roles: ["admin", "member"],
       kind: "reference",
       keywords: ["chordpro", "markdown", "sections", "verse", "chorus", "inline chords", "format", "json"],
-      related: ["read-a-song", "chord-editor", "import-chords-and-lyrics"],
+      related: ["read-a-song", "chord-editor", "import-chords-and-lyrics", "voice-parts"],
       body: [
         { type: "p", text: "Lyrics are plain text with a few simple marks. The same text holds the words and the chords, so one song serves the singer and the players." },
         {
@@ -285,6 +290,7 @@ const music: AreaModule = {
             "A blank line separates stanzas.",
             "A chord goes in brackets right before the word it falls on: `[Am]word`. In the reader it shows above that word.",
             "`**bold**` and `*italic*` work inside a line.",
+            "Voice parts are marks around the words: `{v2}…{/v2}` second voice, `{bv}…{/bv}` backing, `{all}…{/all}` all, `{sp}…{/sp}` spoken. See [[voice-parts]].",
             "JSON also works, for example a list of lines or a list of sections with a name and lines.",
           ],
         },
@@ -460,7 +466,7 @@ const music: AreaModule = {
       roles: ["admin"],
       kind: "task",
       keywords: ["chord editor", "edit chords", "add chord", "move chord", "copy chords", "ireal"],
-      related: ["lyrics-and-chords-format", "suggest-a-change-to-a-song", "import-from-ireal-pro"],
+      related: ["lyrics-and-chords-format", "suggest-a-change-to-a-song", "import-from-ireal-pro", "mark-voice-parts"],
       body: [
         {
           type: "steps",
@@ -469,6 +475,7 @@ const music: AreaModule = {
             "Tap a word. The bar at the bottom shows **Chord on “…”** and the chords the song already uses.",
             "Tap a chord to put it on the word, or type a new one in **New chord, e.g. F#m7** and tap **Add**. Tap **No chord** to remove it. Tap **Done** to close the bar.",
             "To move a chord, drag it onto another word.",
+            "To mark who sings a line, use **Voice** in the same bar: see [[mark-voice-parts]].",
             "To reuse a verse's chords, tap **Copy chords from…** above a section and pick the section to copy from.",
             "If the song has an iReal chart, tap **From iReal (…)** above a section to lay the matching chart section's chords over its lines.",
             "Tap **Undo** at the top right to step back. When you are done, tap **Save chords**.",
@@ -497,6 +504,159 @@ const music: AreaModule = {
           rows: [
             { role: "admin", text: "Edits the band's chords for everyone." },
             { role: "member", text: "Has no chord editor. Suggests a chord correction with **Suggest a change** (see [[suggest-a-change-to-a-song]])." },
+          ],
+        },
+      ],
+    },
+    // ───────────────────────────── Voice parts ─────────────────────────────
+    {
+      id: "voice-parts",
+      title: "Voice parts in the lyrics",
+      summary: "Lead, second voice, backing vocals, all together and spoken lines each have their own look, so every singer finds their part.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["voices", "harmony", "backing vocals", "second voice", "choir", "spoken", "lead vocal", "parts", "bv", "v2"],
+      related: ["mark-voice-parts", "who-sings-what", "highlight-my-part", "lyrics-and-chords-format", "stage-mode"],
+      body: [
+        {
+          type: "p",
+          text: "When a song has more than one voice, its lyrics can show who sings which words. Each part has its own look, made of a shape and a colour, so it reads on a dark stage, in sunlight and for colour-blind players.",
+        },
+        {
+          type: "table",
+          head: ["Part", "How it looks"],
+          rows: [
+            ["**Lead**", "Plain text. Lines with no part are the lead."],
+            ["**2nd voice**", "A coloured line under the words."],
+            ["**Backing**", "Italic and softer, with a coloured bar on the left."],
+            ["**All**", "Bold: everyone sings."],
+            ["**Spoken**", "Small capitals, in grey."],
+          ],
+        },
+        {
+          type: "list",
+          title: "Where you see them",
+          items: [
+            "In the song reader, in Stage mode and Live mode, in Song only and on the floor wedge of a dual-screen device.",
+            "A legend at the top of the song names the parts it uses and who sings each one, for example “Backing · Sam, Alex”. It shows only when the song has parts.",
+            "Without signal too: the parts travel with the setlist on your phone ([[live-mode-offline]]).",
+            "A rehearsal note on a line names the part, for example “Backing · line 3”.",
+          ],
+        },
+        {
+          type: "list",
+          title: "How they are written",
+          items: [
+            "You don't need to type anything: admins mark the parts in the chord editor ([[mark-voice-parts]]).",
+            "In the lyrics text, a part is a short mark around the words: `{v2}…{/v2}` second voice, `{bv}…{/bv}` backing, `{all}…{/all}` all, `{sp}…{/sp}` spoken. The lead has no mark.",
+            "For example `{bv}(ooh, [Am]yeah){/bv}` is a backing line with a chord on “yeah”.",
+            "A part covers a whole line or a few words of it, never more than one line. The app tidies the marks when the song is saved.",
+            "Your notes and rehearsal notes stay on their line when parts are added.",
+          ],
+        },
+        { type: "shot", id: "voice-parts-stage", caption: "A song with voice parts in Stage mode: the legend at the top, backing lines in italics with a bar, the second voice underlined." },
+      ],
+    },
+    {
+      id: "mark-voice-parts",
+      title: "Mark who sings which line",
+      summary: "In the chord editor, tap a line or a few words and pick Lead, 2nd voice, Backing, All or Spoken.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["voice picker", "mark backing vocals", "harmony", "second voice", "edit parts", "voice"],
+      related: ["voice-parts", "chord-editor", "who-sings-what"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "In the Repertoire, tap the song row and tap **Edit chords**.",
+            "Tap a word in the line you want to mark. The bar at the bottom shows **Voice** above the chords.",
+            "Leave **Whole line** to mark the whole line. To mark only some words, tap **Just these words**, then tap the other words of the same line.",
+            "Tap a part: **Lead**, **2nd voice**, **Backing**, **All** or **Spoken**. The words take its look at once.",
+            "To remove a part, tap one of its words and pick **Lead**.",
+            "Tap **Save chords**.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Let the app suggest them",
+          items: [
+            "In pasted or imported lyrics, a line all in brackets, like “(ooh, yeah)”, looks like backing vocals. A line that starts with “All:” looks like everyone together.",
+            "The chord editor and the song form then say, for example, “2 lines look like backing vocals or all together.”",
+            "Tap **Mark the voice parts** to mark them. Nothing changes until you tap.",
+          ],
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Marks the parts for the whole band." },
+            { role: "member", text: "Sees the parts. To ask for a change, uses **Suggest a change** (see [[suggest-a-change-to-a-song]])." },
+          ],
+        },
+        { type: "shot", id: "voice-picker", caption: "The chord editor with Voice open: Whole line or Just these words, then the five parts." },
+      ],
+    },
+    {
+      id: "who-sings-what",
+      title: "Say who sings what",
+      summary: "Give each voice part to the members who sing it, for every gig or only for one setlist.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["assign singers", "vocal parts", "harmony singers", "deputy singer", "who sings", "singers"],
+      related: ["voice-parts", "highlight-my-part", "mark-voice-parts"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Open a song that has voice parts: in the song reader, or in Stage or Live mode.",
+            "In the legend at the top of the lyrics, tap **Who sings what**.",
+            "Under each part, tap the members who sing it. Tap a name again to take it off.",
+            "On a gig, pick **Every gig** to save it on the song, or **This gig only** for this setlist, for example when a deputy sings.",
+            "Tap **Save**.",
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "The first time, the parts are filled in from each member's instrument: “Backing vocals” goes to Backing, “Lead vocals” to Lead. Change what you need and save.",
+            "To go back to the song's own parts on a gig, open **This gig only** and tap **Use the song’s parts**.",
+            "The names show in the legend, and each singer sees their own part highlighted ([[highlight-my-part]]).",
+          ],
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Says who sings what, for the song or for one gig." },
+            { role: "member", text: "Sees the names in the legend. Can't change them." },
+          ],
+        },
+        { type: "shot", id: "who-sings-what", caption: "Who sings what on a gig: Every gig or This gig only, and the members under each part." },
+      ],
+    },
+    {
+      id: "highlight-my-part",
+      title: "Highlight your own part",
+      summary: "Keep the lines you sing bright and dim the others a little, on your own device.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["my part", "dim", "highlight", "singer", "backing singer", "dimmed lines"],
+      related: ["voice-parts", "who-sings-what"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Open a song with voice parts in the reader, Stage mode or Live mode.",
+            "**Highlight my part** in the legend is on: your lines stay bright and the others are dimmed a little.",
+            "The first time, a hint says “Lines you don’t sing are dimmed.” Tap **Got it**.",
+            "To see every line the same, tap **Highlight my part** to turn it off. Tap it again to turn it back on.",
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "Your part comes from **Who sings what**. If nothing is set there, it comes from your instrument in the band: with “Backing vocals” you see Backing highlighted.",
+            "Lines everyone sings (**All**) always stay bright.",
+            "The switch shows only when the song has a part for you. It is kept on this device and applies to every song.",
           ],
         },
       ],
@@ -1198,7 +1358,7 @@ const music: AreaModule = {
       roles: ["admin", "member"],
       kind: "reference",
       keywords: ["stage", "gig day", "live", "run of show", "go live", "performance mode", "rehearsal", "live mode", "rehearsal live", "song only", "lyrics only", "clean view"],
-      related: ["lead-stage-mode", "follow-in-stage-mode", "stage-manager", "stage-click", "stage-bluetooth-sync", "stage-mode-on-devices"],
+      related: ["lead-stage-mode", "follow-in-stage-mode", "stage-manager", "stage-click", "stage-bluetooth-sync", "live-mode-offline", "voice-parts", "stage-mode-on-devices"],
       body: [
         {
           type: "steps",
@@ -1291,7 +1451,7 @@ const music: AreaModule = {
             "The screen stays awake while Stage mode is open.",
             "**Full screen** (the four-corners button at the top, in the rail on a dual-screen device) hides the app's bars, the side rail and the phone's status bar, and keeps the screen on. With lyrics or charts in the setlist it shows the song alone (**Song only**); with none, the setlist gets the whole screen and **Exit full screen** or Back leaves it.",
             "With no setlist, it says “No setlist attached to this gig.”",
-            "In the phone and tablet apps, the setlist with lyrics and charts is kept on the device when you open the gig, so Stage mode works without internet. Signing out removes it.",
+            "In the phone and tablet apps, the setlists of your next 7 days stay on the device, so Stage mode works without signal. See [[live-mode-offline]].",
             "Without internet and no copy on the device, it says “Offline: the setlist couldn’t be loaded.” with **Try again**.",
           ],
         },
@@ -1377,6 +1537,13 @@ const music: AreaModule = {
             "**· BT** after the label means you are linked to the leader over Bluetooth.",
             "**Offline** means nothing can reach your phone right now.",
             "Members cannot move anyone else's song or change the order.",
+            "If a line says **The leader's app is out of date: ask them to update**, you are still following: the leader just needs the latest version of BandWith.",
+            "If a line says **The band changed who can lead: connect to the internet once to follow the leader.**, go online once (Wi-Fi or mobile data) with Stage open: your phone picks up the change and follows the leader again.",
+            "If a line says **Leader not verified yet: connect to the internet once to check it.**, you are following, but your phone can't yet check that the leader is a band admin: go online once (Wi-Fi or mobile data) with Stage open.",
+            "If a line says **Leader not verified yet: ask the leader to connect to the internet once.**, you are following, but the leader's phone hasn't been online since Stage got its new security: the leader goes online once with Stage open.",
+            "If you lead and a line says **Phones on the latest app can't check you yet: connect to the internet once with Stage open.**, only phones on older versions of BandWith can follow you offline: go online once (Wi-Fi or mobile data) with Stage open, and the band's phones can check it's you.",
+            "If you lead and a line says **You're no longer an admin for this band: another admin needs to lead.**, your role in the band changed: phones on the latest version of BandWith don't follow you. Ask an admin to open Stage and lead.",
+            "**Older app versions:** after an admin's role changes (made a member, or removed from the band), a gig whose leaders were already checked waits until an admin on the latest version opens it online once. Until then, phones on the latest version show **The band changed who can lead: connect to the internet once to follow the leader.** for that gig and don't follow anyone offline. Gigs no one led on the latest version yet are not affected.",
           ],
         },
       ],
@@ -1411,7 +1578,9 @@ const music: AreaModule = {
           type: "list",
           items: [
             "The click is visual only: there is no sound. It doesn't block taps on the screen.",
-            "The beats in a bar come from the song's iReal chart time signature, else 4.",
+            // <draft live-tempo>
+            "The beats in a bar come from the song's **Time signature**, else from its chord chart, else 4/4. In 6/8 and 12/8 it flashes on the dotted beats. To count the band in, see [[count-in]].",
+            // </draft>
             "A song without BPM can't start a click (**No BPM for this song**). Add the BPM in the song form.",
             "Moving to another song hides the click for the song before.",
             "Phones keep in time to about 20–40 ms: right for a count-in and a tempo reference, not for an in-ear click.",
@@ -1420,6 +1589,176 @@ const music: AreaModule = {
         },
       ],
     },
+    // <draft live-tempo> Written from the plan (§4, §6) and PR #272 before D1, B2 and B4 landed: verify every label against the final UI.
+    {
+      id: "song-live-settings",
+      title: "Set a song up for the count-in",
+      summary: "Give a song its time signature, how long the count-in lasts, a pickup, and whether a backing track starts it.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["time signature", "meter", "6/8", "7/8", "count-in", "pickup", "upbeat", "backing track", "sequence"],
+      related: ["count-in", "follow-the-tempo", "song-fields", "transpose-and-tempo"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Open the song's menu and tap **Edit**, then **Next** to reach **Details · optional**.",
+            "Under **BPM** and **Key**, pick the **Time signature**: 4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 or 7/8.",
+            "Under **Count-in**, pick **1 bar** or **2 bars**. Two bars suit slow songs: the first bar counts in half time.",
+            "If the song starts before the first beat of the bar, tap + until it says how many beats early, for example **Starts 2 beats early**. Tap − to go back to **Starts on the downbeat**.",
+            "If a backing track starts the band, turn on **Played with a backing track**: the song gets no count-in on stage.",
+            "Tap **Save now**.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Good to know",
+          items: [
+            "With no time signature picked, the song uses its chord chart's (the form says **From the chord chart.**), else 4/4.",
+            "The click and the count-in follow the time signature: 6/8 and 12/8 are counted in dotted beats, as musicians count them.",
+            "The **BPM** is the beat you count: the quarter note in 4/4, 3/4 or 5/8, the dotted beat in 6/8, 9/8 and 12/8.",
+          ],
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Sets the time signature, the count-in and the backing track for the band." },
+            { role: "member", text: "Sees the result on stage. Can't change it." },
+          ],
+        },
+        { type: "shot", id: "song-live-fields", caption: "The song form under BPM and Key: Time signature, Count-in, the pickup and Played with a backing track." },
+      ],
+    },
+    {
+      id: "count-in",
+      title: "Count the band in",
+      summary: "The leader taps Count in and every phone shows the same countdown in the song's tempo, then GO where the band comes in.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["count-in", "countdown", "count off", "1 2 3 4", "start together", "downbeat", "vibration", "metronome"],
+      related: ["song-live-settings", "follow-the-tempo", "stage-click", "lead-stage-mode"],
+      body: [
+        {
+          type: "steps",
+          title: "Lead the count-in",
+          items: [
+            "In Stage mode or Live mode, go to the song.",
+            "Tap **Count in**.",
+            "After 1.5 seconds, every phone in Stage mode shows a full-screen countdown in the song's tempo: a big number on each beat and a ring that fills bar by bar.",
+            "The band comes in on **GO**. The countdown goes away by itself.",
+            "To stop it before the end, tap **Stop**. It stops on every phone.",
+          ],
+        },
+        {
+          type: "table",
+          head: ["Time signature", "What the countdown shows"],
+          rows: [
+            ["4/4", "4 3 2 1 GO"],
+            ["3/4", "3 2 1 GO"],
+            ["2/4", "2 1 GO"],
+            ["5/4", "5 4 3 2 1 GO"],
+            ["6/8, 12/8", "The dotted beats as big numbers (2 or 4), the eighth notes as small dots."],
+            ["5/8, 7/8", "The beats grouped as in the chart, for example 2+2+3: short, short, long."],
+          ],
+        },
+        {
+          type: "list",
+          title: "How it counts",
+          items: [
+            "With **2 bars** set on the song, the first bar counts in half time (“1 — 2 —”) and the second in time.",
+            "A song that starts a few beats early ends the countdown with **GO** on its first note, not on 1.",
+            "The band picks the direction: a countdown (4 3 2 1, the default) or the classic count (1 2 3 4).",
+            "If **Follow the tempo** is on, the song starts moving on **GO**. If the click is running, it goes on in time.",
+          ],
+        },
+        {
+          type: "list",
+          title: "On your own phone (optional)",
+          items: [
+            "Vibration on every beat, stronger on the first: for whoever can't look at the screen.",
+            "A spoken count or a click in your headphones. It never plays through the phone's speaker unless you choose it.",
+          ],
+        },
+        {
+          type: "list",
+          title: "When there is no count-in",
+          items: [
+            "A song set as **Played with a backing track** has no **Count in** button: the track starts the band. An admin can still start one from the song's menu.",
+            "While the stage manager plays the song's audio, the count-in isn't offered.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Good to know",
+          items: [
+            "A phone that gets the message late joins the countdown on the right beat.",
+            "With no signal, the count-in reaches phones nearby over Bluetooth.",
+            "Phones keep in time to about 20–40 ms.",
+          ],
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Starts and stops the count-in for the whole band." },
+            { role: "member", text: "Sees it on their phone and chooses vibration or headphones for their own device." },
+          ],
+        },
+        { type: "shot", id: "stage-count-in", caption: "The count-in on every phone: the beat number, the ring and Stop." },
+      ],
+    },
+    {
+      id: "follow-the-tempo",
+      title: "Follow the tempo",
+      summary: "Turn it on and the chart, the structure or the lyrics move with the song, in time with the leader's phone.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["follow tempo", "auto scroll", "playhead", "current bar", "next section", "scroll lyrics", "hold", "vamp", "rehearsal speed"],
+      related: ["count-in", "song-live-settings", "stage-click", "stage-mode"],
+      body: [
+        {
+          type: "steps",
+          title: "Turn it on",
+          items: [
+            "In Stage mode or Live mode, open the song tab's view choices (where you pick **Lyrics & chords** or **Chord chart**).",
+            "Turn on **Follow the tempo**. It is off by default and kept on this device.",
+            "When the leader starts the song with **Count in** or the click, your screen moves with it.",
+          ],
+        },
+        {
+          type: "table",
+          head: ["View", "What moves"],
+          rows: [
+            ["**Chord chart**", "The current bar lights up, and the chart scrolls to keep it in view."],
+            ["Structure", "The current section is highlighted. A strip at the top says what comes next, for example “Next: Bridge in 4 bars”."],
+            ["**Lyrics & chords**, **Lyrics**, **Song only**", "The current line is highlighted and the text scrolls smoothly. Without line timing, it moves section by section."],
+            ["Floor wedge", "A big countdown to the next section, for example “Chorus in 4”."],
+          ],
+        },
+        {
+          type: "steps",
+          title: "Lead it",
+          items: [
+            "Start the song with **Count in** or the click. Bar 1 starts on every phone at the same moment.",
+            "If the band plays a part longer or shorter, tap the section, bar or line where you are: everyone jumps there.",
+            "Tap **Hold** to repeat the current section (a vamp, a solo) until you tap it again.",
+            "Tap **Stop** to end it. Moving to another song stops it too.",
+          ],
+        },
+        {
+          type: "list",
+          title: "Good to know",
+          items: [
+            "Only the leader moves the band's place. Members turn the view on or off on their own phone.",
+            "A song needs a BPM to follow. Without one the switch says “Add a BPM to follow this song”.",
+            "Repeats, endings, D.C., D.S., segno and coda in the chart are played out in order. A fermata waits until the leader taps.",
+            "To follow line by line, an admin sets the line timing in the song with **Sync lines**: tap along with the recording, or set the bars of each line.",
+            "At a rehearsal, **Play at 80%** slows down the click and the follow together. The song's BPM stays the same.",
+          ],
+        },
+        { type: "shot", id: "stage-follow-tempo", caption: "Follow the tempo on the chord chart: the current bar lit and the next section on top." },
+      ],
+    },
+    // </draft>
     {
       id: "stage-manager",
       title: "Play the songs' audio from the stage manager device",
@@ -1507,7 +1846,7 @@ const music: AreaModule = {
       roles: ["admin", "member"],
       kind: "reference",
       keywords: ["bluetooth", "offline", "no signal", "no wifi", "ble", "stage key"],
-      related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode"],
+      related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode", "live-mode-offline"],
       body: [
         {
           type: "p",
@@ -1517,7 +1856,7 @@ const music: AreaModule = {
           type: "steps",
           title: "Get ready before the gig",
           items: [
-            "Everyone opens the gig once while online. The app keeps the setlist (with lyrics and charts) and the gig's Bluetooth key on the phone.",
+            "Everyone gets the setlist on their phone: say yes to the download (see [[live-mode-offline]]) or open the gig once while online. The gig's Bluetooth key comes with it.",
             "Turn Bluetooth on and allow BandWith to use it.",
             "On stage, everyone opens Stage mode. The leader shows **Bluetooth** or **Live · BT**; members show **· BT** after their follow label.",
           ],
@@ -1528,6 +1867,8 @@ const music: AreaModule = {
           items: [
             "“Bluetooth is off or not allowed. Turn it on in Settings to stay in sync without internet.”",
             "“This phone has an older setlist. Connect to the internet once to follow over Bluetooth.” This shows when songs were added or removed after the phone last loaded the setlist. A new order alone is fine.",
+            "“This phone's time and the leader's are far apart. Set both to automatic date and time.” The leader's messages carry its time; one far ahead of this phone's isn't followed, since a phone could fake it.",
+            "After someone leaves the band, every gig coming up gets a new Bluetooth key. Phones on an older version of BandWith keep the old key and can't find the others without internet: after updating BandWith, open the gig once while online.",
           ],
         },
         {
@@ -1539,6 +1880,200 @@ const music: AreaModule = {
           type: "devices",
           rows: [{ devices: ["web"], text: "No Bluetooth sync and no copy of the setlist on the device: Stage mode on the web needs the internet." }],
         },
+      ],
+    },
+    // ─────────────────────────── Without signal ───────────────────────────
+    {
+      id: "live-mode-offline",
+      title: "Use Stage and Live mode without signal",
+      summary: "Your phone keeps the setlists of your next 7 days, with lyrics, chords and your notes, so Stage and Live mode work with no signal.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["offline", "no signal", "no internet", "download", "setlist offline", "airplane mode", "basement", "7 days", "keep it automatic"],
+      related: ["offline-and-live-settings", "offline-members-ready", "changes-without-signal", "stage-mode", "stage-bluetooth-sync"],
+      body: [
+        {
+          type: "p",
+          text: "Many venues have no signal. In the phone and tablet apps, BandWith keeps the setlists of your next 7 days on your device, so Stage mode and Live mode open and work with no internet.",
+        },
+        {
+          type: "list",
+          title: "What is kept on your device",
+          items: [
+            "Every gig and rehearsal of the next 7 days that you take part in and that has a setlist. Gigs you declined are left out.",
+            "For each song: title, artist, key, BPM, the lyrics with chords and voice parts, the chord chart, and who sings what.",
+            "Your own notes and files on those songs. Nobody else's notes.",
+            "Never fees, contracts or quotes.",
+          ],
+        },
+        {
+          type: "steps",
+          title: "The first time, say yes once",
+          items: [
+            "About a week before the gig, you get a push, for example “Saturday's setlist, ready without signal · Download lyrics, chords and structures for The Loft, Brooklyn (12 songs). Tap to see what's included.”",
+            "Tap it. The gig opens with a sheet: **Have the setlist with you, even without signal.** It says what is kept, where, and about how much space it takes.",
+            "Tap **Download and keep it automatic**. This setlist and the next ones come down by themselves, with no more questions.",
+            "Or tap **Only this gig** (at a rehearsal, **Only this rehearsal**) to keep just this one.",
+            "Or tap **Not now**. You are asked once more, the day before.",
+          ],
+        },
+        {
+          type: "list",
+          title: "On the gig's page",
+          items: [
+            "Under the setlist, **Offline ready · updated …** means the setlist is on this device and up to date.",
+            "**Not on this device yet** means it isn't kept yet. Tap **Download for offline** while you have signal. The first time, the same sheet asks how you want it.",
+            "If the download fails, it says “Couldn’t download it. Try again with internet.”",
+          ],
+        },
+        {
+          type: "list",
+          title: "On stage with no signal",
+          items: [
+            "Open the gig or rehearsal as usual and tap **Open stage mode**, or **Go live** on Home. It opens from the copy on your device.",
+            "A tag at the top says **Offline · content from …**, with the time the copy was saved.",
+            "The leader's song changes still reach you over Bluetooth: see [[stage-bluetooth-sync]].",
+            "Notes and changes you make wait on your phone and go out when the signal is back: see [[changes-without-signal]].",
+          ],
+        },
+        {
+          type: "list",
+          title: "It stays up to date by itself",
+          items: [
+            "When an admin changes the setlist or one of its songs, your copy updates when you open the app, when you come back to it, and in the background when the phone allows it.",
+            "The copy is removed the day after the gig, when you leave the band or your role changes, and when you sign out.",
+          ],
+        },
+        {
+          type: "note",
+          tone: "privacy",
+          text: "The copy is only on your device and only for you. Admins see whether your phone is ready, never what is in it.",
+        },
+        {
+          type: "roles",
+          rows: [
+            { role: "admin", text: "Gets the same question the first time, and also sees who in the band is ready: see [[offline-members-ready]]." },
+            { role: "member", text: "Says yes once; after that the setlists come down by themselves." },
+            { role: "deputy", text: "Deputies don't get the band's setlists, so nothing is kept for them." },
+          ],
+        },
+        {
+          type: "devices",
+          rows: [{ devices: ["web"], text: "On the web the app needs the internet to open, so it can't be used with no signal. Use the phone or tablet app on stage." }],
+        },
+        { type: "shot", id: "live-pack-consent", caption: "The question the first time: Download and keep it automatic, Only this gig or Not now." },
+        { type: "shot", id: "live-offline-ready", caption: "Under the setlist: Offline ready, and for admins how many members are ready." },
+      ],
+    },
+    {
+      id: "offline-and-live-settings",
+      title: "Change your offline choice in Settings",
+      summary: "Turn automatic downloads on or off, wait for Wi-Fi, see the space used and delete what is kept.",
+      roles: ["admin", "member"],
+      kind: "task",
+      keywords: ["settings", "offline", "wifi only", "delete offline", "storage", "space", "automatic download", "mobile data"],
+      related: ["live-mode-offline", "settings-overview"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Open the menu, tap **Settings & account**, then **Offline & live**.",
+            "Turn **Automatic download** on to get every setlist of your next 7 days by itself. Turn it off to be asked for each gig.",
+            "Turn **Wi-Fi only** on if automatic downloads should wait for Wi-Fi on this device.",
+            "**Space used** shows how many setlists are kept and how much space they take, for example “2 setlists · 1.4 MB”.",
+            "To free the space, tap **Delete all**, then **Delete all** again to confirm. The setlists come back when you open the gig with signal.",
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "**Automatic download** follows your account on every device. **Wi-Fi only** and what is kept are for this device only.",
+            "The text of a setlist is small. Your own files on the songs take most of the space.",
+          ],
+        },
+        { type: "shot", id: "settings-offline-live", caption: "Settings › Offline & live: Automatic download, Wi-Fi only and Space used." },
+      ],
+    },
+    {
+      id: "offline-members-ready",
+      title: "See who has the setlist for no signal",
+      summary: "On a gig or rehearsal, see how many members have the setlist on their phone, and remind the others.",
+      roles: ["admin"],
+      kind: "task",
+      keywords: ["ready", "offline ready", "remind", "members ready", "download", "4 of 5"],
+      related: ["live-mode-offline", "lead-stage-mode"],
+      body: [
+        {
+          type: "steps",
+          items: [
+            "Open the gig or rehearsal. Under the setlist, find **Offline: … of … members ready**.",
+            "If everyone is ready, it says “Everyone has the setlist on their phone.” Nothing else to do.",
+            "Otherwise, tap the row. It lists who is not ready yet.",
+            "Tap **Remind** next to a name. They get one push asking them to download it, and the button says **Reminded**.",
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "A member is ready when their phone or tablet app holds the latest version of this setlist. After you change the setlist, they count again once their phone has updated.",
+            "Each member gets at most one reminder every 6 hours for the same gig.",
+            "Members who only use the web app can't be ready: the copy for no signal is in the phone and tablet apps.",
+          ],
+        },
+        {
+          type: "note",
+          tone: "privacy",
+          text: "You see only whether a phone is ready, never what is on it or anyone's notes.",
+        },
+      ],
+    },
+    {
+      id: "changes-without-signal",
+      title: "Changes made without signal",
+      summary: "Your notes, suggestions and the leader's new order wait on the phone and go out by themselves when the signal is back.",
+      roles: ["admin", "member"],
+      kind: "reference",
+      keywords: ["offline changes", "waiting for signal", "send now", "sync", "queue", "pending", "outbox"],
+      related: ["live-mode-offline", "my-notes-and-files", "lead-stage-mode", "stage-mode"],
+      body: [
+        {
+          type: "p",
+          text: "With no signal you can keep working in Stage mode and Live mode. What you write is saved on your phone at once and sent as soon as the signal is back.",
+        },
+        {
+          type: "list",
+          title: "What waits on your phone",
+          items: [
+            "Your own notes on a song ([[my-notes-and-files]]).",
+            "A **Note for the band** and suggested changes to a song.",
+            "Rehearsal notes and marks.",
+            "The leader's new setlist order in Stage mode.",
+          ],
+        },
+        {
+          type: "list",
+          title: "What you see",
+          items: [
+            "A bar at the top, for example **You’re offline · 2 changes waiting for signal**. With nothing waiting it says **You’re offline · showing cached info**.",
+            "After the leader drags a song with no signal, the status says **Saved on this phone**, then **Saved** once it reaches the band's setlist.",
+            "When the signal is back, the bar says **Back online · sending 2 changes**, then **Back online · up to date**.",
+            "To send at once without waiting, tap **Send now** in the bar.",
+          ],
+        },
+        {
+          type: "list",
+          title: "When it is sent",
+          items: [
+            "As soon as the signal is back, when you open the app again, and every 30 seconds while something is waiting.",
+            "Closing the app keeps what is waiting. It goes the next time you open the app with signal.",
+          ],
+        },
+        {
+          type: "note",
+          tone: "tip",
+          text: "Members nearby see the leader's new order at once over Bluetooth, before it is saved.",
+        },
+        { type: "shot", id: "stage-offline-banner", caption: "Stage mode with no signal: the content tag and the bar with the changes waiting for signal." },
       ],
     },
     {
@@ -1598,7 +2133,19 @@ const music: AreaModule = {
     },
     {
       q: "Does Stage mode work without internet?",
-      a: "In the phone and tablet apps, yes: open the gig once while online, and the leader's phone keeps the band in sync over Bluetooth. On the web Stage mode needs the internet.",
+      a: "In the phone and tablet apps, yes. Say yes once to the download and the setlists of your next 7 days stay on your phone; the leader's phone keeps the band on the same song over Bluetooth. On the web Stage mode needs the internet.",
+    },
+    {
+      q: "Does my phone download the setlists without asking?",
+      a: "No. The first time, a sheet asks. Choose Download and keep it automatic and the next setlists come down by themselves. You can change it anytime in Settings › Offline & live.",
+    },
+    {
+      q: "Do the setlists on my phone include fees or contracts?",
+      a: "No. Only lyrics, chords, structures, voice parts and your own notes and files. Fees, contracts, quotes and other members' notes never go on your phone.",
+    },
+    {
+      q: "Why are some lines of the lyrics dimmed?",
+      a: "Highlight my part is on: the lines you don't sing are dimmed a little. Tap Highlight my part at the top of the song to see them all.",
     },
     {
       q: "Can I hear the click?",
@@ -1618,6 +2165,12 @@ const music: AreaModule = {
       q: "Why don't I see the iReal Pro forum inside the app on the web?",
       a: "The forum can't be shown inside a web page, so it opens in its own window. Copy a link there and tap Paste link, or drag the link onto the box.",
     },
+    // <draft live-tempo>
+    {
+      q: "Why is there no Count in button on a song?",
+      a: "The song is set as Played with a backing track: the track starts the band. An admin can still start a count-in from the song's menu.",
+    },
+    // </draft>
   ],
 
   glossary: [
@@ -1642,6 +2195,13 @@ const music: AreaModule = {
     { term: "Click", definition: "Stage mode's visual metronome: a glow on each beat, in time across phones.", see: "stage-click" },
     { term: "Run of show", definition: "Load in, Soundcheck, Show and End times at the top of Stage mode.", see: "stage-mode" },
     { term: "Floor wedge", definition: "Stage mode on a dual-screen device in laptop posture: song info on top, big Prev / Next pads below.", see: "stage-mode-on-devices" },
+    { term: "Offline setlist", definition: "The copy of a gig's or rehearsal's setlist kept on your phone for when there is no signal: lyrics, chords, voice parts and your own notes.", see: "live-mode-offline" },
+    { term: "Voice part", definition: "Who sings a line or a few words: Lead, 2nd voice, Backing, All or Spoken, each with its own look.", see: "voice-parts" },
+    { term: "Highlight my part", definition: "A switch on each device that keeps the lines you sing bright and dims the others a little.", see: "highlight-my-part" },
+    // <draft live-tempo>
+    { term: "Count-in", definition: "The countdown on every phone, in the song's tempo and time signature, that ends with GO where the band comes in.", see: "count-in" },
+    { term: "Follow the tempo", definition: "A switch on each device that moves the chart, the structure or the lyrics with the song, in time with the leader.", see: "follow-the-tempo" },
+    // </draft>
   ],
 
   shots: [
@@ -1699,6 +2259,69 @@ const music: AreaModule = {
       role: "admin",
       viewport: "phone",
     },
+    // Placeholders for the live release: no capture yet (the integrated pass takes them).
+    {
+      id: "live-pack-consent",
+      how: "As a member, open the Rooftop Session gig from the live_pack_ready push (or tap Download for offline under its setlist the first time). Leave the sheet Have the setlist with you, even without signal open.",
+      role: "member",
+      viewport: "phone",
+    },
+    {
+      id: "live-offline-ready",
+      how: "As admin, download the pack of Rooftop Session, with 4 of 5 members ready. Open the gig and scroll to the setlist so Offline ready · updated … and Offline: 4 of 5 members ready show; tap that row to list who is not ready.",
+      role: "admin",
+      viewport: "phone",
+    },
+    {
+      id: "settings-offline-live",
+      how: "As a member with two packs kept, open the menu › Settings & account › Offline & live, with Automatic download on.",
+      role: "member",
+      viewport: "phone",
+    },
+    {
+      id: "stage-offline-banner",
+      how: "With the Rooftop Session pack downloaded, turn the network off, open the gig, tap Open stage mode, add a personal note on Paper Boats and suggest a change, so the bar says You’re offline · 2 changes waiting for signal and the Offline · content from … tag shows.",
+      role: "member",
+      viewport: "phone",
+    },
+    {
+      id: "voice-parts-stage",
+      how: "Give Paper Boats voice parts ({bv} on the chorus answers, {v2} on one verse line, {all} on the last chorus line) and Who sings what (Backing: two members). As a member with Backing vocals, open Rooftop Session in Stage mode, Lyrics & chords tab, Highlight my part on.",
+      role: "member",
+      viewport: "phone",
+    },
+    {
+      id: "voice-picker",
+      how: "As admin, Repertoire › Paper Boats › Edit chords. Tap the first word of a chorus answer line, so the bar shows Voice with Whole line selected and Backing pressed.",
+      role: "admin",
+      viewport: "phone",
+    },
+    {
+      id: "who-sings-what",
+      how: "As for voice-parts-stage but as admin, then tap Who sings what in the legend and pick This gig only.",
+      role: "admin",
+      viewport: "phone",
+    },
+    // <draft live-tempo>
+    {
+      id: "song-live-fields",
+      how: "As admin, Repertoire › Harbor Lights › Edit › Next to Details · optional. Scroll so BPM, Key, Time signature (6/8), Count-in (2 bars, Starts 1 beats early) and Played with a backing track show.",
+      role: "admin",
+      viewport: "phone",
+    },
+    {
+      id: "stage-count-in",
+      how: "As admin, open Rooftop Session in Stage mode on Paper Boats and tap Count in; capture on beat 2 of the countdown.",
+      role: "admin",
+      viewport: "phone",
+    },
+    {
+      id: "stage-follow-tempo",
+      how: "As a member with Follow the tempo on, Chord chart tab, while the leader runs Harbor Lights; capture with a bar lit and the Next: … strip showing.",
+      role: "member",
+      viewport: "phone",
+    },
+    // </draft>
   ],
 };
 

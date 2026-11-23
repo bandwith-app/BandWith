@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useLaptopPose } from '@/app/components/duo/FoldSplit';
 import { readLocalPref, loadNotificationPrefs, saveNotificationPrefs } from '@/lib/services/notificationPrefs';
 import { exportMyData } from '@/lib/services/dataExport';
+import { holdPushStateOnFailure, restorePushStateAfterWipe } from '@/lib/pushRevocation';
+import { supabase as authClient } from '@/lib/supabase';
 import { cn } from '@/app/components/ui/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { HEADER_SPRING } from '@/styles/motion';
@@ -33,11 +35,14 @@ import { VenueAutocomplete } from '@/app/components/ui/VenueAutocomplete';
 import { Band } from '@/app/data/bands';
 import { NotificationItem } from '@/app/data/notifications';
 import { useAuth } from '@/lib/AuthContext';
+import { signOutCancelled } from '@/lib/signOutGate';
 import { useTheme } from '@/lib/ThemeContext';
 import { useBand } from '@/lib/BandContext';
 import { updateBand } from '@/lib/services/bands';
 import { uploadBandBrandingAsset, getBandPricing, saveBandPricing } from '@/lib/services/pricing';
 import { personName, personInitials, hasRealName } from '@/lib/personName';
+import { wipeAfterFailedSignOut } from '@/lib/signOutWipe';
+import { markSignOutFailed } from '@/lib/signOutNotice';
 import { useT } from '@/lib/i18n';
 import { useAppVersion } from '@/lib/appVersion';
 import { uuidToNumericId } from '@/lib/numericId';
@@ -106,7 +111,18 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
   onOpenDeputyGigs,
   onBandUpdated,
 }) => {
-  const { signOut, user, profile, userMode } = useAuth();
+  const { signOut: signOutOrThrow, user, profile, userMode } = useAuth();
+  // A sign-out that throws is answered by a wipe below: the push revocation
+  // it queued and a pending token deletion survive it (#287 round 10).
+  // Held for this account only: anyone else signing in (here or in another
+  // tab) before the restore drops it.
+  const signOut = holdPushStateOnFailure(signOutOrThrow, {
+    owner: () => user?.id,
+    watchSignedIn: (onUser) => {
+      const { data } = authClient.auth.onAuthStateChange((_event, session) => onUser(session?.user?.id ?? null));
+      return () => data.subscription.unsubscribe();
+    },
+  });
   const t = useT();
   // Duo Laptop: the profile card sits on the Display, the rest on the Deck.
   const laptop = useLaptopPose();
@@ -279,12 +295,18 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
   // Sending queued offline edits first can take a few seconds: one tap only.
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
-  const handleLogout = async () => {
+  const logOutOrWipe = async () => {
     if (signingOut) return;
     setSigningOut(true);
     setSignOutError(null);
     try {
-      const { error } = await signOut();
+      const res = await signOut();
+      // Called off ("You have N unsent changes" closed): still signed in.
+      if (signOutCancelled(res)) {
+        setSigningOut(false);
+        return;
+      }
+      const { error } = res;
       if (error) {
         // Still signed in: reloading would only bring the session back.
         console.error('Logout failed:', error);
@@ -296,10 +318,24 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
       window.location.href = '/';
     } catch (e) {
       console.error('Logout failed:', e);
-      localStorage.clear();
+      // Wiped, but not what sign-out keeps (the refused notes, the recordings' cleanup marks, #296 round 7),
+      // nor the device's privacy choices (a crash-report opt-out stays off, #277): signOutWipe keeps both.
+      await wipeAfterFailedSignOut();
       window.location.href = '/';
+      restorePushStateAfterWipe();
     }
   };
+  // The wipe itself can fail (#296's async wipe, Claude delta review #287
+  // r10): the held push state still comes back, then the page reloads.
+  // If the session survived it, the reload brings the person back signed
+  // in: the app then says so once (signOutNotice.ts), instead of nothing.
+  const handleLogout = () =>
+    logOutOrWipe().catch((e) => {
+      console.error('Logout wipe failed:', e);
+      restorePushStateAfterWipe();
+      markSignOutFailed();
+      window.location.href = '/';
+    });
 
   const notificationStatus =
     pushEnabled && emailEnabled

@@ -1,6 +1,7 @@
 import { supabase } from '../supabase';
 import { t } from '@/lib/i18n';
 import { planRefusal } from '@/lib/userError';
+import { serverErrorText } from '@/lib/deletionRefusal';
 import { builtinText } from '@/lib/i18n/builtins';
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -43,8 +44,7 @@ const noRowsMessage = () => t("This change wasn't saved: you don't have permissi
 const asError = (err: unknown, fallback: string) => {
   const plan = planRefusal(err);
   if (plan) return plan;
-  const e = err as { message?: string } | null;
-  return new Error(e?.message || fallback);
+  return new Error(serverErrorText(err, fallback));
 };
 
 const CATEGORIES: TemplateCategory[] = ['wedding', 'corporate', 'festival', 'private', 'rehearsal', 'other'];

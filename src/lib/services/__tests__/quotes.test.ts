@@ -21,7 +21,7 @@ vi.mock('@/lib/supabase', () => ({
 }));
 
 // Import after mocking
-import { createQuote, deleteQuote, appQuoteToDbRecord, appMusiciansToDb } from '../quotes';
+import { createQuote, deleteQuote, appQuoteToDbRecord, appMusiciansToDb, quoteUpdateRecord } from '../quotes';
 
 const BAND_ID = '11111111-1111-4111-8111-111111111111';
 const QUOTE_ID = '22222222-2222-4222-8222-222222222222';
@@ -189,6 +189,25 @@ describe('Quote Service', () => {
         BAND_ID
       );
       expect(rec).toMatchObject({ discount_amount: 300, net_amount: 0, vat_amount: 0, total: 0 });
+    });
+
+    // 183 review: supabase-js drops undefined from an UPDATE, so a cleared
+    // contact kept the old client's email / phone in the database.
+    it('a cleared client email or phone is written as null (both directions)', () => {
+      const toPhoneOnly = appQuoteToDbRecord({ clientName: 'Jordan Lee', clientEmail: '', clientPhone: '+1 646 555 0199' }, BAND_ID);
+      expect(toPhoneOnly).toHaveProperty('client_email', null);
+      expect(JSON.parse(JSON.stringify(toPhoneOnly)).client_email).toBeNull();
+      const toEmailOnly = appQuoteToDbRecord({ clientName: 'Jordan Lee', clientEmail: 'jordan@example.com', clientPhone: '  ' }, BAND_ID);
+      expect(toEmailOnly).toHaveProperty('client_phone', null);
+      expect(JSON.parse(JSON.stringify(toEmailOnly)).client_phone).toBeNull();
+    });
+
+    it('an edit does not write the status a screen loaded earlier', () => {
+      const rec = quoteUpdateRecord({ status: 'VIEWED', clientName: 'Jordan Lee', sentAt: '2026-11-01T10:00:00Z' }, BAND_ID, {});
+      expect(rec).not.toHaveProperty('status');
+      expect(rec).not.toHaveProperty('sent_at');
+      expect(rec).not.toHaveProperty('band_id');
+      expect(rec.client_name).toBe('Jordan Lee');
     });
 
     it('only keeps real profile ids for musicians', () => {

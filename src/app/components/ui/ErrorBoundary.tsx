@@ -1,4 +1,5 @@
 import React from 'react';
+import { reportClientError } from '@/lib/crashReports';
 import { t } from '@/lib/i18n';
 
 interface ErrorBoundaryProps {
@@ -35,6 +36,8 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
   componentDidCatch(error: unknown) {
     console.error('[BandWith] render error', error);
+    // A screen that fails to draw never reaches window.onerror in production.
+    void reportClientError('render', error);
   }
 
   render() {

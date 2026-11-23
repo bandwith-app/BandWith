@@ -16,6 +16,7 @@ import {
   GripVertical,
   Check,
   Save,
+  AlertTriangle,
   ChevronRight,
   CheckCircle2,
   FileText,
@@ -40,20 +41,20 @@ import { useAuth } from '@/lib/AuthContext';
 import { openChordEditor, SONG_SAVED } from '@/app/components/songs/ChordEditor';
 import {
   getSongs, createSong, deleteSong, updateSong,
-  getSetlists, getSetlist, createSetlist, updateSetlist, deleteSetlist,
+  getSetlists, getSetlist, createSetlist, deleteSetlist,
   replaceSetlistSongs, seedRepertoireSongs, bulkCreateSongs,
   getSongUsage, getUpcomingGigsForSetlists
 } from '@/lib/services/songs';
 import { setlistDeleteText, songDeleteText } from '@/lib/deleteImpact';
 import { DeleteChatSheet } from '@/app/components/chat/DeleteChatSheet';
 import { parseSongList, SONG_LIST_ACCEPT } from '@/lib/songListImport';
-import type { Song, Setlist } from '@/lib/services/songs';
+import type { Song, Setlist, SetlistState } from '@/lib/services/songs';
 import { AddSongModal } from '@/app/components/rehearsal/AddSongModal';
 import { diffSetlist, entriesFromRows } from '@/lib/setlistChanges';
 import { notifySetlistSaved } from '@/lib/services/setlistNotify';
 import { ScreenHeader, IconButton, SearchField, Card, Tag, BwSheet, ListRow } from '@/app/components/bw/Screen';
 import { PillButton, PillField, Selector, FormError } from '@/app/components/bw/Form';
-import { isStoredSongFile, openSongResource } from '@/lib/services/songFiles';
+import { adoptSuggestionFiles, hasUnadoptedFiles, isStorageFullError, isStoredSongFile, openSongResource, songFilesFit, sweepAdoptedFiles } from '@/lib/services/songFiles';
 import { formatHoursMinutes, genresOf, parseGenres, songHasGenre } from '@/lib/songGenres';
 import { playTrack } from '@/lib/audioPlayer';
 import { t, useT } from '@/lib/i18n';
@@ -121,6 +122,8 @@ const RowMenu: React.FC<{ items: { label: string; icon: React.ReactNode; run: ()
 interface EditorItem {
   key: string;
   songId: string;
+  /** The stored row this performance is (188 keeps it: notes, singers); none for a song just added. */
+  rowId?: string;
 }
 
 let editorKeySeq = 0;
@@ -200,8 +203,9 @@ interface SetlistManagerViewProps {
 
 type ViewMode = 'songs' | 'setlists';
 
-const editorSnapshot = (name: string, songIds: string[], sets: number[]) =>
-  JSON.stringify([name.trim(), songIds, compactSets(sets)]);
+// Row ids too: the same song twice swapped is a change (Codex r6 M1).
+const editorSnapshot = (name: string, songIds: string[], sets: number[], rowIds: (string | undefined)[]) =>
+  JSON.stringify([name.trim(), songIds, compactSets(sets), rowIds.map((r) => r ?? null)]);
 
 export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose }) => {
   const t = useT();
@@ -213,6 +217,8 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
   const [songs, setSongs] = useState<Song[]>([]);
   const [setlists, setSetlists] = useState<Setlist[]>([]);
   const [loading, setLoading] = useState(true);
+  // The band whose songs were last loaded (also when it has none).
+  const [songsFor, setSongsFor] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddSong, setShowAddSong] = useState(false);
   const [showAddSetlist, setShowAddSetlist] = useState(false);
@@ -309,7 +315,10 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
       getSetlists(selectedBand.id)
     ]);
     
-    if (songsRes.data) setSongs(songsRes.data);
+    if (songsRes.data) {
+      setSongs(songsRes.data);
+      setSongsFor(selectedBand.id);
+    }
     if (setlistsRes.data) setSetlists(setlistsRes.data);
     if (songsRes.error || setlistsRes.error) {
       setNotice({ text: errorText(songsRes.error || setlistsRes.error, t('Could not load your songs and setlists')), error: true });
@@ -356,16 +365,60 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
     setSongs(prev => prev.filter(s => s.id !== songId));
   };
 
+  /**
+   * An accepted suggested song's files go into the band's folders, as when
+   * it is accepted in review: the member who suggested it can no longer
+   * replace or delete them (audit 09 #5). A move that stopped half-way is
+   * finished here too, once per song while the repertoire is open.
+   */
+  const adoptTried = useRef(new Set<string>());
+  const adoptFiles = useCallback(async (song: Pick<Song, 'id' | 'audio_url' | 'chart_url'>) => {
+    adoptTried.current.add(song.id);
+    const { refs, error } = await adoptSuggestionFiles(song);
+    if (Object.keys(refs).length) setSongs((prev) => prev.map((s) => (s.id === song.id ? { ...s, ...refs } : s)));
+    // No room in the band's storage: said (every retry would fail the same way).
+    if (isStorageFullError(error)) setNotice({ text: error!.message, error: true });
+  }, []);
+  // Originals left by a move that could not delete them (recorded on the
+  // server, 197), lapsed delete claims and unused copies: tidied once per
+  // visit, once the songs are loaded, also when the band has none left (the
+  // last one's file may be waiting). Several admins or devices at once are
+  // safe: the server decides who repoints and what may be deleted.
+  const swept = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isAdmin) return;
+    for (const song of songs) if (hasUnadoptedFiles(song) && !adoptTried.current.has(song.id)) void adoptFiles(song);
+    const bandId = selectedBand?.id;
+    if (bandId && songsFor === bandId && swept.current !== bandId) {
+      swept.current = bandId;
+      void sweepAdoptedFiles(bandId);
+    }
+  }, [songs, songsFor, isAdmin, adoptFiles, selectedBand?.id]);
+
   /** Admins move a suggested song to Learning / Ready (and back). */
   const handleSetSongStatus = async (song: Song, status: Song['status']) => {
     setActionMenuId(null);
     const previous = song.status;
+    // Accepting a suggested song whose files don't fit in the band's storage:
+    // it stays suggested (its move would fail; Codex review of #295).
+    if (previous === 'suggested' && status !== 'suggested'
+        && hasUnadoptedFiles({ status, audio_url: song.audio_url, chart_url: song.chart_url })
+        && !(await songFilesFit(selectedBand?.id, [song.audio_url, song.chart_url]))) {
+      setNotice({ text: t('Band storage is full: free up space to add this file.'), error: true });
+      return;
+    }
+    // Files move only once the new status is saved (not on the optimistic one).
+    const adoptWaits = !adoptTried.current.has(song.id);
+    adoptTried.current.add(song.id);
     setSongs((prev) => prev.map((s) => (s.id === song.id ? { ...s, status } : s)));
     const { error } = await updateSong(song.id, { status });
     if (error) {
+      if (adoptWaits) adoptTried.current.delete(song.id);
       setSongs((prev) => prev.map((s) => (s.id === song.id ? { ...s, status: previous } : s)));
       setNotice({ text: errorText(error, t('Could not update the song')), error: true });
+      return;
     }
+    if (status !== 'suggested' && hasUnadoptedFiles({ status, audio_url: song.audio_url, chart_url: song.chart_url })) void adoptFiles(song);
   };
 
   const handlePlaySong = async (song: Song) => {
@@ -515,7 +568,37 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
 
   // ── Setlist Editor Logic ──
 
-  const openSetlistEditor = useCallback(async (setlistId: string) => {
+  // The load awaited now (a number per tap, not the setlist id), and the
+  // setlist the editor holds. On iPad / Duo the list stays next to the
+  // editor: tapping A then B must never let A's late answer fill B's editor,
+  // or Save would write A over B (audit 09 #4); and A, B, A again must never
+  // let the first A answer replace what the user typed after the second.
+  const editorRequestRef = useRef(0);
+  const [editorLoadedId, setEditorLoadedId] = useState<string | null>(null);
+  // The setlist as loaded (saved only over it, 188) and, after a save found
+  // it changed by someone else, what is stored now.
+  const editorLoadedStateRef = useRef<SetlistState | null>(null);
+  const [editorConflict, setEditorConflict] = useState<SetlistState | null>(null);
+
+  const openSetlistEditor = useCallback(async (setlistId: string, opts?: { keepDraftUntilLoaded?: boolean }) => {
+    const request = ++editorRequestRef.current;
+    // "Load the latest version": the draft stays until the latest version
+    // has arrived; if it can't be fetched, nothing the user typed is lost.
+    if (opts?.keepDraftUntilLoaded) {
+      setEditorError(null);
+      const { data, error } = await getSetlist(setlistId);
+      if (editorRequestRef.current !== request) return;
+      if (!data || (data.id && data.id !== setlistId)) {
+        setEditorError(errorText(error, t('Could not load this setlist')));
+        return;
+      }
+      applyLoadedSetlist(setlistId, data);
+      setEditorConflict(null);
+      return;
+    }
+    setEditorLoadedId(null);
+    editorLoadedStateRef.current = null;
+    setEditorConflict(null);
     setEditingSetlistId(setlistId);
     setSetlistEditorLoading(true);
     setSetlistEditorSearch(false);
@@ -528,21 +611,40 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
     setEditorBaseline(null);
 
     const { data, error } = await getSetlist(setlistId);
+    // Opened again (this or another setlist), or closed, meanwhile: drop this answer.
+    if (editorRequestRef.current !== request) return;
+    if (data && data.id && data.id !== setlistId) return;
     if (data) {
-      setEditingSetlistName(data.name);
-      const seen = new Set<string>();
-      const ordered = [...data.songs]
-        .sort((a, b) => ((a.set_number ?? 1) - (b.set_number ?? 1)) || (a.position - b.position))
-        .filter((s) => (seen.has(s.song_id) ? false : (seen.add(s.song_id), true)));
-      setEditorItems(ordered.map((s) => ({ key: s.id || newEditorKey(), songId: s.song_id })));
-      setEditorSets(compactSets(ordered.map((s) => s.set_number ?? 1)));
-      setEditorBaseline(editorSnapshot(data.name, ordered.map((s) => s.song_id), ordered.map((s) => s.set_number ?? 1)));
+      applyLoadedSetlist(setlistId, data);
     } else {
       setEditorError(errorText(error, t('Could not load this setlist')));
       setEditorLoadFailed(true);
     }
     setSetlistEditorLoading(false);
   }, [t]);
+
+  // A loaded setlist into the editor, in play order. A song played twice
+  // (a reprise) stays twice.
+  function applyLoadedSetlist(setlistId: string, data: NonNullable<Awaited<ReturnType<typeof getSetlist>>['data']>) {
+    setEditorLoadedId(setlistId);
+    const ordered = [...data.songs]
+      .sort((a, b) => ((a.set_number ?? 1) - (b.set_number ?? 1)) || (a.position - b.position) || String(a.id).localeCompare(String(b.id)));
+    // Row by row, with who sings it: saved only over exactly this (188, Codex r6 M1).
+    editorLoadedStateRef.current = {
+      name: data.name,
+      songs: ordered.map((s) => ({
+        ...(s.id ? { id: s.id } : {}),
+        song_id: s.song_id,
+        set_number: s.set_number ?? 1,
+        vocal_parts: (s as { vocal_parts?: unknown }).vocal_parts ?? null,
+      })),
+    };
+    setEditingSetlistName(data.name);
+    setEditorItems(ordered.map((s) => ({ key: s.id || newEditorKey(), songId: s.song_id, ...(s.id ? { rowId: s.id } : {}) })));
+    setEditorSets(compactSets(ordered.map((s) => s.set_number ?? 1)));
+    setEditorBaseline(editorSnapshot(data.name, ordered.map((s) => s.song_id), ordered.map((s) => s.set_number ?? 1), ordered.map((s) => s.id || undefined)));
+    setEditorLoadFailed(false);
+  }
 
   // Setlist → PDF (share sheet on phones, download on the web).
   const [exportingPdf, setExportingPdf] = useState(false);
@@ -578,6 +680,10 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
   };
 
   const closeSetlistEditor = () => {
+    editorRequestRef.current += 1;
+    editorLoadedStateRef.current = null;
+    setEditorConflict(null);
+    setEditorLoadedId(null);
     setEditingSetlistId(null);
     setSetlistEditorSearch(false);
     setEditorError(null);
@@ -586,7 +692,7 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
   const editorDirty =
     !!editingSetlistId &&
     editorBaseline !== null &&
-    editorSnapshot(editingSetlistName, editorItems.map((it) => it.songId), editorSets) !== editorBaseline;
+    editorSnapshot(editingSetlistName, editorItems.map((it) => it.songId), editorSets, editorItems.map((it) => it.rowId)) !== editorBaseline;
   // What to do once the user leaves: just close, or open another setlist.
   const [editorLeaveAction, setEditorLeaveAction] = useState<null | (() => void)>(null);
   const guardEditor = (after: () => void) => (editorDirty ? setEditorLeaveAction(() => after) : after());
@@ -598,32 +704,46 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
   // A song row's menu is the top layer: Back and Escape close just the menu.
   useSystemBack(!!actionMenuId, () => setActionMenuId(null));
 
-  const handleSaveSetlist = useCallback(async () => {
+  /**
+   * `over`: save over this state instead of the loaded one ("Save mine instead").
+   * true: saved; 'conflict': changed meanwhile, nothing saved (the choice shows).
+   */
+  const saveSetlist = useCallback(async (over?: SetlistState): Promise<boolean | 'conflict'> => {
     if (!editingSetlistId || !editingSetlistName.trim() || setlistEditorSaving || editorLoadFailed) return false;
+    // Only what was loaded for this very setlist is saved to it.
+    if (editorLoadedId !== editingSetlistId) return false;
     setSetlistEditorSaving(true);
     setEditorError(null);
     const name = editingSetlistName.trim();
     const sets = compactSets(editorSets);
 
     try {
-      const { error: nameError } = await updateSetlist(editingSetlistId, { name });
-      if (nameError) {
-        setEditorError(errorText(nameError, t('Could not save the setlist')));
-        return false;
-      }
-      const rows = editorItems.map((it, i) => ({ song_id: it.songId, set_number: sets[i] ?? 1 }));
-      const { error: songsError, previous } = await replaceSetlistSongs(editingSetlistId, rows);
-      const renamed = name !== (setlists.find(sl => sl.id === editingSetlistId)?.name ?? name);
-      // The name is saved either way; keep the list in step with it.
-      setSetlists(prev => prev.map(sl =>
-        sl.id === editingSetlistId
-          ? { ...sl, name, ...(songsError ? {} : { song_count: editorItems.length }) }
-          : sl
-      ));
+      // Name, songs and count in one transaction (188): a failure or a lost
+      // signal half-way leaves the setlist as it was, never empty.
+      // Each performance names its row: the same song twice keeps each one's notes and singers.
+      const rows = editorItems.map((it, i) => ({ ...(it.rowId ? { id: it.rowId } : {}), song_id: it.songId, set_number: sets[i] ?? 1 }));
+      // Only over the setlist as loaded: another admin's songs are never dropped unseen.
+      const expected = over ?? editorLoadedStateRef.current ?? undefined;
+      const { error: songsError, previous, conflict, rows: savedRows } = await replaceSetlistSongs(editingSetlistId, rows, { name, ...(expected ? { expected } : {}) });
       if (songsError) {
-        setEditorError(errorText(songsError, t('The name was saved, but the song order was not')));
+        setEditorError(errorText(songsError, t('Could not save the setlist')));
         return false;
       }
+      if (conflict) {
+        setEditorConflict(conflict);
+        return 'conflict';
+      }
+      setEditorConflict(null);
+      editorLoadedStateRef.current = {
+        name,
+        songs: savedRows
+          ? savedRows.map(({ id, song_id, set_number }) => ({ id, song_id, set_number }))
+          : rows.map(({ song_id, set_number }) => ({ song_id, set_number })),
+      };
+      const renamed = name !== (setlists.find(sl => sl.id === editingSetlistId)?.name ?? name);
+      setSetlists(prev => prev.map(sl =>
+        sl.id === editingSetlistId ? { ...sl, name, song_count: editorItems.length } : sl
+      ));
       // One push to the band with what changed (107).
       void notifySetlistSaved({
         setlistId: editingSetlistId,
@@ -635,7 +755,8 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
     } finally {
       setSetlistEditorSaving(false);
     }
-  }, [editingSetlistId, editingSetlistName, editorItems, editorSets, setlistEditorSaving, editorLoadFailed, setlists, t]);
+  }, [editingSetlistId, editorLoadedId, editingSetlistName, editorItems, editorSets, setlistEditorSaving, editorLoadFailed, setlists, t]);
+  const handleSaveSetlist = useCallback(() => saveSetlist(), [saveSetlist]);
 
   const requestDeleteSetlist = async () => {
     if (!editingSetlistId) return;
@@ -1127,10 +1248,11 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
         }}
         onSave={async () => {
           const go = editorLeaveAction;
-          if (await handleSaveSetlist()) {
-            setEditorLeaveAction(null);
-            go?.();
-          }
+          const saved = await handleSaveSetlist();
+          // Changed meanwhile: back to the editor, where the choice shows
+          // (load the latest or save mine); nothing retried with the old version.
+          if (saved) setEditorLeaveAction(null);
+          if (saved === true) go?.();
         }}
       />
 
@@ -1388,14 +1510,48 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
                 {canEditSetlists && <div className="shrink-0 px-4 pt-3 bg-background" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}>
                   <div className="max-w-2xl mx-auto w-full flex flex-col gap-3">
                     {editorError && <FormError>{editorError}</FormError>}
+                    {editorConflict ? (
+                      <div className="flex flex-col gap-3">
+                        <p role="alert" className="bw-body-md flex gap-3 items-start">
+                          <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" aria-hidden />
+                          <span className="min-w-0">
+                            {t('Someone else changed this setlist while you were editing. Your changes are still here, not saved yet.')}
+                          </span>
+                        </p>
+                        <p className="bw-body-sm text-muted-foreground">
+                          {t('Load the latest version to see their changes (yours are dropped), or save yours over theirs.')}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <PillButton
+                            size="md"
+                            variant="outline"
+                            fullWidth={false}
+                            disabled={setlistEditorSaving}
+                            onClick={() => editingSetlistId && void openSetlistEditor(editingSetlistId, { keepDraftUntilLoaded: true })}
+                          >
+                            {t('Load the latest version')}
+                          </PillButton>
+                          <PillButton
+                            size="md"
+                            variant="dark"
+                            fullWidth={false}
+                            loading={setlistEditorSaving}
+                            onClick={() => void saveSetlist(editorConflict)}
+                          >
+                            {t('Save mine instead')}
+                          </PillButton>
+                        </div>
+                      </div>
+                    ) : (
                     <PillButton
                       onClick={handleSaveSetlist}
                       loading={setlistEditorSaving}
-                      disabled={!editingSetlistName.trim() || editorLoadFailed || setlistEditorSaving}
+                      disabled={!editingSetlistName.trim() || editorLoadFailed || setlistEditorSaving || editorLoadedId !== editingSetlistId}
                       icon={<Save className="w-[18px] h-[18px]" />}
                     >
                       {t('Save setlist')}
                     </PillButton>
+                    )}
                   </div>
                 </div>}
               </>

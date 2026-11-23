@@ -3,12 +3,16 @@ import {
   endSession,
   fromRow,
   markPlayed,
+  mergeSessions,
   pauseSession,
   pickSession,
   resumeSession,
+  sameEvidence,
+  sameSession,
   sessionStatus,
   startSession,
   toRow,
+  withSongsOf,
   type PlayedSong,
   type SessionRow,
   type SessionState,
@@ -45,21 +49,38 @@ export interface SessionMessage {
   eventId: string;
   date: string;
   row: SessionRow | null;
+  /**
+   * The saved revision the sender's session is built on (#296 round 4).
+   * Missing from older builds: their messages are treated as older and
+   * merged, never taken as they are.
+   */
+  rev?: string | null;
 }
 
+/** Their revision is newer than ours (a save this device hasn't read). Revisions are updated_at times. */
+const newerRev = (theirs: unknown, ours: Rev): boolean => {
+  if (typeof theirs !== 'string') return false;
+  if (ours == null) return true;
+  const a = Date.parse(theirs);
+  const b = Date.parse(ours);
+  return Number.isFinite(a) && Number.isFinite(b) && a > b;
+};
+
 const storeKey = (eventId: string, date: string) => `bw-rehearsal-session:${eventId}|${date}`;
-const readLocal = (key: string): { state: SessionState; dirty: boolean } | null => {
+/** `rev`: the saved revision the device copy is based on (undefined: never read). */
+type Rev = string | null | undefined;
+const readLocal = (key: string): { state: SessionState; dirty: boolean; rev: Rev } | null => {
   try {
     const v = JSON.parse(localStorage.getItem(key) || 'null');
     const state = v ? fromRow(v.row) : null;
-    return state ? { state, dirty: !!v.dirty } : null;
+    return state ? { state, dirty: !!v.dirty, rev: typeof v.rev === 'string' || v.rev === null ? v.rev : undefined } : null;
   } catch {
     return null;
   }
 };
-const writeLocal = (key: string, row: SessionRow | null, dirty: boolean) => {
+const writeLocal = (key: string, row: SessionRow | null, dirty: boolean, rev?: Rev) => {
   try {
-    if (row) localStorage.setItem(key, JSON.stringify({ row, dirty }));
+    if (row) localStorage.setItem(key, JSON.stringify({ row, dirty, rev }));
     else localStorage.removeItem(key);
   } catch {
     /* storage blocked: memory only */
@@ -70,6 +91,8 @@ const writeLocal = (key: string, row: SessionRow | null, dirty: boolean) => {
 const SONG_SAVE_DELAY_MS = 1500;
 /** Try an unsaved session again this often while it is unsaved. */
 const RETRY_MS = 20_000;
+/** Another admin's change arrived: read its new revision once it is saved. */
+const REFRESH_AFTER_MS = 2500;
 
 /**
  * A rehearsal's session in Live mode (plan A1b, migration 131): the leader
@@ -85,9 +108,27 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
   const [unsaved, setUnsaved] = useState(false);
   /** The session ended while Live mode was open here: show the summary. */
   const [justEnded, setJustEnded] = useState(false);
+  /** A Start here met a rehearsal that had already ended (Claude r8 B1b): say so. */
+  const [alreadyEnded, setAlreadyEnded] = useState(false);
+  // Said only of that End (#296 round 10): once the session runs again (Resume here or on
+  // another admin's device), a later End is an End like any other.
+  const running = state !== null && sessionStatus(state) !== 'ended';
+  useEffect(() => {
+    if (running) setAlreadyEnded(false);
+  }, [running]);
   const stateRef = useRef<SessionState | null>(null);
   /** Bumped on every change by the leader: a save clears "unsaved" only if nothing changed meanwhile. */
   const versionRef = useRef(0);
+  /**
+   * The saved row's revision this device's session is based on (audit 06
+   * #3/#4): undefined = not read yet, null = nothing saved. A save is
+   * written only on top of it; otherwise the saved session wins.
+   */
+  const revRef = useRef<Rev>(undefined);
+  const readyRef = useRef(false);
+  const flushing = useRef<Promise<void> | null>(null);
+  const flushAgain = useRef(false);
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const ctxRef = useRef({ bandId, eventId, date, total, send, isLeader, key });
   ctxRef.current = { bandId, eventId, date, total, send, isLeader, key };
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -115,29 +156,122 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
   const message = useCallback(
     (s: SessionState | null): SessionMessage | null => {
       const c = ctxRef.current;
-      return c.eventId && c.date ? { v: 1, eventId: c.eventId, date: c.date, row: rowOf(s) } : null;
+      return c.eventId && c.date ? { v: 1, eventId: c.eventId, date: c.date, row: rowOf(s), rev: revRef.current ?? null } : null;
     },
     [rowOf],
   );
 
-  /** Save the newest state now (leader). The device copy stays "unsaved" until it is. */
+  /**
+   * The saved session moved on (another admin, a session already there when
+   * this device started one unread, our own Start whose answer was lost, an
+   * edit kept by the previous version): read it and merge this device's
+   * session into it (mergeSessions: nothing is lost, an end stays). Shown
+   * here and sent to the band; saved again on top of it when it adds
+   * anything. True: save again now.
+   */
+  const resolveConflict = useCallback(
+    async (c: typeof ctxRef.current): Promise<boolean> => {
+      if (!c.key || !c.eventId || !c.date) return false;
+      const saved = await fetchRehearsalSession(c.eventId, c.date);
+      if (ctxRef.current.key !== c.key) return false;
+      if (saved === undefined) {
+        // Can't read it now: still unsaved, the next try asks again.
+        markUnsaved(true);
+        return false;
+      }
+      const mine = stateRef.current;
+      if (!saved) {
+        // Gone from the server (deleted meanwhile): this device's goes in as a new row.
+        revRef.current = null;
+        return !!mine;
+      }
+      // Started here without ever reading the saved row (the first read failed, offline), over a
+      // rehearsal that had already ended before that Start: the saved one is taken as it is,
+      // nothing reopened (#296 round 8, Claude r8 B1). A Start that knew of it resumes instead.
+      const unread = revRef.current === undefined;
+      revRef.current = saved.rev ?? null;
+      const savedEnd = saved.state.endedAt;
+      if (unread && mine && savedEnd !== null && savedEnd <= mine.startedAt) {
+        // Its songs go into that rehearsal's log, untimed (they can't reopen it), and it says so (B1b).
+        const kept = withSongsOf(saved.state, mine);
+        const addsSongs = kept !== saved.state;
+        versionRef.current += 1;
+        clearTimeout(saveTimer.current);
+        saveTimer.current = undefined;
+        setState(kept);
+        // Not "just ended" here: it ended before this device's Start.
+        setJustEnded(false);
+        setAlreadyEnded(true);
+        writeLocal(c.key, rowOf(kept), addsSongs, revRef.current);
+        markUnsaved(addsSongs);
+        // Nothing was told to the band before a save (commit, below); with songs to add, the save
+        // that follows tells it. Without: nothing to say.
+        return addsSongs;
+      }
+      // A union of both (#296 round 8): the saved row tells when it was written itself (updated_at).
+      const merged = mine ? mergeSessions(mine, saved.state) : saved.state;
+      const adds = !sameSession(merged, saved.state) || !sameEvidence(merged, saved.state);
+      versionRef.current += 1;
+      clearTimeout(saveTimer.current);
+      saveTimer.current = undefined;
+      setState(merged);
+      writeLocal(c.key, rowOf(merged), adds, revRef.current);
+      markUnsaved(adds);
+      const msg = message(merged);
+      if (msg) c.send?.(msg);
+      return adds;
+    },
+    [setState, rowOf, message, markUnsaved],
+  );
+
+  /** One save of the newest state, on top of the revision it is based on. 'again': merged after a conflict, save that. */
+  const saveOnce = useCallback(async (): Promise<'done' | 'again'> => {
+    const c = ctxRef.current;
+    const row = rowOf(stateRef.current);
+    if (!c.isLeader || !c.key || !row) return 'done';
+    const version = versionRef.current;
+    const res = await saveRehearsalSession(row, revRef.current ?? null);
+    if (ctxRef.current.key !== c.key) return 'done';
+    if (res.conflict) return (await resolveConflict(c)) ? 'again' : 'done';
+    if (res.error) {
+      markUnsaved(true);
+      return 'done';
+    }
+    if (res.rev !== undefined) revRef.current = res.rev;
+    // Saved: told to the band again, on the new revision (#296 round 6): a device that read
+    // the row before this save landed (the 2.5 s refresh) takes this one.
+    const saved = message(stateRef.current);
+    if (saved) c.send?.(saved);
+    if (versionRef.current === version) {
+      writeLocal(c.key, row, false, revRef.current);
+      markUnsaved(false);
+    } else writeLocal(c.key, rowOf(stateRef.current), true, revRef.current);
+    return 'done';
+  }, [rowOf, markUnsaved, resolveConflict, message]);
+
+  /** Save the newest state now (leader), one save at a time. The device copy stays "unsaved" until it is. */
   const flush = useCallback(async () => {
     clearTimeout(saveTimer.current);
     saveTimer.current = undefined;
-    const c = ctxRef.current;
-    const row = rowOf(stateRef.current);
-    if (!c.isLeader || !c.key || !row) return;
-    const version = versionRef.current;
-    const { error } = await saveRehearsalSession(row);
-    if (error) {
-      markUnsaved(true);
-      return;
+    if (flushing.current) {
+      // A save is on its way: the newest state goes right after it, on its new revision.
+      flushAgain.current = true;
+      return flushing.current;
     }
-    if (versionRef.current === version && ctxRef.current.key === c.key) {
-      writeLocal(c.key, row, false);
-      markUnsaved(false);
-    }
-  }, [rowOf, markUnsaved]);
+    const run = (async () => {
+      // A few merges in a row at most (two admins saving at the same moment); then the retry timer.
+      for (let merges = 0; ; ) {
+        flushAgain.current = false;
+        const next = await saveOnce();
+        if (next === 'again' && ++merges <= 3) continue;
+        if (!flushAgain.current) break;
+      }
+    })().finally(() => {
+      flushing.current = null;
+    });
+    flushing.current = run;
+    return run;
+  }, [saveOnce]);
 
   /** The leader changed the session: show it, keep it on the device, send it, save it. */
   const commit = useCallback(
@@ -146,9 +280,12 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
       if (!c.isLeader || !c.key) return;
       versionRef.current += 1;
       setState(next);
-      writeLocal(c.key, rowOf(next), true);
+      writeLocal(c.key, rowOf(next), true, revRef.current);
       markUnsaved(true);
-      const msg = message(next);
+      // Told to the band only once this copy is based on a read (#296 round 8, Claude B1): a Start
+      // whose first read failed may be over a rehearsal already ended. Its save tells the band
+      // (saveOnce), or the conflict's read decides (resolveConflict).
+      const msg = revRef.current !== undefined ? message(next) : null;
       if (msg) c.send?.(msg);
       clearTimeout(saveTimer.current);
       if (delay > 0) saveTimer.current = setTimeout(() => void flush(), delay);
@@ -162,28 +299,63 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
     const c = ctxRef.current;
     if (!c.key || !c.eventId || !c.date) return;
     const local = c.isLeader ? readLocal(c.key) : null;
-    if (local && !stateRef.current) setState(local.state);
+    if (local && !stateRef.current) {
+      setState(local.state);
+      // Changes made here (offline too) are saved on top of the revision this copy was read at.
+      if (revRef.current === undefined) revRef.current = local.rev;
+      // A change made here not saved yet: unsaved from now (a message from the band merges into it, #296 round 3).
+      if (local.dirty) markUnsaved(true);
+    }
+    // A change made here while this read is on its way is newer than what it brings back (#296 round 3).
+    const version = versionRef.current;
+    // Start waits for this answer (#296 round 8, Claude r8 B1: no 4 s fallback): a rehearsal
+    // already saved, ended included, is shown first. Failed (offline): Start works, as a new row.
     const saved = await fetchRehearsalSession(c.eventId, c.date);
     if (ctxRef.current.key !== c.key) return;
+    readyRef.current = true;
     setReady(true);
     if (saved === undefined) return; // offline: keep what we have
+    if (versionRef.current !== version) {
+      // Started (or changed) here meanwhile, after the 4 s: that change's own save decides; this answer is old.
+      if (unsavedRef.current) void flush();
+      return;
+    }
     // A change made here meanwhile is newer than what was just read.
-    const mine = c.isLeader && stateRef.current && unsavedRef.current ? { state: stateRef.current, dirty: true } : local;
-    const picked = pickSession(mine, saved?.state ?? null);
+    const inMemory = c.isLeader && !!stateRef.current && unsavedRef.current;
+    const mine = inMemory ? { state: stateRef.current!, dirty: true } : local;
+    const fromServer = saved ? saved.state : null;
+    let picked = pickSession(mine, fromServer);
+    // An End shown here (another admin's, on the channel) whose save hasn't landed yet: the saved
+    // copy still running is merged, not taken (#296 round 6): it can't undo the End unless it
+    // resumed after it.
+    const shownNow = stateRef.current;
+    if (!mine?.dirty && fromServer && shownNow && sessionStatus(shownNow) === 'ended' && sessionStatus(fromServer) !== 'ended' && shownNow.startedAt === fromServer.startedAt) {
+      picked = mergeSessions(shownNow, fromServer);
+    }
     setState(picked);
     if (mine?.dirty) void flush();
-    else if (c.isLeader) writeLocal(c.key, rowOf(picked), false);
-  }, [setState, flush, rowOf]);
+    else {
+      revRef.current = saved?.rev ?? null;
+      if (c.isLeader) writeLocal(c.key, rowOf(picked), false, revRef.current);
+    }
+  }, [setState, flush, rowOf, markUnsaved]);
+
+  const loadRef = useRef(load);
+  loadRef.current = load;
 
   // A different rehearsal (or the flag): start over.
   useEffect(() => {
     clearTimeout(saveTimer.current);
     saveTimer.current = undefined;
+    clearTimeout(refreshTimer.current);
     stateRef.current = null;
+    revRef.current = undefined;
+    readyRef.current = false;
     setStateRaw(null);
     setReady(false);
     markUnsaved(false);
     setJustEnded(false);
+    setAlreadyEnded(false);
     if (key) void load();
   }, [key, load]);
 
@@ -224,6 +396,7 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
   // Leaving with a song change waiting for its save: save it now.
   useEffect(
     () => () => {
+      clearTimeout(refreshTimer.current);
       if (saveTimer.current) void flush();
     },
     [flush],
@@ -235,20 +408,83 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
   useEffect(() => {
     const s = stateRef.current;
     if (!isLeader || !open || !s || !songId) return;
-    const next = markPlayed(s, { id: songId, title: songTitle ?? '' });
+    const next = markPlayed(s, { id: songId, title: songTitle ?? '' }, Date.now());
     if (next !== s) commit(next, SONG_SAVE_DELAY_MS);
   }, [isLeader, open, songId, songTitle, state, commit]);
 
-  // The live channel: members take the leader's session; the leader answers late arrivals.
+  // The live channel: everyone takes the running session, another admin's
+  // device too (audit 06 #3: no "Start rehearsal" over one already ended);
+  // the leader answers late arrivals.
   bridge.current.receive = (payload: unknown) => {
     const c = ctxRef.current;
     const msg = payload as Partial<SessionMessage> | null;
-    if (c.isLeader || !c.key || !msg || msg.v !== 1 || msg.eventId !== c.eventId || msg.date !== c.date) return;
-    setState(msg.row ? fromRow(msg.row) : null);
+    if (!c.key || !msg || msg.v !== 1 || msg.eventId !== c.eventId || msg.date !== c.date) return;
+    const receivedAt = Date.now();
+    // Nothing in it is from after it came in: an older build's copy (no log) is known as of now (#296 round 6/8).
+    const next: SessionState | null = msg.row ? fromRow(msg.row, receivedAt) : null;
+    const mine = stateRef.current;
+    // A copy of this build (its row carries summary.log; older builds' never do) on no saved
+    // revision (rev null: never saved) can't reopen a session known here as ended (Claude r8 B1):
+    // it is ignored until it comes back on a saved revision. Older builds' copies merge as before.
+    const thisBuild = Array.isArray((msg.row?.summary as { log?: unknown } | undefined)?.log);
+    if (mine && next && thisBuild && msg.rev == null && sessionStatus(mine) === 'ended' && sessionStatus(mergeSessions(mine, next)) !== 'ended') return;
+    const show = (s: SessionState | null) => setState(s);
+    /**
+     * Merged with what this message brings: a union (#296 round 8), where an
+     * older build's Resume (more paused time than when it paused) counts, and a
+     * stale copy can't undo an End.
+     */
+    const mergeIn = (): SessionState => mergeSessions(mine!, next!);
+    /**
+     * Taken as it is only when it is built on a newer save than ours, and it
+     * doesn't turn a saved, ended session back to running (#296 round 4: a
+     * delayed "running" message must not undo the End). Otherwise merged:
+     * a stale copy adds what it has and can't reopen it (mergeSessions).
+     */
+    const takes = (): boolean =>
+      (!mine || !next || (newerRev(msg.rev, revRef.current) && !(sessionStatus(mine) === 'ended' && sessionStatus(next) !== 'ended')));
+    if (!c.isLeader) {
+      if (takes()) {
+        show(next);
+        if (typeof msg.rev === 'string') revRef.current = msg.rev;
+      } else show(mergeIn());
+      return;
+    }
+    if (unsavedRef.current) {
+      // A change of ours not saved yet (offline, on its way): never overwritten, the other
+      // admin's change merges into it (#296 round 3) and both are saved together.
+      if (!next || !mine) return;
+      const merged = mergeIn();
+      if (sameSession(merged, mine) && sameEvidence(merged, mine)) return;
+      versionRef.current += 1;
+      show(merged);
+      writeLocal(c.key, rowOf(merged), true, revRef.current);
+      void flush();
+      return;
+    }
+    let shown = next;
+    if (takes()) {
+      if (typeof msg.rev === 'string') revRef.current = msg.rev;
+    } else {
+      // takes() is false only with both copies there.
+      shown = mergeIn();
+      if (sameSession(shown, mine!) && sameEvidence(shown, mine!)) return;
+    }
+    show(shown);
+    writeLocal(c.key, shown ? rowOf(shown) : null, false, revRef.current);
+    // The other admin saves it a moment later: then read its revision.
+    clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(() => {
+      if (!unsavedRef.current) void loadRef.current();
+    }, REFRESH_AFTER_MS);
   };
-  bridge.current.latest = () => (ctxRef.current.isLeader && stateRef.current ? message(stateRef.current) : null);
+  bridge.current.latest = () =>
+    ctxRef.current.isLeader && stateRef.current && revRef.current !== undefined ? message(stateRef.current) : null;
 
   const start = useCallback(() => {
+    // Not before the saved session has been read (audit 06 #4): a fresh
+    // device must not start over one that is already there.
+    if (!readyRef.current) return;
     const s = stateRef.current;
     commit(s ? resumeSession(s, Date.now()) : startSession(Date.now()));
   }, [commit]);
@@ -274,6 +510,8 @@ export function useRehearsalSession({ enabled, bandId, eventId, date, open, isLe
     unsaved,
     /** Ended while Live mode was open here: the summary is up. */
     justEnded,
+    /** Started here over a rehearsal that had already ended: its songs went into that one (Claude r8 B1b). */
+    alreadyEnded,
     dismissSummary,
     /** This user runs the session (band admin). */
     canControl: isLeader && !!key,

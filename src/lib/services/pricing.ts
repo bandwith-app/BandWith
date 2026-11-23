@@ -788,29 +788,36 @@ export async function getBandPricing(bandId: string): Promise<BandPricingSetting
   return normalizeBandPricingSettings(DEFAULT_BAND_PRICING, effectiveId);
 }
 
+/**
+ * Saves the band's pricing settings (rates, payment details used on quotes).
+ * Throws when the database did not take them (offline, not an admin, no
+ * row changed): the caller keeps the edit on screen to try again. Only a
+ * save the database confirmed becomes the cached copy and the active
+ * currency, so a failed edit can never pass for saved.
+ */
 export async function saveBandPricing(
   settings: BandPricingSettings
 ): Promise<BandPricingSettings> {
   const effectiveId = settings.band_id || 'default';
   const normalized = normalizeBandPricingSettings(settings, effectiveId);
   const localKey = `${STORAGE_KEY_PREFIX}${effectiveId}`;
-  setActiveCurrency(normalized.currency, effectiveId);
 
+  if (effectiveId !== 'default') {
+    const { data, error } = await supabase
+      .from('bands')
+      .update({ pricing_settings: normalized })
+      .eq('id', effectiveId)
+      .select('id');
+    if (error) throw new Error(error.message || 'Pricing not saved');
+    // RLS filters silently: no row back means nothing was saved.
+    if (!Array.isArray(data) || data.length === 0) throw new Error('Pricing not saved');
+  }
+
+  setActiveCurrency(normalized.currency, effectiveId);
   try {
     localStorage.setItem(localKey, JSON.stringify(normalized));
   } catch (err) {
     console.warn('[pricing] Failed to cache pricing in localStorage:', err);
-  }
-
-  try {
-    if (effectiveId !== 'default') {
-      await supabase
-        .from('bands')
-        .update({ pricing_settings: normalized })
-        .eq('id', effectiveId);
-    }
-  } catch (err) {
-    console.warn('[pricing] Failed to save pricing_settings to Supabase:', err);
   }
 
   return normalized;

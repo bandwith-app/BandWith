@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { replacedFiles, songCreatePayload, songIdentity, songUpdatePayload, type SongFormValues } from '../songPayload';
+import { lyricsTooLong, MAX_LYRICS_LENGTH, replacedFiles, songCreatePayload, songIdentity, songUpdatePayload, type SongFormValues } from '../songPayload';
 
 const opened: SongFormValues = {
   title: 'Paper Boats',
@@ -73,5 +73,46 @@ describe('songPayload', () => {
   it('spots the same song whatever the case, accents and punctuation', () => {
     expect(songIdentity('Supérstition!', 'Stevie  Wonder')).toBe(songIdentity('superstition', 'stevie wonder'));
     expect(songIdentity('Superstition', 'Stevie Wonder')).not.toBe(songIdentity('Superstition', 'Beck'));
+  });
+});
+
+describe('songPayload: live mode fields (171)', () => {
+  it('a new song at the defaults sends none of them (saves before 171 is applied)', () => {
+    const p = songCreatePayload({ ...opened, timeSignature: '', countInBars: 1, pickupBeats: 0, backingTrack: false });
+    for (const k of ['time_signature', 'count_in_bars', 'pickup_beats', 'backing_track']) expect(p).not.toHaveProperty(k);
+  });
+
+  it('a new song sends the ones set', () => {
+    const p = songCreatePayload({ ...opened, timeSignature: ' 6 / 8 ', countInBars: 2, pickupBeats: 1, backingTrack: true });
+    expect(p).toMatchObject({ time_signature: '6/8', count_in_bars: 2, pickup_beats: 1, backing_track: true });
+  });
+
+  it('an edit sends only what changed, and an unknown time signature as null', () => {
+    const base = { ...opened, timeSignature: '3/4', countInBars: 1, pickupBeats: 0, backingTrack: false };
+    expect(songUpdatePayload(base, { ...base })).toEqual({});
+    expect(songUpdatePayload(base, { ...base, countInBars: 2, timeSignature: 'waltz' })).toEqual({ count_in_bars: 2, time_signature: null });
+    // A form opened without them (older code path) is the same as the defaults.
+    expect(songUpdatePayload(opened, { ...opened, timeSignature: '', countInBars: 1, pickupBeats: 0, backingTrack: false })).toEqual({});
+  });
+});
+
+describe('long lyrics (audit 09 #7)', () => {
+  it('are saved whole, never cut at the limit', () => {
+    const medley = `${'Uptown lights over the river\n'.repeat(800)}The very last line`;
+    expect(medley.length).toBeGreaterThan(MAX_LYRICS_LENGTH);
+    expect(songCreatePayload({ ...opened, lyrics: medley }).lyrics).toBe(medley);
+    expect(songUpdatePayload(opened, { ...opened, lyrics: `${medley}\n\n` }).lyrics).toBe(medley);
+  });
+
+  it('JSON lyrics keep their closing brackets', () => {
+    const json = JSON.stringify({ lines: Array.from({ length: 1200 }, (_, i) => `Line ${i} of the long version`) });
+    expect(json.length).toBeGreaterThan(MAX_LYRICS_LENGTH);
+    expect(() => JSON.parse(songCreatePayload({ ...opened, lyrics: json }).lyrics as string)).not.toThrow();
+  });
+
+  it('too long is known before saving', () => {
+    expect(lyricsTooLong('a'.repeat(MAX_LYRICS_LENGTH))).toBe(false);
+    expect(lyricsTooLong(`${'a'.repeat(MAX_LYRICS_LENGTH)}\n\n  `)).toBe(false);
+    expect(lyricsTooLong('a'.repeat(MAX_LYRICS_LENGTH + 1))).toBe(true);
   });
 });

@@ -30,6 +30,7 @@ import { useOptimisticPollVotes } from '@/app/hooks/useOptimisticPollVotes';
 import { StepPad, Card, Tag, PillButton, PillField } from '@/app/components/bw';
 import { personName } from '@/lib/personName';
 import { useT, dateName, intlLocale, shortWeekday } from '@/lib/i18n';
+import { serverErrorText } from '@/lib/deletionRefusal';
 
 interface RehearsalPollCardProps {
   poll: RehearsalPoll;
@@ -192,7 +193,7 @@ export const RehearsalPollCard: React.FC<RehearsalPollCardProps> = ({
     setShowLocationInput(null);
 
     if (error) {
-      onShowToast?.(error.message || t('Failed to create rehearsal.'), 'error');
+      onShowToast?.(serverErrorText(error, t('Failed to create rehearsal.')), 'error');
       // Locked in meanwhile (another admin or device): show the poll as it is now.
       if ((error as { code?: string }).code === POLL_CLOSED) onPollUpdated?.();
     } else {

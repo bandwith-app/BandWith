@@ -6,6 +6,7 @@ import { FormError, PillButton } from '@/app/components/bw';
 import { UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
 import { AlertTriangle, Check, Copy, Music2, Plus, RotateCcw, Sparkles } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
+import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 import { supabase } from '@/lib/supabase';
 import { useT } from '@/lib/i18n';
 import { userMessage } from '@/lib/userError';
@@ -15,12 +16,14 @@ import { isChordToken } from '@/lib/lyrics';
 import { asSongChart, chordLabel, keyLabel, type SongChart } from '@/lib/ireal';
 import { ChordToken } from '@/app/components/ui/MusicSymbol';
 import { notifySongUpdated } from '@/lib/services/setlistNotify';
+import { saveSongLyricsIfUnchanged } from '@/lib/services/songs';
 import {
   applyKeyFix,
   chartChords,
   checkKey,
   chordsMissingFromChart,
   copySectionChords,
+  jsonLyricsAsText,
   matchChartSection,
   normalizeLyrics,
   parseLine,
@@ -28,13 +31,14 @@ import {
   sectionLabel,
   serializeLine,
   setWordChord,
+  setWordChordAt,
   songChords,
   textSections,
-  wordChord,
   type TextSection,
 } from '@/lib/songFormat';
 import { applyVoiceSuggestions, setLineVoice, suggestVoiceParts, VOICE_PARTS, wordVoices, type VoicePart } from '@/lib/voiceParts';
 import { voiceClass, voiceLabelClass, voicePartLabel } from '@/app/components/ui/VoiceParts';
+import { useFlag } from '@/lib/appFlags';
 
 /**
  * The admin's chord editor for a band song (`songs.lyrics`): tap a word and
@@ -75,9 +79,26 @@ interface EditedSong {
   band_id: string;
   title: string;
   key: string | null;
+  /** The text as the editor opened it (the baseline for "changed"). */
   lyrics: string;
+  /** songs.lyrics exactly as stored when loaded: a save is written only over this (189). */
+  stored: string | null;
   chart: SongChart | null;
 }
+
+/**
+ * Stored lyrics → the text the editor works on, line by line. Songs written
+ * before the unified format (chords on their own line above the words) are
+ * edited in it, else a chord placed on a word would sit under the old chord
+ * line and both would be saved. JSON lyrics become sections of lines (a
+ * chord on the JSON itself broke the song, audit 09 #8); they are saved as
+ * text, a format every reader shows.
+ */
+const editableLyrics = (raw: string | null): string => {
+  const fromJson = jsonLyricsAsText(raw);
+  if (fromJson !== null) return normalizeLyrics(fromJson) || fromJson;
+  return normalizeLyrics(raw) || raw || '';
+};
 
 type Pos = { line: number; word: number };
 const samePos = (a: Pos | null, b: Pos | null) => !!a && !!b && a.line === b.line && a.word === b.word;
@@ -93,9 +114,13 @@ export const ChordEditor: React.FC = () => {
   const [copyTo, setCopyTo] = React.useState<number | null>(null);
   // Voice parts: the whole line of the selected word, or "just these words" (tap more words of that line).
   const [wordsMode, setWordsMode] = React.useState(false);
+  // Voice parts off with the kill switch (docs/flags.md): no Voice row, no hint, words drawn plain (the markers stay in the text).
+  const voicesOn = useFlag('voice_parts');
   const [rangeEnd, setRangeEnd] = React.useState<number | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
+  // Someone else saved these lyrics while this editor was open: what is stored now.
+  const [conflict, setConflict] = React.useState<{ stored: string | null } | null>(null);
   // Closing with chord changes not saved asks first (the app's sheet, not a native confirm).
   const [leaveOpen, setLeaveOpen] = React.useState(false);
   // Leaving through the tab bar with changes: ask, then go where the user tapped.
@@ -104,16 +129,19 @@ export const ChordEditor: React.FC = () => {
     setLeaveOpen(false);
     pendingLeave.current = null;
   }, [id]);
-  const [drag, setDrag] = React.useState<{ from: Pos; chord: string; x: number; y: number; moved: boolean } | null>(null);
+  const [drag, setDrag] = React.useState<{ from: Pos; idx: number; chord: string; x: number; y: number; moved: boolean } | null>(null);
+  // Which chord of the selected word an edit changes (a word can hold several: "[C][D]Hello").
+  const [selIdx, setSelIdx] = React.useState(0);
   // The click that ends a drag lands on whatever word is under it: ignore it.
   const dropClick = React.useRef(false);
   const tapWord = (pos: Pos, isSel: boolean) => {
     if (dropClick.current) return;
-    if (wordsMode && selected && pos.word >= 0 && selected.word >= 0 && pos.line === selected.line && !isSel) {
+    if (voicesOn && wordsMode && selected && pos.word >= 0 && selected.word >= 0 && pos.line === selected.line && !isSel) {
       setRangeEnd(pos.word);
       return;
     }
     setRangeEnd(null);
+    setSelIdx(0);
     setSelected(isSel ? null : pos);
   };
 
@@ -123,6 +151,7 @@ export const ChordEditor: React.FC = () => {
     setHistory([]);
     setError(null);
     setCopyTo(null);
+    setConflict(null);
     if (!id) return;
     let alive = true;
     void (async () => {
@@ -133,11 +162,8 @@ export const ChordEditor: React.FC = () => {
         return;
       }
       const row = data as { id: string; band_id: string; title: string; key: string | null; lyrics: string | null; chord_chart: unknown };
-      // Songs written before the unified format (chords on their own line above
-      // the words) are edited in it: otherwise a chord placed on a word would
-      // sit under the old chord line and both would be saved.
-      const lyrics = normalizeLyrics(row.lyrics) || row.lyrics || '';
-      setSong({ id: row.id, band_id: row.band_id, title: row.title, key: row.key, lyrics, chart: asSongChart(row.chord_chart) });
+      const lyrics = editableLyrics(row.lyrics);
+      setSong({ id: row.id, band_id: row.band_id, title: row.title, key: row.key, lyrics, stored: row.lyrics ?? null, chart: asSongChart(row.chord_chart) });
       setText(lyrics);
     })();
     return () => {
@@ -197,24 +223,28 @@ export const ChordEditor: React.FC = () => {
   const tidy = React.useMemo(() => normalizeLyrics(text), [text]);
   const canTidy = !!text.trim() && tidy !== text.trim();
   // Lines in parentheses → backing, "All:" → all: proposed, applied only on a tap.
-  const voiceHints = React.useMemo(() => suggestVoiceParts(text), [text]);
+  const voiceHints = React.useMemo(() => (voicesOn ? suggestVoiceParts(text) : []), [text, voicesOn]);
 
+  // Only the chord picked changes; the word's other chords stay.
   const putChord = (pos: Pos, chord: string | null) => {
     const next = [...lines];
-    next[pos.line] = setWordChord(next[pos.line], pos.word, chord);
+    next[pos.line] = pos.word < 0 ? setWordChord(next[pos.line], pos.word, chord) : setWordChordAt(next[pos.line], pos.word, selIdx, chord);
     edit(next.join('\n'));
+    if (!chord) setSelIdx(0);
   };
-  const moveChord = (from: Pos, to: Pos) => {
+  const moveChord = (from: Pos, idx: number, to: Pos) => {
     if (samePos(from, to)) return;
     const next = [...lines];
     const src = parseLine(next[from.line]);
-    const chord = from.word < 0 ? src.tail[0] : wordChord(src.words[from.word]);
+    const chord = from.word < 0 ? src.tail[0] : src.words[from.word]?.chords[idx]?.chord;
     if (!chord) return;
     if (from.word < 0) src.tail = src.tail.slice(1);
-    else src.words[from.word].chords = src.words[from.word].chords.slice(1);
+    else src.words[from.word].chords = src.words[from.word].chords.filter((_, k) => k !== idx);
     next[from.line] = serializeLine(src);
-    next[to.line] = setWordChord(next[to.line], to.word, chord);
+    // On the target word it takes the place of its first chord (the others stay).
+    next[to.line] = setWordChordAt(next[to.line], to.word, 0, chord);
     edit(next.join('\n'));
+    setSelIdx(0);
     setSelected(to);
   };
 
@@ -226,10 +256,10 @@ export const ChordEditor: React.FC = () => {
   };
 
   // Drag a chord chip onto another word (pointer events: touch, pen and mouse alike).
-  const onChipDown = (e: React.PointerEvent, from: Pos, chord: string) => {
+  const onChipDown = (e: React.PointerEvent, from: Pos, idx: number, chord: string) => {
     e.stopPropagation();
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-    setDrag({ from, chord, x: e.clientX, y: e.clientY, moved: false });
+    setDrag({ from, idx, chord, x: e.clientX, y: e.clientY, moved: false });
   };
   const onChipMove = (e: React.PointerEvent) => {
     setDrag((d) => (d ? { ...d, x: e.clientX, y: e.clientY, moved: d.moved || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6 } : d));
@@ -239,6 +269,7 @@ export const ChordEditor: React.FC = () => {
     setDrag(null);
     if (!d) return;
     if (!d.moved) {
+      setSelIdx(d.idx);
       setSelected(d.from);
       return;
     }
@@ -246,34 +277,72 @@ export const ChordEditor: React.FC = () => {
     setTimeout(() => (dropClick.current = false), 0);
     const target = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest<HTMLElement>('[data-word]');
     if (!target) return;
-    moveChord(d.from, { line: Number(target.dataset.line), word: Number(target.dataset.word) });
+    moveChord(d.from, d.idx, { line: Number(target.dataset.line), word: Number(target.dataset.word) });
   };
 
-  const save = async () => {
+  const save = async (over: string | null = song?.stored ?? null) => {
     if (!song || saving) return;
     setSaving(true);
     setError(null);
-    const { error: e } = await supabase.from('songs').update({ lyrics: text }).eq('id', song.id);
+    // Written only over the lyrics this editor loaded (audit 09 #6): a
+    // bandmate's save meanwhile is never erased; the draft stays here.
+    const { error: e, conflict: storedNow } = await saveSongLyricsIfUnchanged(song.id, text, over);
     setSaving(false);
     if (e) {
       setError(userMessage(e, t('Could not save the chords.')));
       return;
     }
+    if (storedNow !== undefined) {
+      setLeaveOpen(false);
+      pendingLeave.current = null;
+      setConflict({ stored: storedNow });
+      return;
+    }
+    setConflict(null);
     void notifySongUpdated(song.id, ['chords']);
     try {
       window.dispatchEvent(new CustomEvent(SONG_SAVED, { detail: { id: song.id, lyrics: text } }));
     } catch {
       /* no window */
     }
-    setSong({ ...song, lyrics: text });
+    setSong({ ...song, lyrics: text, stored: text });
     closeChordEditor();
     const next = pendingLeave.current;
     pendingLeave.current = null;
     next?.();
   };
 
+  // The latest version replaces the draft; "mine instead" saves the draft over it.
+  // The song is read again too, so its key and iReal chart are the latest
+  // (the checks below use them); unreadable, the lyrics from the conflict.
+  const loadLatest = async () => {
+    if (!song || !conflict) return;
+    const id = song.id;
+    let latest: { stored: string | null; key: string | null; chart: SongChart | null } = { stored: conflict.stored, key: song.key, chart: song.chart };
+    try {
+      const { data } = await supabase.from('songs').select('id, band_id, title, key, lyrics, chord_chart').eq('id', id).single();
+      const row = data as { key: string | null; lyrics: string | null; chord_chart: unknown } | null;
+      if (row) latest = { stored: row.lyrics ?? null, key: row.key, chart: asSongChart(row.chord_chart) };
+    } catch {
+      /* offline: the lyrics the conflict brought */
+    }
+    // Another song was opened (or the editor closed) meanwhile: its text,
+    // undo steps and conflict are not this song's to replace.
+    if (openId !== id) return;
+    const lyrics = editableLyrics(latest.stored);
+    setSong((cur) => (cur && cur.id === id ? { ...cur, lyrics, stored: latest.stored, key: latest.key, chart: latest.chart } : cur));
+    setText(lyrics);
+    setHistory([]);
+    setSelected(null);
+    setConflict(null);
+  };
+  const saveMineInstead = () => {
+    if (!conflict) return;
+    void save(conflict.stored);
+  };
+
   const selWord = selected ? parseLine(lines[selected.line] || '').words[selected.word] : null;
-  const range = selected && selected.word >= 0 ? (wordsMode ? { from: Math.min(selected.word, rangeEnd ?? selected.word), to: Math.max(selected.word, rangeEnd ?? selected.word) } : null) : null;
+  const range = selected && selected.word >= 0 ? (voicesOn && wordsMode ? { from: Math.min(selected.word, rangeEnd ?? selected.word), to: Math.max(selected.word, rangeEnd ?? selected.word) } : null) : null;
   const selVoices = selected && selected.word >= 0 ? wordVoices(lines[selected.line] || '') : [];
   const shownVoices = range ? selVoices.slice(range.from, range.to + 1) : selVoices;
   const selVoice: VoicePart | null = shownVoices.length && shownVoices.every((v) => v === shownVoices[0]) ? shownVoices[0] : null;
@@ -283,16 +352,16 @@ export const ChordEditor: React.FC = () => {
     next[selected.line] = setLineVoice(next[selected.line], v, range ?? undefined);
     edit(next.join('\n'));
   };
-  const selChord = selected ? (selected.word < 0 ? parseLine(lines[selected.line] || '').tail[0] ?? null : selWord ? wordChord(selWord) : null) : null;
+  const selChord = selected ? (selected.word < 0 ? parseLine(lines[selected.line] || '').tail[0] ?? null : selWord?.chords[selIdx]?.chord ?? null) : null;
 
   const renderLine = (li: number) => {
     const model = parseLine(lines[li]);
-    const voices = wordVoices(lines[li]);
+    const voices = voicesOn ? wordVoices(lines[li]) : [];
     return (
       <div key={li} className="flex flex-wrap items-end gap-x-[0.3em] gap-y-1 font-mono text-[17px] leading-6">
         {model.words.map((w, wi) => {
           const pos = { line: li, word: wi };
-          const chord = wordChord(w);
+          const chords = w.chords.map((c) => c.chord);
           const isSel = samePos(selected, pos);
           const inRange = !isSel && !!range && selected?.line === li && wi >= range.from && wi <= range.to;
           return (
@@ -303,11 +372,19 @@ export const ChordEditor: React.FC = () => {
               data-word={wi}
               data-line={li}
               aria-pressed={isSel}
-              aria-label={chord ? t('{word}, chord {chord}', { word: w.text, chord }) : w.text}
+              aria-label={
+                chords.length > 1
+                  ? t('{word}, chords {chords}', { word: w.text, chords: chords.join(', ') })
+                  : chords.length
+                    ? t('{word}, chord {chord}', { word: w.text, chord: chords[0] })
+                    : w.text
+              }
               onClick={() => tapWord(pos, isSel)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
+                  // A newly picked word starts from its first chord, as a tap does.
+                  setSelIdx(0);
                   setSelected(isSel ? null : pos);
                 }
               }}
@@ -317,28 +394,33 @@ export const ChordEditor: React.FC = () => {
                 drag?.moved && 'outline-dashed outline-1 outline-foreground/20',
               )}
             >
-              {chord ? (
-                <span
-                  onPointerDown={(e) => onChipDown(e, pos, chord)}
-                  onPointerMove={onChipMove}
-                  onPointerUp={onChipUp}
-                  onPointerCancel={() => setDrag(null)}
-                  onClick={(e) => e.stopPropagation()}
-                  className={cn(
-                    'px-1.5 rounded-md bw-label-sm normal-case font-bold leading-5 touch-none',
-                    isSel ? 'bg-background/30' : 'bg-foreground text-background',
-                    drag && samePos(drag.from, pos) && drag.moved && 'opacity-30',
-                  )}
-                >
-                  <ChordToken token={chord} />
+              {chords.length ? (
+                <span className="inline-flex gap-0.5">
+                  {chords.map((chord, k) => (
+                    <span
+                      key={k}
+                      onPointerDown={(e) => onChipDown(e, pos, k, chord)}
+                      onPointerMove={onChipMove}
+                      onPointerUp={onChipUp}
+                      onPointerCancel={() => setDrag(null)}
+                      onClick={(e) => e.stopPropagation()}
+                      className={cn(
+                        'px-1.5 rounded-md bw-label-sm normal-case font-bold leading-5 touch-none',
+                        isSel ? (k === selIdx && chords.length > 1 ? 'bg-background text-foreground' : 'bg-background/30') : 'bg-foreground text-background',
+                        drag && samePos(drag.from, pos) && drag.idx === k && drag.moved && 'opacity-30',
+                      )}
+                    >
+                      <ChordToken token={chord} />
+                    </span>
+                  ))}
                 </span>
               ) : (
                 <span className="h-5" aria-hidden />
               )}
               <span
-                className={voiceClass(voices[wi])}
-                data-voice={voices[wi] === 'lead' ? undefined : voices[wi]}
-                data-voice-cont={voices[wi] !== 'lead' && wi > 0 && voices[wi - 1] === voices[wi] ? 'true' : undefined}
+                className={voices[wi] ? voiceClass(voices[wi]) : undefined}
+                data-voice={!voices[wi] || voices[wi] === 'lead' ? undefined : voices[wi]}
+                data-voice-cont={voices[wi] && voices[wi] !== 'lead' && wi > 0 && voices[wi - 1] === voices[wi] ? 'true' : undefined}
               >
                 {w.text}
               </span>
@@ -516,7 +598,7 @@ export const ChordEditor: React.FC = () => {
             <div className="shrink-0 border-t border-border bg-background px-4 pt-3 flex flex-col gap-3" style={{ paddingBottom: 'calc(var(--safe-bottom) + 12px)' }}>
               {selected ? (
                 <>
-                  {selected.word >= 0 && (
+                  {voicesOn && selected.word >= 0 && (
                     <div className="flex flex-col gap-2" role="group" aria-label={t('Voice')}>
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="bw-label-sm text-muted-foreground">{t('Voice')}</span>
@@ -534,6 +616,7 @@ export const ChordEditor: React.FC = () => {
                             {words ? t('Just these words') : t('Whole line')}
                           </button>
                         ))}
+                        <AcademyHelpButton article="mark-voice-parts" size="sm" className="ml-auto" />
                       </div>
                       {wordsMode && <p className="bw-body-sm text-muted-foreground">{t('Tap more words of this line to add them.')}</p>}
                       <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4">
@@ -557,6 +640,25 @@ export const ChordEditor: React.FC = () => {
                   <p className="bw-label-sm text-muted-foreground">
                     {selWord ? t('Chord on “{word}”', { word: selWord.text }) : t('Chords at the end of the line')}
                   </p>
+                  {selWord && selWord.chords.length > 1 && (
+                    // Several chords on this word: which one the next tap changes.
+                    <div className="flex flex-wrap gap-2" role="group" aria-label={t('Chords on “{word}”', { word: selWord.text })}>
+                      {selWord.chords.map((c, k) => (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => setSelIdx(k)}
+                          aria-pressed={k === selIdx}
+                          className={cn(
+                            'h-11 min-w-11 px-3 rounded-full bw-label-md normal-case shrink-0 border-[1.5px] border-foreground',
+                            k === selIdx ? 'bg-foreground text-background' : '',
+                          )}
+                        >
+                          <ChordToken token={c.chord} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4" role="group" aria-label={t('Chords of the song')}>
                     {palette.map((c) => (
                       <button
@@ -603,8 +705,28 @@ export const ChordEditor: React.FC = () => {
                     </PillButton>
                   </form>
                 </>
+              ) : conflict ? (
+                <div className="flex flex-col gap-3">
+                  <p role="alert" className="bw-body-md flex gap-3 items-start">
+                    <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" aria-hidden />
+                    <span className="min-w-0">
+                      {t('Someone else changed these lyrics while you were editing. Your changes are still here, not saved yet.')}
+                    </span>
+                  </p>
+                  <p className="bw-body-sm text-muted-foreground">
+                    {t('Load the latest version to see their changes (yours are dropped), or save yours over theirs.')}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <PillButton size="md" variant="outline" fullWidth={false} onClick={() => void loadLatest()} disabled={saving}>
+                      {t('Load the latest version')}
+                    </PillButton>
+                    <PillButton size="md" variant="dark" fullWidth={false} onClick={saveMineInstead} loading={saving}>
+                      {t('Save mine instead')}
+                    </PillButton>
+                  </div>
+                </div>
               ) : (
-                <PillButton icon={<Check className="w-4 h-4" />} onClick={save} loading={saving} disabled={!dirty}>
+                <PillButton icon={<Check className="w-4 h-4" />} onClick={() => void save()} loading={saving} disabled={!dirty}>
                   {t('Save chords')}
                 </PillButton>
               )}

@@ -27,6 +27,7 @@ export const AcademyHelpButton: React.FC<{
         size={size}
         variant={variant}
         className={className}
+        data-academy={article}
         onClick={() => setTarget({ article })}
       />
       <AcademySheet target={target} onClose={() => setTarget(undefined)} />

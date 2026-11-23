@@ -1,9 +1,15 @@
 import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, within, waitFor, act } from '@testing-library/react';
 
 vi.mock('@/lib/haptics', () => ({
   haptic: { tap: vi.fn(), medium: vi.fn(), confirm: vi.fn(), delete: vi.fn(), selection: vi.fn() },
+}));
+
+// The repertoire offered in the "not in the setlist" sheet (made up, New York).
+vi.mock('@/lib/services/songs', async () => ({
+  ...(await vi.importActual<typeof import('@/lib/services/songs')>('@/lib/services/songs')),
+  getSongs: vi.fn(async () => ({ data: [{ id: 's9', title: 'Empire State of Mind', audio_url: 'sb://song-files/b/audio/9.mp3' }], error: null })),
 }));
 
 import { StageMode, type StageLiveControls, type StageSong } from '../StageMode';
@@ -126,6 +132,30 @@ describe('Stage mode: the Regia (stage manager mode)', () => {
     renderStage(regia({ on: true }));
     fireEvent.click(screen.getByRole('button', { name: 'Play a song not in the setlist' }));
     expect(screen.getByRole('dialog', { name: 'Play a song not in the setlist' })).toBeTruthy();
+  });
+
+  // Round 8 (Claude r7 nit): "changed meanwhile" was said only on the card,
+  // behind the sheet; now the sheet says it, and opens again once the setlist reloaded.
+  it('a song added while the setlist changed: the sheet opens again on the new setlist and says why', async () => {
+    const r = regia({ on: true, playExtra: vi.fn(async () => 'changed' as const) });
+    const view = renderStage(r);
+    fireEvent.click(screen.getByRole('button', { name: 'Play a song not in the setlist' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Empire State of Mind/ }));
+    await act(async () => {});
+    expect(r.playExtra).toHaveBeenCalledTimes(1);
+    // The reload brings the other admin's setlist.
+    view.rerender(<StageMode title="Festa" dateLabel="Sat 21 Nov" steps={[]} songs={songs.slice(0, 2)} bandId="b1" live={live()} regia={r} onClose={vi.fn()} />);
+    const sheet = await screen.findByRole('dialog', { name: 'Play a song not in the setlist' });
+    expect(within(sheet).getByText('The setlist changed meanwhile. Pick the song again.')).toBeTruthy();
+  });
+
+  it('changed, but the reload brings nothing new: the sheet still opens again, with the notice', async () => {
+    const r = regia({ on: true, playExtra: vi.fn(async () => 'changed' as const) });
+    renderStage(r);
+    fireEvent.click(screen.getByRole('button', { name: 'Play a song not in the setlist' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Empire State of Mind/ }));
+    const sheet = await screen.findByRole('dialog', { name: 'Play a song not in the setlist' }, { timeout: 3000 });
+    expect(within(sheet).getByText('The setlist changed meanwhile. Pick the song again.')).toBeTruthy();
   });
 
   it('while the audio downloads: how far, overall and on each song', () => {

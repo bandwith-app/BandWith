@@ -26,7 +26,58 @@ const linkedIds = (): { file: string; id: string }[] => {
   return out;
 };
 
+/** "?" buttons only: <AcademyHelpButton article=…>. */
+const helpButtonIds = (): Set<string> => {
+  const ids = new Set<string>();
+  for (const src of Object.values(SOURCES)) {
+    for (const m of src.matchAll(/<AcademyHelpButton[^>]*?article=(\{[^}]*\}|"[^"]*")/gs)) {
+      for (const q of m[1].replace(/[!=]==?\s*['"][^'"]*['"]/g, '').matchAll(/['"]([a-z0-9-]+)['"]/g)) ids.add(q[1]);
+    }
+  }
+  return ids;
+};
+
+/** The first-run tour's cards per role (RoleTourModal STEPS): role → article ids. */
+const tourArticles = (): Record<string, string[]> => {
+  const src = Object.entries(SOURCES).find(([f]) => f.endsWith('/RoleTourModal.tsx'))?.[1] ?? '';
+  const out: Record<string, string[]> = {};
+  let role = '';
+  for (const line of src.split('\n')) {
+    const r = line.match(/^  (admin|member|deputy): \[/);
+    if (r) role = r[1];
+    const a = line.match(/\barticle:\s*'([a-z0-9-]+)'/);
+    if (a && role) (out[role] ??= []).push(a[1]);
+  }
+  return out;
+};
+
+// Live mode without signal and voice parts (plan §3 and §5): each guide opens
+// from a "?" on its own screen, and the tour points admins and members to them.
+// Count-in and Follow the tempo get theirs once those screens are final.
+const LIVE_GUIDES = [
+  'live-mode-offline',
+  'offline-and-live-settings',
+  'offline-members-ready',
+  'changes-without-signal',
+  'voice-parts',
+  'mark-voice-parts',
+  'who-sings-what',
+  'highlight-my-part',
+];
+
 describe('BandWith Academy links', () => {
+  it('every live and voice guide has a "?" on its screen', () => {
+    const ids = helpButtonIds();
+    expect(LIVE_GUIDES.filter((id) => !ids.has(id))).toEqual([]);
+  });
+
+  it('the tour shows admins and members the live guides', () => {
+    const tour = tourArticles();
+    expect(tour.admin).toContain('live-mode-offline');
+    expect(tour.member).toContain('live-mode-offline');
+    expect(tour.deputy).not.toContain('live-mode-offline');
+  });
+
   it('finds the app links', () => {
     expect(linkedIds().length).toBeGreaterThan(15);
   });

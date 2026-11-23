@@ -8,10 +8,12 @@ import { ThemeProvider } from "./lib/ThemeContext";
 import App from "./app/App";
 import { ErrorBoundary } from "./app/components/ui/ErrorBoundary";
 import { UpdateRequired } from "./app/components/layout/UpdateRequired";
+import { UnsentChangesSignOut } from './app/components/layout/UnsentChangesSignOut';
 import { enableEdgeToEdge } from "./lib/systemBars";
 import { installDuoLayout } from "./lib/deviceRegions";
 import { installKeyboardInsets } from "./lib/keyboardInsets";
 import { initAppAnalytics } from "./lib/appAnalytics";
+import { installCrashReports } from "./lib/crashReports";
 import { localeReady } from "./lib/i18n";
 
 // Detect native platform and set safe margin attributes
@@ -25,6 +27,8 @@ if (Capacitor.isNativePlatform()) {
   // Usage analytics stay off until the user says yes (src/lib/appAnalytics.ts).
   void initAppAnalytics();
 }
+// Crash reports (Settings › Privacy & account, on by default): JS errors on every platform, Crashlytics natively.
+installCrashReports();
 // The keyboard's window events (Keyboard plugin, iOS and Android); idle in a browser.
 installKeyboardInsets();
 // Layout attributes (Duo rail, two panes, tablet width) on every platform, so
@@ -53,6 +57,8 @@ void localeReady().then(() => createRoot(document.getElementById("root")!).rende
               <App />
               {/* Paid plans P4: below the server's minimum version, "Update BandWith". */}
               <UpdateRequired />
+              {/* Signing out with changes not sent yet asks first. */}
+              <UnsentChangesSignOut />
             </ErrorBoundary>
           </BandProvider>
         </OnboardingProvider>

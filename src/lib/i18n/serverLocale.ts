@@ -17,6 +17,9 @@ export function useServerLocaleSync(userId: string | null | undefined, serverLan
   const sent = useRef<{ userId: string; lang: string; over: string | null | undefined } | null>(null);
   useEffect(() => {
     if (!userId) return;
+    // Profile still loading (undefined until it is read): wait, or every
+    // cold launch writes the language again (Claude #297 review).
+    if (serverLang === undefined) return;
     const last = sent.current;
     const serverHas = last && last.userId === userId && last.over === serverLang ? last.lang : serverLang;
     if (serverHas === locale) return;
