@@ -25,7 +25,7 @@ export const HOME_ANSWERS: QA[] = [
   },
   {
     q: 'Is BandWith free?',
-    a: 'Yes. BandWith is free while it’s in private beta, on the web, on Android and on iPhone and iPad through TestFlight. Beta spots are limited: when they’re full, you can join the waitlist.',
+    a: 'Yes. BandWith is free while it’s in beta, on the web, on Android and on iPhone and iPad through TestFlight. Beta spots are limited: when they’re full, you can join the waitlist.',
   },
   {
     q: 'Which devices does BandWith run on?',

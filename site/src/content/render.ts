@@ -9,6 +9,7 @@ import { rolesCard } from './rolesCard';
 import { picksHtml } from '../ui/heroScreen';
 import { pageHead, pageMain } from './pageRender';
 import { homeAnswers, faqPage } from './answersRender';
+import { deviceOf, doorOrder } from '../core/device';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const meter = (n = 10) => `<span class="strip__meter" aria-hidden="true">${'<i></i>'.repeat(n)}</span>`;
@@ -89,6 +90,26 @@ export function footFeatures() {
 }
 
 
+/**
+ * Get page, inline right after the doors: the visitor's own door first,
+ * before the first paint. The two functions of core/device.ts run here as
+ * written (their source is pasted in), then "Door 01, 02, 03" are handed out
+ * again in the new order: the labels swap as the page reads them, so this
+ * works the same on /it/ and /es/. <html data-device> says what was decided.
+ */
+export function doorOrderScript() {
+  return '<script>(function(){try{' +
+    `var d=(${deviceOf})(navigator.userAgent,navigator.maxTouchPoints||0);` +
+    "document.documentElement.setAttribute('data-device',d);" +
+    "var g=document.querySelector('[data-doors]');if(!g)return;" +
+    "var no=[].map.call(g.querySelectorAll('[data-door-no]'),function(n){return n.textContent});" +
+    `(${doorOrder})(d).forEach(function(id,i){` +
+      'var a=document.getElementById(id);if(!a||a.parentNode!==g)return;g.appendChild(a);' +
+      "var n=a.querySelector('[data-door-no]');if(n&&no[i]!=null)n.textContent=no[i];" +
+    '});' +
+    '}catch(e){}})();</script>';
+}
+
 export const GENERATED: Record<string, (arg?: string) => string> = {
   page: (slug) => pageMain(slug ?? ''),
   'page-head': (slug) => pageHead(slug ?? ''),
@@ -100,4 +121,5 @@ export const GENERATED: Record<string, (arg?: string) => string> = {
   'foot-features': footFeatures,
   'home-answers': homeAnswers,
   'faq-page': faqPage,
+  'door-order': doorOrderScript,
 };

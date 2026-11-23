@@ -4,7 +4,11 @@
  * gtag.js only on a stored yes (window.bwLoadGa); this banner asks the rest.
  * Before a yes nothing is sent to Google: no script, no cookie, no ping.
  *
- * - Accept and Reject are the same size and style.
+ * - Accept and Reject are the same size and style, side by side.
+ * - On a phone the card is compact (two lines and the buttons, about 115px):
+ *   it says the same in fewer words, so it never covers what the page is
+ *   for. Wider screens get the full sentence. Both are in the card; CSS
+ *   (styles/lang.css) shows one.
  * - The choice is kept in localStorage (bw-site-consent = granted | denied)
  *   and <html data-consent>; the footer's "Cookie preferences" reopens it.
  * - Accept grants analytics_storage only: ad_storage, ad_user_data and
@@ -74,8 +78,10 @@ export function showConsent() {
   card.setAttribute('aria-label', t('Cookie consent'));
   card.innerHTML =
     `<p class="cns__t">${esc(t('Can we count visits?'))}</p>` +
-    `<p class="cns__p">${esc(t('We’d like to use Google Analytics to see which pages help musicians. It sets cookies only if you accept. No ads, and we never sell data.'))} ` +
-    `<a href="${PRIVACY_URL}">${esc(t('Privacy policy'))}</a></p>` +
+    `<p class="cns__p">` +
+      `<span class="cns__long">${esc(t('We’d like to use Google Analytics to see which pages help musicians. It sets cookies only if you accept. No ads, and we never sell data.'))}</span>` +
+      `<span class="cns__short">${esc(t('Google Analytics cookies, only if you accept.'))}</span> ` +
+      `<a href="${PRIVACY_URL}">${esc(t('Privacy policy'))}</a></p>` +
     `<div class="cns__act">` +
       `<button type="button" class="btn btn--sm cns__b" data-consent="reject">${esc(t('Reject'))}</button>` +
       `<button type="button" class="btn btn--sm cns__b" data-consent="accept">${esc(t('Accept'))}</button>` +
