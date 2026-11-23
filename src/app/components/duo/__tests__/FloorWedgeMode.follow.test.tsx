@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { act, render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { act, render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 
 vi.mock('@/lib/haptics', () => ({
   haptic: { tap: vi.fn(), medium: vi.fn(), confirm: vi.fn(), delete: vi.fn(), selection: vi.fn() },
@@ -11,6 +11,7 @@ import { nowMs } from '@/lib/stageClick';
 import { startPlayhead, type PlayheadState } from '@/lib/playhead';
 import { FloorWedgeMode } from '../modes/FloorWedgeMode';
 import { FOLLOW_TEMPO_KEY } from '@/app/components/dashboard/StageFollow';
+import { keepRefused } from '@/lib/liveOutbox';
 
 globalThis.ResizeObserver = class {
   observe() {}
@@ -111,5 +112,62 @@ describe('Laptop pose: Follow the tempo on the floor wedge', () => {
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ hold: [0, 3] }));
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
     expect(set).toHaveBeenLastCalledWith(expect.objectContaining({ on: false }));
+  });
+
+  it('with the lyrics on, the leader’s Start shares the transpose row: no row of its own, so the Deck fits above the rail', () => {
+    localStorage.setItem(FOLLOW_TEMPO_KEY, '1');
+    tabletop();
+    render(<FloorWedgeMode songs={songs} lyricsOn follow={follow(true)} playhead={{ state: null, mine: false, offset: 0, set: vi.fn(), clientId: 'me' }} onClose={vi.fn()} />);
+    const deck = screen.getByRole('region', { name: 'Song controls' });
+    const start = within(deck).getByRole('button', { name: 'Start' });
+    const row = start.closest('[data-deck-row="song-tools"]');
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).getByRole('button', { name: 'Transpose up a semitone' })).toBeInTheDocument();
+    expect(within(deck).getAllByRole('button', { name: 'Start' })).toHaveLength(1);
+    // On a narrow Laptop pose (320 px) the two don't fit side by side: the row wraps, Stop is never cut.
+    expect((row as HTMLElement).className).toContain('flex-wrap');
+  });
+
+  it('with the lyrics off, the leader’s buttons keep a row of their own', () => {
+    localStorage.setItem(FOLLOW_TEMPO_KEY, '1');
+    tabletop();
+    render(<FloorWedgeMode songs={songs} follow={follow(true)} playhead={{ state: null, mine: false, offset: 0, set: vi.fn(), clientId: 'me' }} onClose={vi.fn()} />);
+    const start = screen.getByRole('button', { name: 'Start' });
+    expect(start.closest('[data-deck-row="song-tools"]')).toBeNull();
+  });
+});
+
+describe('Laptop pose: changes kept on this phone', () => {
+  it('“1 change wasn’t saved” shows on the wedge (Stage mode’s own tag is under it) and opens the list', () => {
+    keepRefused('u-1', { kind: 'note', id: 'n1', songId: 's1', anchor: { type: 'song' }, body: 'Watch the drummer before the bridge' } as never);
+    tabletop();
+    render(<FloorWedgeMode songs={songs} userId="u-1" onClose={vi.fn()} />);
+    const display = screen.getByRole('region', { name: 'Now playing' });
+    fireEvent.click(within(display).getByRole('button', { name: /1 change wasn’t saved/ }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('Watch the drummer before the bridge');
+  });
+
+  it('keys pressed in a sheet on top are the sheet’s own: Space on Copy never moves the band’s setlist', () => {
+    keepRefused('u-1', { kind: 'note', id: 'n1', songId: 's1', anchor: { type: 'song' }, body: 'Watch the drummer before the bridge' } as never);
+    tabletop();
+    const onIndexChange = vi.fn();
+    render(<FloorWedgeMode songs={songs} userId="u-1" onIndexChange={onIndexChange} onClose={vi.fn()} />);
+    fireEvent.click(within(screen.getByRole('region', { name: 'Now playing' })).getByRole('button', { name: /1 change wasn’t saved/ }));
+    const copy = within(screen.getByRole('dialog')).getByRole('button', { name: 'Copy' });
+    // Not cancelled (the button gets its Space), and the song stays.
+    expect(fireEvent.keyDown(copy, { key: ' ' })).toBe(true);
+    fireEvent.keyDown(copy, { key: 'ArrowRight' });
+    expect(onIndexChange).not.toHaveBeenCalled();
+
+    // Stage mode's own dialog lies under the wedge: focus resting there still turns the page (a pedal).
+    const stage = document.createElement('div');
+    stage.setAttribute('role', 'dialog');
+    stage.setAttribute('data-bw-stage', '');
+    const inside = document.createElement('button');
+    stage.appendChild(inside);
+    document.body.appendChild(stage);
+    expect(fireEvent.keyDown(inside, { key: ' ' })).toBe(false);
+    expect(onIndexChange).toHaveBeenCalledWith(1);
+    stage.remove();
   });
 });
