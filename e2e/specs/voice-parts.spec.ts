@@ -141,12 +141,20 @@ test.describe('voice parts in Live mode', () => {
     await app.page.getByRole('menuitem', { name: app.t('Edit'), exact: true }).first().click();
     await app.settle();
 
-    // The form's steps: on to the lyrics.
-    const box = app.page.locator('label', { hasText: app.t('Lyrics · text, Markdown or JSON') }).locator('textarea');
-    for (let step = 0; step < 3 && !(await box.isVisible()); step++) {
-      await app.page.getByRole('button', { name: app.t('Next') }).filter({ visible: true }).last().click();
-      await app.settle();
+    // The form's steps: on to the lyrics, on the third and last one. Each
+    // Next is followed by the step it leads to: the form says "Step 3 of 3"
+    // (and swaps Next for Save song) at once, but the step's fields come only
+    // after the step before has left. One look at the lyrics field in that
+    // moment said "not there yet", and a third Next was waited for that the
+    // last step does not have (CI 11-23).
+    const form = app.page.getByRole('dialog', { name: app.t('Edit song') });
+    const box = form.locator('label', { hasText: app.t('Lyrics · text, Markdown or JSON') }).locator('textarea');
+    await expect(form.getByText(app.t('Step {step} of {total}', { step: 1, total: 3 }))).toBeVisible();
+    for (const step of [2, 3]) {
+      await form.getByRole('button', { name: app.t('Next'), exact: true }).click();
+      await expect(form.getByText(app.t('Step {step} of {total}', { step, total: 3 }))).toBeVisible();
     }
+    await expect(box).toBeVisible();
     await expect(box).toHaveValue(/All the way home/);
     expect(await box.inputValue()).not.toMatch(/\{\/?(bv|v2|all|sp)\}/);
     await expect(app.page.getByText(app.t('{n} lines have a voice part. They stay on their lines when you edit the words.', { n: 4 }))).toBeVisible();

@@ -1,5 +1,6 @@
 import { test, expect, type App } from '../fixtures';
 import { escapeRe, SEED, systemBack } from '../support/flows';
+import { tabScreenUp } from '../support/tabs';
 
 /**
  * The urgent pop-up (an unanswered gig invitation) never draws over an open
@@ -53,6 +54,10 @@ test('@smoke system Back with the pop-up waiting closes the sheet, not the hidde
   // Opened while the pop-up waits (its scrim covers the tabs: a programmatic click).
   const chatTab = app.page.getByRole('button', { name: new RegExp(`^${escapeRe(app.t('Chat'))}(,|$)`) }).first();
   await chatTab.evaluate((b) => (b as HTMLButtonElement).click());
+  // The Chat screen is the one that hears "New chat" (ChatView), and it mounts
+  // only once Home has left: sent before that, the event reached nobody and
+  // the sheet never opened (CI 11-23, a runner drawing a frame a second).
+  await tabScreenUp(app.page, app.t, 'Chat');
   await app.settle();
   await app.page.evaluate(() => window.dispatchEvent(new CustomEvent('bw:new-chat')));
   const sheet = app.page.getByRole('dialog', { name: app.t('New chat'), exact: true });
