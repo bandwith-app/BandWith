@@ -9,8 +9,10 @@
  *   app can't (no Bluetooth there) and catches up when the internet is back;
  * - the band's click travels over Bluetooth too (PR #274): without internet
  *   it keeps flashing on the phone apps, not on the web app;
- * - the count-in is not sent over Bluetooth: with a connection every phone
- *   shows it, without one only the leader's does.
+ * - the count-in travels over Bluetooth too (PR #311): without internet the
+ *   phone apps show the same countdown on the same beat, the web app
+ *   doesn't; a phone that gets it mid-count joins on the beat the others
+ *   are on. It never starts the click by itself.
  */
 
 export type Song = { title: string; key: string; dur: string; bpm: number };
@@ -81,9 +83,9 @@ export function toggleStrike(s: StageState, song: number): StageState {
 }
 
 export function setOnline(s: StageState, online: boolean): StageState {
-  // The click keeps running (Bluetooth carries it); back online, everyone following catches up.
-  // A count-in under way ends: it can't change who sees it halfway through.
-  return sync({ ...s, online, count: false });
+  // The click and a count-in under way keep running (Bluetooth carries them to the phone apps);
+  // back online, everyone following catches up.
+  return sync({ ...s, online });
 }
 
 export const toggleClick = (s: StageState): StageState => ({ ...s, click: !s.click });
@@ -121,9 +123,9 @@ export const clickOn = (s: StageState) => s.click;
 /** The click on a member's phone: over the internet, or over Bluetooth in the phone apps. */
 export const clickReaches = (s: StageState, m: Member) => s.click && reachable(s, m);
 
-/** The count-in on a member's phone: only with a connection (it isn't sent over Bluetooth). */
-export const countInReaches = (s: StageState) => s.count && s.online;
+/** The count-in on a member's phone: over the internet, or over Bluetooth in the phone apps (like the click). */
+export const countInReaches = (s: StageState, m: Member) => s.count && reachable(s, m);
 /** How many of the band's phones show the count-in. */
-export const countInSeen = (s: StageState) => (s.count && s.online ? s.members.length : 0);
+export const countInSeen = (s: StageState) => s.members.filter((m) => countInReaches(s, m)).length;
 
 export const inSync = (s: StageState) => s.members.filter((m) => m.song === s.leaderSong).length;

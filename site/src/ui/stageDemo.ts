@@ -10,8 +10,8 @@ import {
  * (not screenshots) so every control works. Rules live in stageModel.ts.
  * The click is visual only, like in the app: a glow around the screen edge,
  * brighter on beat one. No sound. It keeps going without internet on the
- * phone apps (Bluetooth). Count in puts a countdown on every phone with a
- * connection; without one, on the leader's only.
+ * phone apps (Bluetooth). Count in puts a countdown on every phone the
+ * leader reaches: all of them with internet, the phone apps without it.
  */
 
 /** The count-in as the demo shows it: one bar of four, counting down, then Go. */
@@ -62,7 +62,7 @@ function memberHtml(s: StageState, m: Member, step: number) {
     `<div class="sdp__bar sdp__bar--sm">` +
     `<button type="button" class="sdp__b" data-k="mp-${m.id}" data-act="mprev" data-m="${m.id}" aria-label="${m.name}: previous song">Prev</button>` +
     `<button type="button" class="sdp__b" data-k="mn-${m.id}" data-act="mnext" data-m="${m.id}" aria-label="${m.name}: next song">Next</button>` +
-    `</div></div>` + (countInReaches(s) ? countHtml(step) : '');
+    `</div></div>` + (countInReaches(s, m) ? countHtml(step) : '');
 }
 
 export function initStageDemo(root: HTMLElement | null, reduce: boolean) {
@@ -117,7 +117,7 @@ export function initStageDemo(root: HTMLElement | null, reduce: boolean) {
       }
     });
     if (wifi) { wifi.setAttribute('aria-checked', String(s.online)); wifi.classList.toggle('is-off', !s.online); }
-    if (note) note.textContent = s.online ? '' : 'No internet: the phone apps keep following, and keep the click, over Bluetooth. The web app has no Bluetooth. The count-in needs a connection: only the leader’s phone shows it.';
+    if (note) note.textContent = s.online ? '' : 'No internet: the phone apps keep following, with the click and the count-in, over Bluetooth. The web app has no Bluetooth: it catches up when the internet is back.';
     root.classList.toggle('is-click', clickOn(s));
     if (focusKey) root.querySelector<HTMLElement>(`[data-k="${focusKey}"]:not([disabled])`)?.focus({ preventScroll: true });
     restartBeat();
@@ -192,12 +192,13 @@ export function initStageDemo(root: HTMLElement | null, reduce: boolean) {
     if (s === before) return;
     const act = b.dataset.act;
     // A count-in runs on its own clock: started here, ended by Count in again or by another song.
+    // (Losing or finding the Wi‑Fi doesn't end it: the next render shows it where it now reaches, on the beat it is on.)
     if (s.count && !before.count) startCount();
     else if (!s.count && before.count) stopCount();
     if (act === 'go' || act === 'prev' || act === 'next') say(`Leo → <b>${n2(s.leaderSong)} ${esc(SETLIST[s.leaderSong].title)}</b> · ${syncLine()}`);
     else if (act === 'strike') say(s.struck.includes(i) ? `${esc(SETLIST[i].title)} struck off tonight · Prev / Next skip it` : `${esc(SETLIST[i].title)} is back in the set`);
     else if (act === 'click') say(!s.click ? 'Click off' : s.online ? `Click on · ${SETLIST[s.leaderSong].bpm} BPM on every phone` : `Click on · ${SETLIST[s.leaderSong].bpm} BPM over Bluetooth · the web app misses it`);
-    else if (act === 'count') say(!s.count ? 'Count-in stopped' : s.online ? 'Count-in · 4 3 2 1 on every phone, then the song' : 'Count-in · no internet, so only Leo’s phone shows it');
+    else if (act === 'count') say(!s.count ? 'Count-in stopped' : s.online ? 'Count-in · 4 3 2 1 on every phone, then the song' : 'Count-in · 4 3 2 1 over Bluetooth · the web app misses it');
     else if (act === 'follow') say(`${name(id)} follows the leader again`);
     else say(`${name(id)} looks ahead alone · stops following`);
     render();
@@ -205,7 +206,6 @@ export function initStageDemo(root: HTMLElement | null, reduce: boolean) {
 
   wifi?.addEventListener('click', () => {
     touched = true;
-    stopCount();
     s = setOnline(s, !s.online);
     say(s.online ? `Venue Wi‑Fi back · everyone catches up · ${syncLine()}` : 'Venue Wi‑Fi down · Bluetooth takes over');
     render();

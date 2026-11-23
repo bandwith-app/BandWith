@@ -110,6 +110,12 @@ export function initialPlot(): Plot {
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 const name = (i: Item) => (i.kind === 'player' ? i.label || 'Other musician' : i.kind === 'di' ? 'DI box' : i.kind === 'wedge' ? 'Wedge' : 'Speaker');
+/** What a screen reader hears on a mark. One whole sentence per name: the dictionaries hold each one (gender and number change with the name). */
+export const dragLabel = (itemName: string) => `${itemName}. Drag, or use the arrow keys, to move it.`;
+/** Every name a mark can have: the presets, the lead vocal the plot starts with, "Other musician" and the gear. */
+export const itemNames = (): string[] => [...new Set([
+  'Lead vox', ...Object.keys(PRESET_NAME).map((k) => name(presetItem(k))), ...(['player', 'wedge', 'speaker', 'di'] as Kind[]).map((k) => name(gearItem(k))),
+])];
 
 /** One mark on the plot: a circle with its code for a player, shapes for gear. */
 export function markHtml(i: Item, live: boolean, selected = false) {
@@ -118,7 +124,7 @@ export function markHtml(i: Item, live: boolean, selected = false) {
     ? `<span class="spm__c${i.lead ? ' is-lead' : ''}">${esc(i.code ?? '')}</span>${i.label ? `<span class="spm__cap">${esc(i.label)}</span>` : ''}`
     : `<span class="spm__${i.kind}">${i.kind === 'di' ? 'DI' : ''}</span>`;
   return live
-    ? `<button type="button" class="spm spm--${i.kind}${selected ? ' is-sel' : ''}" style="${pos}" data-id="${i.id}" data-k="m-${i.id}" aria-pressed="${selected}" aria-label="${esc(name(i))}. Drag, or use the arrow keys, to move it.">${inner}</button>`
+    ? `<button type="button" class="spm spm--${i.kind}${selected ? ' is-sel' : ''}" style="${pos}" data-id="${i.id}" data-k="m-${i.id}" aria-pressed="${selected}" aria-label="${esc(dragLabel(name(i)))}">${inner}</button>`
     : `<span class="spm spm--${i.kind}" style="${pos}" aria-hidden="true">${inner}</span>`;
 }
 

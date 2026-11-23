@@ -154,7 +154,7 @@ export const ANSWERS: Record<string, QA[]> = {
     },
     {
       q: 'Does Stage mode work without internet?',
-      a: 'Yes. Say yes once and the BandWith phone apps keep the setlists of your next 7 days on the phone, with lyrics, chords and your notes. With no signal, the leader’s phone keeps the band on the same song and the same visual click over Bluetooth, with no pairing. Only the count-in needs a connection to reach the other phones.',
+      a: 'Yes. Say yes once and the BandWith phone apps keep the setlists of your next 7 days on the phone, with lyrics, chords and your notes. With no signal, the leader’s phone keeps the band on the same song, the same count-in and the same visual click over Bluetooth, with no pairing. The web app has no Bluetooth: in a browser the band’s sync needs the internet.',
     },
     {
       q: 'Is the Stage mode click an audible metronome?',
@@ -162,7 +162,7 @@ export const ANSWERS: Record<string, QA[]> = {
     },
     {
       q: 'How does the band count in a song?',
-      a: 'In BandWith’s Stage mode the leader taps Count in and every phone shows the same full-screen countdown, one or two bars in the song’s meter, then GO. Each player can add vibration or a click in headphones on their own phone. It needs a connection: with no signal only the leader’s phone shows it.',
+      a: 'In BandWith’s Stage mode the leader taps Count in and every phone shows the same full-screen countdown, one or two bars in the song’s meter, then GO. Stop the count-in ends it on every phone. Each player can add vibration or a click in headphones. With no internet it reaches the iPhone and Android apps over Bluetooth, if the gig was opened once online before; in a browser it needs the internet.',
     },
     {
       q: 'Can every phone follow the song bar by bar?',

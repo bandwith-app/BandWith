@@ -52,7 +52,7 @@ export const page: ChannelPage = {
     heading: { lines: ['Made for', 'a dark stage.'] },
     items: [
       { icon: 'zap', title: 'Follow the tempo', body: 'Turn on Follow the tempo and your page moves with the leader’s phone: the bar, the line or the section being played is lit, and a strip says what comes next, like Next: Bridge in 4 bars. The leader taps Start, taps a bar to move everyone there, Hold to repeat a section, Stop. The song needs a BPM.', wide: true },
-      { icon: 'clock', title: 'Count-in, your way', body: 'One or two bars in the song’s own meter, then GO. On your phone, add Vibrate on every beat or Sound in headphones. With no connection only the leader’s phone shows the countdown.' },
+      { icon: 'clock', title: 'Count-in, your way', body: 'One or two bars in the song’s own meter, then GO. On your phone, add Vibrate on every beat or Sound in headphones. With no internet it reaches the phone apps over Bluetooth, on the same beat; in a browser it needs the internet.' },
       { icon: 'timer', title: 'A click for the eyes', body: 'A tempo reference, not for in-ears. It runs from the song’s BPM. With no internet it reaches the phone apps nearby over Bluetooth.' },
       { icon: 'download', title: 'Ready before the gig', body: 'Each member says yes once, with Download and keep it automatic, and the phone apps keep every setlist of the next 7 days, updated by itself and removed the day after. On the gig, admins see Offline: 4 of 5 members ready and tap Remind for whoever isn’t. Change it anytime in Settings › Offline & live.', wide: true },
       { icon: 'shield', title: 'A secret key per gig', body: 'Only the band’s active members get it. Only phones with the key find the leader over Bluetooth.' },

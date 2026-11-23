@@ -18,7 +18,7 @@ import { makeTranslator, translateTree } from '../src/i18n/translate';
 import { SAME } from '../src/i18n/same';
 import { basePath, langOfPath, localizeHref, pathIn } from '../src/i18n/langs';
 import { languageFor, suggestion, placeName } from '../src/i18n/suggest';
-import { SLOTS } from '../src/ui/demos/rehearsals-polls';
+import { SLOTS, OTHERS } from '../src/ui/demos/rehearsals-polls';
 
 const FILES = Object.values(PAGES);
 
@@ -83,6 +83,8 @@ describe('text written by scripts', () => {
     ...subsets.map((s) => `Top pick so far: ${join(s)}. Tap Done when you’re set, or change your dates.`),
     ...subsets.filter((s) => s.length > 1).map((s) => `Now you hold Leo’s phone. Tap Lock in next to the Top pick (${join(s)} are tied: his call).`),
     ...subsets.flatMap(orders).map((s) => `Sara is done · ${join(s)}`),
+    // Tom and Lena P. answer a few seconds into the demo: a visitor who waits reads both.
+    ...OTHERS.filter((v) => v.at !== undefined).map((v) => `${v.name} voted · ${join(v.picks.map((i) => longs[i]))} · live on both phones`),
   ];
   for (const [lang, dict] of [['it', IT], ['es', ES]] as const) {
     test(`${lang}: the rehearsal poll's sentences with every set of dates`, () => {
