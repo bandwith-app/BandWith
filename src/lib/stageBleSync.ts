@@ -51,9 +51,15 @@
  * (useStageBle `publishLive`). The frame is checked with the band key, which
  * every member has: it says "someone in the band", not "an admin". What ties
  * it to the leader is the link it is read over (the phone whose signed state
- * this phone follows); the count-in is only taken from a phone whose
- * signature was checked on that link (useStageBle `onLive`), and is shown on
- * the leader's signed clock.
+ * this phone follows); the count-in is only taken from a phone that served,
+ * on that link, a signed state and a signed clock reading that agrees with
+ * now (useStageBle `linkChecked`), is shown on the leader's signed clock, and
+ * never stops or replaces a count the Realtime channel brought while this
+ * phone is on the channel (useStageLive `receiveBleCountIn`).
+ * Still open (needs a member nonce or a signature per message, so a native
+ * change): a band member with a modified app, close by, who passes on the
+ * leader's signed state and its live clock answers (or ones recorded in the
+ * last 5 minutes), can serve a made-up count-in to phones with no internet.
  *
  * Then the NTP-style maths of the Realtime click (clockSample / bestSample).
  */
