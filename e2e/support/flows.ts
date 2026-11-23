@@ -28,6 +28,12 @@ export const eventDetail = (app: App): Locator => app.page.locator('.bw-event-de
 /** Calendar tab → the event's card in the agenda → its detail. */
 export async function openEvent(app: App, title: string) {
   await app.tab('Calendar');
+  // The Calendar must be up before the card is looked for. On a slow machine
+  // Home is still mounted after the tab press, and in Duo Laptop pose its Band
+  // desk has an "Open <gig>" button that matches the title. The check below
+  // passed on that button, Home then went away, and the click waited on the
+  // Calendar's own card, which lies under the Planner there (CI 11-23).
+  await expect(app.page.getByRole('button', { name: app.t('Search events'), exact: true }).filter({ visible: true }).first()).toBeVisible();
   const card = app.page.getByRole('button', { name: new RegExp(escapeRe(title), 'i') }).first();
   // Duo Laptop pose shows the Planner (month grid + one day's agenda): an
   // event on another day is not on screen there, so find it like a user,
@@ -54,26 +60,31 @@ export async function openEvent(app: App, title: string) {
  */
 async function canBeTapped(target: Locator, timeout: number): Promise<boolean> {
   const until = Date.now() + timeout;
+  // The same element must be tappable on two looks in a row: one look can
+  // land on a screen that is on its way out (see openEvent).
+  let seen = '';
   for (;;) {
-    const ok = await target
+    const sig = await target
       .evaluate((el) => {
-        if (!(el instanceof HTMLElement) || !el.isConnected) return false;
-        if ((el as HTMLButtonElement).disabled || el.getAttribute('aria-disabled') === 'true') return false;
+        if (!(el instanceof HTMLElement) || !el.isConnected) return '';
+        if ((el as HTMLButtonElement).disabled || el.getAttribute('aria-disabled') === 'true') return '';
         el.scrollIntoView({ block: 'center', inline: 'nearest' });
         const r = el.getBoundingClientRect();
-        if (r.width <= 0 || r.height <= 0) return false;
+        if (r.width <= 0 || r.height <= 0) return '';
         const style = getComputedStyle(el);
-        if (style.visibility === 'hidden' || style.display === 'none' || style.pointerEvents === 'none') return false;
+        if (style.visibility === 'hidden' || style.display === 'none' || style.pointerEvents === 'none') return '';
         const x = r.left + r.width / 2;
         const y = r.top + r.height / 2;
-        if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return false;
+        if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return '';
         const top = document.elementFromPoint(x, y);
-        return !!top && (top === el || el.contains(top));
+        if (!top || !(top === el || el.contains(top))) return '';
+        return `${el.getAttribute('aria-label') ?? ''}|${el.getAttribute('aria-labelledby') ?? ''}|${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}`;
       }, undefined, { timeout: Math.max(1, until - Date.now()) })
-      .catch(() => false);
-    if (ok) return true;
+      .catch(() => '');
+    if (sig && sig === seen) return true;
+    seen = sig;
     if (Date.now() >= until) return false;
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 250));
   }
 }
 
