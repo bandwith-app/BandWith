@@ -31,10 +31,12 @@
 // migration): it is created as it is there (175 revokes it).
 //
 // Then the chain, each file whole, in main's release order (11-22, #278):
-//   194 (BW_194_REF, origin/fix/push-safety) -> 184 (BW_184_REF, origin/fix/auth-signout)
-//   -> 175, 176 (this repo) -> 178 (BW_178_REF, origin/feat/date-on-hold)
-//   -> 180 (BW_180_REF, origin/fix/account-deletion)
-//   -> 192, 193 (BW_193_REF, origin/fix/chat-audit) -> 181 (this repo)
+//   194 -> 184 -> 175, 176 -> 178 -> 180 -> 192, 193 -> 181
+// Each from this repo (the release is on main). A file that isn't on the
+// checkout is read from its branch: 194 origin/fix/push-safety, 184
+// origin/fix/auth-signout, 178 origin/feat/date-on-hold, 180
+// origin/fix/account-deletion, 192 and 193 origin/fix/chat-audit. An env ref
+// (BW_194_REF, BW_184_REF, BW_178_REF, BW_180_REF, BW_193_REF) overrides both.
 // A head that isn't available is SKIPPED with a warning. A file that fails
 // whole is loaded statement by statement with a WARN; a skipped statement
 // that touches chat_participants fails the test.
@@ -43,7 +45,7 @@
 //   BW_LOCAL_REF=0437db39 node chat_participants_guard.pglite.mjs <repo>   # before round 4's guard: FAILs
 //   BW_LOCAL_REF=2ad914ad node chat_participants_guard.pglite.mjs <repo>   # before round 5: FAILs
 import { PGlite } from '@electric-sql/pglite';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const REPO = process.argv[2];
@@ -133,15 +135,22 @@ ok((await cpPolicies()).length === 7, `base = prod today: 7 policies on chat_par
 // BW_LOCAL_REF=<commit>: 175 and 181 from that commit (failing-first runs).
 const local = (name) => (process.env.BW_LOCAL_REF ? show(process.env.BW_LOCAL_REF, `supabase/migrations/${name}`) : readFileSync(`${MIGS}/${name}`, 'utf8'));
 const ref = (env, def) => process.env[env] ?? def;
+// A release migration: the env ref when one is given (failing-first runs),
+// else the file on the checkout (the release is on main), else its branch.
+const rel = (env, branch, name) => {
+  const here = `${MIGS}/${name}`;
+  if (!process.env[env] && existsSync(here)) return [() => readFileSync(here, 'utf8'), 'this repo'];
+  return [() => show(ref(env, branch), `supabase/migrations/${name}`), ref(env, branch)];
+};
 const CHAIN = [
-  ['194', () => show(ref('BW_194_REF', 'origin/fix/push-safety'), 'supabase/migrations/194_chat_notifications_server_only.sql'), ref('BW_194_REF', 'origin/fix/push-safety')],
-  ['184', () => show(ref('BW_184_REF', 'origin/fix/auth-signout'), 'supabase/migrations/184_push_revoke_signed_out.sql'), ref('BW_184_REF', 'origin/fix/auth-signout')],
+  ['194', ...rel('BW_194_REF', 'origin/fix/push-safety', '194_chat_notifications_server_only.sql')],
+  ['184', ...rel('BW_184_REF', 'origin/fix/auth-signout', '184_push_revoke_signed_out.sql')],
   ['175', () => local('175_security_audit_access.sql'), 'this repo'],
   ['176', () => local('176_quote_pdf_gate.sql'), 'this repo'],
-  ['178', () => show(ref('BW_178_REF', 'origin/feat/date-on-hold'), 'supabase/migrations/178_date_on_hold.sql'), ref('BW_178_REF', 'origin/feat/date-on-hold')],
-  ['180', () => show(ref('BW_180_REF', 'origin/fix/account-deletion'), 'supabase/migrations/180_account_deletion_safety.sql'), ref('BW_180_REF', 'origin/fix/account-deletion')],
-  ['192', () => show(ref('BW_193_REF', 'origin/fix/chat-audit'), 'supabase/migrations/192_chat_notification_purge.sql'), ref('BW_193_REF', 'origin/fix/chat-audit')],
-  ['193', () => show(ref('BW_193_REF', 'origin/fix/chat-audit'), 'supabase/migrations/193_one_chat_per_gig.sql'), ref('BW_193_REF', 'origin/fix/chat-audit')],
+  ['178', ...rel('BW_178_REF', 'origin/feat/date-on-hold', '178_date_on_hold.sql')],
+  ['180', ...rel('BW_180_REF', 'origin/fix/account-deletion', '180_account_deletion_safety.sql')],
+  ['192', ...rel('BW_193_REF', 'origin/fix/chat-audit', '192_chat_notification_purge.sql')],
+  ['193', ...rel('BW_193_REF', 'origin/fix/chat-audit', '193_one_chat_per_gig.sql')],
   ['181', () => local('181_event_chat_lineup.sql'), 'this repo'],
 ];
 const loaded = new Set();
