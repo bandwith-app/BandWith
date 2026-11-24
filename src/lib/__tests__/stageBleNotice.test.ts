@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bleLinked, bleProblem, followLabel, stageBleNotice, type StageBleNoticeInput } from '../stageBleNotice';
+import { bleInReach, bleLinked, bleProblem, followLabel, stageBleNotice, type StageBleNoticeInput } from '../stageBleNotice';
 
 const member = (over: Partial<StageBleNoticeInput>): StageBleNoticeInput => ({
   status: 'connected',
@@ -119,6 +119,21 @@ describe('stageBleNotice: one plain line, only when it matters', () => {
       ),
     );
     for (const text of all) expect(text).not.toMatch(/\bBLE\b|peripheral|central|offset|GATT|MTU|\bBT\b/i);
+  });
+});
+
+describe("bleInReach: is the leader's phone there (its beat is kept), whatever this phone can follow", () => {
+  it("a phone with an older setlist is linked to the leader too: in reach, though not following (its line and its button say so)", () => {
+    expect(bleInReach('outdated')).toBe(true);
+    expect(bleLinked('outdated')).toBe(false);
+    expect(stageBleNotice(member({ status: 'outdated' }))?.tone).toBe('warn');
+    expect(followLabel({ following: true, leaderSeen: true, connected: false, bluetooth: 'outdated' })).toBe('Offline');
+  });
+
+  it('every state that follows the leader is in reach; no link, or a leader not to be followed, is not', () => {
+    for (const status of ['connected', 'old-leader', 'unverified', 'leader-unverified'] as const) expect(bleInReach(status)).toBe(true);
+    for (const status of ['off', 'searching', 'leading', 'not-admin', 'stale-key', 'clock-off', 'denied', 'bt-off', 'unsupported'] as const) expect(bleInReach(status)).toBe(false);
+    expect(bleInReach(undefined)).toBe(false);
   });
 });
 
