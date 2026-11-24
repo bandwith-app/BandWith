@@ -1348,19 +1348,19 @@ const music: AreaText = {
           type: "table",
           head: ["Estado", "Significado"],
           rows: [
-            ["**En directo**", "Conectado por internet: los miembros te siguen."],
-            ["**En directo · BT**", "Conectado por internet y enviando también por Bluetooth."],
-            ["**Bluetooth**", "Sin internet: los miembros cercanos te siguen por Bluetooth."],
-            ["**Desconectado**", "Ahora mismo no llega nada a la banda."],
+            ["**En directo**", "Estás dirigiendo: por internet o, sin internet, por Bluetooth (apps de iPhone, iPad y Android)."],
+            ["**Desconectado**", "Sin internet y sin Bluetooth: ahora mismo no llega nada a la banda."],
             ["**Guardando…**, **Guardado**, **No guardado**", "Después de arrastrar: el nuevo orden se guarda poco después de tu último movimiento. **Guardado** aparece un momento y luego vuelve el estado."],
           ],
         },
         {
           type: "list",
           items: [
+            "Sin internet, una línea debajo del estado dice quién está conectado a ti por Bluetooth: **1 teléfono conectado a ti**, **3 teléfonos conectados a ti** o **Ningún teléfono conectado todavía: pide a la banda que abra el modo escenario**. Mientras internet funciona, esta línea no aparece.",
             "Los miembros que abren el Modo escenario más tarde se ponen al día en la canción actual.",
             "Un nuevo orden vale para todos, también para los miembros que han dejado de seguirte, y se guarda en la setlist del concierto. El concierto detrás del Modo escenario lo muestra al momento.",
             "Al cerrar el Modo escenario se guarda un movimiento que aún esperaba guardarse.",
+            "Al cerrar el Modo escenario también se detienen la cuenta de entrada, el clic y Seguir el tempo que habías iniciado, en todos los teléfonos, por internet y por Bluetooth.",
             "Si varios admins dirigen a la vez, gana el movimiento más reciente.",
             "Quitar una canción es solo para esta noche: la setlist del concierto la conserva. Los miembros que te siguen la ven tachada y también se la saltan, por internet o por Bluetooth. Tu teléfono recuerda las canciones quitadas de ese concierto si cierras el Modo escenario y lo vuelves a abrir.",
           ],
@@ -1389,16 +1389,16 @@ const music: AreaText = {
         {
           type: "list",
           items: [
-            "**· BT** después de la etiqueta significa que estás conectado al líder por Bluetooth.",
+            "Sin internet, una línea debajo del botón dice cómo estás conectado al líder: **Conectado al teléfono del líder** significa que le sigues por Bluetooth, **Sin conexión: pide al líder que abra el modo escenario** significa que tu teléfono aún no lo ha encontrado. Mientras internet funciona, esta línea no aparece.",
             "**Desconectado** significa que ahora mismo no puede llegar nada a tu teléfono.",
             "Los miembros no pueden mover la canción de nadie más ni cambiar el orden.",
             "Si aparece **La app del líder no está actualizada: pídele que la actualice**, sigues al líder igual: solo le falta la última versión de BandWith.",
             "Si aparece **La banda cambió quién puede dirigir: conéctate a internet una vez para seguir al líder.**, conéctate una vez (Wi-Fi o datos móviles) con Stage abierto: el teléfono recibe el cambio y vuelve a seguir al líder.",
-            "Si aparece **Líder aún sin verificar: conéctate a internet una vez para comprobarlo.**, estás siguiendo, pero tu teléfono aún no puede comprobar que el líder es admin de la banda: conéctate una vez (Wi-Fi o datos) con Stage abierto.",
-            "Si aparece **Líder aún sin verificar: pide al líder que se conecte a internet una vez.**, estás siguiendo, pero el teléfono del líder no se ha conectado desde que Stage tiene la nueva protección: el líder se conecta una vez con Stage abierto.",
+            "Si aparece **Líder aún sin verificar: conéctate a internet una vez para comprobarlo.**, estás siguiendo, pero tu teléfono aún no puede comprobar que el líder es admin de la banda: conéctate una vez (Wi-Fi o datos) con Stage abierto. Hasta entonces la cuenta de entrada no te llega sin internet.",
+            "Si aparece **Líder aún sin verificar: pide al líder que se conecte a internet una vez.**, estás siguiendo, pero el teléfono del líder no se ha conectado desde que Stage tiene la nueva protección: el líder se conecta una vez con Stage abierto. Hasta entonces la cuenta de entrada no te llega sin internet.",
             "Si diriges tú y aparece **Los teléfonos con la app actualizada aún no pueden verificarte: conéctate a internet una vez con el modo escenario abierto.**, sin internet solo te pueden seguir los teléfonos con versiones anteriores de BandWith: conéctate una vez (Wi-Fi o datos móviles) con Stage abierto y los teléfonos de la banda podrán comprobar que eres tú.",
             "Si diriges tú y aparece **Ya no eres admin de esta banda: tiene que guiar otro admin.**, tu rol en la banda cambió: los teléfonos con la última versión de BandWith no te siguen. Pide a un admin que abra el modo escenario y dirija.",
-            "**Versiones anteriores de la app:** cuando cambia el rol de un admin (pasa a miembro o sale de la banda), un concierto cuyos líderes ya estaban verificados espera a que un admin con la última versión lo abra online una vez. Hasta entonces, los teléfonos con la última versión muestran **La banda cambió quién puede dirigir: conéctate a internet una vez para seguir al líder.** para ese concierto y sin internet no siguen a nadie. Los conciertos que nadie ha dirigido aún con la última versión no cambian.",
+            "Versiones anteriores de la app: cuando cambia el rol de un admin (pasa a miembro o sale de la banda), un concierto cuyos líderes ya estaban verificados espera a que un admin con la última versión lo abra online una vez. Hasta entonces, los teléfonos con la última versión muestran **La banda cambió quién puede dirigir: conéctate a internet una vez para seguir al líder.** para ese concierto y sin internet no siguen a nadie. Los conciertos que nadie ha dirigido aún con la última versión no cambian.",
           ],
         },
       ],
@@ -1436,6 +1436,7 @@ const music: AreaText = {
             "Los pulsos de un compás salen del **Compás** de la canción; si no, de su cuadro de acordes; si no, 4/4. En 6/8 y 12/8 destella en los tiempos con puntillo. Para dar la entrada a la banda, consulta [[count-in]].",
             "Una canción sin BPM no puede iniciar un clic (**Sin BPM para esta canción**). Añade los BPM en el formulario de la canción.",
             "Al pasar a otra canción se oculta el clic de la canción anterior.",
+            "Cuando el líder cierra el Modo escenario, el clic de la banda se para en todos los teléfonos, por internet y por Bluetooth.",
             "Los teléfonos se mantienen sincronizados con unos 20–40 ms de margen: bien para una cuenta de entrada y como referencia de tempo, no para un clic en los auriculares in-ear.",
             "Sin internet, el clic del líder sigue llegando a los teléfonos conectados al suyo por Bluetooth, en las apps de iPhone, iPad y Android. En el Modo escenario una línea dice entonces **Conectado al teléfono del líder**. Si el líder queda fuera de alcance más de 10 segundos, el clic se para en tu teléfono. Vuelve a tempo cuando el líder está otra vez al alcance. En la web, el clic de la banda necesita internet. Consulta [[stage-bluetooth-sync]].",
           ],
@@ -1520,7 +1521,7 @@ const music: AreaText = {
             "Con **2 compases** en la canción, el primer compás se cuenta a medio tiempo y el segundo a tempo.",
             "Una canción que empieza antes del tiempo 1 (por ejemplo **Empieza en el tiempo 4**) tiene el **YA** en su primera nota, no en el 1.",
             "La banda cuenta hacia atrás (4 3 2 1, la opción predeterminada) o hacia delante (1 2 3 4). Lo elige el líder en **Para toda la banda**, en las opciones de la cuenta, y todos los teléfonos de la banda cuentan así.",
-            "Si **Seguir el tempo** está activado, la canción empieza a avanzar desde el compás 1, cuando termina la cuenta. Si el clic está en marcha, sigue a tempo.",
+            "Si **Seguir el tempo** está activado, la canción empieza a avanzar desde el compás 1, cuando termina la cuenta. Si el clic está en marcha, sigue a tempo. La cuenta de entrada nunca inicia el clic por sí sola.",
           ],
         },
         {
@@ -1543,10 +1544,22 @@ const music: AreaText = {
         },
         {
           type: "list",
+          title: "Sin internet",
+          items: [
+            "En las apps de iPhone, iPad y Android la cuenta de entrada también va por Bluetooth: todos los teléfonos conectados al del líder muestran la misma cuenta atrás en el mismo tiempo. **Detener la cuenta** la para en todos los teléfonos, y **Contar de todos modos** funciona igual.",
+            "Cada teléfono necesita el Bluetooth activado y haber abierto el concierto una vez con internet antes: consulta [[stage-bluetooth-sync]]. En un navegador, la cuenta de entrada necesita internet.",
+            "Un teléfono que se conecta en mitad de la cuenta entra en el tiempo correcto, nunca desde el principio. Si se conecta demasiado tarde, no muestra nada.",
+            "Si el líder queda fuera de alcance durante la cuenta, la cuenta atrás sigue sola hasta **YA**. Una cuenta que sigue en pantalla tras 10 segundos fuera de alcance desaparece.",
+            "Todos los teléfonos necesitan la última versión de BandWith. Un teléfono con una versión anterior sigue las canciones y el clic por Bluetooth, pero sin internet no muestra la cuenta atrás; si la versión anterior es la del líder, no la muestra ninguno.",
+            "Si el líder pierde internet en mitad de una cuenta, **Detener la cuenta** no llega a un miembro que sigue con conexión: ese teléfono cuenta hasta **YA**.",
+          ],
+        },
+        {
+          type: "list",
           title: "Conviene saber",
           items: [
             "Un teléfono que recibe el mensaje tarde se une a la cuenta atrás en el tiempo correcto.",
-            "La cuenta atrás necesita internet: no se envía por Bluetooth. Sin señal solo la muestra el teléfono del líder. Los teléfonos conectados por Bluetooth siguen recibiendo el clic, si el líder lo tiene en marcha, y Seguir el tempo desde el compás 1.",
+            "Pasar a otra canción, o cerrar el Modo escenario, detiene en todos los teléfonos una cuenta que aún está en marcha.",
             "Los teléfonos se mantienen sincronizados con unos 20–40 ms de margen.",
             "Un miembro puede cerrar la cuenta atrás en su propia pantalla con **Ocultar en este teléfono**.",
           ],
@@ -1598,7 +1611,7 @@ const music: AreaText = {
             "Si la banda alarga o acorta una parte, toca el compás, la línea o la sección donde estáis: todos saltan ahí.",
             "Toca **Repetir** para repetir la sección actual (un vamp, un solo). Toca **Soltar** para seguir adelante.",
             "En un calderón la canción espera y la línea dice **Esperando al líder**: toca **Seguir**.",
-            "Toca **Parar** para terminar. Pasar a otra canción también lo detiene.",
+            "Toca **Parar** para terminar. Pasar a otra canción también lo detiene, y cerrar el Modo escenario también.",
           ],
         },
         {
@@ -1705,25 +1718,34 @@ const music: AreaText = {
       keywords: ["bluetooth", "sin conexión", "sin cobertura", "sin wifi", "ble", "clave de escenario"],
       related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode", "live-mode-offline"],
       body: [
-        { type: "p", text: "En las apps de iPhone, iPad y Android, el teléfono del admin también envía por Bluetooth la canción actual, el orden, el clic y el punto de la canción (Seguir el tempo). Los teléfonos de los miembros cercanos lo reciben sin emparejar y sin internet. La excepción es la cuenta de entrada: necesita internet." },
+        { type: "p", text: "En las apps de iPhone, iPad y Android, el teléfono del admin también envía por Bluetooth la canción actual, el orden, el clic, la cuenta de entrada y el punto de la canción (Seguir el tempo). Los teléfonos de los miembros cercanos lo reciben sin emparejar y sin internet." },
         {
           type: "steps",
           title: "Prepárate antes del concierto",
           items: [
             "Todos tienen la setlist en el teléfono: di que sí a la descarga (consulta [[live-mode-offline]]) o abre el concierto una vez con conexión. La clave Bluetooth del concierto llega con ella.",
+            "Para la cuenta de entrada, cada teléfono abre además el concierto una vez con internet, primero el del líder: así un teléfono puede comprobar que la cuenta viene de un admin de la banda.",
             "Activa el Bluetooth y permite que BandWith lo use.",
-            "En el escenario, todos abren el Modo escenario. El líder muestra **Bluetooth** o **En directo · BT**; los miembros muestran **· BT** después de su etiqueta de seguimiento.",
+            "En el escenario, todos abren el Modo escenario. Sin internet, una línea debajo del estado del líder y del botón de los miembros dice cómo va la conexión: el líder ve por ejemplo **3 teléfonos conectados a ti**, los miembros ven **Conectado al teléfono del líder**. Mientras internet funciona, la línea no aparece.",
           ],
         },
         {
           type: "list",
           title: "Cuando no conecta",
           items: [
-            "«El Bluetooth está apagado o no tiene permiso. Actívalo en Ajustes para seguir sincronizado sin internet.»",
-            "«Este teléfono tiene una setlist antigua. Conéctate a internet una vez para seguir por Bluetooth.» Aparece cuando se han añadido o quitado canciones después de que el teléfono cargara la setlist por última vez. Un simple cambio de orden no da problemas.",
-            "«La hora de este teléfono y la del líder son muy distintas. Pon fecha y hora automáticas en los dos.» Los mensajes del líder llevan su hora; si va muy por delante de la de este teléfono no se siguen, porque un teléfono podría falsearla.",
+            "**Permite el Bluetooth para seguir con la banda cuando se caiga internet.** (el líder ve **Permite el Bluetooth para que la banda te siga cuando se caiga internet.**): BandWith no tiene permiso para usar el Bluetooth. Toca el botón de al lado: **Abrir Ajustes** en iPhone y iPad, **Permitir** en Android. Esta línea aparece también cuando internet funciona.",
+            "**El Bluetooth está apagado: actívalo en el Centro de control para seguir sincronizado sin internet.** en iPhone y iPad. En Android dice **El Bluetooth está apagado: actívalo para seguir sincronizado sin internet.**, con el botón **Activar**.",
+            "**Sin conexión: pide al líder que abra el modo escenario**: tu teléfono aún no ha encontrado el del líder. El líder ve **Ningún teléfono conectado todavía: pide a la banda que abra el modo escenario**.",
+            "**Este teléfono tiene una setlist antigua: conéctate a internet una vez para seguir al líder.** Aparece cuando se han añadido o quitado canciones después de que el teléfono cargara la setlist por última vez. Un simple cambio de orden no da problemas. Hasta entonces este teléfono no sigue las canciones del líder.",
+            "**La hora de este teléfono y la del líder son muy distintas: pon fecha y hora automáticas en los dos.** Los mensajes del líder llevan su hora; si va muy por delante de la de este teléfono no se siguen, porque un teléfono podría falsearla.",
+            "**Este teléfono no puede seguir al líder sin internet.** (el líder ve **Este teléfono no puede guiar a la banda sin internet.**): el Bluetooth de este teléfono no puede hacerlo.",
             "Cuando alguien deja la banda, cada concierto que viene recibe una nueva clave Bluetooth. Los teléfonos con una versión antigua de BandWith se quedan con la clave anterior y sin internet no encuentran a los demás: después de actualizar BandWith, abre el concierto una vez con conexión.",
+            "Si una línea dice que el líder aún no está verificado, o que la banda cambió quién puede dirigir, consulta [[follow-in-stage-mode]].",
           ],
+        },
+        {
+          type: "p",
+          text: "La cuenta de entrada solo va por Bluetooth entre teléfonos con la última versión de BandWith: un teléfono con una versión anterior sigue las canciones y el clic, y sin internet no muestra la cuenta atrás. Consulta [[count-in]].",
         },
         { type: "note", tone: "privacy", text: "Cada concierto tiene su propia clave secreta, que solo reciben los miembros activos de la banda. Solo los teléfonos con la clave encuentran al líder y aceptan sus mensajes." },
         {
@@ -1904,10 +1926,11 @@ const music: AreaText = {
           type: "list",
           title: "Qué ves",
           items: [
-            "Una barra arriba, por ejemplo **Sin conexión · 2 cambios esperando señal**. Si no hay nada pendiente, dice **Sin conexión · datos guardados**.",
+            "La barra de arriba dice **Sin conexión · datos guardados**. No cuenta estos cambios: el número que muestra es de conciertos y ensayos creados, editados o eliminados sin señal (consulta [[offline-mode]]).",
+            "Los cuenta una etiqueta, por ejemplo **2 cambios esperando señal**. En el Modo escenario y el Modo en vivo está debajo del título, después de **Sin conexión · contenido de …**. En la página del concierto o del ensayo está debajo de la setlist, en la fila de sin conexión.",
             "Cuando el líder arrastra una canción sin señal, el estado dice **Guardado en este teléfono**, y luego **Guardado** cuando llega a la setlist de la banda.",
-            "Cuando vuelve la señal, la barra dice **De nuevo en línea · enviando 2 cambios** y luego **De nuevo en línea · todo al día**.",
-            "Para enviar al momento sin esperar, toca **Enviar ahora** en la barra.",
+            "Cuando vuelve la señal se envían solos y la etiqueta desaparece. Mientras el servidor no ha respondido, la etiqueta dice **2 cambios pendientes de enviar**. **De nuevo en línea · todo al día** en la barra no se refiere a estos cambios.",
+            "Una nota, una sugerencia o un nuevo orden que el servidor rechaza se queda en el teléfono: la etiqueta dice **1 cambio no se guardó**. Tócala para verlo, con **Copiar** y **Quitar**.",
           ],
         },
         {
@@ -1916,6 +1939,7 @@ const music: AreaText = {
           items: [
             "En cuanto vuelve la señal, cuando vuelves a abrir la app y cada 30 segundos mientras haya algo pendiente.",
             "Cerrar la app conserva lo pendiente. Se envía la próxima vez que abras la app con señal.",
+            "Si cierras sesión mientras algo sigue pendiente, la app pregunta antes: **Enviar ahora** lo envía. Consulta [[sign-out]].",
             "Una nota de ensayo que el servidor rechaza no se tira. El Modo en vivo dice **Una nota no se guardó**, y el texto de la nota aparece en las notas del ensayo y en Ajustes › Sin conexión y en vivo, con **Copiar** y **Quitar**.",
           ],
         },
@@ -1984,7 +2008,7 @@ const music: AreaText = {
     },
     {
       q: "¿El Modo escenario funciona sin internet?",
-      a: "En las apps de móvil y tablet, sí. Di que sí una vez a la descarga y las setlists de tus próximos 7 días se quedan en tu teléfono; el teléfono del líder mantiene a la banda en la misma canción por Bluetooth. En la web, el Modo escenario necesita internet.",
+      a: "En las apps de móvil y tablet, sí. Di que sí una vez a la descarga y las setlists de tus próximos 7 días se quedan en tu teléfono; el teléfono del líder mantiene a la banda en la misma canción por Bluetooth, con el clic y la cuenta de entrada. En la web, el Modo escenario necesita internet.",
     },
     {
       q: "¿Mi teléfono descarga las setlists sin preguntar?",

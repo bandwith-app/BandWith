@@ -28,6 +28,10 @@ const CHECKED = [
   'ask-lineup-availability',
   'delete-a-rehearsal',
   'recurring-rehearsals',
+  'lead-stage-mode',
+  'follow-in-stage-mode',
+  'stage-bluetooth-sync',
+  'changes-without-signal',
 ];
 
 /**
@@ -77,13 +81,15 @@ const labelsOf = (a: Pick<Article, 'body'>): string[] =>
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /**
  * "Starts on beat {n}" as a pattern: "Starts on beat 4" matches, n = "4".
- * Only a number fills a placeholder, so "{name} paid" never vouches for a made-up label.
+ * Only a number fills a placeholder, or the guide's own "…" for a name it
+ * can't know ("Go to …" is "Go to {title}"), so "{name} paid" never vouches
+ * for a made-up label.
  */
 function fill(key: string, label: string): Record<string, string> | null {
   const names: string[] = [];
   const source = escape(key).replace(/\\\{(\w+)\\\}/g, (_m, name: string) => {
     names.push(name);
-    return '(\\d+)';
+    return '(\\d+|…)';
   });
   const m = label.match(new RegExp(`^${source}$`));
   if (!m) return null;
@@ -156,6 +162,61 @@ describe('Academy labels are the app’s labels', () => {
       for (const extra of left) wrong.push(`${id}: “${extra}” is not the app’s text for any label of the English guide`);
     }
     expect(wrong).toEqual([]);
+  });
+});
+
+// The handbook names labels in English in both editions, as <b class="ui">…</b>.
+// In the sections of these guides every one must be a text the app shows:
+// the 11-23 release left "Live · BT", "· BT" and two messages the app no
+// longer has in the Stage sections, in both editions.
+describe('Handbook labels are the app’s labels', () => {
+  /** Sections checked label by label. Add one once its labels are verified against the app. */
+  const HANDBOOK_CHECKED = [
+    'stage-click',
+    'song-live-settings',
+    'count-in',
+    'follow-the-tempo',
+    'delete-a-rehearsal',
+    'lead-stage-mode',
+    'follow-in-stage-mode',
+    'stage-bluetooth-sync',
+    'changes-without-signal',
+  ];
+  const HANDBOOK = import.meta.glob<string>(['/docs/handbook/en/*.html', '/docs/handbook/it/*.html'], {
+    query: '?raw',
+    import: 'default',
+    eager: true,
+  });
+  const decode = (s: string) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  /** An article's section: from its heading to the next heading. */
+  function section(lang: string, id: string): string | null {
+    for (const [file, html] of Object.entries(HANDBOOK)) {
+      if (!file.startsWith(`/docs/handbook/${lang}/`)) continue;
+      const at = html.indexOf(`id="art-${id}"`);
+      if (at < 0) continue;
+      const rest = html.slice(at);
+      const end = rest.search(/<h[23][ >]/);
+      return end < 0 ? rest : rest.slice(0, end);
+    }
+    return null;
+  }
+
+  it.each(['en', 'it'])('%s edition: every label of the checked sections is a text the app shows', (lang) => {
+    const unknown: string[] = [];
+    for (const id of HANDBOOK_CHECKED) {
+      const html = section(lang, id);
+      if (html === null) {
+        unknown.push(`${id}: no section`);
+        continue;
+      }
+      const labels = [...html.matchAll(/<b class="ui">(.*?)<\/b>/g)].map((m) => decode(m[1]));
+      // A section with no label at all is one this check can't read.
+      if (!labels.length) unknown.push(`${id}: no label found`);
+      for (const label of labels) {
+        if (BUILT_IN_CODE.has(label) ? !APP_CODE.includes(label) : !sourcesOf(label).length) unknown.push(`${id}: “${label}”`);
+      }
+    }
+    expect(unknown).toEqual([]);
   });
 });
 

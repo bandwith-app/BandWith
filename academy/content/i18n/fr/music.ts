@@ -1477,19 +1477,19 @@ const music: AreaText = {
           type: "table",
           head: ["Statut", "Signification"],
           rows: [
-            ["**Live**", "Connecté par internet : les membres te suivent."],
-            ["**Live · BT**", "Connecté par internet et envoi aussi en Bluetooth."],
-            ["**Bluetooth**", "Pas d’internet : les membres à proximité te suivent en Bluetooth."],
-            ["**Hors ligne**", "Rien n’arrive au groupe pour l’instant."],
+            ["**Live**", "Tu mènes : par internet ou, sans internet, en Bluetooth (apps iPhone, iPad et Android)."],
+            ["**Hors ligne**", "Pas d’internet et pas de Bluetooth : rien n’arrive au groupe pour l’instant."],
             ["**Enregistrement…**, **Enregistré**, **Non enregistré**", "Après un glisser : le nouvel ordre est enregistré peu après ton dernier geste. **Enregistré** s’affiche un instant, puis le statut revient."],
           ],
         },
         {
           type: "list",
           items: [
+            "Sans internet, une ligne sous le statut indique qui est relié à toi en Bluetooth : **1 téléphone connecté à toi**, **3 téléphones connectés à toi** ou **Aucun téléphone connecté : demande au groupe d'ouvrir le mode scène**. Tant qu’internet marche, cette ligne ne s’affiche pas.",
             "Les membres qui ouvrent le mode scène plus tard rattrapent le morceau en cours.",
             "Un nouvel ordre s’applique à tout le monde, y compris aux membres qui ne suivent plus, et il est enregistré dans la setlist du concert. Le concert derrière le mode scène l’affiche tout de suite.",
             "Fermer le mode scène enregistre un déplacement encore en attente.",
+            "Fermer le mode scène arrête aussi le décompte, le clic et Suivre le tempo que tu avais lancés, sur tous les téléphones, par internet et en Bluetooth.",
             "Si plusieurs admins mènent en même temps, c’est le dernier geste qui l’emporte.",
             "Retirer un morceau ne vaut que pour ce soir : la setlist du concert le garde. Les membres qui te suivent le voient barré et le sautent aussi, par internet ou en Bluetooth. Ton téléphone se souvient des morceaux retirés pour ce concert si tu fermes et rouvres le mode scène.",
           ],
@@ -1522,16 +1522,16 @@ const music: AreaText = {
         {
           type: "list",
           items: [
-            "**· BT** après le libellé veut dire que tu es relié au leader en Bluetooth.",
+            "Sans internet, une ligne sous le bouton indique comment tu es relié au leader : **Connecté au téléphone du leader** veut dire que tu le suis en Bluetooth, **Non connecté : demande au leader d'ouvrir le mode scène** veut dire que ton téléphone ne l’a pas encore trouvé. Tant qu’internet marche, cette ligne ne s’affiche pas.",
             "**Hors ligne** veut dire que rien ne peut atteindre ton téléphone pour l’instant.",
             "Les membres ne peuvent ni changer le morceau des autres ni modifier l’ordre.",
             "Si la ligne **L’app du leader n’est pas à jour : demande-lui de la mettre à jour** s’affiche, tu suis quand même : il lui suffit d’installer la dernière version de BandWith.",
             "Si la ligne **Le groupe a changé qui peut mener : connecte-toi une fois à internet pour suivre le leader.** s’affiche, connecte-toi une fois (Wi-Fi ou données mobiles) avec Stage ouvert : ton téléphone récupère le changement et suit de nouveau le leader.",
-            "Si la ligne **Leader pas encore vérifié : connecte-toi une fois à internet pour le vérifier.** apparaît, tu suis le leader, mais ton téléphone ne peut pas encore vérifier qu’il est admin du groupe : connecte-toi une fois (Wi-Fi ou données) avec Stage ouvert.",
-            "Si la ligne **Leader pas encore vérifié : demande au leader de se connecter une fois à internet.** apparaît, tu suis le leader, mais son téléphone n’a pas été en ligne depuis la nouvelle protection de Stage : le leader se connecte une fois avec Stage ouvert.",
+            "Si la ligne **Leader pas encore vérifié : connecte-toi une fois à internet pour le vérifier.** apparaît, tu suis le leader, mais ton téléphone ne peut pas encore vérifier qu’il est admin du groupe : connecte-toi une fois (Wi-Fi ou données) avec Stage ouvert. D’ici là, le décompte ne t’arrive pas sans internet.",
+            "Si la ligne **Leader pas encore vérifié : demande au leader de se connecter une fois à internet.** apparaît, tu suis le leader, mais son téléphone n’a pas été en ligne depuis la nouvelle protection de Stage : le leader se connecte une fois avec Stage ouvert. D’ici là, le décompte ne t’arrive pas sans internet.",
             "Si c’est toi qui mènes et que la ligne **Les téléphones avec l'app à jour ne peuvent pas encore te vérifier : connecte-toi une fois à internet avec le mode scène ouvert.** s’affiche, sans internet seuls les téléphones avec une ancienne version de BandWith peuvent te suivre : connecte-toi une fois (Wi-Fi ou données mobiles) avec Stage ouvert, et les téléphones du groupe pourront vérifier que c’est toi.",
             "Si c’est toi qui mènes et que la ligne **Tu n'es plus admin de ce groupe : un autre admin doit mener.** s’affiche, ton rôle dans le groupe a changé : les téléphones avec la dernière version de BandWith ne te suivent pas. Demande à un admin d’ouvrir le mode scène et de mener.",
-            "**Anciennes versions de l’app :** quand le rôle d’un admin change (il devient membre ou quitte le groupe), un concert dont les leaders étaient déjà vérifiés attend qu’un admin avec la dernière version l’ouvre une fois en ligne. D’ici là, les téléphones avec la dernière version affichent **Le groupe a changé qui peut mener : connecte-toi une fois à internet pour suivre le leader.** pour ce concert et ne suivent personne sans internet. Les concerts que personne n’a encore menés avec la dernière version ne changent pas.",
+            "Anciennes versions de l’app : quand le rôle d’un admin change (il devient membre ou quitte le groupe), un concert dont les leaders étaient déjà vérifiés attend qu’un admin avec la dernière version l’ouvre une fois en ligne. D’ici là, les téléphones avec la dernière version affichent **Le groupe a changé qui peut mener : connecte-toi une fois à internet pour suivre le leader.** pour ce concert et ne suivent personne sans internet. Les concerts que personne n’a encore menés avec la dernière version ne changent pas.",
           ],
         },
       ],
@@ -1569,6 +1569,7 @@ const music: AreaText = {
             "Le nombre de temps par mesure vient de la **Mesure** du morceau, sinon de sa grille d’accords, sinon 4/4. En 6/8 et 12/8, il clignote sur les temps pointés. Pour décompter le groupe, voir [[count-in]].",
             "Un morceau sans BPM ne peut pas lancer de clic (**Pas de BPM pour ce morceau**). Ajoute le BPM dans le formulaire du morceau.",
             "Passer à un autre morceau masque le clic du morceau précédent.",
+            "Quand le leader ferme le mode scène, le clic du groupe s’arrête sur tous les téléphones, par internet et en Bluetooth.",
             "Les téléphones restent synchronisés à environ 20–40 ms près : parfait pour un décompte et une référence de tempo, pas pour un clic dans les oreillettes.",
             "Sans internet, le clic du leader arrive quand même aux téléphones reliés au sien en Bluetooth, dans les apps iPhone, iPad et Android. En mode scène, une ligne indique alors **Connecté au téléphone du leader**. Si le leader reste hors de portée plus de 10 secondes, le clic s’arrête sur ton téléphone. Il reprend en mesure quand le leader est de nouveau à portée. Sur le web, le clic du groupe a besoin d’internet. Voir [[stage-bluetooth-sync]].",
           ],
@@ -1653,7 +1654,7 @@ const music: AreaText = {
             "Avec **2 mesures** réglé sur le morceau, la première mesure compte à mi-tempo et la seconde à tempo.",
             "Un morceau qui commence avant le temps 1 (par exemple **Commence sur le temps 4**) a son **TOP** sur sa première note, pas sur 1.",
             "Le groupe compte à rebours (4 3 2 1, par défaut) ou à l’endroit (1 2 3 4). Le leader le choisit sous **Pour tout le groupe** dans les options du décompte, et chaque téléphone du groupe compte ainsi.",
-            "Si **Suivre le tempo** est activé, le morceau commence à avancer à partir de la mesure 1, à la fin du décompte. Si le clic tourne, il continue en mesure.",
+            "Si **Suivre le tempo** est activé, le morceau commence à avancer à partir de la mesure 1, à la fin du décompte. Si le clic tourne, il continue en mesure. Le décompte ne lance jamais le clic tout seul.",
           ],
         },
         {
@@ -1676,10 +1677,22 @@ const music: AreaText = {
         },
         {
           type: "list",
+          title: "Sans internet",
+          items: [
+            "Dans les apps iPhone, iPad et Android, le décompte passe aussi en Bluetooth : chaque téléphone relié à celui du leader affiche le même compte à rebours sur le même temps. **Arrêter le décompte** l’arrête sur tous les téléphones, et **Lancer le décompte quand même** marche de la même façon.",
+            "Chaque téléphone a besoin du Bluetooth activé et d’avoir ouvert le concert une fois avec internet avant : voir [[stage-bluetooth-sync]]. Dans un navigateur, le décompte a besoin d’internet.",
+            "Un téléphone qui se connecte au milieu d’un décompte le rejoint sur le bon temps, jamais depuis le début. S’il se connecte trop tard, il n’affiche rien.",
+            "Si le leader sort de portée pendant le décompte, le compte à rebours va tout seul jusqu’à **TOP**. Un décompte encore à l’écran après 10 secondes hors de portée disparaît.",
+            "Chaque téléphone a besoin de la dernière version de BandWith. Un téléphone avec une ancienne version continue de suivre les morceaux et le clic en Bluetooth, mais n’affiche pas de compte à rebours sans internet ; si c’est le leader qui a l’ancienne version, aucun téléphone ne l’affiche.",
+            "Si le leader perd internet au milieu d’un décompte, **Arrêter le décompte** n’arrive pas à un membre encore en ligne : ce téléphone compte jusqu’à **TOP**.",
+          ],
+        },
+        {
+          type: "list",
           title: "Bon à savoir",
           items: [
             "Un téléphone qui reçoit le message en retard rejoint le compte à rebours sur le bon temps.",
-            "Le compte à rebours a besoin d’internet : il n’est pas envoyé en Bluetooth. Sans réseau, seul le téléphone du leader l’affiche. Les téléphones reliés en Bluetooth reçoivent quand même le clic, si le leader l’a lancé, et Suivre le tempo à partir de la mesure 1.",
+            "Passer à un autre morceau, ou fermer le mode scène, arrête sur tous les téléphones un décompte encore en cours.",
             "Les téléphones restent synchronisés à environ 20–40 ms près.",
             "Un membre peut fermer le compte à rebours sur son propre écran avec **Masquer sur ce téléphone**.",
           ],
@@ -1731,7 +1744,7 @@ const music: AreaText = {
             "Si le groupe joue une partie plus longue ou plus courte, touche la mesure, la ligne ou la section où vous êtes : tout le monde y saute.",
             "Touche **Répéter** pour répéter la section en cours (un vamp, un solo). Touche **Relâcher** pour continuer.",
             "Sur un point d’orgue, le morceau attend et la ligne indique **En attente du leader** : touche **Continuer**.",
-            "Touche **Arrêter** pour finir. Passer à un autre morceau l’arrête aussi.",
+            "Touche **Arrêter** pour finir. Passer à un autre morceau l’arrête aussi, tout comme fermer le mode scène.",
           ],
         },
         {
@@ -1840,26 +1853,35 @@ const music: AreaText = {
       body: [
         {
           type: "p",
-          text: "Dans les apps iPhone, iPad et Android, le téléphone de l’admin envoie aussi en Bluetooth le morceau en cours, l’ordre, le clic et la position dans le morceau (Suivre le tempo). Les téléphones des membres à proximité les reçoivent sans appairage et sans internet. Le décompte fait exception : il a besoin d’internet.",
+          text: "Dans les apps iPhone, iPad et Android, le téléphone de l’admin envoie aussi en Bluetooth le morceau en cours, l’ordre, le clic, le décompte et la position dans le morceau (Suivre le tempo). Les téléphones des membres à proximité les reçoivent sans appairage et sans internet.",
         },
         {
           type: "steps",
           title: "Se préparer avant le concert",
           items: [
             "Chacun récupère la setlist sur son téléphone : accepte le téléchargement (voir [[live-mode-offline]]) ou ouvre le concert une fois en étant en ligne. La clé Bluetooth du concert vient avec.",
+            "Pour le décompte, chaque téléphone ouvre aussi le concert une fois avec internet, celui du leader en premier : c’est ainsi qu’un téléphone peut vérifier qu’un décompte vient d’un admin du groupe.",
             "Active le Bluetooth et autorise BandWith à l’utiliser.",
-            "Sur scène, chacun ouvre le mode scène. Le leader affiche **Bluetooth** ou **Live · BT** ; les membres affichent **· BT** après leur libellé de suivi.",
+            "Sur scène, chacun ouvre le mode scène. Sans internet, une ligne sous le statut du leader et sous le bouton des membres indique l’état de la liaison : le leader voit par exemple **3 téléphones connectés à toi**, les membres voient **Connecté au téléphone du leader**. Tant qu’internet marche, la ligne ne s’affiche pas.",
           ],
         },
         {
           type: "list",
           title: "Quand ça ne se connecte pas",
           items: [
-            "« Le Bluetooth est désactivé ou non autorisé. Active-le dans Réglages pour rester synchronisé sans internet. »",
-            "« Ce téléphone a une ancienne setlist. Connecte-toi une fois à internet pour suivre en Bluetooth. » Ce message s’affiche quand des morceaux ont été ajoutés ou retirés depuis le dernier chargement de la setlist sur ce téléphone. Un simple changement d’ordre ne pose pas de problème.",
-            "« L'heure de ce téléphone et celle du leader sont très différentes. Règle la date et l'heure automatiques sur les deux. » Les messages du leader portent son heure ; s'il est très en avance sur ce téléphone, ils ne sont pas suivis, car un téléphone pourrait la falsifier.",
+            "**Autorise le Bluetooth pour rester avec le groupe quand internet coupe.** (le leader voit **Autorise le Bluetooth pour que le groupe te suive quand internet coupe.**) : BandWith n’a pas l’autorisation d’utiliser le Bluetooth. Touche le bouton à côté : **Ouvrir Réglages** sur iPhone et iPad, **Autoriser** sur Android. Cette ligne s’affiche aussi quand internet marche.",
+            "**Le Bluetooth est désactivé : active-le dans le Centre de contrôle pour rester synchronisé sans internet.** sur iPhone et iPad. Sur Android, la ligne indique **Le Bluetooth est désactivé : active-le pour rester synchronisé sans internet.**, avec un bouton **Activer**.",
+            "**Non connecté : demande au leader d'ouvrir le mode scène** : ton téléphone n’a pas encore trouvé celui du leader. Le leader voit **Aucun téléphone connecté : demande au groupe d'ouvrir le mode scène**.",
+            "**Ce téléphone a une ancienne setlist : connecte-toi une fois à internet pour suivre le leader.** Ce message s’affiche quand des morceaux ont été ajoutés ou retirés depuis le dernier chargement de la setlist sur ce téléphone. Un simple changement d’ordre ne pose pas de problème. D’ici là, ce téléphone ne suit pas les morceaux du leader.",
+            "**L'heure de ce téléphone et celle du leader sont très différentes : règle la date et l'heure automatiques sur les deux.** Les messages du leader portent son heure ; s’il est très en avance sur ce téléphone, ils ne sont pas suivis, car un téléphone pourrait la falsifier.",
+            "**Ce téléphone ne peut pas suivre le leader sans internet.** (le leader voit **Ce téléphone ne peut pas guider le groupe sans internet.**) : le Bluetooth de ce téléphone n’en est pas capable.",
             "Quand quelqu’un quitte le groupe, chaque concert à venir reçoit une nouvelle clé Bluetooth. Les téléphones avec une ancienne version de BandWith gardent l’ancienne clé et ne trouvent pas les autres sans internet : après avoir mis à jour BandWith, ouvre le concert une fois en étant en ligne.",
+            "Pour une ligne qui dit que le leader n’est pas encore vérifié, ou que le groupe a changé qui peut mener, voir [[follow-in-stage-mode]].",
           ],
+        },
+        {
+          type: "p",
+          text: "Le décompte ne passe en Bluetooth qu’entre des téléphones qui ont la dernière version de BandWith : un téléphone avec une ancienne version continue de suivre les morceaux et le clic, et n’affiche pas de compte à rebours sans internet. Voir [[count-in]].",
         },
         {
           type: "note",
@@ -2044,10 +2066,11 @@ const music: AreaText = {
           type: "list",
           title: "Ce que tu vois",
           items: [
-            "Une barre en haut, par exemple **Hors ligne · 2 modifications en attente de réseau**. Sans rien en attente, elle indique **Hors ligne · données en cache**.",
+            "La barre en haut indique **Hors ligne · données en cache**. Elle ne compte pas ces modifications : le nombre qu’elle affiche concerne les concerts et les répétitions créés, modifiés ou supprimés sans réseau (voir [[offline-mode]]).",
+            "Une étiquette les compte, par exemple **2 modifications en attente de réseau**. En mode scène et en mode live, elle est sous le titre, après **Hors ligne · contenu de …**. Sur la page du concert ou de la répétition, elle est sous la setlist, dans la ligne hors ligne.",
             "Après que le leader a fait glisser un morceau sans réseau, le statut indique **Enregistré sur ce téléphone**, puis **Enregistré** une fois arrivé dans la setlist du groupe.",
-            "Au retour du réseau, la barre indique **De retour en ligne · envoi de 2 modifications**, puis **De retour en ligne · tout est à jour**.",
-            "Pour envoyer tout de suite sans attendre, touche **Envoyer maintenant** dans la barre.",
+            "Au retour du réseau, elles partent toutes seules et l’étiquette disparaît. Tant que le serveur n’a pas répondu, l’étiquette indique **2 modifications en attente d’envoi**. **De retour en ligne · tout est à jour** dans la barre ne concerne pas ces modifications.",
+            "Une note, une suggestion ou un nouvel ordre que le serveur refuse reste sur le téléphone : l’étiquette indique **1 modification non enregistrée**. Touche-la pour le voir, avec **Copier** et **Retirer**.",
           ],
         },
         {
@@ -2056,6 +2079,7 @@ const music: AreaText = {
           items: [
             "Dès que le réseau revient, quand tu rouvres l’app, et toutes les 30 secondes tant que quelque chose attend.",
             "Fermer l’app garde ce qui attend. Ça part la prochaine fois que tu ouvres l’app avec du réseau.",
+            "Si tu te déconnectes alors que quelque chose attend encore, l’app demande d’abord : **Envoyer maintenant** l’envoie. Voir [[sign-out]].",
             "Une note de répétition que le serveur refuse n’est pas jetée. Le mode live indique **Une note n’a pas été enregistrée**, et le texte de la note est listé dans les notes de la répétition et dans Réglages › Hors ligne et live, avec **Copier** et **Retirer**.",
           ],
         },
@@ -2124,7 +2148,7 @@ const music: AreaText = {
     },
     {
       q: "Le mode scène marche-t-il sans internet ?",
-      a: "Dans les apps téléphone et tablette, oui. Dis oui une fois au téléchargement et les setlists de tes 7 prochains jours restent sur ton téléphone ; le téléphone du leader garde le groupe sur le même morceau en Bluetooth. Sur le web, le mode scène a besoin d’internet.",
+      a: "Dans les apps téléphone et tablette, oui. Dis oui une fois au téléchargement et les setlists de tes 7 prochains jours restent sur ton téléphone ; le téléphone du leader garde le groupe sur le même morceau en Bluetooth, avec le clic et le décompte. Sur le web, le mode scène a besoin d’internet.",
     },
     {
       q: "Mon téléphone télécharge-t-il les setlists sans demander ?",
