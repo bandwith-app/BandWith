@@ -139,9 +139,10 @@ describe('one label for each call to action', () => {
     expect(all.filter((l) => /get the beta/i.test(l.label)).map((l) => `${l.rel}: ${l.label}`)).toEqual([]);
     const toGet = all.filter((l) => l.href === '/get/' && !l.a.closest('[data-lang-switch]'));
     expect(toGet.length).toBeGreaterThan(FILES.length * 2 - 1);
-    // The hero's quieter button names the phones; every other one starts with the same three words.
+    // The hero's quieter button names the phones; every other one starts with the same three words
+    // (the header's adds "iOS · Android", the menu sheet's "iPhone & Android").
     const labels = [...new Set(toGet.map((l) => l.label))].sort();
-    expect(labels).toEqual(['Get the app', 'Get the app · iOS & Android', 'Get the appiOS · Android', 'Get the iPhone or Android app']);
+    expect(labels).toEqual(['Get the app', 'Get the appiOS · Android', 'Get the appiPhone & Android', 'Get the iPhone or Android app']);
   });
 
   it('the main call to action reads the same in the hero and in every footer', () => {

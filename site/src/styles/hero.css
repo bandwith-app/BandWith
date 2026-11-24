@@ -15,8 +15,6 @@
 .hero__copy { min-width: 0; container-type: inline-size; }
 .hero__screen { container: shot / inline-size; }
 .hero__kicker { color: var(--fg); }
-.led { width: 8px; height: 8px; border-radius: 3px; background: var(--lime); box-shadow: 0 0 12px var(--lime); animation: blink 1.07s steps(2, jump-none) infinite; }
-@keyframes blink { 50% { opacity: .35; } }
 .hero__title { --fit: 1; margin: 24px 0 0; font-size: clamp(36px, calc(12.4cqi * var(--fit)), 136px); line-height: .86; letter-spacing: -0.04em; }
 /* Each line stays on one line: a language with a longer first line ("LLEVA LA BANDA.") sets it a touch smaller. */
 .hero__title:lang(es) { --fit: .9; }

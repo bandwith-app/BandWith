@@ -3,7 +3,7 @@
  * generated from CHANNELS so a new page only needs `live: true`.
  * Used by site/vite.config.ts as <!--@name--> placeholders.
  */
-import { CHANNELS, GROUPS, channelUrl, pad2, type Channel } from './features';
+import { CHANNELS, MENU, channelUrl, channelsOf, pad2, type Channel } from './features';
 import { MADE_BY, academyArticle, shot, type MadeBy } from './site';
 import { rolesCard } from './rolesCard';
 import { picksHtml } from '../ui/heroScreen';
@@ -15,27 +15,29 @@ import { INAPP_CLOSED_KEY, chromeIntentUrl, inAppBrowser } from '../core/inApp';
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const meter = (n = 10) => `<span class="strip__meter" aria-hidden="true">${'<i></i>'.repeat(n)}</span>`;
 const accentVar = (c: Channel) => `var(--${c.accent === 'rehearsal' ? 'rehearsal-ink' : c.accent})`;
-const grouped = () => GROUPS.map((g) => ({ g, list: CHANNELS.filter((c) => c.group === g) }));
+
+const arrow = (id: string, cls = 'ico') => `<svg class="${cls}" aria-hidden="true"><use href="#i-${id}"/></svg>`;
 
 /**
- * Features panel (nav, ≥1081px): four calm groups of text rows and one
- * preview card (a zoomed piece of the channel's screen) that follows the
- * row under the pointer or the focus.
+ * Features panel (nav, ≥1081px), "The index": four columns, every page with
+ * its one-liner in view, nothing behind a hover. Three numbered verbs in the
+ * order of a band's week, then "Built in". Rows are subgrid rows, so the
+ * lists start on one line whatever the language does to the titles. The
+ * current page is marked by ui/nav.ts (aria-current, the lime cell).
  */
 export function featurePanel() {
-  const groups = grouped().map(({ g, list }) =>
-    `<div class="fp__group"><p class="fp__g">${g}</p><ul class="fp__list">` +
-    list.map((c) => {
-      const tag = c.live ? 'a' : 'span';
-      const attrs = c.live ? ` href="${channelUrl(c)}"` : ' tabindex="0" aria-disabled="true"';
-      return (
-        `<li><${tag} class="fp__row${c.live ? '' : ' is-soon'}"${attrs} data-fp data-ch="CH ${pad2(c.ch)}" data-shot="${shot(c.shot)}" data-crop="${c.crop.join(' ')}" data-name="${esc(c.name)}" data-line="${esc(c.line)}" style="--c: ${accentVar(c)}">` +
-        `<b>${pad2(c.ch)}</b><span class="fp__name">${esc(c.name)}</span></${tag}></li>`
-      );
-    }).join('') +
-    `</ul></div>`,
+  return MENU.map((g, i) =>
+    `<section class="mm__g${g.no.length > 2 ? ' mm__g--built' : ''}" aria-labelledby="mm-g${i + 1}">` +
+      `<p class="mono mm__n"><span>${esc(g.no)}</span><i></i></p>` +
+      `<h2 class="mm__t" id="mm-g${i + 1}">${esc(g.name)}</h2>` +
+      `<p class="mm__p">${esc(g.promise)}</p>` +
+      `<ul class="mm__list">${channelsOf(g).map((c) =>
+        c.live
+          ? `<li><a class="mm__row" href="${channelUrl(c)}" data-mm-row><i class="mm__cell"></i><span class="mm__w"><span class="mm__name">${esc(c.name)}</span><span class="mm__line">${esc(c.line)}</span></span>${arrow('arrow-right')}</a></li>`
+          : `<li><span class="mm__row is-soon"><i class="mm__cell"></i><span class="mm__w"><span class="mm__name">${esc(c.name)}</span><span class="mm__line">${esc(c.line)} <span class="soon">Page coming soon</span></span></span></span></li>`,
+      ).join('')}</ul>` +
+    `</section>`,
   ).join('');
-  return `<div class="fp__groups">${groups}</div>`;
 }
 
 /**
@@ -67,20 +69,26 @@ export function rackHome() {
   );
 }
 
-/** Menu sheet (≤1080px): the same four groups, one row per channel. */
+/**
+ * Menu sheet (≤1080px): the same four groups as an accordion, one open at a
+ * time. Each head is a button (aria-expanded, aria-controls); a closed group's
+ * rows are `hidden`, so they are out of the tab order. ui/nav.ts opens the
+ * current page's group and marks its row.
+ */
 export function menuRows() {
-  return grouped().map(({ g, list }) =>
-    `<p class="label menu__label">${g}</p>` +
-    list.map((c) => {
-      const tag = c.live ? 'a' : 'div';
-      const href = c.live ? ` href="${channelUrl(c)}"` : ' aria-disabled="true"';
-      return (
-        `<${tag} class="menu__row${c.live ? '' : ' is-soon'}"${href} style="--c: ${accentVar(c)}">` +
-        `<b>${pad2(c.ch)}</b><span class="menu__m"><span class="menu__w">${esc(c.name)}</span></span>` +
-        (c.live ? `<em>${esc(c.line)}</em>` : '') +
-        `</${tag}>`
-      );
-    }).join(''),
+  return MENU.map((g, i) =>
+    `<section class="acc__g" data-acc-group>` +
+      `<h2 class="acc__h"><button type="button" class="acc__head" aria-expanded="false" aria-controls="acc-p${i + 1}" id="acc-b${i + 1}" data-acc-btn>` +
+        `<b>${g.no.length > 2 ? '+' : esc(g.no)}</b><span class="acc__t">${esc(g.name)}</span>` +
+        `<span class="acc__pm" aria-hidden="true">${arrow('plus', 'ico acc__plus')}${arrow('minus', 'ico acc__minus')}</span>` +
+        `<span class="acc__p">${esc(g.promise)}</span>` +
+      `</button></h2>` +
+      `<ul class="acc__list" id="acc-p${i + 1}" aria-labelledby="acc-b${i + 1}" data-acc-panel hidden>${channelsOf(g).map((c) =>
+        c.live
+          ? `<li><a class="acc__row" href="${channelUrl(c)}" data-mm-row><span class="acc__w"><b>${esc(c.name)}</b><em>${esc(c.line)}</em></span>${arrow('chevron-right')}</a></li>`
+          : `<li><span class="acc__row is-soon"><span class="acc__w"><b>${esc(c.name)}</b><em>${esc(c.line)}</em></span></span></li>`,
+      ).join('')}</ul>` +
+    `</section>`,
   ).join('');
 }
 

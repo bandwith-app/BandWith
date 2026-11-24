@@ -2,6 +2,7 @@
 import '../i18n/runtime';
 import 'lenis/dist/lenis.css';
 import '../styles/base.css';
+import '../styles/menu.css';
 import '../styles/parts.css';
 import '../styles/lang.css';
 import Lenis from 'lenis';

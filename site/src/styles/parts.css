@@ -2,6 +2,9 @@
    Shared parts: used on more than one page (imported by core/boot.ts)
    ══════════════════════════════════════════════════════════════════ */
 
+/* The LED before a label: on every page (channel heroes and the menu use it too, not only Home). */
+.led { flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 3px; background: var(--lime); box-shadow: 0 0 12px var(--lime); animation: blink 1.07s steps(2, jump-none) infinite; }
+@keyframes blink { 50% { opacity: .35; } }
 .led--pink { background: var(--personal); box-shadow: 0 0 12px var(--personal); }
 
 /* Capacity line (hero, Get page) */

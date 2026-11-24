@@ -11,6 +11,7 @@
     <button type="button" class="nav__item" aria-expanded="false" aria-controls="rack-panel" data-rack-btn><span class="nav__t" data-roll>Features</span><svg class="ico nav__chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></button>
     <a class="nav__item" href="/#night" data-nav-page="night"><span class="nav__t" data-roll>How it works</span></a>
     <a class="nav__item" href="https://app.bandwith.fun/academy/en/" data-guide><span class="nav__t" data-roll>Guide</span><svg class="ico nav__ext" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
+    <a class="nav__item" href="/faq/" data-nav-page="faq"><span class="nav__t" data-roll>FAQ</span></a>
   </nav>
   <div class="nav__actions">
     <!-- The web app: sign in, or create an account in the browser (the waitlist while every spot is taken). -->
@@ -25,33 +26,40 @@
   </div>
 </header>
 
-<!-- Features panel (≥1081px): grouped channels + a preview of the one under the pointer. -->
-<div class="rackp fp" id="rack-panel" data-rack-panel hidden>
-  <nav class="fp__nav" aria-label="Features">
+<!-- Features panel (≥1081px), "The index": every page and its one-liner in four columns; the page dims behind. -->
+<div class="mm-scrim" data-rack-scrim hidden></div>
+<div class="rackp mm" id="rack-panel" data-rack-panel hidden>
+  <nav class="mm__cols" aria-label="Features">
     <!--@feature-panel-->
   </nav>
-  <aside class="fp__preview" aria-hidden="true">
-    <div class="crop fp__crop" data-fp-crop><img class="crop__img" src="/shots/music-stage@phone.webp" alt="" width="780" height="1688" loading="lazy" decoding="async" /></div>
-    <p class="fp__ch mono" data-fp-ch>CH 07</p>
-    <p class="fp__pname" data-fp-name>Stage mode</p>
-    <p class="fp__line" data-fp-line>One song on every phone.</p>
-  </aside>
+  <div class="mm__foot">
+    <p class="mono mm__note" data-cap-beta="Private beta · iPhone, Android &amp; web"><span class="led"></span>Open beta · iPhone, Android &amp; web</p>
+    <a class="mono mm__all" href="/#rack">All eleven on one page <svg class="ico" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
+  </div>
 </div>
 
-<!-- Menu sheet (≤1080px) -->
-<div class="menu" id="menu" data-menu hidden>
-  <nav class="menu__links" aria-label="Features">
-    <!--@menu-rows-->
-  </nav>
-  <div class="menu__foot">
-    <a class="menu__guide" href="https://app.bandwith.fun/academy/en/">Guide · 6 languages <svg class="ico" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
-    <a class="btn btn--lime menu__cta" href="/get/">Get the app · iOS &amp; Android <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
-    <p class="label menu__weblabel">Web app · nothing to install</p>
-    <div class="menu__web">
-      <a class="menu__guide" href="https://app.bandwith.fun/?bw_screen=sign-in">Log in</a>
-      <a class="menu__guide" href="https://app.bandwith.fun/?start=signup&amp;src=site-menu" data-web-door>Sign up</a>
-      <a class="menu__guide nav__signup--full" href="/get/#waitlist">Join the waitlist</a>
+<!-- Menu sheet (≤1080px): the account first, the four groups as an accordion, the app pinned at the bottom. -->
+<div class="menu sheet" id="menu" data-menu hidden>
+  <div class="sheet__scroll" data-menu-scroll>
+    <!-- The web app: sign in, or create an account in the browser (the waitlist while every spot is taken). -->
+    <div class="menu__web sheet__acct">
+      <a class="sheet__door" href="https://app.bandwith.fun/?bw_screen=sign-in">Log in</a>
+      <a class="sheet__door sheet__door--main" href="https://app.bandwith.fun/?start=signup&amp;src=site-menu" data-web-door>Sign up</a>
+      <a class="sheet__door sheet__door--main nav__signup--full" href="/get/#waitlist">Join the waitlist</a>
     </div>
-    <div class="menu__end"><p class="menu__note" data-cap-note data-cap-beta="Private beta · iPhone, Android &amp; web"><span class="led"></span>Open beta · iPhone, Android &amp; web</p><!--@lang-switch--></div>
+    <p class="mono sheet__web">Web app · nothing to install</p>
+    <nav class="acc" aria-label="Features" data-acc>
+      <!--@menu-rows-->
+    </nav>
+    <div class="sheet__util">
+      <a href="/#night">How it works</a>
+      <a href="https://app.bandwith.fun/academy/en/">Guide <svg class="ico" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
+      <a href="/faq/">FAQ</a>
+    </div>
+    <div class="sheet__end"><p class="menu__note" data-cap-note data-cap-beta="Private beta · iPhone, Android &amp; web"><span class="led"></span>Open beta · iPhone, Android &amp; web</p><!--@lang-switch--></div>
+  </div>
+  <!-- The native apps: one lime button, under the thumb. -->
+  <div class="sheet__cta">
+    <a class="btn btn--lime menu__cta" href="/get/">Get the app<span class="sheet__os">iPhone &amp; Android <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></span></a>
   </div>
 </div>

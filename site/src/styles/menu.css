@@ -1,0 +1,152 @@
+/* ══════════════════════════════════════════════════════════════════
+   The menu (every page): the features panel on wide screens, the sheet
+   on phones and tablets. Markup: partials/nav.html + content/render.ts
+   (featurePanel, menuRows); behaviour: ui/nav.ts.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Features panel (≥1081px): "The index" ─────────────────────────
+   Four columns, every page and its one-liner in view. One accent: the
+   lime cell marks the page you are on. The page dims behind; the panel
+   is as wide as the header. */
+.mm-scrim { position: fixed; inset: 0; z-index: 47; background: rgba(5, 5, 5, .72); }
+.mm-scrim[hidden] { display: none; }
+.rackp {
+  position: fixed; z-index: 48; top: 80px; left: 0; right: 0; margin-inline: auto;
+  width: min(1392px, calc(100% - 24px)); max-height: calc(100svh - 96px); overflow-y: auto; overscroll-behavior: contain;
+  border-radius: 32px; border: 1px solid var(--line); background: #0b0b0b;
+  box-shadow: 0 40px 90px -30px rgba(0, 0, 0, .9);
+}
+.rackp[hidden] { display: none; }
+.nav.is-tight ~ .rackp { width: min(1120px, calc(100% - 24px)); top: 76px; }
+
+/* Number, title, promise and list are subgrid rows: the four lists start on one line
+   even when a title takes two lines in Italian or Spanish. */
+.mm__cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, .82fr); grid-template-rows: auto auto auto 1fr; gap: 0 44px; padding: 44px 48px 36px; }
+.mm__g { display: grid; grid-row: span 4; grid-template-rows: subgrid; align-content: start; min-width: 0; }
+.mm__n { display: flex; align-items: center; gap: 10px; height: 16px; margin: 0; color: var(--fg-dim); }
+.mm__n i { flex: 1; height: 1px; background: var(--line); }
+.mm__t { margin: 18px 0 0; font-family: var(--font-display); font-weight: 700; font-size: 28px; line-height: 1; letter-spacing: -0.02em; text-transform: uppercase; word-spacing: .07em; color: #fff; text-wrap: balance; }
+.mm__p { margin: 10px 0 0; max-width: 19em; font-size: 15px; line-height: 1.45; color: var(--fg-2); }
+.mm__list { list-style: none; margin: 16px 0 0; padding: 0; display: grid; align-content: start; gap: 2px; }
+.mm__row { position: relative; display: grid; grid-template-columns: 8px minmax(0, 1fr) 16px; column-gap: 14px; align-items: start; min-height: 68px; margin-inline: -14px; padding: 13px 14px; border-radius: 16px; color: inherit; text-decoration: none; transition: background-color .25s var(--ease); }
+/* A small rounded square, the mark's cell: dim = a page, lime = this page. */
+.mm__cell { width: 8px; height: 8px; margin-top: 8px; border-radius: 3px; background: rgba(255, 255, 255, .2); transition: background-color .25s var(--ease); }
+.mm__w { display: block; min-width: 0; }
+.mm__name { display: block; font-size: 17px; font-weight: 500; line-height: 1.35; color: #fff; }
+.mm__line { display: block; margin-top: 2px; font-size: 14px; line-height: 1.4; color: var(--fg-dim); transition: color .25s var(--ease); }
+.mm__row .ico { width: 16px; height: 16px; margin-top: 4px; opacity: 0; transition: opacity .25s var(--ease), transform .4s var(--ease); }
+a.mm__row:hover, a.mm__row:focus-visible { background: rgba(255, 255, 255, .07); }
+a.mm__row:hover .mm__cell, a.mm__row:focus-visible .mm__cell { background: #fff; }
+a.mm__row:hover .ico, a.mm__row:focus-visible .ico { opacity: 1; }
+a.mm__row:hover .mm__line, a.mm__row:focus-visible .mm__line { color: var(--fg-2); }
+a.mm__row:focus-visible { outline: 2px solid var(--lime); outline-offset: 0; }
+.mm__row.is-current .mm__cell, a.mm__row.is-current:hover .mm__cell, a.mm__row.is-current:focus-visible .mm__cell { background: var(--lime); }
+.mm__row.is-current .mm__name { color: var(--lime); }
+.mm__row.is-soon .mm__name { color: #8d8c89; }
+.mm__g--built { padding-left: 44px; border-left: 1px solid var(--line); }
+.mm__g--built .mm__t { color: var(--fg-2); }
+.mm__foot { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 68px; padding: 0 48px; border-top: 1px solid var(--line); }
+.mm__note { display: inline-flex; align-items: center; gap: 10px; margin: 0; color: var(--fg-dim); }
+.mm__note .led { animation: none; }
+.mm__all { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: #fff; text-decoration: none; }
+.mm__all .ico { width: 15px; height: 15px; transition: transform .4s var(--ease); }
+.mm__all:hover .ico { transform: translateX(4px); }
+.mm__all:focus-visible { outline: 2px solid var(--lime); outline-offset: 4px; }
+/* The tightened header (after the first screen) and narrower desktops: the same index, closer. */
+.nav.is-tight ~ .rackp .mm__cols { gap: 0 28px; padding: 36px 36px 28px; }
+.nav.is-tight ~ .rackp .mm__g--built { padding-left: 28px; }
+.nav.is-tight ~ .rackp .mm__t { font-size: 24px; }
+.nav.is-tight ~ .rackp .mm__foot { padding-inline: 36px; }
+@media (max-width: 1280px) {
+  .mm__cols { gap: 0 28px; padding: 36px 36px 28px; }
+  .mm__g--built { padding-left: 28px; }
+  .mm__t { font-size: 24px; }
+  .mm__foot { padding-inline: 36px; }
+}
+@media (max-width: 1080px) { .rackp, .mm-scrim { display: none !important; } }
+@media (prefers-reduced-motion: reduce) { .mm__row, .mm__cell, .mm__line, .mm__row .ico, .mm__all .ico { transition: none; } .mm__all:hover .ico { transform: none; } }
+
+/* ── Menu sheet (≤1080px) ──────────────────────────────────────────
+   The header stays on top as the sheet's own (logo, close). Then: Log in /
+   Sign up, the four groups as an accordion, three chips, the language; the
+   one lime button is pinned at the bottom, under the thumb. */
+.menu {
+  position: fixed; z-index: 49; top: 12px; left: 12px; right: 12px; height: calc(100svh - 24px);
+  display: flex; flex-direction: column; padding-top: 72px;
+  border-radius: 27px; border: 1px solid var(--line); background: #0a0a0a; overflow: hidden;
+  /* The page dims behind the sheet too (its 10–12px margin would show the page at full strength). */
+  box-shadow: 0 0 0 100vmax rgba(5, 5, 5, .86);
+}
+.menu[hidden] { display: none; }
+/* Open: the pill gives its frame to the sheet. */
+.nav.is-open { background: transparent; border-color: transparent; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.sheet__scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 20px 28px; border-top: 1px solid var(--line); }
+.sheet__acct { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sheet__door { display: flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .2); font-family: var(--font-display); font-weight: 700; font-size: 14px; text-transform: uppercase; letter-spacing: .01em; text-align: center; text-decoration: none; color: #fff; }
+.sheet__door--main { background: #fff; border-color: #fff; color: #000; }
+.sheet__door:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+.sheet__web { margin: 10px 0 0; text-align: center; font-size: 11px; color: var(--fg-dim); }
+
+/* The accordion. The whole head is the button; the round sign is only its sign. */
+.acc { margin-top: 14px; border-bottom: 1px solid var(--line); }
+.acc__g { border-top: 1px solid var(--line); }
+.acc__h { margin: 0; font: inherit; }
+.acc__head { display: grid; grid-template-columns: 30px minmax(0, 1fr) 40px; row-gap: 6px; align-items: center; width: 100%; min-height: 64px; padding: 15px 0; border: 0; background: none; color: #fff; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.acc__head b { align-self: start; padding-top: 7px; font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: var(--track-mono); color: var(--fg-dim); transition: color .3s; }
+.acc__t { grid-column: 2; font-family: var(--font-display); font-weight: 700; font-size: 25px; line-height: 1; letter-spacing: -0.025em; text-transform: uppercase; word-spacing: .07em; }
+.acc__pm { grid-column: 3; grid-row: 1; justify-self: end; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: rgba(255, 255, 255, .08); transition: background-color .3s, color .3s; }
+.acc__pm .ico { grid-area: 1 / 1; width: 16px; height: 16px; }
+.acc__minus { display: none; }
+.acc__p { grid-column: 2 / 4; font-size: 14px; line-height: 1.4; color: var(--fg-dim); }
+.acc__head[aria-expanded="true"] b { color: var(--lime); }
+.acc__head[aria-expanded="true"] .acc__pm { background: #fff; color: #000; }
+.acc__head[aria-expanded="true"] .acc__plus { display: none; }
+.acc__head[aria-expanded="true"] .acc__minus { display: block; }
+.acc__head:focus-visible { outline: 2px solid var(--lime); outline-offset: -2px; border-radius: 12px; }
+.acc__list { list-style: none; margin: 0; padding: 0 0 16px 30px; display: grid; gap: 4px; }
+.acc__list[hidden] { display: none; }
+.acc__row { display: grid; grid-template-columns: minmax(0, 1fr) 16px; align-items: center; column-gap: 12px; min-height: 58px; padding: 9px 14px; border-radius: 16px; background: rgba(255, 255, 255, .05); color: #fff; text-decoration: none; }
+.acc__w { display: block; min-width: 0; }
+.acc__row b { display: block; font-size: 17px; font-weight: 500; line-height: 1.3; }
+.acc__row em { display: block; font-style: normal; font-size: 13.5px; line-height: 1.35; color: var(--fg-dim); }
+.acc__row .ico { width: 16px; height: 16px; color: #6b6a68; }
+.acc__row.is-current { color: var(--lime); box-shadow: inset 0 0 0 1.5px var(--lime); }
+.acc__row.is-current em { color: var(--fg-2); }
+.acc__row.is-current .ico { color: var(--lime); }
+.acc__row.is-soon b { color: #8d8c89; }
+.acc__row:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+@media (prefers-reduced-motion: no-preference) {
+  .acc__list:not([hidden]) > li { animation: accIn .4s var(--ease) both; }
+  .acc__list:not([hidden]) > li:nth-child(2) { animation-delay: .04s; }
+  .acc__list:not([hidden]) > li:nth-child(3) { animation-delay: .08s; }
+}
+@keyframes accIn { from { opacity: 0; transform: translateY(6px); } }
+
+.sheet__util { display: grid; grid-template-columns: 1.35fr 1fr .8fr; gap: 8px; margin-top: 28px; }
+.sheet__util a { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; padding: 0 8px; border-radius: 16px; background: rgba(255, 255, 255, .06); font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: var(--track-mono); text-transform: uppercase; text-align: center; text-decoration: none; color: var(--fg-2); }
+.sheet__util .ico { width: 12px; height: 12px; opacity: .7; }
+.sheet__util a:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+.sheet__end { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
+.menu__note { margin: 0; display: flex; align-items: center; gap: 10px; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: var(--track-mono); color: var(--fg-dim); }
+.menu__note .led { animation: none; }
+.sheet__cta { flex: none; padding: 12px 16px 16px; border-top: 1px solid var(--line); background: #0a0a0a; }
+.menu__cta { width: 100%; min-height: 56px; justify-content: space-between; padding: 0 22px 0 24px; font-size: 16px; }
+.sheet__os { display: inline-flex; align-items: center; gap: 12px; font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: var(--track-mono); opacity: .75; }
+@media (min-width: 700px) and (max-width: 1080px) {
+  .sheet__scroll { padding: 28px 40px 36px; }
+  .sheet__acct { max-width: 360px; }
+  .sheet__web { text-align: left; }
+  .acc__t { font-size: 34px; }
+  .acc__list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .sheet__util { max-width: 520px; }
+  .sheet__cta { padding: 16px 40px 20px; }
+}
+@media (max-width: 720px) {
+  .menu { top: 10px; height: calc(100svh - 20px); padding-top: 64px; }
+}
+@media (max-width: 360px) {
+  .sheet__scroll { padding-inline: 16px; }
+  .acc__t { font-size: 22px; }
+  .sheet__os { display: none; }
+  .menu__cta { justify-content: center; }
+}
