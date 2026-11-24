@@ -6,7 +6,6 @@
 @property --sorted { syntax: '<number>'; inherits: true; initial-value: 0; }
 .noise { isolation: isolate; overflow: clip; }
 @media (prefers-reduced-motion: no-preference) { .noise { transition: --sorted .7s var(--ease); } }
-.photo--noise::after { background: linear-gradient(90deg, rgba(5,5,5,.94) 0%, rgba(5,5,5,.74) 45%, rgba(5,5,5,.86) 100%), linear-gradient(180deg, rgba(5,5,5,1) 0%, rgba(5,5,5,0) 18%, rgba(5,5,5,0) 82%, rgba(5,5,5,1) 100%); }
 .noise__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) auto; gap: 40px clamp(32px, 4vw, 72px); align-items: center; }
 .noise__h { display: grid; gap: 0.12em; font-size: clamp(40px, min(5vw, 7.4svh), 84px); }
 .noise__a { transition: opacity .6s var(--ease), color .6s; }
@@ -82,45 +81,51 @@
 /* ── One night ─────────────────────────────────────────────────── */
 .night { position: relative; padding-block: var(--section-y); background: var(--ink); }
 .night__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; margin-bottom: 48px; }
-.night__clock { display: none; width: clamp(180px, 18vw, 280px); color: var(--lime); }
-.night__clock svg { width: 100%; height: auto; }
+/* The night, hour by hour: seven cells, shown while the night slides (pinned). */
+.night__cells { display: none; list-style: none; margin: 0; padding: 0; gap: 8px; }
+.night__cells .cell { width: 68px; height: 68px; border-radius: 23px; transition: background-color .4s var(--ease), color .4s var(--ease), box-shadow .4s var(--ease); }
 .night__track { display: grid; gap: 14px; padding-inline: var(--gutter); max-width: 1440px; margin: 0 auto; }
+/* Three flat fields: ink for the day, paper when the lights are on (load-in, pay), lime for the show. */
 .nt {
-  --c: var(--lime);
   position: relative; isolation: isolate; overflow: hidden;
   display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 28px; align-items: end;
-  padding: clamp(24px, 4vw, 48px); border-radius: var(--radius); background: #121212; border: 1px solid rgba(255,255,255,.07);
+  padding: clamp(24px, 4vw, 48px); border-radius: var(--radius); background: #111; color: #fff;
 }
-.nt .photo::after { background: linear-gradient(90deg, rgba(5,5,5,.9) 0%, rgba(5,5,5,.55) 55%, rgba(5,5,5,.35) 100%), linear-gradient(0deg, rgba(5,5,5,.85) 0%, rgba(5,5,5,0) 50%); }
 .nt__copy { max-width: 32em; }
-.nt__time { margin: 0 0 18px; color: var(--c); }
+.nt__time { display: flex; align-items: center; gap: 14px; margin: 0 0 22px; color: var(--fg-2); }
 .nt__title { margin: 0; font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: clamp(34px, 4.4vw, 72px); line-height: .9; letter-spacing: -0.03em; text-wrap: balance; }
 .nt__text { margin: 18px 0 0; max-width: 28em; font-size: 17px; line-height: 1.45; color: var(--fg-2); }
-.nt__link { display: inline-flex; align-items: center; gap: 8px; margin-top: 22px; font-family: var(--font-mono); font-size: 12px; font-weight: 600; letter-spacing: var(--track-mono); text-transform: uppercase; color: var(--lime); text-decoration: none; }
+.nt__link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 12px; font-family: var(--font-mono); font-size: 12px; font-weight: 600; letter-spacing: var(--track-mono); text-transform: uppercase; color: var(--lime); text-decoration: none; }
 .nt__link .ico { width: 15px; height: 15px; transition: transform .4s var(--ease); }
 .nt__link:hover .ico { transform: translateX(4px); }
 .nt__crop { width: clamp(220px, 30vw, 380px); aspect-ratio: 4 / 5; }
-.night__foot { display: none; }
+.nt--paper { background: var(--card); color: #000; }
+.nt--paper .nt__time, .nt--paper .nt__text { color: var(--ink-copy); }
+.nt--paper .cell { background: #000; color: #fff; }
+.nt--lime { background: var(--lime); color: #000; }
+.nt--lime .nt__time, .nt--lime .nt__text { color: #1a1a1a; }
+.nt--lime .cell { background: #000; color: var(--lime); }
+.nt--paper .nt__link, .nt--lime .nt__link { color: #000; }
+.nt--paper .nt__link:focus-visible, .nt--lime .nt__link:focus-visible { outline-color: #000; }
+.nt--paper .nt__crop, .nt--lime .nt__crop { box-shadow: 0 0 0 1px rgba(0,0,0,.12); }
 
-/* Pinned (desktop): the night slides sideways under a fixed head and clock. */
+/* Pinned (desktop): the night slides sideways under a fixed head and its seven cells. */
 .night.is-pinned { padding-block: 0; }
 .night.is-pinned .night__pin { height: 100svh; display: flex; flex-direction: column; padding-top: calc(var(--nav-h) + 28px); padding-bottom: 28px; overflow: hidden; }
-.night.is-pinned .night__head { margin-bottom: 24px; }
+.night.is-pinned .night__head { margin-bottom: 28px; }
 .night.is-pinned .night__head .h2 { font-size: clamp(40px, min(4.6vw, 7svh), 80px); }
-.night.is-pinned .night__clock { width: clamp(160px, 14vw, 240px); }
-.night.is-pinned .night__clock { display: block; }
+.night.is-pinned .night__cells { display: flex; }
 .night.is-pinned .night__track { flex: 1; min-height: 0; display: flex; gap: 20px; max-width: none; margin: 0; padding-inline: max(var(--gutter), calc((100vw - 1440px) / 2 + var(--gutter))); will-change: transform; }
 .night.is-pinned .nt { container-type: size; flex: none; width: min(80vw, 1120px); height: 100%; padding-block: 28px; grid-template-columns: minmax(0, 1fr) auto; align-items: center; opacity: .45; transition: opacity .6s var(--ease); }
 .night.is-pinned .nt.is-now { opacity: 1; }
 .night.is-pinned .nt__crop { width: min(30vw, calc((100cqh - 56px) * 0.8), 420px); }
 .night.is-pinned .nt__title { font-size: clamp(34px, min(4.4vw, 9cqh), 72px); }
-.night.is-pinned .night__foot { display: block; margin-top: 20px; }
-.night__bar { display: block; height: 2px; border-radius: 2px; background: rgba(255,255,255,.1); position: relative; overflow: hidden; }
-.night__bar::after { content: ""; position: absolute; inset: 0; background: var(--lime); transform-origin: 0 50%; transform: scaleX(var(--p, 0)); }
+@media (max-width: 1280px) { .night__cells .cell { width: 56px; height: 56px; border-radius: 19px; font-size: 11px; } .night__cells { gap: 6px; } }
 
 @media (max-width: 720px) {
-  .nt { grid-template-columns: 1fr; gap: 24px; padding: 28px 18px 18px; align-items: start; }
+  .nt { grid-template-columns: 1fr; gap: 24px; padding: 28px 18px 18px; align-items: start; border-radius: 32px; }
   .nt__crop { width: 100%; aspect-ratio: 5 / 4; --r: 20px; }
+  .nt__time .cell { width: 48px; height: 48px; border-radius: 16px; font-size: 11px; }
 }
 
 /* ── Rack: the channel explorer ─────────────────────────────────

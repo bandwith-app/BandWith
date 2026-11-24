@@ -1,34 +1,29 @@
 import { gsap } from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import type { Ctx } from '../core/boot';
-import { dotSvg } from './dotText';
 
 /**
  * "One night": one gig from the client's yes to the last payout.
- * Desktop: the section pins and the night slides sideways, an LED clock
- * keeps the time of the scene in view. Elsewhere: scenes stack vertically,
- * each with its own time.
+ * Desktop: the section pins and the night slides sideways; seven cells in
+ * the head keep the time: the scene in view is lit, the ones still to come
+ * are outlined. Elsewhere, and with reduced motion: scenes stack vertically,
+ * each with its own time in its own cell.
  */
 export function initNight(root: HTMLElement | null, ctx: Ctx) {
   if (!root) return;
   const pin = root.querySelector<HTMLElement>('[data-night-pin]');
   const track = root.querySelector<HTMLElement>('[data-night-track]');
-  const clockEl = root.querySelector<HTMLElement>('[data-night-clock]');
   const scenes = Array.from(root.querySelectorAll<HTMLElement>('[data-night-scene]'));
-  const bar = root.querySelector<HTMLElement>('[data-night-bar]');
+  const cells = Array.from(root.querySelectorAll<HTMLElement>('[data-night-cell]'));
   if (!pin || !track || !scenes.length) return;
 
-  let shown = '';
-  const setClock = (i: number) => {
-    const t = scenes[i]?.dataset.time ?? '';
-    if (!clockEl || t === shown) return;
-    shown = t;
-    clockEl.innerHTML = dotSvg(t, 0.12);
-    clockEl.setAttribute('aria-label', t);
+  let now = -1;
+  const setNow = (i: number) => {
+    if (i === now) return;
+    now = i;
     scenes.forEach((s, k) => s.classList.toggle('is-now', k === i));
-    if (!ctx.reduce) gsap.fromTo(clockEl.querySelectorAll('circle:not([opacity])'), { opacity: 0.2 }, { opacity: 1, duration: 0.35, stagger: { each: 0.004, from: 'random' } });
+    cells.forEach((c, k) => { c.classList.toggle('is-on', k === i); c.classList.toggle('is-next', k > i); });
   };
-  setClock(0);
+  setNow(0);
 
   if (ctx.reduce) return;
   const mm = gsap.matchMedia();
@@ -39,10 +34,7 @@ export function initNight(root: HTMLElement | null, ctx: Ctx) {
       x: () => -dist(), ease: 'none',
       scrollTrigger: {
         trigger: root, pin, start: 'top top', end: () => `+=${dist()}`, scrub: 0.6, anticipatePin: 1, invalidateOnRefresh: true,
-        onUpdate: (self) => {
-          bar?.style.setProperty('--p', self.progress.toFixed(4));
-          setClock(Math.min(scenes.length - 1, Math.round(self.progress * (scenes.length - 1))));
-        },
+        onUpdate: (self) => setNow(Math.min(scenes.length - 1, Math.round(self.progress * (scenes.length - 1)))),
       },
     });
     // Each scene's phone drifts a little against the slide (depth, not parallax text).
@@ -54,9 +46,5 @@ export function initNight(root: HTMLElement | null, ctx: Ctx) {
       }) : null;
     });
     return () => { drifts.forEach((d) => d?.kill()); tween.scrollTrigger?.kill(); tween.kill(); gsap.set(track, { x: 0 }); root.classList.remove('is-pinned'); };
-  });
-  mm.add('(max-width: 1080px), (max-height: 639px)', () => {
-    const sts = scenes.map((s, i) => ScrollTrigger.create({ trigger: s, start: 'top 55%', end: 'bottom 55%', onToggle: (self) => self.isActive && setClock(i) }));
-    return () => sts.forEach((s) => s.kill());
   });
 }

@@ -18,13 +18,6 @@ import { pageAnswers } from './answersRender';
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const ico = (id: Icon, cls = 'ico') => `<svg class="${cls}" aria-hidden="true"><use href="#i-${id}"/></svg>`;
 
-/** The hero photo behind each channel (site/public/photos). */
-const PHOTO: Record<string, string> = {
-  'calendar-gigs': 'club-gig', 'quotes-contracts': 'phone-dark', money: 'phone-dark', 'rehearsals-polls': 'bass-close',
-  chat: 'phone-dark', songs: 'bass-close', stage: 'stage-empty', 'stage-plot-rider': 'stage-empty', people: 'club-gig',
-  privacy: 'phone-dark', devices: 'club-gig',
-};
-
 /** Counts written as words: "And ten more", "Six short articles". */
 export const WORDS = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve'];
 
@@ -61,13 +54,46 @@ export function pageHead(slug: string) {
   );
 }
 
+/**
+ * The hero is built on the mark's own grid (brand/bandwith-mark.svg): three
+ * columns of rounded squares, the middle one an empty cell over a tall cell.
+ * The tall cell has a phone's shape, so the page's own screen lives there;
+ * the page's chips sit in four cells, the first of them the lime one; the
+ * empty cell stays empty. The cells repeat the chip list for the eye only.
+ */
+const MARK_CELLS = ['3 / 1', '1 / 2', '3 / 2', '1 / 3']; // column / row of chips 1–4; (1,1) and (3,3) stay plain
+function heroMark(page: ChannelPage) {
+  const chips = page.hero.chips.slice(0, 4);
+  const cell = (at: string, inner = '', lime = false) => `<div class="mk__c${lime ? ' mk__c--lime' : ''}" style="grid-area: ${at.split(' / ').reverse().join(' / ')}">${inner}</div>`;
+  const chip = (i: number) => (chips[i] ? `${ico(chips[i].icon)}<span>${esc(chips[i].label)}</span>` : '');
+  return (
+    `<div class="mk fhero__mark" data-fh-phone>` +
+      `<div class="mk__cells" aria-hidden="true">` +
+        cell('1 / 1') + cell(MARK_CELLS[0], chip(0), true) + cell(MARK_CELLS[1], chip(1)) + cell(MARK_CELLS[2], chip(2)) + cell(MARK_CELLS[3], chip(3)) + cell('3 / 3') +
+      `</div>` +
+      // The whole screen, set in from the cell's round corners so nothing of it is cut.
+      `<div class="mk__tall"><div class="crop mk__screen" data-crop="0 1"><img class="crop__img" src="${shot(page.hero.shot)}" alt="${esc(page.hero.alt)}" width="780" height="1688" fetchpriority="high" decoding="async" /></div></div>` +
+    `</div>`
+  );
+}
+
+/** The mark alone, as a sign: `spot` is what sits in one of its cells (an arrow), `at` says which. */
+function markSign(cls: string, spot: string, at: 'empty' | 'last', href?: string) {
+  // By the next channel the mark is also a way there (the name beside it is the link people read).
+  const [open, close] = href ? [`a href="${href}" tabindex="-1"`, 'a'] : ['div', 'div'];
+  const cells = ['1 / 1', '1 / 3', '2 / 1', '2 / 3', '3 / 1'].map((a) => `<i style="grid-area: ${a}"></i>`).join('');
+  return (
+    `<${open} class="mk mk--sign ${cls}" aria-hidden="true">${cells}<i class="mk__tall" style="grid-area: 2 / 2 / 4 / 3"></i>` +
+    (at === 'last' ? `<i class="mk__spot mk__spot--lime" style="grid-area: 3 / 3">${spot}</i>` : `<i style="grid-area: 3 / 3"></i><i class="mk__spot" style="grid-area: 1 / 2">${spot}</i>`) +
+    `</${close}>`
+  );
+}
+
 function hero(page: ChannelPage, ch: Channel) {
   const id = `${page.slug}-h`;
-  const photo = PHOTO[page.slug] ?? 'stage-empty';
   const tag = `CH ${pad2(ch.ch)} · ${esc(ch.name)}`;
   return (
     `<section class="fhero" aria-labelledby="${id}">` +
-      `<div class="photo fhero__photo" aria-hidden="true"><img src="/photos/${photo}-1200.webp" srcset="/photos/${photo}-1200.webp 1200w, /photos/${photo}-2400.webp 2400w" sizes="100vw" alt="" fetchpriority="high" decoding="async" /></div>` +
       `<div class="wrap fhero__grid">` +
         `<div class="fhero__copy">` +
           `<p class="label fhero__ch" data-fh><span class="led"></span>${tag}</p>` +
@@ -75,13 +101,11 @@ function hero(page: ChannelPage, ch: Channel) {
           `<p class="lead fhero__lead" data-fh>${esc(page.hero.lead)}</p>` +
           `<ul class="chips fhero__chips" data-fh>${page.hero.chips.map((c) => `<li>${ico(c.icon)}${esc(c.label)}</li>`).join('')}</ul>` +
           `<div class="fhero__cta" data-fh>` +
-            `<a class="btn btn--lime" href="${page.demo ? '#try' : '#how'}" data-magnetic>${page.demo ? 'Try it here' : 'See how it works'} <svg class="ico btn__arrow btn__arrow--down" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>` +
+            `<a class="btn btn--lime" href="${page.demo ? '#try-it' : '#how'}" data-magnetic>${page.demo ? 'Try it here' : 'See how it works'} <svg class="ico btn__arrow btn__arrow--down" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>` +
             `<a class="btn btn--ghost" href="/get/">Get the app ${ico('arrow-up-right', 'ico btn__arrow')}</a>` +
           `</div>` +
         `</div>` +
-        `<div class="fhero__phone" data-fh-phone>` +
-          `<div class="crop fhero__crop" data-crop="${page.hero.region.join(' ')}"><img class="crop__img" src="${shot(page.hero.shot)}" alt="${esc(page.hero.alt)}" width="780" height="1688" fetchpriority="high" decoding="async" /><span class="crop__tag"><i></i>${tag}</span></div>` +
-        `</div>` +
+        heroMark(page) +
       `</div>` +
     `</section>`
   );
@@ -106,15 +130,20 @@ function flow(page: ChannelPage) {
   );
 }
 
-function demo(page: ChannelPage, bone: boolean) {
+/**
+ * "Try it": a lime band says what you are about to do (the mark points at
+ * it from its empty cell), then the demo itself on paper.
+ */
+function demo(page: ChannelPage) {
   const d = page.demo;
   const body = d ? DEMOS[d.kind]?.() : '';
   if (!d || !body) return '';
   return (
-    `<section class="sec${bone ? ' sec--bone' : ''} try" id="try" aria-labelledby="try-h"${bone ? ' data-light' : ''}><div class="wrap">` +
-      `<div class="head"><p class="label">Try it</p><h2 class="h2" id="try-h" data-split>${h2(d.heading)}</h2><p class="lead">${esc(d.lead)}</p></div>` +
-      body +
-    `</div></section>`
+    `<section class="band" id="try-it" aria-labelledby="try-h" data-light><div class="wrap band__grid">` +
+      `<div><p class="label">Try it</p><h2 class="h2 band__h" id="try-h" data-split>${h2(d.heading)}</h2><p class="band__lead">${esc(d.lead)}</p></div>` +
+      markSign('band__mark', ico('arrow-right'), 'empty') +
+    `</div></section>` +
+    `<section class="sec sec--bone try" id="try" aria-labelledby="try-h" data-light><div class="wrap">${body}</div></section>`
   );
 }
 
@@ -190,16 +219,16 @@ function next(ch: Channel, bone: boolean) {
   const n = CHANNELS[(CHANNELS.indexOf(ch) + 1) % CHANNELS.length];
   const name = `<b>CH ${pad2(n.ch)}</b> ${esc(n.name)}`;
   return (
-    `<section class="sec${bone ? ' sec--bone' : ''} nextch" aria-label="Next channel"${bone ? ' data-light' : ''}><div class="wrap nextch__inner">` +
+    `<section class="sec${bone ? ' sec--bone' : ''} nextch" aria-label="Next channel"${bone ? ' data-light' : ''}><div class="wrap nextch__grid"><div class="nextch__inner">` +
       `<p class="label">Next channel</p>` +
       (n.live
-        ? `<a class="nextch__name nextch__link" href="${channelUrl(n)}">${name} ${ico('arrow-right', 'ico nextch__arrow')}</a><p class="nextch__line">${esc(n.line)}</p>`
+        ? `<a class="nextch__name nextch__link" href="${channelUrl(n)}">${name}</a><p class="nextch__line">${esc(n.line)}</p>`
         : `<p class="nextch__name">${name}</p><p class="nextch__line">${esc(n.line)} <span class="soon">Page coming soon</span></p>`) +
       `<div class="nextch__cta">` +
         `<a class="btn btn--ghost" href="/#rack">All eleven channels ${ico('arrow-right', 'ico btn__arrow')}</a>` +
         `<a class="btn btn--lime" href="/get/" data-magnetic>Get the app ${ico('arrow-up-right', 'ico btn__arrow')}</a>` +
       `</div>` +
-    `</div></section>`
+    `</div>${markSign('nextch__mark', ico('arrow-right'), 'last', n.live ? channelUrl(n) : undefined)}</div></section>`
   );
 }
 
@@ -207,7 +236,7 @@ export function pageMain(slug: string) {
   const { page, ch } = getPage(slug);
   // Each section keeps the tone its styles are made for (as on Stage).
   return [
-    hero(page, ch), flow(page), demo(page, true), roles(page, false),
+    hero(page, ch), flow(page), demo(page), roles(page, false),
     details(page, true), learn(page, true), pageAnswers(slug), next(ch, false),
   ].join('');
 }

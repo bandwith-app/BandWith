@@ -49,7 +49,14 @@ rack and the footer are generated from that list.
   section links.
 - Motion: at most two pinned scenes per page and none below 1081px or with
   reduced motion; everything works and reads without JavaScript animation.
-- Photos (`public/photos`): Unsplash, toned Ink → Lime; credits in the footer.
+- No photos. What gives a page its rhythm is the brand's own mark and three
+  flat fields, ink, paper and lime: a channel hero is built on the mark's grid
+  (`.mk` in `styles/feature.css`: the page's screen in the tall cell, its
+  chips in four cells, one lime, the empty cell empty; scaled to the page on
+  a phone, never cropped), "Try it" is a lime band above the demo on paper,
+  and "One gig" on Home gives the day ink, load-in and pay paper, the show
+  lime, with the seven times in cells (`.cell`). `test/no-photos.test.ts`
+  keeps photos out.
 
 ## Languages
 

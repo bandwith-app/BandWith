@@ -275,7 +275,7 @@ export function llmsTxt(): string {
  * is full" and the lines for invited people: `hidden` in the HTML, named here
  * too so they stay out whatever hides them).
  */
-const SKIP = '#try, [aria-hidden="true"], script, style, template, svg, form, button, nav, .crop, [role="img"], .sr-only, [data-hero-picks], [hidden], .full, .full__inv-shut, .gdoors__inv, [data-cap-show]';
+const SKIP = '#try, #try-it, [aria-hidden="true"], script, style, template, svg, form, button, nav, .crop, [role="img"], .sr-only, [data-hero-picks], [hidden], .full, .full__inv-shut, .gdoors__inv, [data-cap-show]';
 const BLOCKS = new Set(['H1', 'H2', 'H3', 'H4', 'P', 'LI', 'SUMMARY', 'TABLE', 'FIGCAPTION']);
 
 function textOf(el: Element): string {
@@ -367,7 +367,7 @@ export function hostingConfig(): { redirects: Redirect[]; headers: Header[] } {
     redirects,
     headers: [
       { source: '/assets/(.*)', headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }] },
-      { source: '/(shots|photos|og|fonts|brand|icons)/(.*)', headers: [{ key: 'Cache-Control', value: 'public, max-age=604800' }] },
+      { source: '/(shots|og|fonts|brand|icons)/(.*)', headers: [{ key: 'Cache-Control', value: 'public, max-age=604800' }] },
       { source: '/(llms|llms-full).txt', headers: [{ key: 'X-Robots-Tag', value: 'noindex' }, { key: 'Content-Type', value: 'text/plain; charset=utf-8' }] },
     ],
   };
