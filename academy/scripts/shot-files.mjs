@@ -1,18 +1,39 @@
 // Rebuilds academy/content/shotFiles.ts from the files in academy/public/shots
-// (<shot id>@<device>.webp). Run after adding or removing a capture:
+// (<shot id>@<device>.webp): the devices each shot was captured on and the pixel
+// size of every file, which the guide and the static pages give to each <img>.
+// Run after adding, replacing or removing a capture:
 //   node academy/scripts/shot-files.mjs
-import { readdirSync, writeFileSync } from 'node:fs';
+import { closeSync, openSync, readSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+/** Width and height from a WebP header (VP8, VP8L, VP8X). */
+function webpSize(file) {
+  const fd = openSync(file, 'r');
+  const b = Buffer.alloc(30);
+  readSync(fd, b, 0, 30, 0);
+  closeSync(fd);
+  if (b.toString('ascii', 0, 4) !== 'RIFF' || b.toString('ascii', 8, 12) !== 'WEBP') throw new Error(`Not a WebP: ${file}`);
+  const chunk = b.toString('ascii', 12, 16);
+  if (chunk === 'VP8 ') return [b.readUInt16LE(26) & 0x3fff, b.readUInt16LE(28) & 0x3fff];
+  if (chunk === 'VP8L') {
+    const [b0, b1, b2, b3] = [b[21], b[22], b[23], b[24]];
+    return [1 + (((b1 & 0x3f) << 8) | b0), 1 + (((b3 & 0xf) << 10) | (b2 << 2) | ((b1 & 0xc0) >> 6))];
+  }
+  if (chunk === 'VP8X') return [1 + b.readUIntLE(24, 3), 1 + b.readUIntLE(27, 3)];
+  throw new Error(`Unknown WebP chunk ${chunk}: ${file}`);
+}
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ORDER = ['phone', 'tablet', 'web', 'duoClosed', 'duoBook', 'duoLaptop'];
 const files = {};
+const sizes = [];
 for (const f of readdirSync(join(here, '../public/shots')).sort()) {
   const m = /^([a-z0-9-]+)@([A-Za-z]+)\.webp$/.exec(f);
   if (!m) throw new Error(`Unexpected file in public/shots: ${f} (want <id>@<device>.webp)`);
   if (!ORDER.includes(m[2])) throw new Error(`Unknown device in ${f}`);
   (files[m[1]] ??= []).push(m[2]);
+  sizes.push(`  '${m[1]}@${m[2]}': [${webpSize(join(here, '../public/shots', f)).join(', ')}],`);
 }
 const lines = Object.keys(files)
   .sort()
@@ -25,6 +46,11 @@ import type { ShotDevice } from './types';
 /** The devices each screenshot was captured on. */
 export const SHOT_FILES: Record<string, ShotDevice[]> = {
 ${lines.join('\n')}
+};
+
+/** Pixel size of each file, \`<id>@<device>\` → [width, height]: every <img> declares it, so the page doesn't jump as captures load. */
+export const SHOT_SIZES: Record<string, readonly [number, number]> = {
+${sizes.join('\n')}
 };
 `,
 );
