@@ -4,6 +4,8 @@ import path from 'path';
 import { PAGES } from '../src/content/pages';
 import { ANSWERS, HOME_ANSWERS } from '../src/content/answers';
 import { CHANNELS } from '../src/content/features';
+import { FRAGMENTS } from '../src/content/fragments';
+import { BY_ID } from '../../academy/content';
 
 /**
  * What the app does, the site says. Each row is a feature that shipped (or is on
@@ -11,7 +13,10 @@ import { CHANNELS } from '../src/content/features';
  * for it. Labels are the app's own (see the Academy articles).
  */
 const SITE = path.resolve(__dirname, '..');
-const text = (slug: string) => JSON.stringify(PAGES[slug]);
+/** What a channel page says: its content, the fragments it draws and the questions at its end. */
+const drawn = (slug: string) =>
+  PAGES[slug].details.featured.map((f) => ('fragment' in f.ui ? FRAGMENTS[f.ui.fragment].html.replace(/<[^>]+>/g, ' ') : '')).join(' ');
+const text = (slug: string) => JSON.stringify(PAGES[slug]) + drawn(slug) + JSON.stringify(ANSWERS[slug] ?? []);
 const home = readFileSync(path.join(SITE, 'index.html'), 'utf8');
 const get = readFileSync(path.join(SITE, 'get/index.html'), 'utf8');
 
@@ -23,30 +28,43 @@ const FEATURES: [string, string, RegExp[]][] = [
   ['a note on a lyric line (#225)', 'songs', [/Note for me/, /Note for the band/]],
   ['From rehearsals on the song page (#211)', 'songs', [/From rehearsals/, /Set on the song/]],
   ['music symbols in charts (#228)', 'songs', [/What the symbols mean/, /coda/i]],
-  ['stage manager (#223, #243)', 'stage', [/Stage manager: play audio here/, /Audio ready/, /Now playing/]],
+  ['stage manager (#223, #243)', 'stage', [/stage manager plays the songs/i, /Audio ready/, /Now playing/]],
   ['full screen (#228)', 'stage', [/Full screen/]],
   ['Song only and pedals (#236)', 'stage', [/Song only/, /page-turner pedal/i]],
-  ['stage manager audio ahead of the gig (#246)', 'stage', [/Audio on this device/, /Download audio/, /Try again/, /3 days before a confirmed gig/]],
-  ['Full screen is Song only, one way in (#245)', 'stage', [/Full screen opens Song only/, /number and title/]],
+  ['Full screen is Song only, one way in (#245)', 'stage', [/Full screen is the song/, /Song only: its number and title/]],
   ['calendar sync for everyone (#220)', 'calendar-gigs', [/Calendar sync/, /Apple/, /Google/, /Outlook/, /Add to calendar/]],
   ['venue search finds venues by name (#222)', 'calendar-gigs', [/by name/]],
   ['pending invites (#224)', 'people', [/Invited/, /Send again/, /Cancel invite/]],
   ['final balance (#229)', 'quotes-contracts', [/FINAL BALANCE/, /Mark deposit received/, /Mark as paid/, /Stripe/]],
   ['opt-in usage statistics in the apps (#238)', 'privacy', [/Anonymous usage statistics/]],
   // Release d3515141 (11-22). Labels as the app shows them (src/lib/i18n, English source).
-  ['the click over Bluetooth (#274)', 'stage', [/reaches the phone apps nearby over Bluetooth/, /same click over Bluetooth/]],
-  ['live without signal: say yes once (#267, #269)', 'stage', [/next 7 days/, /Download and keep it automatic/, /Settings › Offline & live/]],
+  ['the click over Bluetooth (#274)', 'stage', [/same click over Bluetooth/]],
+  ['live without signal: say yes once (#267, #269)', 'stage', [/Say yes once/, /next 7 days/]],
   ['who is ready offline, Remind (#269)', 'stage', [/Offline: 4 of 5 members ready/, /Remind/]],
   ['changes wait for signal (#270, #271)', 'devices', [/changes waiting for signal/, /Settings › Offline & live/, /next 7 days/, /Wi-Fi only/]],
-  ['count-in (#290), over Bluetooth too (#311)', 'stage', [/Count in/, /full-screen countdown/, /Vibrate on every beat/, /Sound in headphones/, /reaches the phone apps over Bluetooth, on the same beat/, /in a browser it needs the internet/]],
-  ['follow the tempo (#272, #276)', 'stage', [/Follow the tempo/, /Next: Bridge in 4 bars/, /Hold to repeat a section/, /needs a BPM/]],
+  ['count-in (#290), over Bluetooth too (#311)', 'stage', [/Count in/, /full-screen countdown/, /Vibrate on every beat/, /Sound in headphones/]],
+  ['follow the tempo (#272, #276)', 'stage', [/Follow the tempo/, /Next: Chorus in 2 bars/, /bar being played is lit/]],
   ['voice parts (#264, #266)', 'songs', [/Lead, 2nd voice, Backing, All or Spoken/, /Highlight my part/, /who sings what/]],
-  ['voice parts on stage (#264)', 'stage', [/Highlight my part/, /who sings what/]],
+  ['voice parts on stage (#264)', 'stage', [/Highlight my part/, /2nd voice, Backing, All and Spoken/]],
   ['song tempo fields for the stage (#272)', 'songs', [/time signature/, /count-in of 1 or 2 bars/]],
   ['date on hold (#294)', 'quotes-contracts', [/Possible gig – keep the date free/, /I’m free/, /I can’t/, /No client, no fee/]],
   ['one date of a repeating rehearsal (#297)', 'rehearsals-polls', [/Delete this date/, /Delete the whole series/]],
-  ['error reports, on by default (#277)', 'privacy', [/Send crash reports/, /on by default/, /No name, email or account id/, /14 days/, /Firebase Crashlytics only with that yes/]],
+  ['error reports, on by default (#277)', 'privacy', [/Send crash reports/, /on by default/i, /no name, email or account id/i, /14 days/, /Firebase Crashlytics only with that yes/]],
   ['the hold and the offline copies are private (#294, #267)', 'privacy', [/Possible gig – keep the date free/, /never fees or contracts/]],
+];
+
+/**
+ * Since "The small things" became three panels and one line per item (2026-11),
+ * the page keeps the capability and the Guide keeps the steps. For these, the
+ * page still names the feature (above) and links the article that has the detail.
+ */
+const IN_THE_GUIDE: [string, string, string, RegExp[]][] = [
+  ['turning the stage manager on (#223)', 'stage', 'stage-manager', [/Stage manager: play audio here/]],
+  ['stage manager audio ahead of the gig (#246)', 'stage', 'stage-manager', [/Audio on this device/, /Download audio/, /Try again/, /3 days before a confirmed gig/]],
+  ['the click over Bluetooth (#274)', 'stage', 'stage-click', [/Bluetooth/]],
+  ['say yes once (#267)', 'stage', 'live-mode-offline', [/Download and keep it automatic/]],
+  ['the count-in over Bluetooth and in a browser (#311)', 'stage', 'count-in', [/Bluetooth/, /same beat/, /in a browser/]],
+  ['follow the tempo: hold, and the BPM it needs (#272, #276)', 'stage', 'follow-the-tempo', [/\*\*Hold\*\* to repeat the current section/, /Add a BPM to follow this song/, /Next: Bridge in 4 bars/]],
 ];
 
 /** What the app no longer does (or never did): these words must not come back. */
@@ -64,6 +82,14 @@ describe('the site covers the app', () => {
     it(`${slug}: ${what}`, () => {
       const t = text(slug);
       expect(words.filter((w) => !w.test(t)).map(String)).toEqual([]);
+    });
+  }
+
+  for (const [what, slug, id, words] of IN_THE_GUIDE) {
+    it(`${slug} links the Guide article with: ${what}`, () => {
+      expect(PAGES[slug].learn.map((l) => l.id), `${slug} → ${id}`).toContain(id);
+      const article = JSON.stringify(BY_ID.get(id));
+      expect(words.filter((w) => !w.test(article)).map(String)).toEqual([]);
     });
   }
 

@@ -78,17 +78,124 @@ html.has-motion .fhero [data-fh], html.has-motion [data-fh-phone] { visibility: 
 .no::before { content: ""; width: 8px; height: 2px; background: currentColor; }
 .dash { color: var(--fg-dim); }
 
-/* ── Bento of details ──────────────────────────────────────────── */
+/* ── The small things: three up, then the spec sheet ───────────── */
 .details + .learn.sec--bone { margin-top: 0; padding-top: calc(var(--section-y) * .5); border-radius: 0; }
 .details.sec--bone { padding-bottom: calc(var(--section-y) * .5); }
-.bento { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.bento__c { display: grid; align-content: start; gap: 10px; min-height: 220px; padding: 28px; border-radius: var(--radius-md); background: #121212; border: 1px solid rgba(255,255,255,.07); color: #fff; }
-.bento__c--wide { grid-column: span 2; }
-.bento__c .ico { width: 26px; height: 26px; color: var(--lime); margin-bottom: 18px; }
-.bento__c b { font-family: var(--font-display); font-weight: 700; font-size: 22px; line-height: 1; text-transform: uppercase; letter-spacing: -0.01em; }
-.bento__c p { margin: 0; color: var(--fg-2); font-size: 16px; line-height: 1.45; }
-@media (max-width: 1080px) { .bento { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 600px) { .bento { grid-template-columns: minmax(0, 1fr); } .bento__c--wide { grid-column: auto; } .bento__c { min-height: 0; } }
+.details .head { margin-bottom: 64px; }
+
+/* Three numbered panels: the product on top, then who and what. */
+.feats { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.feat { display: grid; grid-template-rows: 324px auto; align-content: start; border-radius: var(--radius-md); background: #0c0c0c; color: #fff; overflow: hidden; }
+.feat__ui { display: grid; align-content: center; gap: 14px; min-width: 0; padding: 28px 28px 0; }
+.feat__ui .frag { font-size: 15px; }
+.feat__ui .fr-brings { font-size: 17px; }
+.feat__crop { --r: 18px; width: 100%; height: 296px; background: #000; box-shadow: 0 0 0 1px rgba(255,255,255,.1); }
+.feat__txt { padding: 28px 28px 30px; }
+.feat__n { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0; color: #9a9996; }
+.feat__no { color: var(--lime); }
+.feat__t { margin: 16px 0 0; font-family: var(--font-display); font-weight: 700; font-size: clamp(26px, 2.25vw, 32px); line-height: .95; letter-spacing: -0.02em; text-transform: uppercase; word-spacing: .07em; text-wrap: balance; }
+.feat__p { margin: 14px 0 0; font-size: 17px; line-height: 1.45; color: var(--fg-2); }
+
+/* The rest, one line each: a label on the left, two columns of lines, no boxes. */
+.spec { margin-top: 88px; border-top: 1px solid #000; }
+.spec__head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin: 0; padding: 14px 0 0; color: #000; }
+.spec__head span + span { color: #5c5b5a; }
+.spec__g { display: grid; grid-template-columns: 248px minmax(0, 1fr); padding: 36px 0 4px; border-top: 1px solid rgba(0,0,0,.14); }
+.spec__head + .spec__g { border-top: 0; padding-top: 32px; }
+.spec__l { display: flex; gap: 10px; align-items: flex-start; margin: 0; padding-top: 7px; color: #000; }
+.spec__l b { color: #5c5b5a; font-weight: 500; }
+.spec__items { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 56px; }
+.spec__i { padding: 0 0 34px; }
+.spec__i h4 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 24px; line-height: 1; letter-spacing: -0.015em; text-transform: uppercase; word-spacing: .07em; text-wrap: balance; }
+/* Reading size: 18px on a measure of about 60 characters (the mockup's 16px was too small at 1440). */
+.spec__i p { margin: 10px 0 0; max-width: 33em; font-size: 18px; line-height: 1.45; color: var(--ink-copy); text-wrap: pretty; }
+
+@media (max-width: 1080px) {
+  .feats { grid-template-columns: minmax(0, 1fr); }
+  .feat { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto; align-items: center; }
+  .feat__ui { padding: 28px 0 28px 28px; }
+  .feat__crop { height: auto; aspect-ratio: 5 / 4; }
+  .spec__g { grid-template-columns: 190px minmax(0, 1fr); }
+  .spec__items { gap: 0 32px; }
+  .spec__i p { font-size: 17px; }
+}
+@media (max-width: 720px) {
+  .details .head { margin-bottom: 40px; }
+  .feat { grid-template-columns: minmax(0, 1fr); }
+  .feat__ui { padding: 20px 20px 0; }
+  .feat__ui .frag { font-size: 14px; }
+  .feat__ui .fr-brings { font-size: 15px; }
+  .feat__txt { padding: 22px 20px 24px; }
+  .feat__p { font-size: 16px; }
+  .spec { margin-top: 56px; }
+  .spec__head span + span { display: none; }
+  .spec__g { grid-template-columns: minmax(0, 1fr); padding: 26px 0 0; }
+  .spec__head + .spec__g { padding-top: 26px; }
+  .spec__l { padding: 0 0 18px; }
+  .spec__items { grid-template-columns: minmax(0, 1fr); }
+  .spec__i { padding-bottom: 24px; }
+  .spec__i h4 { font-size: 21px; }
+  .spec__i p { margin-top: 8px; font-size: 16.5px; }
+}
+
+/* ── Drawn fragments (content/fragments.ts): the app's own parts, in em ── */
+.frag { color: #fff; font-family: var(--font-text); line-height: 1.3; }
+.frag p { margin: 0; }
+.fr-m { font-family: var(--font-mono); font-weight: 500; letter-spacing: var(--track-mono); text-transform: uppercase; }
+.fr-dot { display: inline-block; flex: none; width: .5em; height: .5em; border-radius: 50%; background: var(--lime); }
+.fr-card { border-radius: 1.25em; background: #1c1c1c; padding: 1em 1.1em; }
+.fr-pill { display: inline-flex; align-items: center; gap: .5em; height: 2.6em; padding: 0 1.1em; border-radius: 99em; border: 1px solid rgba(255,255,255,.3); font-family: var(--font-display); font-weight: 700; font-size: .8em; text-transform: uppercase; white-space: nowrap; }
+.fr-pill .ico { width: 1.15em; height: 1.15em; }
+.fr-pill--sm { font-size: .68em; }
+.fr-pill--lime { background: var(--lime); border-color: var(--lime); color: #000; }
+.fr-pill--dark { background: #1c1c1c; border-color: #1c1c1c; }
+
+/* Follow the tempo: four bars, the one being played is lit; the strip says what comes next. */
+.fr-tempo { display: grid; gap: .8em; }
+.fr-tempo__top { display: flex; justify-content: space-between; gap: 1em; font-size: .68em; color: #9a9996; }
+.fr-tempo__sec { margin-bottom: -.5em !important; font-size: .68em; color: #9a9996; }
+.fr-bars { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .4em; }
+.fr-bars span { display: flex; align-items: center; height: 2.7em; padding: 0 .8em; border-radius: .8em; background: rgba(255,255,255,.07); font-family: var(--font-display); font-weight: 700; font-size: 1.05em; color: #c9c8c5; }
+.fr-bars .is-on { background: var(--lime); color: #000; }
+.fr-lyr { display: grid; gap: .3em; font-size: 1.12em; letter-spacing: -0.01em; }
+.fr-lyr span { color: #8a8986; }
+.fr-lyr .is-on { color: #fff; }
+.fr-next { display: flex; align-items: center; gap: .6em; height: 2.7em; padding: 0 1em; border-radius: .8em; background: #000; font-size: .72em; }
+
+/* Ready before the gig: one cell per member, the one without the setlist left empty. */
+.fr-roster { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.fr-roster li { display: grid; gap: 8px; justify-items: center; font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: var(--track-mono); text-transform: uppercase; color: #9a9996; }
+.fr-roster i { display: block; width: 100%; height: 34px; border-radius: 11px; background: var(--lime); }
+.fr-roster .is-out i { background: none; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.3); }
+.fr-roster .is-out { color: #fff; }
+.fr-off { display: grid; gap: .9em; }
+.fr-off__row { display: grid; grid-template-columns: 1.5em minmax(0, 1fr); gap: .75em; align-items: start; }
+.fr-off__row > .ico { width: 1.3em; height: 1.3em; margin-top: .15em; color: #c9c8c5; }
+.fr-off b { display: block; font-weight: 500; font-size: 1em; letter-spacing: -0.01em; }
+.fr-off small { display: block; margin-top: .25em; font-size: .78em; line-height: 1.35; color: #9a9996; }
+.fr-off__who { display: flex; align-items: center; justify-content: space-between; gap: 1em; padding-top: .8em; border-top: 1px solid rgba(255,255,255,.1); font-size: .95em; }
+
+/* The stage manager: one player, every phone on the same song. */
+.fr-mgr { display: grid; gap: .8em; border: 1px solid var(--lime); background: #000; }
+.fr-mgr__top { display: grid; grid-template-columns: 1.5em minmax(0, 1fr) auto; gap: .6em; align-items: center; }
+.fr-mgr__top > .ico { width: 1.2em; height: 1.2em; color: var(--lime); }
+.fr-mgr__top .fr-m { display: block; font-size: .64em; }
+.fr-mgr__top b { display: block; font-weight: 400; font-size: .92em; color: #c9c8c5; }
+.fr-mgr__song { display: flex; justify-content: space-between; gap: 1em; font-family: var(--font-mono); font-size: .8em; }
+.fr-mgr__line { height: 3px; border-radius: 2px; background: rgba(255,255,255,.14); }
+.fr-mgr__line i { display: block; width: 6%; height: 100%; border-radius: 2px; background: var(--lime); }
+.fr-mgr__btns { display: grid; grid-template-columns: 1.4fr 1fr; gap: .45em; }
+.fr-mgr__btns .fr-pill { justify-content: center; height: 3em; font-size: .85em; }
+.fr-pause { display: inline-block; width: .75em; height: .9em; border-inline: .25em solid currentColor; }
+.fr-stop { display: inline-block; width: .8em; height: .8em; border-radius: .2em; border: 2px solid currentColor; }
+.fr-fan { position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding-top: 22px; }
+.fr-fan::before { content: ""; position: absolute; left: 16.66%; right: 16.66%; top: 10px; height: 12px; border: 1.5px solid rgba(255,255,255,.3); border-bottom: 0; border-radius: 8px 8px 0 0; }
+.fr-fan::after { content: ""; position: absolute; left: calc(50% - .75px); top: 0; width: 1.5px; height: 10px; background: rgba(255,255,255,.3); }
+.fr-mini { display: grid; align-content: center; justify-items: start; gap: .5em; min-width: 0; padding: .8em; border-radius: 1em; background: #000; border: 1px solid rgba(255,255,255,.18); }
+/* "In riproduzione", "Sonando ahora": the label may take two lines, never leave the card. */
+.fr-mini .fr-m { display: flex; align-items: baseline; gap: .5em; max-width: 100%; font-size: .64em; line-height: 1.25; color: var(--lime); }
+.fr-mini .fr-dot { transform: translateY(-.1em); }
+.fr-mini b { font-family: var(--font-display); font-weight: 700; font-size: 1.05em; letter-spacing: -0.02em; }
 
 /* ── Learn: Academy articles ───────────────────────────────────── */
 .learn__list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 40px; }
@@ -125,3 +232,18 @@ html.has-motion .fhero [data-fh], html.has-motion [data-fh-phone] { visibility: 
   .rtable td:nth-of-type(2)::before { content: "Member"; }
   .rtable td:nth-of-type(3)::before { content: "Deputy"; }
 }
+
+/* Who brings what: the band's card in ink, the venue's in paper, one item per line. */
+.fr-brings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55em; }
+.fr-brings__card { display: grid; align-content: start; gap: 1em; min-width: 0; min-height: 10.5em; padding: 1.15em 1.1em 1.3em; border-radius: 1.3em; background: #000; box-shadow: inset 0 0 0 1px rgba(255,255,255,.14); }
+.fr-brings__card .fr-m { font-size: .64em; color: #9a9996; }
+.fr-brings__card ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .55em; font-size: .95em; line-height: 1.25; }
+.fr-brings__card li { display: grid; grid-template-columns: .5em minmax(0, 1fr); gap: .6em; align-items: baseline; }
+.fr-brings__card li::before { content: ""; width: .42em; height: .42em; border-radius: .14em; background: var(--lime); transform: translateY(-.12em); }
+.fr-brings__card--venue { background: #f2f1ee; color: #000; box-shadow: none; }
+.fr-brings__card--venue .fr-m { color: #5c5b5a; }
+.fr-brings__card--venue li::before { background: #000; }
+.fr-agreed { display: flex; align-items: center; gap: .7em; padding: 0 .3em; font-size: 16px; }
+.fr-tick { display: grid; place-items: center; flex: none; width: 1.5em; height: 1.5em; border-radius: .45em; background: var(--lime); color: #000; }
+.fr-tick .ico { width: 1em; height: 1em; }
+

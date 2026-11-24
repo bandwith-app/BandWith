@@ -47,6 +47,10 @@ export const academyArticle = (id: string) => `${ACADEMY_HOME}en/a/${id}/`;
 /** Academy captures, served at /shots/ (see site/vite.config.ts). */
 export type ShotDevice = 'phone' | 'tablet' | 'web' | 'duoClosed' | 'duoBook' | 'duoLaptop';
 export const shot = (id: string, device: ShotDevice = 'phone') => `/shots/${id}@${device}.webp`;
+/** Pixel size of a capture on each device (academy/scripts: every capture of a device has the same size). */
+export const SHOT_SIZE: Record<ShotDevice, [width: number, height: number]> = {
+  phone: [780, 1688], tablet: [1600, 1112], web: [1800, 1125], duoClosed: [780, 1135], duoBook: [1600, 1126], duoLaptop: [900, 1280],
+};
 
 /** iPhone & iPad door: TestFlight's public link (it installs TestFlight first). */
 export const TESTFLIGHT_URL = 'https://testflight.apple.com/join/8zJGuprA';

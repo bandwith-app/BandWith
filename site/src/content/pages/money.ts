@@ -47,13 +47,42 @@ export const page: ChannelPage = {
   },
   details: {
     heading: { lines: ['The fine print', 'on money.'] },
-    items: [
-      { icon: 'clock', title: 'Fee to be discussed', body: 'Confirm the date now and the money later. Invitations say the fee is to be discussed, and the gig shows To be discussed until you set it.', wide: true },
-      { icon: 'bell', title: 'A fee change reaches one person', body: 'Change a musician’s fee and only that musician is notified.' },
-      { icon: 'wallet', title: 'The band fund', body: 'The band fee is the musicians’ fees plus any extra band fee. What isn’t paid out stays with the band.' },
-      { icon: 'globe', title: 'Your currency', body: 'EUR, USD, GBP or CHF, with your country’s VAT rate. Each quote keeps the currency it was made in.' },
-      { icon: 'users', title: 'Member stats', body: 'Each musician’s year: gigs played and coming up, rehearsals, earnings and what’s not paid yet.' },
-      { icon: 'file-text', title: 'Two kinds of revenue', body: 'REVENUE on Home adds up this year’s gig fees; Money flow adds up the income you record. Payouts are the band paying its musicians, not the client paying the band.', wide: true },
+    lead: 'Three things to know first. The other four are sorted by gig and by year.',
+    featured: [
+      {
+        title: 'Two kinds of revenue',
+        tag: 'On Home',
+        body: 'REVENUE on Home adds up this year’s gig fees; Money flow adds up the income you record.',
+        ui: { shot: 'basics-home-admin', region: [0.15, 0.5], alt: 'Home for an admin: 4 confirmed gigs, 2 upcoming rehearsals, 1 active quote and €13.2K of revenue' },
+      },
+      {
+        title: 'Members see their own',
+        tag: 'A member’s Home',
+        body: 'Your payouts shows what you’re owed, with View payout. Never the band fee, never anyone else’s.',
+        ui: { shot: 'quote-hold-card', region: [0.5, 0.82], alt: 'A member’s Home, Your payouts: Summer Fest Opening, You’re owed $300, not paid yet, with View payout' },
+      },
+      {
+        title: 'The band fund',
+        tag: 'Musicians plus band',
+        body: 'The band fee is the musicians’ fees plus any extra band fee. What isn’t paid out stays with the band.',
+        ui: { shot: 'gig-wizard-step1', region: [0.566, 0.886], alt: 'The gig wizard’s roster: Leo M., Marta C., Jonah R. and Lena P., each with a fee' },
+      },
+    ],
+    groups: [
+      {
+        label: 'Gig by gig',
+        items: [
+          { title: 'Fee to be discussed', line: 'Confirm the date now and the money later: the gig shows To be discussed until you set it.' },
+          { title: 'A fee change reaches one person', line: 'Change a musician’s fee and only that musician is notified.' },
+        ],
+      },
+      {
+        label: 'Across the year',
+        items: [
+          { title: 'Member stats', line: 'Each musician’s year: gigs played and coming up, rehearsals, earnings and what’s not paid yet.' },
+          { title: 'Your currency', line: 'EUR, USD, GBP or CHF, with your country’s VAT rate. Each quote keeps the currency it was made in.' },
+        ],
+      },
     ],
   },
   learn: [
