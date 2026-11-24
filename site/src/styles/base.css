@@ -201,7 +201,7 @@ button, input { font: inherit; color: inherit; }
 .nav__left { display: inline-flex; align-items: center; margin-left: 10px; padding-left: 10px; border-left: 1px solid rgba(0,0,0,.22); font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: var(--track-mono); text-transform: uppercase; opacity: .72; }
 .nav.is-light .nav__left { border-left-color: rgba(213,251,70,.3); }
 .nav__web { display: flex; align-items: center; gap: 4px; }
-.nav__login, .nav__signup { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px; border-radius: 999px; font-family: var(--font-mono); font-size: 12px; font-weight: 500; letter-spacing: var(--track-mono); text-transform: uppercase; text-decoration: none; color: var(--fg-2); white-space: nowrap; transition: color .3s, background-color .3s, border-color .3s; }
+.nav__login, .nav__signup { display: inline-flex; align-items: center; gap: 6px; height: 44px; padding: 0 14px; border-radius: 999px; font-family: var(--font-mono); font-size: 12px; font-weight: 500; letter-spacing: var(--track-mono); text-transform: uppercase; text-decoration: none; color: var(--fg-2); white-space: nowrap; transition: color .3s, background-color .3s, border-color .3s; }
 .nav__login:hover { color: var(--fg); }
 .nav__signup { border: 1px solid rgba(255,255,255,.18); color: var(--fg); }
 .nav__signup:hover { border-color: rgba(255,255,255,.45); }
@@ -216,14 +216,18 @@ button, input { font: inherit; color: inherit; }
 html.is-full .nav__web [data-web-door], html.is-full .menu__web [data-web-door] { display: none !important; }
 html.is-full .nav__signup--full { display: inline-flex !important; }
 html.is-full .menu__web .nav__signup--full { display: flex !important; }
+/* The main call to action (home hero, footer) does the same: [data-web-cta] out, .cta-full in. */
+.cta-full { display: none !important; }
+html.is-full [data-web-cta] { display: none !important; }
+html.is-full .cta-full { display: inline-flex !important; }
 @media (max-width: 1320px) { .nav__sub { display: none; } }
 @media (max-width: 1180px) { .nav__left { display: none; } }
 /* With the menu button, the web links live in the menu sheet. */
 @media (max-width: 1080px) { .nav__web { display: none; } }
 
 /* Menu button: three levels, not a hamburger. */
-.nav__menu { display: none; position: relative; width: 42px; height: 42px; padding: 0; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.08); color: var(--fg); cursor: pointer; transition: background-color .3s; }
-.nav__menu i { position: absolute; left: 13px; top: calc(50% - 1px); height: 2px; border-radius: 2px; background: currentColor; transition: transform .55s var(--ease), width .55s var(--ease), left .55s var(--ease), opacity .3s; }
+.nav__menu { display: none; position: relative; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.08); color: var(--fg); cursor: pointer; transition: background-color .3s; }
+.nav__menu i { position: absolute; left: 14px; top: calc(50% - 1px); height: 2px; border-radius: 2px; background: currentColor; transition: transform .55s var(--ease), width .55s var(--ease), left .55s var(--ease), opacity .3s; }
 .nav__menu i:nth-child(1) { width: 16px; transform: translateY(-5px); }
 .nav__menu i:nth-child(2) { width: 10px; }
 .nav__menu i:nth-child(3) { width: 13px; transform: translateY(5px); }
@@ -232,7 +236,7 @@ html.is-full .menu__web .nav__signup--full { display: flex !important; }
   .nav__menu:hover i:nth-child(2) { width: 16px; }
   .nav__menu:hover i:nth-child(3) { width: 11px; }
 }
-.nav__menu[aria-expanded="true"] i { left: 12px; width: 18px; }
+.nav__menu[aria-expanded="true"] i { left: 13px; width: 18px; }
 .nav__menu[aria-expanded="true"] i:nth-child(1) { transform: rotate(45deg); }
 .nav__menu[aria-expanded="true"] i:nth-child(2) { width: 0; opacity: 0; }
 .nav__menu[aria-expanded="true"] i:nth-child(3) { transform: rotate(-45deg); }
@@ -257,7 +261,8 @@ html.is-full .menu__web .nav__signup--full { display: flex !important; }
   overflow-y: auto; overscroll-behavior: contain;
 }
 .menu[hidden] { display: none; }
-.nav__cta { transition: opacity .3s, visibility .3s, background-color .35s var(--ease), color .35s var(--ease); }
+/* Header controls are at least 44px tall and wide, on every screen: they are tapped as often as clicked. */
+.nav__cta { min-height: 44px; transition: opacity .3s, visibility .3s, background-color .35s var(--ease), color .35s var(--ease); }
 .nav.is-open .nav__cta { opacity: 0; visibility: hidden; }
 .menu__links { display: flex; flex-direction: column; }
 .menu__row { --rule: 1; position: relative; display: grid; grid-template-columns: 40px 1fr; grid-template-areas: "n w" ". d"; padding: 16px 4px 14px; color: var(--fg); text-decoration: none; -webkit-tap-highlight-color: transparent; }
@@ -325,17 +330,15 @@ html.has-motion [data-ab] { visibility: hidden; }
 }
 @media (max-width: 720px) {
   body { font-size: 16px; }
-  .nav, .nav.is-tight { height: 54px; top: 10px; padding-left: 16px; padding-right: 7px; }
-  .nav__menu { width: 38px; height: 38px; }
-  .nav__menu i { left: 11px; }
-  .nav__menu[aria-expanded="true"] i { left: 10px; }
-  .nav__cta { min-height: 38px; padding: 0 14px; }
+  .nav, .nav.is-tight { height: 54px; top: 10px; padding-left: 16px; padding-right: 5px; }
+  .nav__cta { padding: 0 14px; }
   .menu { top: 10px; height: calc(100svh - 20px); padding-top: 76px; }
   .nav__word { font-size: 16px; }
 }
 /* Narrow phones: the menu button stays inside the bar. "Scarica l'app" and "Obtén la app" are wider than
    "Get the app", so there the button gives up its arrow first; on the narrowest screens the mark stands alone. */
 @media (max-width: 389px) {
+  .nav__cta { padding: 0 12px; }
   html:not([lang="en"]) .nav__cta .btn__arrow { display: none; }
   html:not([lang="en"]) .nav__cta { padding: 0 13px; }
 }
@@ -349,7 +352,6 @@ html.has-motion [data-ab] { visibility: hidden; }
 @media (max-width: 720px) {
   .foot { padding-top: 72px; }
   .foot__top .btn { width: 100%; }
-  .hero__cta .btn { flex: 1 1 auto; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -369,6 +371,8 @@ html.has-motion [data-ab] { visibility: hidden; }
   font-family: var(--font-mono); font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: var(--track-mono);
   color: var(--fg-dim); text-decoration: none; transition: color .3s;
 }
+/* The deck's labels keep their 36px look; the area that takes a tap is 44px tall. */
+.nav__deck .nav__item::before { content: ""; position: absolute; inset: -4px 0; }
 .nav__chev { width: 14px; height: 14px; transition: transform .45s var(--ease); }
 .nav__item[aria-expanded="true"] { color: var(--fg); }
 .nav__item[aria-expanded="true"] .nav__chev { transform: rotate(180deg); }

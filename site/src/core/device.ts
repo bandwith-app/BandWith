@@ -1,8 +1,10 @@
 /**
  * Which door fits the visitor's device (Get page): TestFlight on iPhone and
- * iPad, the APK on Android, the web app anywhere else.
+ * iPad, the APK on Android, the web app anywhere else. On a phone the web app
+ * comes first all the same: it opens right there, with nothing to install,
+ * and the phone's own app is the second door.
  *
- * Both functions are pure and stand alone: the Get page runs their source
+ * The functions are pure and stand alone: the Get page runs their source
  * inline, right after the doors (content/render.ts, doorOrderScript), so the
  * order is right before the first paint. Keep them free of imports, closures
  * and comments inside the body.
@@ -21,9 +23,23 @@ export function deviceOf(ua: string, maxTouchPoints: number): Door {
   return 'web';
 }
 
-/** The doors in the order this device sees them: its own first, the web app before the other phone. */
-export function doorOrder(device: Door): Door[] {
-  if (device === 'ios') return ['ios', 'web', 'android'];
-  if (device === 'android') return ['android', 'web', 'ios'];
+/**
+ * Whether the device is a phone (not a tablet, not a computer). An iPhone
+ * says so; Android phones carry "Mobile" in the user agent and Android
+ * tablets leave it out; an iPad says iPad, or Macintosh.
+ */
+export function isPhone(ua: string): boolean {
+  if (/iPhone|iPod/.test(ua)) return true;
+  return /Android/.test(ua) && /Mobile/.test(ua);
+}
+
+/**
+ * The doors in the order this device sees them. A phone: the web app first
+ * (the fastest way in), then its own app, then the other. A tablet or a
+ * computer: its own door first, the web app before the other phone.
+ */
+export function doorOrder(device: Door, phone?: boolean): Door[] {
+  if (device === 'ios') return phone ? ['web', 'ios', 'android'] : ['ios', 'web', 'android'];
+  if (device === 'android') return phone ? ['web', 'android', 'ios'] : ['android', 'web', 'ios'];
   return ['web', 'android', 'ios'];
 }

@@ -46,3 +46,8 @@
 .learn.sec--bone:has(+ .answers.sec--bone) { padding-bottom: calc(var(--section-y) * .5); }
 .learn + .answers.sec--bone { margin-top: 0; padding-top: calc(var(--section-y) * .5); border-radius: 0; }
 .answers .answers__all { margin-top: 28px; }
+
+/* Home: "What is BandWith?" right after the group chat. Two full section paddings in a row would
+   leave a screen of black, so this one keeps less of its own (more when the chat scene above is pinned). */
+.noise + .answers { padding-top: calc(var(--section-y) * .3); padding-bottom: calc(var(--section-y) * .5); }
+.noise.is-pinned + .answers { padding-top: calc(var(--section-y) * .8); }

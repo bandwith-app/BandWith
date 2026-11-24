@@ -117,23 +117,57 @@ https://bandwith.fun (manual release only).
   (`site/.env`). Without them: sample numbers in dev, hidden in production.
   `?capacity=open` / `?capacity=invites` / `?capacity=full` preview each state.
 - Open is what the pages say as written: "Open beta", no spots count in the
-  home hero, and on the Get page the doors right under the headline with the
-  counter next to "Why a limit?". Once only band invites (or nobody) get in,
-  `capacity.ts` turns the `[data-cap-beta]` labels back to "Private beta",
-  shows the hero's notice (`data-cap-line="closed"`) and `pages/get.ts` moves
-  the counter back under the headline, above the waitlist.
+  home hero, and on the Get page the doors right under the headline. Once
+  only band invites (or nobody) get in, `capacity.ts` turns the
+  `[data-cap-beta]` labels back to "Private beta", shows the hero's notice
+  (`data-cap-line="closed"`) and `pages/get.ts` moves the counter back under
+  the headline, above the waitlist.
+- The counter ("N of 255 open spots left", the LED meter) and the Get page's
+  "Why a limit?" section are on the page only when the limit matters to the
+  visitor: 50 open spots or fewer, or none (`counterShown`, `COUNTER_FROM` in
+  `capacity.ts`). They are written `hidden` (`data-cap-show="limit"`); with
+  plenty of spots a count next to the doors reads as "a small room".
+  `?capacity=few` previews the counter with the beta still open.
+- The main call to action (home hero, every footer: `[data-web-cta]`) opens
+  the web app on Create account; with the open spots gone (`html.is-full`)
+  the `.cta-full` button next to it, "Join the waitlist", takes its place.
 - The waitlist ("Tonight's show is full") and the lines for invited people
   are written `hidden` in the page (`data-cap-show="closed|invites|full"`);
   `capacity.ts` shows the ones the state needs. While the beta is open they
   are out of the page for readers, crawlers and `llms-full.txt` (which also
   skips them by name, `SKIP` in `tools/seo.ts`).
-- The Get page puts the visitor's own door first (TestFlight on iPhone and
-  iPad, the APK on Android, the web app anywhere else): `src/core/device.ts`,
-  run inline right after the doors (`<!--@door-order-->`), before the first
-  paint.
+- The Get page orders its doors for the device: on a phone the web app first
+  (it opens right there, nothing to install), then the phone's own app, then
+  the other; on a tablet or a computer the device's own door first
+  (TestFlight on iPad, the APK on an Android tablet, the web app anywhere
+  else). `src/core/device.ts`, run inline right after the doors
+  (`<!--@door-order-->`), before the first paint; the same script shows the
+  web door's words for a phone (`data-door-for="phone"`) and puts the trust
+  line (`data-trust`) after the first door on a phone, under the doors
+  elsewhere.
 - `src/ui/forms.ts` posts to `VITE_BETA_ENDPOINT` (the `beta` edge function,
   not built yet). Without it: simulated replies in dev, closed forms in
   production (nothing is sent).
+
+## The way to sign-up
+
+- Every link to the app's sign-up says which spot of the site it is:
+  `?start=signup&src=site-hero` (also `site-nav`, `site-menu`, `site-get-web`,
+  `site-footer`). The list is `SIGNUP_SPOTS` in `src/content/site.ts`; a new
+  spot goes there first (`test/conversion.test.ts` refuses any other value).
+  The app reads only `start`; `src` stays in the address for analytics.
+- Two labels, one per destination: "Start free in your browser" (the web
+  sign-up, as the main button) and "Get the app" (the Get page).
+- Facebook's and Instagram's in-app browsers (`src/core/inApp.ts`, by user
+  agent) get a bar at the top of every page (`<!--@inapp-bar-->` in
+  `partials/nav.html`, `src/ui/inAppBar.ts`): on Android a link that opens the
+  same address in Chrome, on iPhone the words say how and the action copies
+  the link. It is written hidden and shown by an inline script before the
+  first paint; closed, it stays away for the visit (sessionStorage).
+  `<html data-inapp>` and `--iab-h` (its height) move the fixed header down.
+- "Made by" (`MADE_BY` in `src/content/site.ts`) is off: fill in name, role
+  and contact and set `on: true` to show it next to the trust line on the Get
+  page.
 
 ## Tests
 
@@ -144,5 +178,6 @@ llms.txt, share cards, 404). `coverage.test.ts` lists what the app does and
 the words the site uses for it, and what the app stopped doing: add a row
 with every release. `pnpm e2e:site` (Playwright, desktop Chromium + iPhone WebKit) runs
 `e2e/site/`: the language suggestion, the translated scripts, the Get page's
-doors and `release-fixes.spec.ts` (the Stage and Money demos, the closed-beta
+doors, `conversion.spec.ts` (the hero's buttons per device, the counter's
+threshold, the in-app browser bar, 44px controls) and `release-fixes.spec.ts` (the Stage and Money demos, the closed-beta
 blocks, narrow phones).

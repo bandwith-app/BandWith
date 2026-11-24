@@ -1,14 +1,17 @@
 /**
- * The Get page puts the visitor's own door first (core/device.ts): TestFlight
- * on iPhone and iPad, the APK on Android, the web app anywhere else. The
- * decision is a pure function; the page runs it inline, right after the
- * doors, so the order is right before the first paint.
+ * The Get page orders its doors for the device (core/device.ts). A phone: the
+ * web app first (it opens right there, nothing to install), then the phone's
+ * own app (TestFlight on iPhone, the APK on Android), then the other. A
+ * tablet or a computer: its own door first (TestFlight on iPad, the APK on an
+ * Android tablet, the web app anywhere else). The decision is a pure
+ * function; the page runs it inline, right after the doors, so the order is
+ * right before the first paint.
  */
 import { describe, expect, it } from 'vitest';
 import { JSDOM } from 'jsdom';
 import { readFileSync } from 'fs';
 import path from 'path';
-import { deviceOf, doorOrder } from '../src/core/device';
+import { deviceOf, doorOrder, isPhone } from '../src/core/device';
 import { doorOrderScript } from '../src/content/render';
 import { englishPage } from '../tools/pages';
 
@@ -56,15 +59,47 @@ describe('which device is this', () => {
   });
 });
 
+describe('is it a phone', () => {
+  it('an iPhone, in Safari or inside another app', () => {
+    expect(isPhone(UA.iphone)).toBe(true);
+    expect(isPhone(UA.iphoneFacebook)).toBe(true);
+  });
+
+  it('an Android phone says Mobile; an Android tablet doesn’t', () => {
+    expect(isPhone(UA.android)).toBe(true);
+    expect(isPhone(UA.androidTablet)).toBe(false);
+  });
+
+  it('an iPad is not a phone, whatever it calls itself', () => {
+    expect(isPhone(UA.ipadOld)).toBe(false);
+    expect(isPhone(UA.mac)).toBe(false);
+  });
+
+  it('a computer is not a phone', () => {
+    expect(isPhone(UA.windows)).toBe(false);
+    expect(isPhone(UA.linux)).toBe(false);
+    expect(isPhone('')).toBe(false);
+  });
+});
+
 describe('the order of the doors', () => {
-  it('the visitor’s own door first, the web app before the other phone', () => {
+  it('a phone: the web app first, then its own app, then the other', () => {
+    expect(doorOrder('ios', true)).toEqual(['web', 'ios', 'android']);
+    expect(doorOrder('android', true)).toEqual(['web', 'android', 'ios']);
+  });
+
+  it('a tablet or a computer: its own door first, the web app before the other phone', () => {
     expect(doorOrder('ios')).toEqual(['ios', 'web', 'android']);
-    expect(doorOrder('android')).toEqual(['android', 'web', 'ios']);
+    expect(doorOrder('ios', false)).toEqual(['ios', 'web', 'android']);
+    expect(doorOrder('android', false)).toEqual(['android', 'web', 'ios']);
     expect(doorOrder('web')).toEqual(['web', 'android', 'ios']);
+    expect(doorOrder('web', false)).toEqual(['web', 'android', 'ios']);
   });
 
   it('always the same three doors', () => {
-    for (const d of ['ios', 'android', 'web'] as const) expect([...doorOrder(d)].sort()).toEqual(['android', 'ios', 'web']);
+    for (const d of ['ios', 'android', 'web'] as const) {
+      for (const phone of [true, false]) expect([...doorOrder(d, phone)].sort()).toEqual(['android', 'ios', 'web']);
+    }
   });
 });
 
@@ -85,10 +120,17 @@ describe('the Get page orders its doors before the first paint', () => {
     });
     const doc = dom.window.document;
     const doors = [...doc.querySelectorAll('[data-doors] > .gdoor')];
+    /** What a visitor reads in a part of the page: nothing that is hidden. */
+    const shown = (sel: string) => [...doc.querySelectorAll<HTMLElement>(sel)].filter((el) => !el.closest('[hidden]')).map((el) => el.textContent!.replace(/\s+/g, ' ').trim());
     return {
       device: doc.documentElement.getAttribute('data-device'),
+      phone: doc.documentElement.hasAttribute('data-phone'),
       ids: doors.map((d) => d.id),
       numbers: doors.map((d) => d.querySelector('[data-door-no]')?.textContent),
+      webLine: shown('#web .gdoor__line'),
+      webFacts: shown('#web .gdoor__facts li'),
+      /** Every child of the doors' grid, in order: the three doors and the trust line. */
+      grid: [...doc.querySelectorAll('[data-doors] > *')].map((el) => (el.hasAttribute('data-trust') ? 'trust' : el.id)),
     };
   }
 
@@ -98,31 +140,79 @@ describe('the Get page orders its doors before the first paint', () => {
     expect(doorOrderScript()).not.toMatch(/type="module"|src=/);
   });
 
-  it('iPhone: TestFlight first', () => {
+  it('iPhone: the web app first, then TestFlight', () => {
     const p = open(UA.iphone, 5);
     expect(p.device).toBe('ios');
-    expect(p.ids).toEqual(['ios', 'web', 'android']);
+    expect(p.phone).toBe(true);
+    expect(p.ids).toEqual(['web', 'ios', 'android']);
   });
 
-  it('iPad that says it is a Mac: TestFlight first', () => {
-    expect(open(UA.mac, 5).ids).toEqual(['ios', 'web', 'android']);
+  it('iPhone inside Facebook: the same', () => {
+    expect(open(UA.iphoneFacebook, 5).ids).toEqual(['web', 'ios', 'android']);
   });
 
-  it('Android: the APK first', () => {
+  it('Android phone: the web app first, then the APK', () => {
     const p = open(UA.android, 5);
     expect(p.device).toBe('android');
+    expect(p.phone).toBe(true);
+    expect(p.ids).toEqual(['web', 'android', 'ios']);
+  });
+
+  it('iPad (it says it is a Mac): TestFlight first, as before', () => {
+    const p = open(UA.mac, 5);
+    expect(p.phone).toBe(false);
+    expect(p.ids).toEqual(['ios', 'web', 'android']);
+    expect(open(UA.ipadOld, 5).ids).toEqual(['ios', 'web', 'android']);
+  });
+
+  it('Android tablet: the APK first, as before', () => {
+    const p = open(UA.androidTablet, 5);
+    expect(p.phone).toBe(false);
     expect(p.ids).toEqual(['android', 'web', 'ios']);
   });
 
   it('a laptop: the web app first, as written', () => {
     const p = open(UA.mac, 0);
     expect(p.device).toBe('web');
+    expect(p.phone).toBe(false);
     expect(p.ids).toEqual(['web', 'android', 'ios']);
   });
 
   it('Door 01, 02, 03 follow the order on screen, on every device', () => {
-    for (const [ua, touch] of [[UA.iphone, 5], [UA.android, 5], [UA.mac, 0], [UA.mac, 5]] as const) {
+    for (const [ua, touch] of [[UA.iphone, 5], [UA.android, 5], [UA.androidTablet, 5], [UA.mac, 0], [UA.mac, 5]] as const) {
       expect(open(ua, touch).numbers).toEqual(['Door 01', 'Door 02', 'Door 03']);
     }
+  });
+
+  const PHONE_LINE = 'Fastest way in. Works on your phone right now, nothing to install. Add the phone app later for Bluetooth and offline Stage mode.';
+  const OTHER_LINE = 'Create your account in the browser. Nothing to install. Good on a laptop or a tablet.';
+
+  it('on a phone the web door says it is the fastest way in, and drops the minus about Bluetooth', () => {
+    for (const ua of [UA.iphone, UA.android, UA.iphoneFacebook]) {
+      const p = open(ua, 5);
+      expect(p.webLine).toEqual([PHONE_LINE]);
+      expect(p.webFacts).toEqual(['Every feature, live sync and the click', 'The same account when you add the phone app']);
+    }
+  });
+
+  it('on a tablet or a computer the web door keeps its words', () => {
+    for (const [ua, touch] of [[UA.mac, 0], [UA.mac, 5], [UA.androidTablet, 5], [UA.windows, 10]] as const) {
+      const p = open(ua, touch);
+      expect(p.webLine).toEqual([OTHER_LINE]);
+      expect(p.webFacts).toEqual(['Every feature, live sync and the click', 'No Bluetooth or offline Stage mode']);
+    }
+  });
+
+  it('without scripts the page reads as on a computer (the phone words are written hidden)', () => {
+    expect(source).toMatch(/<p class="gdoor__line" data-door-for="other">Create your account in the browser\./);
+    expect(source).toMatch(/<p class="gdoor__line" data-door-for="phone" hidden>Fastest way in\./);
+    expect(source).toMatch(/<li data-door-for="phone" hidden>/);
+  });
+
+  it('the trust line: after the first door on a phone, under the three doors anywhere else', () => {
+    expect(open(UA.iphone, 5).grid).toEqual(['web', 'trust', 'ios', 'android']);
+    expect(open(UA.android, 5).grid).toEqual(['web', 'trust', 'android', 'ios']);
+    expect(open(UA.mac, 0).grid).toEqual(['web', 'android', 'ios', 'trust']);
+    expect(open(UA.mac, 5).grid).toEqual(['ios', 'web', 'android', 'trust']);
   });
 });
