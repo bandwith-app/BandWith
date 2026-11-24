@@ -165,6 +165,8 @@ import { ChatDetailModal, NewChatModal } from "@/app/components/chat";
 import { EditProfileModal, CreateBandModal } from "@/app/components/profile";
 import { PersonalGigModal } from "@/app/components/modals/PersonalGigModal";
 import { NoBandRehearsalModal } from "@/app/components/modals/NoBandRehearsalModal";
+import type { BandRequiredReason } from "@/app/components/band/BandRequired";
+import { useBandFeatures } from "@/lib/bandFeatures";
 import { ChooseBandProposalModal, type BandOption } from "@/app/components/modals/ChooseBandProposalModal";
 import { NotificationDetailModal } from "@/app/components/notifications/NotificationDetailModal";
 import { navigateToNotificationTarget, notificationBandId, notificationTarget } from "@/lib/notificationRouting";
@@ -267,7 +269,7 @@ const eventToEventItem = (event: Event): EventItem => {
 };
 
 export default function AuthenticatedApp() {
-  const { isAuthenticated, user, profile, userMode } = useAuth();
+  const { isAuthenticated, user, profile } = useAuth();
   // Chat list labels below are built with t(); rebuild them when the language changes.
   const locale = useLocale();
   const {
@@ -334,8 +336,10 @@ export default function AuthenticatedApp() {
     }
   }, [isAuthenticated, pushSupported, initializePush]);
 
-  // PLG: Must be declared early for downstream memos
-  const isSolo = userMode === 'solo';
+  // PLG: Must be declared early for downstream memos.
+  // Solo schedule = an account that may not use band features: it is in no
+  // real band (src/lib/bandFeatures.ts, the one rule for every band-only gate).
+  const isSolo = !useBandFeatures();
 
   // Scroll direction for bottom nav label shrink
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -442,6 +446,26 @@ export default function AuthenticatedApp() {
   const { polls: rehearsalPolls, refetch: refetchRehearsalPolls } = useRehearsalPolls(realBand?.id || null, user?.id || null, isAdminOfBand(realBand?.id));
   const [showProposeRehearsalModal, setShowProposeRehearsalModal] = useState(false);
   const [showNoBandRehearsalModal, setShowNoBandRehearsalModal] = useState(false);
+  // What the account with no band asked for (the dialog's sentence).
+  const [noBandReason, setNoBandReason] = useState<BandRequiredReason>('rehearsal');
+  const askForBand = (reason: BandRequiredReason) => {
+    setNoBandReason(reason);
+    setShowNoBandRehearsalModal(true);
+  };
+  /**
+   * Opens a band screen (members, repertoire, gear, to-do lists, contracts,
+   * pricing). With no band it answers "Band required" instead: those screens
+   * load a band's data, and a flag set for a screen that cannot render used
+   * to leave a loader spinning forever (Band members, Repertoire) or the tab
+   * bar hidden behind nothing (Gear, To-do lists).
+   */
+  const withBand = (open: () => void) => {
+    if (isSolo) {
+      askForBand('other');
+      return;
+    }
+    open();
+  };
   const [showChooseBandProposalModal, setShowChooseBandProposalModal] = useState(false);
   const [proposalTargetBand, setProposalTargetBand] = useState<BandOption | null>(null);
   const [showRehearsalPollModal, setShowRehearsalPollModal] = useState(false);
@@ -1723,6 +1747,15 @@ export default function AuthenticatedApp() {
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [pricingModalInitialTab, setPricingModalInitialTab] = useState<PricingModalTabType>('rates');
   const [pricingReturnTo, setPricingReturnTo] = useState<'settings' | 'control_deck' | 'identity_hub' | null>(null);
+  // The last band is gone (left, removed): the band screens that only render
+  // with a band close, so their flags don't keep the tab bar hidden over nothing.
+  useEffect(() => {
+    if (!isSolo) return;
+    setShowInventory(false);
+    setShowContracts(false);
+    setShowTaskTemplates(false);
+    setShowPricingModal(false);
+  }, [isSolo]);
   const [sharingQuote, setSharingQuote] = useState<Partial<Quote> | null>(null);
   // "Send quote" in the iPad composer: the share sheet emails the client's link by itself.
   const [sharingAutoSend, setSharingAutoSend] = useState(false);
@@ -2278,14 +2311,14 @@ export default function AuthenticatedApp() {
       setShowSettings(true);
     }
     if (item === "Analytics") setShowAnalytics(true);
-    if (item === "PricingSettings") {
+    if (item === "PricingSettings") withBand(() => {
       setPricingModalInitialTab('rates');
       setPricingReturnTo('control_deck');
       setShowPricingModal(true);
-    }
+    });
     if (item === "AdminTour") setShowAdminTour(true);
     if (item === "Quote" && isAdmin) { setEditingEventData(null); setCreateEventType("quote"); setIsCreateEventOpen(true); }
-    if (item === "InviteMember") setShowBandMembers(true);
+    if (item === "InviteMember") withBand(() => setShowBandMembers(true));
   };
 
   const handleNotificationClick = async (ids: number[], actionType: string) => {
@@ -2415,8 +2448,8 @@ export default function AuthenticatedApp() {
       return;
     }
     if (type === 'rehearsal' && !isAdmin) {
-      if (!realBands || realBands.length === 0) {
-        setShowNoBandRehearsalModal(true);
+      if (isSolo || !realBands || realBands.length === 0) {
+        askForBand('rehearsal');
         return;
       }
       if (realBands.length > 1) {
@@ -4455,6 +4488,7 @@ export default function AuthenticatedApp() {
           }}
           onOpenIdentity={openIdentity} onOpenNotifications={handleOpenNotifications} unreadCount={isNotificationsOpen ? 0 : unreadCount} isHidden={isHeaderHidden}
           isScrolled={isHeaderScrolled}
+          isSolo={isSolo}
         />
 
         {/* The home keeps one key across band switches: keyed by band, a switch
@@ -4561,7 +4595,7 @@ export default function AuthenticatedApp() {
           // One hub page at a time: opening another from the hub (side by side on
           // the open Duo and the iPad) replaces the one open, after asking about
           // its unsaved changes, so Back never lands on a page left underneath.
-          onEntityDetailClick={(l) => runGuarded(() => {
+          onEntityDetailClick={(l) => runGuarded(() => withBand(() => {
             if (l === "DOCUMENTS" && !(realBand && isAdminOfBand(realBand.id))) return;
             closeLyrics();
             closeChordEditor();
@@ -4570,26 +4604,26 @@ export default function AuthenticatedApp() {
             if (l === "REPERTOIRE") setShowSetlistManager(true);
             if (l === "TEMPLATES") setShowTaskTemplates(true);
             if (l === "DOCUMENTS") setShowContracts(true);
-          })}
+          }))}
           entityCounts={entityCounts}
           onEditProfile={() => setShowEditProfile(true)}
-          onEditBand={() => runGuarded(() => {
+          onEditBand={() => runGuarded(() => withBand(() => {
             closeLyrics();
             closeChordEditor();
             closeHubPages();
             setShowBandMembers(true);
-          })}
-          onOpenBandSettings={() => {
+          }))}
+          onOpenBandSettings={() => withBand(() => {
             setPricingModalInitialTab('branding');
             setPricingReturnTo('identity_hub');
             setShowPricingModal(true);
-          }}
+          })}
           onAddEntity={handleRequestCreateBand}
-          onOpenPricing={() => {
+          onOpenPricing={() => withBand(() => {
             setPricingModalInitialTab('rates');
             setPricingReturnTo('identity_hub');
             setShowPricingModal(true);
-          }}
+          })}
           onOpenSettings={(section) => {
             closeIdentity();
             handleGridNav(section && section !== 'main' ? `Settings:${section}` : 'Settings');
@@ -4690,13 +4724,14 @@ export default function AuthenticatedApp() {
               : !!expandedCard || (!twoPane && (!!selectedChat || !!selectedEvent || !!selectedNotification)) || isBandSwitcherOpen || isDayPickerOpen || !!rsvpNotification || !!pollNotification || !!votePollId || showSettings || showBandMembers || showSetlistManager || showAnalytics || showInventory || showContracts || showTaskTemplates || showPricingModal || showPastEvents || showDeputyGigs || isCreateEventOpen || showEditProfile || showNewChat
         }
         isAdmin={isAdmin}
-        isSolo={userMode === 'solo'}
+        isSolo={isSolo}
+        onBandRequired={askForBand}
       />
 
       <React.Suspense fallback={null}>
         <AnimatePresence>
-          {showBandMembers && <BandMembersView key="band-members" onClose={() => setShowBandMembers(false)} />}
-          {showSetlistManager && <SetlistManagerView key="setlist-manager" onClose={() => setShowSetlistManager(false)} />}
+          {showBandMembers && <BandMembersView key="band-members" onClose={() => setShowBandMembers(false)} onCreateBand={handleRequestCreateBand} />}
+          {showSetlistManager && <SetlistManagerView key="setlist-manager" onClose={() => setShowSetlistManager(false)} onCreateBand={handleRequestCreateBand} />}
           {showSettings && (
             <SettingsView
               key="settings"
@@ -4846,8 +4881,8 @@ export default function AuthenticatedApp() {
                 onOpenPollBuilder={handleOpenPollBuilder}
                 onOpenProposeRehearsal={() => {
                   setIsCreateEventOpen(false);
-                  if (!realBands || realBands.length === 0) {
-                    setShowNoBandRehearsalModal(true);
+                  if (isSolo || !realBands || realBands.length === 0) {
+                    askForBand('rehearsal');
                   } else if (realBands.length > 1) {
                     setShowChooseBandProposalModal(true);
                   } else {
@@ -4862,6 +4897,7 @@ export default function AuthenticatedApp() {
           {showNoBandRehearsalModal && (
             <NoBandRehearsalModal key="no-band-rehearsal-modal"
               isOpen={showNoBandRehearsalModal}
+              reason={noBandReason}
               onClose={() => setShowNoBandRehearsalModal(false)}
               onOpenUpgrade={() => {
                 setShowNoBandRehearsalModal(false);

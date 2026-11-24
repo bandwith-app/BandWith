@@ -240,6 +240,21 @@
   padding: 12px 24px 24px;
   background: var(--color-sheet);
 }
+/* The same for a dialog centred inside a detail pane ("Band required"): the
+   pane already clears the bar, so only the card moves down onto the Deck. */
+[data-bw-posture="tabletop"] .bw-pane-detail > .bw-deck-dialog {
+  padding-top: calc(var(--bw-deck-top) + 8px) !important;
+  padding-bottom: 8px !important;
+}
+[data-bw-posture="tabletop"] .bw-pane-detail > .bw-deck-dialog > [role="dialog"] {
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* The Deck is short: the card gives up its icon so both buttons show at once. */
+[data-bw-posture="tabletop"] .bw-pane-detail > .bw-deck-dialog .bw-band-required-icon {
+  display: none;
+}
 /* Toasts and alerts sit at the bottom of the Display, above the fold band. */
 [data-bw-posture="tabletop"] .bw-toast,
 [data-bw-posture="tabletop"] [data-sonner-toaster] {

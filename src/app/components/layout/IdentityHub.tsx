@@ -38,6 +38,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { signOutCancelled } from '@/lib/signOutGate';
 import { useTheme } from '@/lib/ThemeContext';
 import { useBand } from '@/lib/BandContext';
+import { useBandFeatures } from '@/lib/bandFeatures';
 import { updateBand } from '@/lib/services/bands';
 import { uploadBandBrandingAsset, getBandPricing, saveBandPricing } from '@/lib/services/pricing';
 import { personName, personInitials, hasRealName } from '@/lib/personName';
@@ -111,7 +112,7 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
   onOpenDeputyGigs,
   onBandUpdated,
 }) => {
-  const { signOut: signOutOrThrow, user, profile, userMode } = useAuth();
+  const { signOut: signOutOrThrow, user, profile } = useAuth();
   // A sign-out that throws is answered by a wipe below: the push revocation
   // it queued and a pending token deletion survive it (#287 round 10).
   // Held for this account only: anyone else signing in (here or in another
@@ -127,8 +128,9 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
   // Duo Laptop: the profile card sits on the Display, the rest on the Deck.
   const laptop = useLaptopPose();
   const appVersion = useAppVersion();
-  // Solo accounts get a personal-calendar placeholder, not a real band.
-  const isSolo = userMode === 'solo';
+  // No real band (src/lib/bandFeatures.ts): a personal-calendar placeholder, so
+  // no members and no band assets, only the way to a band.
+  const isSolo = !useBandFeatures();
   const { mode, setMode, resolvedTheme } = useTheme();
   const {
     isAdmin: isBandAdmin,
@@ -353,7 +355,8 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
   const displayInitials = personInitials({ full_name: profile?.full_name, email: user?.email }, 'BW');
 
   const roleLabel = selectedBand.role || (profile?.role ? profile.role.toUpperCase() : 'MEMBER');
-  const isAdmin = isBandAdmin || roleLabel === 'ADMIN';
+  // Admin of a band: with no band there is nothing to run (no Edit, settings or pricing).
+  const isAdmin = !isSolo && (isBandAdmin || roleLabel === 'ADMIN');
 
   const rosterMembers = activeBandDetails?.members || [];
   const lineupCount =
@@ -594,7 +597,7 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
 
             {/* ═══ 2. CURRENT BAND & LINEUP ═══ */}
             <section
-              aria-label={t('Current band')}
+              aria-label={isSolo ? t('My calendar') : t('Current band')}
               className={cn('p-5 rounded-[24px] flex flex-col gap-4', HUB_CARD)}
             >
               {/* Band identity row */}
@@ -795,8 +798,8 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
                 )}
               </AnimatePresence>
 
-              {/* Members pill (opens lineup) */}
-              <button
+              {/* Members pill (opens lineup). No band, no members to open. */}
+              {!isSolo && <button
                 type="button"
                 onClick={() => {
                   onEditBand?.();
@@ -840,7 +843,7 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
                   </span>
                 )}
                 <ChevronRight aria-hidden className="w-[18px] h-[18px] text-foreground shrink-0" />
-              </button>
+              </button>}
 
               {isAdmin && (
                 <PillButton
@@ -927,7 +930,7 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
                 </div>
               ) : (
                 <div className="flex items-center justify-between gap-3">
-                  <span className="bw-body-sm text-muted-foreground">{t('Playing in another act?')}</span>
+                  <span className="bw-body-sm text-muted-foreground">{isSolo ? t('Playing in a band too?') : t('Playing in another act?')}</span>
                   <button
                     type="button"
                     onClick={() => {
@@ -935,13 +938,14 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
                     }}
                     className="h-9 px-2 -mr-2 rounded-full text-accent-ink bw-button-sm flex items-center gap-1 shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <Plus aria-hidden className="w-3 h-3" /> {t('New band')}
+                    <Plus aria-hidden className="w-3 h-3" /> {isSolo ? t('Create a band') : t('New band')}
                   </button>
                 </div>
               )}
             </section>
 
-            {/* ═══ 3. BAND ASSETS & WORKFLOWS ═══ */}
+            {/* ═══ 3. BAND ASSETS & WORKFLOWS ═══ (a band's: none of it with no band) */}
+            {!isSolo && (<>
             <h2 className="bw-label-md text-foreground">{t('Band assets & workflows')}</h2>
 
             <div className="grid grid-cols-2 gap-3">
@@ -1000,6 +1004,8 @@ export const IdentityHub: React.FC<IdentityHubProps> = ({
                 <ArrowUpRight aria-hidden className="w-5 h-5 shrink-0" />
               </button>
             )}
+
+            </>)}
 
             {/* ═══ 4. APP SETTINGS ═══ */}
             <h2 className="bw-label-md text-foreground">{t('App settings')}</h2>

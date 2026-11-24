@@ -160,6 +160,7 @@ check (`app.check`) on each screen it reaches.
 | Check your email: the title and the text never run under the clock block (the closed Duo's reaches beside them) | `signup-code-layout` | all |
 | Check your email, keyboard up: the code field, a refused code's message and Verify show above it; the other buttons by scrolling, nothing slides under the status bar | `signup-code-layout` | all (not duo-laptop) |
 | Check your email: the system Back goes back to Create account with the fields kept, like the Back button on the screen | `signup-code-layout` | all |
+| Solo account (What brings you here? → Solo schedule, no band): Home is the personal calendar; Create offers the personal gig only, which lands on the calendar with its fee; Chat answers "Band required" with Create a band; Settings shows no members, band assets, band settings or plan; no loader left spinning | `solo-account` | all |
 | Expired reset link (query or fragment): says so, offers a new link | `auth-callback` | all / full |
 | Sign-in server error: explains, Back to sign in, Back doesn't return to the dead link | `auth-callback` | all |
 | Already signed in: Back to sign in lands in the app | `auth-callback` | full |

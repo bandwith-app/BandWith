@@ -2884,6 +2884,8 @@ const dict: Dictionary = {
   "Maybe later": "Plus tard",
   "Band required": "Groupe requis",
   "Proposing a rehearsal is only available when you’re in a band. Create one or ask an admin for an invite.": "Proposer une répétition n’est possible que dans un groupe. Créez-en un ou demandez une invitation à un admin.",
+  "Chat is only available when you’re in a band. Create one or ask an admin for an invite.": "Le chat n’est disponible que dans un groupe. Créez-en un ou demandez une invitation à un admin.",
+  "This is only available when you’re in a band. Create one or ask an admin for an invite.": "Ce n’est disponible que dans un groupe. Créez-en un ou demandez une invitation à un admin.",
   "Create a band": "Créer un groupe",
   "Free, with every tool": "Gratuit, avec tous les outils",
   "Free during the beta": "Gratuit pendant la bêta",

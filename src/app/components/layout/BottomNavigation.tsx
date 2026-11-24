@@ -42,7 +42,10 @@ interface BottomNavigationProps {
   onCreateEvent: (type: CreateEventType) => void;
   isHidden: boolean;
   isAdmin: boolean;
+  /** The account may not use band features (`!useBandFeatures()`, src/lib/bandFeatures.ts): nothing that needs a band is offered. */
   isSolo?: boolean;
+  /** No band, Chat pressed: the app answers "Band required" (the tab does not change). */
+  onBandRequired?: (reason: 'chat') => void;
   isScrollingDown?: boolean;
   unreadChatCount?: number;
 }
@@ -171,6 +174,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
   isHidden,
   isAdmin,
   isSolo = false,
+  onBandRequired,
   isScrollingDown = false,
   unreadChatCount = 0,
 }) => {
@@ -265,7 +269,12 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
 
   const handleTabClick = (tab: TabName) => {
     haptic.tap();
-    if (isSolo && tab === 'Chat') tab = 'Events';
+    // No band, so nobody to chat with: say so and offer a band, instead of
+    // opening another tab under the name "Chat".
+    if (isSolo && tab === 'Chat') {
+      onBandRequired?.('chat');
+      return;
+    }
     setActiveTab(tab);
     setForceOpen(true);
     closeMenus();
@@ -332,14 +341,18 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
           tile: 'bg-accent-gig text-accent-gig-foreground',
         }]
       : []),
-    {
-      key: 'rehearsal',
-      type: 'rehearsal' as CreateEventType,
-      title: isAdmin ? t('New rehearsal') : t('Propose rehearsal'),
-      description: isAdmin ? t('Schedule directly or poll availability') : t('Suggest a date or topic to the band admin.'),
-      icon: <Mic />,
-      tile: 'bg-accent-rehearsal text-accent-rehearsal-foreground',
-    },
+    // A rehearsal is the band's (an admin schedules it, a member proposes it
+    // to the admin): with no band there is nobody to rehearse with or ask.
+    ...(!isSolo
+      ? [{
+          key: 'rehearsal',
+          type: 'rehearsal' as CreateEventType,
+          title: isAdmin ? t('New rehearsal') : t('Propose rehearsal'),
+          description: isAdmin ? t('Schedule directly or poll availability') : t('Suggest a date or topic to the band admin.'),
+          icon: <Mic />,
+          tile: 'bg-accent-rehearsal text-accent-rehearsal-foreground',
+        }]
+      : []),
     ...(isAdmin && !isSolo
       ? [
           {
