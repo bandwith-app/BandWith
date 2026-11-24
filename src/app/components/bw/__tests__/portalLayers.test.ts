@@ -131,6 +131,7 @@ const NOT_A_LAYER_ABOVE_A_SHEET: Record<string, string> = {
   '/src/app/components/calendar/CalendarLinkNotice.tsx': 'inline card (role="region") in the event and in Settings › Calendar sync (#285), not a floating layer',
   '/src/app/components/quotes/QuoteDetailModal.tsx': 'quote page, opened from the Quotes hub',
   '/src/app/components/profile/EditProfileModal.tsx': 'profile page, opened from the identity hub',
+  '/src/app/components/band/BandRequired.tsx': 'Band members / Repertoire hub page when there is no band, opened from the identity hub',
   '/src/app/components/layout/IdentityHub.tsx': 'identity hub page',
   '/src/app/components/dashboard/expanded/ExpandedCardWrapper.tsx': 'hub page of a Home card',
   '/src/app/views/AnalyticsView.tsx': 'Analytics hub page',

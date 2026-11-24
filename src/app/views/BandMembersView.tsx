@@ -41,6 +41,8 @@ import { ScreenHeader, IconButton, Card, Tag, BwSheet } from '@/app/components/b
 import { PillButton } from '@/app/components/bw/Form';
 import { personName } from '@/lib/personName';
 import { DeputiesSection } from '@/app/components/band/DeputiesSection';
+import { BandRequiredScreen } from '@/app/components/band/BandRequired';
+import { useBandFeatures } from '@/lib/bandFeatures';
 import { PendingInvitesSection } from '@/app/components/band/PendingInvitesSection';
 import { useT } from '@/lib/i18n';
 import { useSystemBack } from '@/lib/backStack';
@@ -123,6 +125,8 @@ const MenuRow: React.FC<{
 
 interface BandMembersViewProps {
   onClose: () => void;
+  /** No band (solo schedule): "Band required" offers this. */
+  onCreateBand?: () => void;
 }
 
 interface SearchUser {
@@ -134,9 +138,14 @@ interface SearchUser {
   avatar_url?: string;
 }
 
-export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => {
+export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose, onCreateBand }) => {
   const t = useT();
-  const { selectedBand, isAdmin, refreshBands, refreshMembers } = useBand();
+  const { selectedBand, bands, isAdmin, refreshBands, refreshMembers, loading: bandsLoading } = useBand();
+  // No real band (src/lib/bandFeatures.ts): there are no members to load, ever.
+  const bandFeatures = useBandFeatures();
+  // A band account whose bands could not be loaded: no band is coming either.
+  // (Only while the band list is still loading is the loader below right.)
+  const bandsNotLoaded = bandFeatures && !selectedBand?.id && !bandsLoading && !bands?.length;
   const { profile: currentProfile, user: authUser } = useAuth();
   const [detailId, setDetailId] = useState<string | null>(null);
   // Android Back and Escape close the member detail first, then Members.
@@ -430,6 +439,22 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
     </div>
   );
 
+  // Two lines: the first word, then the rest ("Band / members").
+  const [titleFirst, ...titleRest] = t('Band members').split(' ');
+  const screenTitle = titleRest.length ? <>{titleFirst}<br />{titleRest.join(' ')}</> : titleFirst;
+
+  if (!bandFeatures || bandsNotLoaded) {
+    return (
+      <BandRequiredScreen
+        onBack={onClose}
+        title={screenTitle}
+        onCreateBand={onCreateBand}
+        notLoaded={bandsNotLoaded}
+        onRetry={() => void refreshBands?.()}
+      />
+    );
+  }
+
   return (
     <motion.div
       initial={{ x: '100%' }}
@@ -442,11 +467,7 @@ export const BandMembersView: React.FC<BandMembersViewProps> = ({ onClose }) => 
       <ScreenHeader
         onBack={onClose}
         overline={selectedBand?.name}
-        title={(() => {
-          // Two lines: the first word, then the rest ("Band / members").
-          const [first, ...rest] = t('Band members').split(' ');
-          return rest.length ? <>{first}<br />{rest.join(' ')}</> : first;
-        })()}
+        title={screenTitle}
         actions={
           <>
             <AcademyHelpButton article="band-members" />
