@@ -99,6 +99,39 @@
 :root[data-bw-two-pane][data-bw-stage-full] .bw-countin {
   padding-left: var(--bw-pane-trailing-x, 0px);
 }
+/* Laptop pose: nothing on the fold. The countdown (song, ring, number,
+   "half time") is whole on the Display and sized to it (.bw-countin-pane is
+   the size container there); the black layer still covers both halves, and
+   Stop sits on the Deck, where the hands are, above the rail. With the clock
+   as a corner block the Display starts at the block's top (below the offline
+   bar while it shows, as the wedge does): the song's name stays clear of the
+   clock, the ring is narrower than the space beside it. */
+:root[data-bw-posture="tabletop"] .bw-countin {
+  container-type: normal;
+  justify-content: flex-start;
+  padding-top: 0;
+}
+:root[data-bw-posture="tabletop"] .bw-countin-pane {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--bw-display-h);
+  padding-top: calc(var(--bw-stage-display-top, var(--safe-top, 0px)) + 12px);
+  padding-bottom: 12px;
+  /* The band at the fold stays empty. */
+  margin-bottom: calc(var(--bw-deck-top) - var(--bw-display-h));
+  container-type: size;
+}
+:root[data-bw-posture="tabletop"][data-bw-status-block] .bw-countin-pane > p {
+  max-width: calc(100cqw - 2 * var(--bw-display-head-x, 0px));
+}
+:root[data-bw-posture="tabletop"] .bw-countin > button {
+  margin-block: auto;
+}
 
 /* ── No signal in Stage mode (OfflineBanner) ─────────────────────────────
    Stage mode and its layers all start below the offline bar (--safe-top
@@ -120,8 +153,17 @@
   max-width: calc(var(--bw-pane-leading-w, 100%) - 82px);
 }
 /* Laptop pose: the wedge's Display starts at the clock block's top
-   (--bw-display-top), which knows nothing of the bar: its first row steps
-   below it, as top bars do (--bw-head-top). */
+   (--bw-display-top), which knows nothing of the bar. While the bar shows
+   (--offline-h, set by OfflineBanner) its first row starts at the bar's real
+   bottom instead: the status-bar inset the bar pads by, plus its strip
+   (--safe-top-inset + --offline-h). On the iPhone Duo that inset is the
+   whole clock block (82pt): the bar ends at 124pt, not at 50. */
+:root[data-bw-status-block] {
+  --bw-wedge-top: var(--bw-display-top, var(--safe-top-inset, 0px));
+  --bw-bar-bottom: calc(var(--safe-top-inset, 0px) + var(--offline-h, 0px));
+  /* No bar (--offline-h is 0): the first min() term is 0, the top stays. */
+  --bw-stage-display-top: calc(var(--bw-wedge-top) + min(var(--offline-h, 0px) * 9999, max(0px, var(--bw-bar-bottom) - var(--bw-wedge-top))));
+}
 :root[data-bw-status-block] .bw-fold-split--stage .bw-fold-display {
-  padding-top: calc(var(--bw-display-top, var(--safe-top-inset, 0px)) + var(--offline-h, 0px));
+  padding-top: var(--bw-stage-display-top);
 }
