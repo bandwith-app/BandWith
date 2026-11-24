@@ -61,7 +61,7 @@ describe('site content', () => {
       expect(y0 >= 0 && y1 <= 1 && y1 - y0 > 0.1, c.slug).toBe(true);
     }
     const panel = GENERATED['feature-panel']();
-    expect(panel.match(/data-fp /g)?.length).toBe(11);
+    expect(panel.match(/data-mm-row/g)?.length).toBe(11);
   });
 
   it('only zooms into hero captures that exist', () => {

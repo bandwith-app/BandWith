@@ -196,7 +196,9 @@ describe('open beta wording', () => {
   it('keeps the Private beta label for when only invites, or nobody, get in', () => {
     const labels = pages.flatMap(([, html]) => [...html.matchAll(/data-cap-beta="([^"]*)"[^>]*>(?:<span class="led"><\/span>)?([^<]*)</g)]);
     expect(labels.map((m) => m[1].replace(/&amp;/g, '&'))).toEqual([
-      'Private beta · iPhone · Android · Web', 'Private beta', 'Private beta · free', 'Private beta · iPhone, Android & web',
+      'Private beta · iPhone · Android · Web', 'Private beta', 'Private beta · free',
+      // The menu says it twice: under the features panel (wide screens) and at the end of the sheet (phones).
+      'Private beta · iPhone, Android & web', 'Private beta · iPhone, Android & web',
     ]);
     for (const [, shut, open] of labels) expect(shut).toBe(open.replace('Open beta', 'Private beta'));
   });

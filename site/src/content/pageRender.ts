@@ -91,7 +91,8 @@ function markSign(cls: string, spot: string, at: 'empty' | 'last', href?: string
 
 function hero(page: ChannelPage, ch: Channel) {
   const id = `${page.slug}-h`;
-  const tag = `CH ${pad2(ch.ch)} · ${esc(ch.name)}`;
+  // What the band is doing (the menu's group), then the page.
+  const tag = `<span>${esc(ch.group)}</span><span class="fhero__of">${esc(ch.name)}</span>`;
   return (
     `<section class="fhero" aria-labelledby="${id}">` +
       `<div class="wrap fhero__grid">` +

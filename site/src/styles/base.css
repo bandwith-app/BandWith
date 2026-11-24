@@ -221,6 +221,9 @@ html.is-full .menu__web .nav__signup--full { display: flex !important; }
 html.is-full [data-web-cta] { display: none !important; }
 html.is-full .cta-full { display: inline-flex !important; }
 @media (max-width: 1320px) { .nav__sub { display: none; } }
+/* The tightened bar keeps one line: the buttons give up their second words, never the deck its letters. */
+.nav.is-tight .nav__sub, .nav.is-tight .nav__left { display: none; }
+.nav__deck .nav__item, .nav__cta { white-space: nowrap; }
 @media (max-width: 1180px) { .nav__left { display: none; } }
 /* With the menu button, the web links live in the menu sheet. */
 @media (max-width: 1080px) { .nav__web { display: none; } }
@@ -252,34 +255,10 @@ html.is-full .cta-full { display: inline-flex !important; }
 .nav.is-light .btn--lime { --bg: #000; --fgc: var(--lime); }
 .nav.is-light .nav__menu { background: rgba(0, 0, 0, 0.07); color: #000; }
 
-/* Menu sheet (≤1080px): the nav pill opens downwards into it. */
-.menu {
-  position: fixed; z-index: 49; top: 12px; left: 12px; right: 12px; height: calc(100svh - 24px);
-  display: flex; flex-direction: column; justify-content: space-between; gap: 24px;
-  padding: 84px 20px 20px; border-radius: 27px; border: 1px solid var(--line);
-  background: rgba(8, 8, 8, 0.97); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
-  overflow-y: auto; overscroll-behavior: contain;
-}
-.menu[hidden] { display: none; }
 /* Header controls are at least 44px tall and wide, on every screen: they are tapped as often as clicked. */
 .nav__cta { min-height: 44px; transition: opacity .3s, visibility .3s, background-color .35s var(--ease), color .35s var(--ease); }
 .nav.is-open .nav__cta { opacity: 0; visibility: hidden; }
-.menu__links { display: flex; flex-direction: column; }
-.menu__row { --rule: 1; position: relative; display: grid; grid-template-columns: 40px 1fr; grid-template-areas: "n w" ". d"; padding: 16px 4px 14px; color: var(--fg); text-decoration: none; -webkit-tap-highlight-color: transparent; }
-.menu__row::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px; background: var(--line); transform-origin: 0 50%; transform: scaleX(var(--rule)); }
-.menu__row b { grid-area: n; padding-top: 6px; font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: var(--track-mono); color: var(--fg-dim); transition: color .3s; }
-.menu__m { grid-area: w; display: block; overflow: hidden; padding-bottom: 0.04em; }
-.menu__w { display: block; font-family: var(--font-display); font-weight: 700; font-size: clamp(48px, 14vw, 88px); line-height: .9; letter-spacing: -0.035em; text-transform: uppercase; transition: color .3s, translate .5s var(--ease); }
-.menu__row em { grid-area: d; margin-top: 8px; font-style: normal; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: var(--track-mono); color: var(--fg-dim); }
-.menu__sp { position: absolute; left: 0; right: 0; bottom: -1px; z-index: 1; height: 2px; border-radius: 2px; background: var(--lime); transform-origin: 0 50%; transform: scaleX(var(--sp, 0)); opacity: 0; transition: opacity .3s; }
-.menu__row.is-active b, .menu__row.is-active .menu__w { color: var(--lime); }
-.menu__row.is-active .menu__sp { opacity: 1; }
-.menu__row:active .menu__w { translate: 8px 0; }
-@media (hover: hover) { .menu__row:hover .menu__w { translate: 10px 0; } }
-.menu__foot { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
-.menu__cta { width: 100%; min-height: 60px; font-size: clamp(14px, 4vw, 17px); white-space: normal; text-align: center; }
-.menu__note { margin: 0; display: flex; align-items: center; justify-content: center; gap: 10px; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: var(--track-mono); color: var(--fg-dim); }
-.menu__note .led { animation: none; }
+/* The features panel and the menu sheet: styles/menu.css. */
 
 /* ── Event mark (3×3 dots, mirrors bw/EventMark) ─────────────────── */
 .emark { --tile: var(--gig); flex-shrink: 0; width: 32px; height: 32px; border-radius: 9px; background: var(--tile); display: grid; grid-template-columns: repeat(3, 5px); grid-auto-rows: 5px; gap: 3px; place-content: center; color: #000; }
@@ -332,7 +311,6 @@ html.has-motion [data-ab] { visibility: hidden; }
   body { font-size: 16px; }
   .nav, .nav.is-tight { height: 54px; top: 10px; padding-left: 16px; padding-right: 5px; }
   .nav__cta { padding: 0 14px; }
-  .menu { top: 10px; height: calc(100svh - 20px); padding-top: 76px; }
   .nav__word { font-size: 16px; }
 }
 /* Narrow phones: the menu button stays inside the bar. "Scarica l'app" and "Obtén la app" are wider than
@@ -378,7 +356,7 @@ html.has-motion [data-ab] { visibility: hidden; }
 .nav__item[aria-expanded="true"] .nav__chev { transform: rotate(180deg); }
 .nav__ext { width: 12px; height: 12px; opacity: .6; }
 
-/* ── Channel strips (nav panel + home rack) ─────────────────────── */
+/* ── Channel strips (home rack) ──────────────────────────────────── */
 .strip {
   --c: var(--lime); --lv: 0;
   position: relative; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 10px;
@@ -399,55 +377,6 @@ html.has-motion [data-ab] { visibility: hidden; }
 .strip.is-soon { cursor: default; }
 .strip.is-soon .strip__name { color: var(--fg-2); }
 
-/* Features panel under the nav (≥1081px). */
-.rackp {
-  position: fixed; z-index: 48; top: 80px; left: 50%; transform: translateX(-50%);
-  width: min(1392px, calc(100% - 24px)); max-height: calc(100svh - 96px);
-  display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 24px; padding: 20px;
-  border-radius: 32px; border: 1px solid var(--line); background: rgba(8, 8, 8, 0.96);
-  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
-  box-shadow: 0 40px 90px -30px rgba(0,0,0,.9);
-}
-.nav.is-tight ~ .rackp { width: min(1120px, calc(100% - 24px)); }
-/* Features panel: four calm groups + one preview */
-.rackp.fp { width: min(1240px, calc(100% - 24px)); }
-.fp { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 36px; padding: 28px 28px 24px 36px; }
-.fp__groups { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
-.fp__g { margin: 0 0 14px; font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: var(--track-mono); text-transform: uppercase; color: var(--fg-dim); }
-.fp__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
-.fp__row { display: grid; grid-template-columns: 26px minmax(0, 1fr); align-items: baseline; gap: 2px 6px; padding: 9px 10px 10px 10px; margin-left: -10px; border-radius: 14px; color: var(--fg); text-decoration: none; cursor: pointer; transition: background-color .25s, color .25s; }
-.fp__row b { font-family: var(--font-mono); font-size: 11px; font-weight: 500; color: var(--fg-dim); transition: color .25s; }
-.fp__name { font-size: 16px; font-weight: 500; line-height: 1.3; }
-.fp__row.is-soon .fp__name { color: #8d8c89; }
-.fp__row.is-soon.is-on .fp__name { color: var(--fg-2); }
-.fp__row.is-on { background: rgba(255,255,255,.06); }
-.fp__row.is-on b { color: var(--c); }
-.fp__row:focus-visible { outline: 2px solid var(--lime); outline-offset: 0; }
-.fp__preview { display: grid; align-content: start; gap: 6px; }
-.fp__crop { --r: 20px; width: 100%; aspect-ratio: 4 / 3; margin-bottom: 12px; }
-.fp__ch { margin: 0; font-size: 11px; color: var(--c, var(--lime)); }
-.fp__pname { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 24px; line-height: 1; letter-spacing: -0.02em; text-transform: uppercase; }
-.fp__line { margin: 2px 0 0; font-size: 14px; line-height: 1.4; color: var(--fg-2); }
-@media (max-width: 1080px) { .rackp { display: none !important; } }
-
-/* Menu sheet: channel rows. */
-.menu__label { margin: 22px 0 4px; color: var(--fg-dim); }
-.menu__label:first-child { margin-top: 0; }
-.menu__row { --rule: 1; }
-.menu__row.is-soon { color: var(--fg-dim); }
-.menu__row.is-soon .menu__w { color: #5d5d5b; }
-.menu__w { font-family: var(--font-text) !important; font-weight: 600 !important; text-transform: none !important; letter-spacing: -0.01em !important; font-size: clamp(20px, 5.4vw, 26px) !important; line-height: 1.15 !important; }
-.menu__row { padding: 12px 4px 11px; }
-.menu__row b { padding-top: 4px; }
-.menu__row.is-soon .menu__w { color: #7d7c79 !important; }
-.menu__row em { text-transform: none; font-family: var(--font-text); font-size: 14px; letter-spacing: 0; color: var(--fg-2); margin-top: 4px; }
-.menu__row b { color: var(--fg-dim); }
-.menu__row:not(.is-soon) b { color: var(--lime); }
-.menu__guide { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; border-radius: 999px; border: 1px solid var(--line); font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: 15px; text-decoration: none; }
-.menu__guide .ico { width: 16px; height: 16px; }
-.menu__weblabel { margin: 6px 0 -4px; text-align: center; color: var(--fg-dim); }
-.menu__web { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.menu__web .menu__guide { font-size: 13px; padding: 0 12px; text-align: center; }
 
 /* Footer columns. */
 .foot__cols { display: grid; grid-template-columns: 1.4fr repeat(3, 1fr); gap: 32px; margin-top: clamp(56px, 9vh, 96px); padding-top: 32px; border-top: 1px solid var(--line); }

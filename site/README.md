@@ -28,6 +28,30 @@ New pages go in `PAGES` in `vite.config.ts`. A feature page goes live by
 setting `live: true` on its channel in `src/content/features.ts`: menus, the
 rack and the footer are generated from that list.
 
+## The menu
+
+One information architecture for every screen (`MENU` in
+`src/content/features.ts`): three verbs in the order of a band's week, "Book
+& get paid", "Line up the band", "Play the show", then "Built in" (privacy,
+devices). A page's group also labels its hero and its strip in the rack.
+
+- **Wide screens (≥1081px), "The index"**: Features is a button
+  (`aria-expanded`) that opens a panel as wide as the header: four columns,
+  every page with its one-liner, the current page in lime
+  (`aria-current="page"`), the page dimmed behind. Enter, Space or ↓ open it
+  and put focus on the first link; Tab reads column by column; Esc, or Tab out
+  of either end, closes it and returns focus to the button; hover opens it
+  after 120 ms. No preview image, nothing that waits for a hover.
+- **Phones and tablets, the sheet**: Log in / Sign up first, the four groups as
+  an accordion (one open at a time, the current page's to begin with), then How
+  it works / Guide / FAQ, the language last; "Get the app" is pinned at the
+  bottom. Focus stays inside, the page behind is inert and does not scroll,
+  Esc closes.
+- Reduced motion: both only fade.
+- Markup: `partials/nav.html` + `featurePanel()` / `menuRows()` in
+  `src/content/render.ts`; behaviour: `src/ui/nav.ts`; styles:
+  `src/styles/menu.css`. Tests: `test/menu.test.ts`, `e2e/site/menu.spec.ts`.
+
 ## How it fits together
 
 - `partials/` — shared HTML: `<!--#name-->` includes a partial,
@@ -199,4 +223,5 @@ doors, `conversion.spec.ts` (the hero's buttons per device, the counter's
 threshold, the in-app browser bar, 44px controls), `release-fixes.spec.ts`
 (the Stage and Money demos, the closed-beta blocks, narrow phones) and
 `capabilities.spec.ts` (the three panels and the spec sheet at each width,
-captures fitted, fragments in the page's language).
+captures fitted, fragments in the page's language), `no-photos.spec.ts` and
+`menu.spec.ts` (the panel, the sheet, keyboard and focus).

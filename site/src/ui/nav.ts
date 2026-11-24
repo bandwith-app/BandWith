@@ -2,17 +2,22 @@ import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { initNavMark } from './navMark';
 import { storageGet, storageSet } from '../core/storage';
-import { fitCrop, focusCrop, parseRegion } from './crop';
 
 /**
  * The nav as a small channel strip (every page).
  * - Logo: a three-band meter that plays only while hovered (navMark.ts).
- * - Deck: Features (opens the rack panel), How it works (the night), Guide. One fader cap
+ * - Deck: Features (opens the panel), How it works (the night), Guide, FAQ. One fader cap
  *   glides to the item under the pointer and parks on the current page.
- * - Features panel (≥1081px): the eleven channels in four groups; the row
- *   under the pointer (or focus) previews a zoomed piece of its screen.
- * - After the first screen the bar tightens; over bone sheets it turns light.
- * - ≤1080px: the menu button opens the pill into a full-height sheet.
+ * - Features panel (≥1081px), "The index": every page and its one-liner in four columns,
+ *   the page dimmed behind. Features is a button with aria-expanded: Enter, Space or ↓
+ *   opens it and puts focus on the first link; hover opens it after 120 ms; a click
+ *   toggles. Tab reads the columns top to bottom; Esc, or Tab out of either end, closes
+ *   and returns focus to the button. The current page has aria-current.
+ * - After the first screen the bar tightens; over light sheets it turns light.
+ * - ≤1080px: the menu button opens a sheet: account first, the four groups as an
+ *   accordion (one open at a time, the current page's to begin with), the app pinned at
+ *   the bottom. Focus stays inside, the page behind does not scroll, Esc closes.
+ * - Reduced motion: both only fade.
  */
 
 type Opts = {
@@ -86,36 +91,21 @@ export function initNav({ nav, reduce, time, lock }: Opts) {
     nav.classList.toggle('is-tight', window.scrollY > window.innerHeight * 0.6);
   }
 
+  /* ── Current page: its row in the panel and in the sheet ── */
+  const norm = (p: string) => p.replace(/index\.html$/, '').replace(/\/?$/, '/');
+  const here = norm(location.pathname);
+  const currentRows = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[data-mm-row]')).filter((a) => norm(a.getAttribute('href') ?? '') === here);
+  currentRows.forEach((a) => { a.setAttribute('aria-current', 'page'); a.classList.add('is-current'); });
+
   /* ── Features panel (≥1081px) ── */
   const rackBtn = nav.querySelector<HTMLButtonElement>('[data-rack-btn]');
   const panel = document.querySelector<HTMLElement>('[data-rack-panel]');
+  const scrim = document.querySelector<HTMLElement>('[data-rack-scrim]');
   let closeT = 0;
   if (rackBtn && panel) {
-    const crop = panel.querySelector<HTMLElement>('[data-fp-crop]');
-    const chOut = panel.querySelector<HTMLElement>('[data-fp-ch]');
-    const nameOut = panel.querySelector<HTMLElement>('[data-fp-name]');
-    const lineOut = panel.querySelector<HTMLElement>('[data-fp-line]');
-    const strips = Array.from(panel.querySelectorAll<HTMLElement>('[data-fp]'));
-    const current = strips.find((s) => s.getAttribute('href') === location.pathname) ?? strips.find((s) => !s.classList.contains('is-soon')) ?? strips[0];
-    let shown: HTMLElement | null = null;
-
-    const preview = (s: HTMLElement) => {
-      if (s === shown) return;
-      shown = s;
-      strips.forEach((x) => x.classList.toggle('is-on', x === s));
-      if (crop && s.dataset.shot) {
-        if (panel.hidden) { const img = crop.querySelector('img'); if (img) img.src = s.dataset.shot; }
-        else focusCrop(crop, parseRegion(s.dataset.crop), s.dataset.shot);
-      }
-      if (chOut) chOut.textContent = s.dataset.ch ?? '';
-      if (nameOut) nameOut.textContent = s.dataset.name ?? '';
-      if (lineOut) lineOut.textContent = s.classList.contains('is-soon') ? `${s.dataset.line} Page coming soon.` : s.dataset.line ?? '';
-      panel.style.setProperty('--c', s.style.getPropertyValue('--c'));
-    };
-    strips.forEach((s) => {
-      s.addEventListener('pointerenter', () => preview(s));
-      s.addEventListener('focus', () => preview(s));
-    });
+    const links = () => Array.from(panel.querySelectorAll<HTMLElement>('a[href]'));
+    const layers = scrim ? [panel, scrim] : [panel];
+    let openedAt = 0;
 
     const setPanel = (on: boolean, focus = false) => {
       window.clearTimeout(closeT);
@@ -123,33 +113,60 @@ export function initNav({ nav, reduce, time, lock }: Opts) {
       panelOpen = on;
       rackBtn.setAttribute('aria-expanded', String(on));
       sync();
+      gsap.killTweensOf(layers);
       if (on) {
-        shown = null;
-        panel.hidden = true;
-        preview(current);
-        panel.hidden = false;
-        if (crop) fitCrop(crop, parseRegion(current.dataset.crop));
-        if (!reduce) gsap.fromTo(panel, { autoAlpha: 0, y: -10, clipPath: 'inset(0% 0% 100% 0% round 32px)' }, { autoAlpha: 1, y: 0, clipPath: 'inset(0% 0% 0% 0% round 32px)', duration: 0.6, ease: 'expo.out' });
-        if (focus) (strips.find((s) => s.tagName === 'A') ?? strips[0]).focus({ preventScroll: true });
-      } else if (reduce) panel.hidden = true;
-      else gsap.to(panel, { autoAlpha: 0, y: -6, duration: 0.25, ease: 'power2.in', onComplete: () => { if (!panelOpen) panel.hidden = true; } });
+        openedAt = window.scrollY;
+        layers.forEach((l) => { l.hidden = false; });
+        // Opacity, not visibility: the links can take focus from the first frame.
+        gsap.set(layers, { visibility: 'visible' });
+        // Reduced motion: a fade only. Otherwise the panel also comes down a few pixels.
+        if (reduce) gsap.fromTo(layers, { opacity: 0 }, { opacity: 1, duration: 0.15, ease: 'none' });
+        else {
+          if (scrim) gsap.fromTo(scrim, { opacity: 0 }, { opacity: 1, duration: 0.35, ease: 'power2.out' });
+          gsap.fromTo(panel, { opacity: 0, y: -10 }, { opacity: 1, y: 0, duration: 0.5, ease: 'expo.out' });
+        }
+        if (focus) links()[0]?.focus({ preventScroll: true });
+      } else {
+        gsap.to(layers, { autoAlpha: 0, duration: reduce ? 0.12 : 0.22, ease: reduce ? 'none' : 'power2.in', onComplete: () => { if (!panelOpen) layers.forEach((l) => { l.hidden = true; }); } });
+      }
     };
     const later = () => { window.clearTimeout(closeT); closeT = window.setTimeout(() => setPanel(false), 260); };
+    const back = () => { setPanel(false); rackBtn.focus({ preventScroll: true }); };
 
+    // A click toggles; from the keyboard (Enter, Space: a click with no pointer) focus goes to the first link.
     rackBtn.addEventListener('click', (e) => setPanel(!panelOpen, e.detail === 0));
+    rackBtn.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowDown') return;
+      e.preventDefault();
+      if (panelOpen) links()[0]?.focus({ preventScroll: true }); else setPanel(true, true);
+    });
     if (matchMedia('(hover: hover)').matches) {
-      rackBtn.addEventListener('pointerenter', () => { window.clearTimeout(closeT); closeT = window.setTimeout(() => setPanel(true), 90); });
+      rackBtn.addEventListener('pointerenter', () => { window.clearTimeout(closeT); closeT = window.setTimeout(() => setPanel(true), 120); });
       rackBtn.addEventListener('pointerleave', later);
       panel.addEventListener('pointerenter', () => window.clearTimeout(closeT));
       panel.addEventListener('pointerleave', later);
     }
+    // Tab reads the panel in order; leaving it at either end closes it and goes back to the button.
+    panel.addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab') return;
+      const f = links();
+      const at = f.indexOf(document.activeElement as HTMLElement);
+      if ((e.shiftKey && at === 0) || (!e.shiftKey && at === f.length - 1)) { e.preventDefault(); back(); }
+    });
+    panel.addEventListener('focusout', (e) => {
+      const to = e.relatedTarget as Node | null;
+      if (panelOpen && to && !panel.contains(to) && !rackBtn.contains(to)) setPanel(false);
+    });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && panelOpen) { setPanel(false); rackBtn.focus(); }
+      if (e.key === 'Escape' && panelOpen) back();
     });
     document.addEventListener('pointerdown', (e) => {
       if (panelOpen && !panel.contains(e.target as Node) && !rackBtn.contains(e.target as Node)) setPanel(false);
     });
-    window.addEventListener('scroll', () => { if (panelOpen && !panel.matches(':hover')) setPanel(false); }, { passive: true });
+    panel.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => setPanel(false)));
+    // The page moved on under it (a real scroll, not a pixel of settling): the panel steps aside.
+    window.addEventListener('scroll', () => { if (panelOpen && Math.abs(window.scrollY - openedAt) > 24 && !panel.matches(':hover') && !panel.contains(document.activeElement)) setPanel(false); }, { passive: true });
+    matchMedia('(max-width: 1080px)').addEventListener('change', (m) => { if (m.matches) setPanel(false); });
   }
 
   sync();
@@ -169,14 +186,29 @@ export function initNav({ nav, reduce, time, lock }: Opts) {
   const btn = nav.querySelector<HTMLButtonElement>('[data-menu-btn]');
   const menu = document.querySelector<HTMLElement>('[data-menu]');
   if (!btn || !menu) return;
-  const rows = Array.from(menu.querySelectorAll<HTMLElement>('.menu__row'));
-  const words = menu.querySelectorAll<HTMLElement>('.menu__w');
-  const foot = menu.querySelector<HTMLElement>('.menu__foot');
+  const behind = Array.from(document.querySelectorAll<HTMLElement>('main, footer'));
   let open = false;
   let kb = false;
   window.addEventListener('keydown', () => { kb = true; }, true);
   window.addEventListener('pointerdown', () => { kb = false; }, true);
-  let tl: gsap.core.Timeline | null = null;
+
+  // The four groups: an accordion, one open at a time; closed rows are hidden (out of the tab order).
+  const groups = Array.from(menu.querySelectorAll<HTMLElement>('[data-acc-group]'));
+  const head = (g: HTMLElement) => g.querySelector<HTMLButtonElement>('[data-acc-btn]')!;
+  const setGroup = (g: HTMLElement | null) => groups.forEach((x) => {
+    const on = x === g;
+    x.classList.toggle('is-open', on);
+    head(x).setAttribute('aria-expanded', String(on));
+    const list = x.querySelector<HTMLElement>('[data-acc-panel]');
+    if (list) list.hidden = !on;
+  });
+  const homeGroup = groups.find((g) => g.querySelector('[aria-current="page"]')) ?? null;
+  setGroup(homeGroup);
+  groups.forEach((g) => head(g).addEventListener('click', () => {
+    const on = !g.classList.contains('is-open');
+    setGroup(on ? g : null);
+    if (on) g.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+  }));
 
   function setOpen(on: boolean, focus = true) {
     if (on === open) return;
@@ -186,30 +218,22 @@ export function initNav({ nav, reduce, time, lock }: Opts) {
     nav.classList.toggle('is-open', on);
     sync();
     lock(on);
-    tl?.kill();
-    const navH = nav.offsetHeight;
+    behind.forEach((el) => { el.inert = on; });
+    gsap.killTweensOf(menu);
     if (on) {
+      // Each time it opens on the group of the page you are on.
+      setGroup(homeGroup);
       menu!.hidden = false;
+      menu!.querySelector<HTMLElement>('[data-menu-scroll]')?.scrollTo(0, 0);
       const h = menu!.offsetHeight;
-      if (reduce) gsap.set(menu, { clipPath: 'none' });
-      else {
-        tl = gsap.timeline()
-          .fromTo(menu, { clipPath: `inset(0px 0px ${h - navH}px 0px round 27px)` }, { clipPath: 'inset(0px 0px 0px 0px round 27px)', duration: 0.75, ease: 'expo.inOut' })
-          .fromTo(words, { yPercent: 110 }, { yPercent: 0, duration: 0.9, ease: 'expo.out', stagger: 0.035 }, 0.3)
-          .fromTo(rows, { '--rule': 0 }, { '--rule': 1, duration: 0.8, ease: 'expo.out', stagger: 0.035 }, 0.3)
-          .fromTo(foot, { autoAlpha: 0, y: 16 }, { autoAlpha: 1, y: 0, duration: 0.7, ease: 'expo.out' }, 0.55);
-      }
-      if (focus && kb) menu!.querySelector<HTMLElement>('a')?.focus({ preventScroll: true });
+      const navH = nav.offsetHeight;
+      // Reduced motion: a fade only. Otherwise the pill opens downwards into the sheet.
+      gsap.set(menu, { visibility: 'visible' });
+      if (reduce) gsap.fromTo(menu, { opacity: 0 }, { opacity: 1, duration: 0.15, ease: 'none' });
+      else gsap.fromTo(menu, { opacity: 1, clipPath: `inset(0px 0px ${h - navH}px 0px round 27px)` }, { clipPath: 'inset(0px 0px 0px 0px round 27px)', duration: 0.6, ease: 'expo.inOut', clearProps: 'clipPath' });
+      if (focus && kb) menu!.querySelector<HTMLElement>('a[href]')?.focus({ preventScroll: true });
     } else {
-      const h = menu!.offsetHeight;
-      const done = () => { menu!.hidden = true; };
-      if (reduce) done();
-      else {
-        tl = gsap.timeline({ onComplete: done })
-          .to([foot, ...rows], { autoAlpha: 0, duration: 0.2, ease: 'power2.in' })
-          .to(menu, { clipPath: `inset(0px 0px ${h - navH}px 0px round 27px)`, duration: 0.55, ease: 'expo.inOut' }, 0.05)
-          .set([foot, ...rows], { clearProps: 'opacity,visibility' });
-      }
+      gsap.to(menu, { autoAlpha: 0, duration: reduce ? 0.12 : 0.25, ease: reduce ? 'none' : 'power2.in', onComplete: () => { if (!open) menu!.hidden = true; } });
       if (focus && kb) btn!.focus({ preventScroll: true });
     }
   }
@@ -218,12 +242,13 @@ export function initNav({ nav, reduce, time, lock }: Opts) {
   menu.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => setOpen(false, false)));
   document.addEventListener('keydown', (e) => {
     if (!open) return;
-    if (e.key === 'Escape') { setOpen(false); return; }
+    if (e.key === 'Escape') { kb = true; setOpen(false); return; }
     if (e.key !== 'Tab') return;
-    const f = [btn, ...Array.from(menu.querySelectorAll<HTMLElement>('a'))];
+    // Focus stays in the sheet: the close button, then every control that is showing.
+    const f = [btn, ...Array.from(menu.querySelectorAll<HTMLElement>('a[href], button'))].filter((el) => el === btn || el.getClientRects().length > 0);
     const i = f.indexOf(document.activeElement as HTMLElement);
     if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); }
-    else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus(); }
+    else if (!e.shiftKey && (i === -1 || i === f.length - 1)) { e.preventDefault(); f[0].focus(); }
   });
   matchMedia('(min-width: 1081px)').addEventListener('change', (m) => { if (m.matches) setOpen(false, false); });
 }
