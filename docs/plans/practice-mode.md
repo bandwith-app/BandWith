@@ -1,6 +1,8 @@
 # Practice: Stage mode in private
 
-Status: **plan only, no product code.** Written 2026-11-23, on top of `main` 4ba3059 (release 2026-11-24b merged). The direction in §1 is the owner's, agreed the same evening. This document is the plan of the **first step**, with its screens and entry points; steps 2 and 3 are outlined only. Nothing is built until the open questions (§14) are answered.
+Status: **plan, not approved for build; Q2 decided.**
+
+Plan only, no product code. Written 2026-11-23, on top of `main` 4ba3059 (release 2026-11-24b merged). The direction in §1 is the owner's, agreed the same evening. This document is the plan of the **first step**, with its screens and entry points; steps 2 and 3 are outlined only. Nothing is built until the open questions (§14) are answered.
 
 Mockups of step 1 exist as images outside the repo (§15 lists them by name).
 
@@ -494,6 +496,18 @@ Sizes: **S** = a few hours with tests; **M** = about half a day to a day; **L** 
 
 ## 14. Open questions for the owner
 
+### Decided
+
+**Q2 · How a personal space is represented. Decided 2026-11-23**, in the owner's words: "Sì, band personale". The personal space is a **personal one-member band**, flagged `bands.is_personal` (option A in §8.3). What it implies:
+
+- **P6 is "My songs" on the personal band.** The band is created the first time the person adds a song. Songs, setlists, the importers, My notes, Stage, Practice and the live packs work on it as on any band. Whether and when P6 ships is still Q1.
+- **The guards**, enforced on the server, with a PGlite suite of their own: no second member, no invitations, no deputies, no band chat, no public quote pages for a personal band (§8.3).
+- **Out of every count of bands:** the beta counter, `bands_as_admin` (161), analytics, and any other figure that says "bands".
+- **One list of hidden surfaces, shared with the solo-account fix.** That fix is being made tonight on the branch `fix/solo-account-band-only` and will expose one predicate for "has a real band". A personal band is not a real band: P6 uses that same predicate everywhere, and adds no second list of checks. P6 starts after that branch is merged.
+- **Unchanged:** personal gigs keep `band_id` null; account deletion already erases one-member bands with the account (180); migrations 205–209 stay reserved for this.
+
+### Still open
+
 Each with a recommendation.
 
 **Q1 · The Home card for accounts without a band has no songs to open.** A solo account has no songs, and can't have any: songs belong to a band (§4.3).
@@ -501,8 +515,6 @@ Each with a recommendation.
 - (b) Ship the card with step 3, not in step 1.
 - (c) Songs kept only on the device, as a stop-gap.
 - **Recommendation: (a), in that order.** Members get Practice first (P1–P5). The card ships when it has something real behind it. (c) is code to throw away and songs to migrate later.
-
-**Q2 · How a personal space is represented.** §8.3. **Recommendation: a personal one-member band, flagged.**
 
 **Q3 · Deputies.** The person without a band who most needs Practice is the deputy learning Saturday's set, and deputies can't read a band's songs today. Letting a deputy who said yes read that one gig's songs is a privacy decision the live plan left open. **Recommendation: yes, read-only, that gig only, until the day after; as part of step 2, with its own RLS suite. Not in step 1.**
 
