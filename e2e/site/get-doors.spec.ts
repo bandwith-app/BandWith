@@ -5,11 +5,12 @@ import { expect, test, type Browser, type BrowserContext, type Page } from '@pla
  * - While open spots are left the site says "Open beta" and the home hero
  *   shows no spots count; with only invites, or nobody, getting in it says
  *   "Private beta" and the notice is back.
- * - /get/: the three doors come right under the headline, the visitor's own
- *   door first (TestFlight on iPhone and iPad, the APK on Android, the web
- *   app anywhere else), decided before the first paint: no page script needed.
- *   The counter sits with "Why a limit?"; it returns to the top when the open
- *   spots are gone.
+ * - /get/: the three doors come right under the headline, ordered for the
+ *   device (a phone: the web app, then its own app; a tablet or a computer:
+ *   its own door first), decided before the first paint: no page script needed.
+ *   The counter sits with "Why a limit?" once 50 open spots or fewer are left
+ *   (e2e/site/conversion.spec.ts has the threshold); it returns to the top
+ *   when the open spots are gone.
  * - The analytics banner is compact on a phone: it never covers the first door.
  */
 
@@ -22,8 +23,9 @@ const UA = {
   windows: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
 };
 type State = 'open' | 'invites' | 'full';
+// open: few enough open spots left for the counter to be on the page (50 or fewer).
 const CAP: Record<State, object> = {
-  open: { cap: 300, reserved: 45, taken: 60, public_left: 195, invite_left: 240, state: 'open' },
+  open: { cap: 300, reserved: 45, taken: 215, public_left: 40, invite_left: 85, state: 'open' },
   invites: { cap: 300, reserved: 45, taken: 271, public_left: 0, invite_left: 29, state: 'invites' },
   full: { cap: 300, reserved: 45, taken: 300, public_left: 0, invite_left: 0, state: 'full' },
 };
@@ -67,13 +69,13 @@ const top = async (page: Page, sel: string) => (await page.locator(sel).first().
 /** The capacity answer is on the page (the meter is drawn in the same step as every label and counter). */
 const ready = (page: Page) => expect(page.locator('[data-cap-meter] i').first()).toBeAttached();
 
-test.describe('Get page: the visitor’s own door first', () => {
+test.describe('Get page: the doors in the order for the device', () => {
   test.beforeEach(({}, info) => { test.skip(info.project.name !== 'site-desktop', 'each test opens its own device'); });
 
   const cases: [string, Visitor, string[]][] = [
-    ['iPhone', { ua: UA.iphone, touch: 5 }, ['ios', 'web', 'android']],
+    ['iPhone', { ua: UA.iphone, touch: 5 }, ['web', 'ios', 'android']],
     ['iPad (says it is a Mac, has a touch screen)', { ua: UA.mac, touch: 5, viewport: { width: 1024, height: 1366 } }, ['ios', 'web', 'android']],
-    ['Android', { ua: UA.android, touch: 5 }, ['android', 'web', 'ios']],
+    ['Android phone', { ua: UA.android, touch: 5 }, ['web', 'android', 'ios']],
     ['a Mac', { ua: UA.mac, touch: 0, viewport: { width: 1440, height: 900 } }, ['web', 'android', 'ios']],
     ['a Windows laptop with a touch screen', { ua: UA.windows, touch: 10, viewport: { width: 1440, height: 900 } }, ['web', 'android', 'ios']],
   ];
@@ -92,9 +94,10 @@ test.describe('Get page: the visitor’s own door first', () => {
   test('the order is set by the page itself, before its scripts load', async ({ browser }) => {
     const { context, page } = await visitor(browser, { ua: UA.iphone, touch: 5, noModules: true });
     await page.goto('/get/', { waitUntil: 'domcontentloaded' });
-    expect(await doorIds(page)).toEqual(['ios', 'web', 'android']);
+    expect(await doorIds(page)).toEqual(['web', 'ios', 'android']);
     expect(await doorNumbers(page)).toEqual(['Door 01', 'Door 02', 'Door 03']);
     await expect(page.locator('html')).toHaveAttribute('data-device', 'ios');
+    await expect(page.locator('html')).toHaveAttribute('data-phone', '');
     await context.close();
   });
 
@@ -103,7 +106,7 @@ test.describe('Get page: the visitor’s own door first', () => {
       const { context, page } = await visitor(browser, { ua: UA.android, touch: 5 });
       await page.goto(`/${lang}/get/`);
       await ready(page);
-      expect(await doorIds(page)).toEqual(['android', 'web', 'ios']);
+      expect(await doorIds(page)).toEqual(['web', 'android', 'ios']);
       expect(await doorNumbers(page)).toEqual([`${word} 01`, `${word} 02`, `${word} 03`]);
       await context.close();
     });
@@ -114,7 +117,7 @@ test.describe('Get page on a phone: the action is on the first screen', () => {
   test.beforeEach(({}, info) => { test.skip(info.project.name !== 'site-desktop', 'each test opens its own device'); });
 
   for (const lang of ['', 'it/', 'es/']) {
-    test(`/${lang}get/ on an iPhone: the TestFlight button shows without scrolling, above the cookie banner`, async ({ browser }) => {
+    test(`/${lang}get/ on an iPhone: the web app’s button shows without scrolling, above the cookie banner`, async ({ browser }) => {
       const { context, page } = await visitor(browser, { ua: UA.iphone, touch: 5, consent: null, motion: true });
       await page.goto(`/${lang}get/`);
       await ready(page);
@@ -123,7 +126,7 @@ test.describe('Get page on a phone: the action is on the first screen', () => {
       await expect(banner).toHaveClass(/is-in/);
       await page.waitForTimeout(700);
       expect(await page.evaluate(() => window.scrollY)).toBe(0);
-      const btn = (await page.locator('[data-door="ios"]').boundingBox())!;
+      const btn = (await page.locator('[data-door="web"]').boundingBox())!;
       const bar = (await banner.boundingBox())!;
       expect(btn.y).toBeGreaterThan(0);
       expect(btn.y + btn.height, 'button inside the first screen').toBeLessThanOrEqual(PHONE.height);
@@ -132,14 +135,14 @@ test.describe('Get page on a phone: the action is on the first screen', () => {
     });
   }
 
-  test('on Android the APK button is the one on the first screen', async ({ browser }) => {
+  test('on Android too the web app’s button is the one on the first screen', async ({ browser }) => {
     const { context, page } = await visitor(browser, { ua: UA.android, touch: 5, consent: null, motion: true });
     await page.goto('/get/');
     await ready(page);
     const banner = page.locator('[data-consent-banner]');
     await expect(banner).toHaveClass(/is-in/);
     await page.waitForTimeout(700);
-    const btn = (await page.locator('[data-door="android"]').boundingBox())!;
+    const btn = (await page.locator('[data-door="web"]').boundingBox())!;
     expect(btn.y + btn.height).toBeLessThanOrEqual((await banner.boundingBox())!.y);
     await context.close();
   });
@@ -149,7 +152,7 @@ test.describe('Get page: doors first, the counter with "Why a limit?"', () => {
   test.beforeEach(({}, info) => { test.skip(info.project.name !== 'site-desktop', 'each test opens its own device'); });
 
   for (const viewport of [PHONE, { width: 1440, height: 900 }]) {
-    test(`open, ${viewport.width}px: headline, doors, then the counter in the Why section`, async ({ browser }) => {
+    test(`open with 40 spots left, ${viewport.width}px: headline, doors, then the counter in the Why section`, async ({ browser }) => {
       const { context, page } = await visitor(browser, { viewport });
       await page.goto('/get/');
       await ready(page);
@@ -157,9 +160,9 @@ test.describe('Get page: doors first, the counter with "Why a limit?"', () => {
       await expect(page.locator('#waitlist')).toBeHidden();
       await expect(page.locator('#why [data-cap-block]')).toBeVisible();
       await expect(page.locator('.gethead [data-cap-block]')).toHaveCount(0);
-      await expect(page.locator('#why [data-cap-num="left"]')).toHaveText('195');
+      await expect(page.locator('#why [data-cap-num="left"]')).toHaveText('40');
       await expect(page.locator('#why [data-cap-num="kept"]')).toHaveText('45');
-      await expect(page.locator('#why [data-cap-text]')).toHaveText('195 of 255 open spots left · 45 kept for band invites');
+      await expect(page.locator('#why [data-cap-text]')).toHaveText('40 of 255 open spots left · 45 kept for band invites');
       expect(await top(page, '#get-h')).toBeLessThan(await top(page, '[data-doors]'));
       expect(await top(page, '[data-doors]')).toBeLessThan(await top(page, '[data-cap-block]'));
       // Nothing between the intro and the first door.
@@ -186,8 +189,8 @@ test.describe('Get page: doors first, the counter with "Why a limit?"', () => {
       await expect(page.locator('#waitlist')).toBeVisible();
       expect(await top(page, '[data-cap-block]')).toBeLessThan(await top(page, '#waitlist'));
       expect(await top(page, '#waitlist')).toBeLessThan(await top(page, '[data-doors]'));
-      // An invited iPhone owner still finds TestFlight first among the doors.
-      expect(await doorIds(page)).toEqual(['ios', 'web', 'android']);
+      // An invited iPhone owner still finds the doors in the phone's order.
+      expect(await doorIds(page)).toEqual(['web', 'ios', 'android']);
       await context.close();
     });
   }
@@ -296,14 +299,14 @@ test.describe('cookie banner on a phone', () => {
 });
 
 test.describe('on the suite’s own devices', () => {
-  test('the phone (WebKit, iPhone) gets TestFlight first; the desktop gets the web app', async ({ page }, info) => {
+  test('the phone (WebKit, iPhone) gets the web app first, then TestFlight; the desktop gets the web app', async ({ page }, info) => {
     await page.route(/googletagmanager\.com|google-analytics\.com/, (r) => r.fulfill({ status: 204, body: '' }));
     await page.route('**/api/geo', (r) => r.fulfill({ contentType: 'application/json', body: '{"country":null}' }));
     await page.route('**/rest/v1/rpc/bw_capacity_status', (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify(CAP.open) }));
     await page.goto('/get/');
     await ready(page);
     const phone = info.project.name === 'site-phone';
-    expect(await doorIds(page)).toEqual(phone ? ['ios', 'web', 'android'] : ['web', 'android', 'ios']);
+    expect(await doorIds(page)).toEqual(phone ? ['web', 'ios', 'android'] : ['web', 'android', 'ios']);
     expect(await doorNumbers(page)).toEqual(['Door 01', 'Door 02', 'Door 03']);
     await expect(page.locator('[data-doors] > .gdoor').first().locator('.gdoor__btn')).toBeVisible();
   });

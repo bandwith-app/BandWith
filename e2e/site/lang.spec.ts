@@ -139,7 +139,9 @@ test.describe('language switcher and pages', () => {
     const sw = page.locator('footer [data-lang-switch]');
     await expect(sw.locator('a')).toHaveText(['EN', 'IT', 'ES']);
     await expect(sw.locator('[aria-current="page"]')).toHaveText('EN');
-    await sw.locator('a[hreflang="es"]').click();
+    // On a phone the suggestion card covers the end of the page but for a strip under it: each language
+    // takes a tap on 44px, and the lower part of it is in that strip (the middle is behind the card).
+    await sw.locator('a[hreflang="es"]').click({ position: { x: 22, y: 38 } });
     await expect(page).toHaveURL(/\/es\/features\/money\/$/);
     await settled(page);
     // Picking a language is a choice: no popup on top of it.

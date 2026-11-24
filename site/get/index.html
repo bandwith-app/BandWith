@@ -50,8 +50,15 @@
       <!-- ─────────────────────────── DOORS ─────────────────────────── -->
       <section class="gdoors" aria-label="Three ways in">
         <p class="wrap gdoors__inv mono" data-cap-show="invites" hidden>Invited by a band? Your door is still open.</p>
-        <!-- Written web, Android, iPhone; the inline script after the grid puts the visitor's own door first. -->
+        <!-- Written web, Android, iPhone; the inline script after the grid orders them for the device:
+             on a phone the web app first, then the phone's own app; on a tablet or a computer the device's own door first. -->
         <div class="wrap gdoors__grid" data-doors>
+          <!-- What the beta means, and (once the owner fills it in: content/site.ts, MADE_BY) who makes it.
+               The script puts it after the first door on a phone, under the three doors anywhere else. -->
+          <div class="gtrust" data-trust>
+            <p class="gtrust__line"><span class="cap-line__led" aria-hidden="true"></span><span>Beta means: free, updated every week, and your data stays yours: export a copy or delete your account anytime.</span></p>
+            <!--@made-by-->
+          </div>
           <!-- WEB -->
           <article class="gdoor" id="web" aria-labelledby="web-h">
             <header class="gdoor__head">
@@ -59,13 +66,16 @@
               <p class="mono gdoor__no" data-door-no>Door 01</p>
             </header>
             <h2 class="gdoor__name" id="web-h">Web app</h2>
-            <p class="gdoor__line">Create your account in the browser. Nothing to install. Good on a laptop or a tablet.</p>
+            <!-- data-door-for: "phone" on a phone, "other" on a tablet or a computer (the inline script shows one). -->
+            <p class="gdoor__line" data-door-for="other">Create your account in the browser. Nothing to install. Good on a laptop or a tablet.</p>
+            <p class="gdoor__line" data-door-for="phone" hidden>Fastest way in. Works on your phone right now, nothing to install. Add the phone app later for Bluetooth and offline Stage mode.</p>
             <ul class="gdoor__facts">
               <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>Every feature, live sync and the click</li>
-              <li><svg class="ico" aria-hidden="true"><use href="#i-minus"/></svg>No Bluetooth or offline Stage mode</li>
+              <li data-door-for="other"><svg class="ico" aria-hidden="true"><use href="#i-minus"/></svg>No Bluetooth or offline Stage mode</li>
+              <li data-door-for="phone" hidden><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>The same account when you add the phone app</li>
             </ul>
             <div class="gdoor__act">
-              <a class="btn btn--ink gdoor__btn" href="https://app.bandwith.fun/?start=signup&amp;src=site" data-door="web">Create your account <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
+              <a class="btn btn--ink gdoor__btn" href="https://app.bandwith.fun/?start=signup&amp;src=site-get-web" data-door="web">Create your account <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
             </div>
           </article>
 
@@ -156,7 +166,9 @@
       </section>
 
       <!-- ─────────────────────── WHY A LIMIT ─────────────────────── -->
-      <section class="sec sec--bone why" id="why" data-light aria-labelledby="why-h">
+      <!-- Out of the page (hidden) while plenty of open spots are left: core/capacity.ts shows it
+           once 50 or fewer are left, and whenever only invites, or nobody, get in (counterShown). -->
+      <section class="sec sec--bone why" id="why" data-light aria-labelledby="why-h" data-cap-show="limit" hidden>
         <div class="wrap why__grid">
           <div>
             <p class="label">Why a limit?</p>
@@ -168,7 +180,7 @@
               </div>
               <div class="ledm" data-cap-meter data-cells="40"></div>
               <p class="capblock__line"><span data-cap-line hidden><span data-cap-text></span></span> <a href="#why">Why a limit?</a></p>
-              <p class="capblock__sample mono" data-cap-sample hidden>Preview numbers · <a href="?capacity=open">open</a> · <a href="?capacity=invites">invites only</a> · <a href="?capacity=full">full</a></p>
+              <p class="capblock__sample mono" data-cap-sample hidden>Preview numbers · <a href="?capacity=open">open</a> · <a href="?capacity=few">few left</a> · <a href="?capacity=invites">invites only</a> · <a href="?capacity=full">full</a></p>
             </div>
           </div>
           <div class="why__copy">

@@ -16,6 +16,7 @@ import { renderCapacity } from './capacity';
 import { initCrops } from '../ui/crop';
 import { initLangSuggest } from '../ui/langSuggest';
 import { initConsent } from '../ui/consent';
+import { initInAppBar } from '../ui/inAppBar';
 
 /**
  * Shared start for every page. `boot()` runs first (plugins, smooth scroll,
@@ -56,6 +57,9 @@ export function boot(): Ctx {
   document.querySelectorAll<HTMLElement>('[data-dot]').forEach((el) => {
     el.innerHTML = dotSvg(el.dataset.dot ?? '', 0.14);
   });
+
+  // Facebook's or Instagram's in-app browser: the bar is already up (inline, before the first paint).
+  initInAppBar(() => ScrollTrigger.refresh());
 
   // Lenis only where it helps: a mouse wheel on a desktop. Touch keeps native scrolling.
   let lenis: Lenis | null = null;

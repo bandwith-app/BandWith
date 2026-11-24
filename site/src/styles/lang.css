@@ -2,15 +2,22 @@
    Languages: the EN · IT · ES switcher (footer, menu sheet) and the
    language suggestion card (ui/langSuggest.ts).
    ══════════════════════════════════════════════════════════════════ */
-.lsw { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; }
+/* Each language takes a tap on 44 × 44px; the pill drawn behind its letters (::before) stays 30px tall,
+   so the switcher looks as it did: the links reach 3px past its border, above and below. */
+.lsw { display: inline-flex; align-items: center; gap: 2px; height: 38px; padding: 0 3px; border: 1px solid var(--line); border-radius: 999px; }
 .lsw a {
-  display: inline-flex; align-items: center; justify-content: center; min-width: 40px; height: 30px; padding: 0 10px;
-  border-radius: 999px; font-family: var(--font-mono); font-size: 12px; letter-spacing: var(--track-mono);
-  color: var(--fg-dim); text-decoration: none; transition: color .25s, background-color .25s;
+  position: relative; isolation: isolate;
+  display: inline-flex; align-items: center; justify-content: center; min-width: 44px; height: 44px; padding: 0 10px;
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: var(--track-mono);
+  color: var(--fg-dim); text-decoration: none; transition: color .25s;
 }
-.lsw a:hover { color: var(--fg); background: rgba(255, 255, 255, .06); }
-.lsw a[aria-current="page"] { color: #000; background: var(--lime); }
-.lsw a:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+.lsw a::before { content: ""; position: absolute; z-index: -1; inset: 7px 0; border-radius: 999px; transition: background-color .25s; }
+.lsw a:hover { color: var(--fg); }
+.lsw a:hover::before { background: rgba(255, 255, 255, .06); }
+.lsw a[aria-current="page"] { color: #000; }
+.lsw a[aria-current="page"]::before { background: var(--lime); }
+.lsw a:focus-visible { outline: none; }
+.lsw a:focus-visible::before { outline: 2px solid var(--lime); outline-offset: 2px; }
 
 .foot__end { display: flex; align-items: center; gap: 16px 20px; flex-wrap: wrap; }
 .menu__end { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -35,12 +42,14 @@
 }
 .lsg__q { margin: 0 0 18px; font-family: var(--font-display); font-size: 24px; line-height: 1.1; letter-spacing: -0.01em; }
 .lsg__act { display: flex; flex-wrap: wrap; gap: 10px; }
-.lsg__act .btn { flex: 1 1 auto; justify-content: center; }
+.lsg__act .btn { flex: 1 1 auto; justify-content: center; min-height: 44px; }
 .lsg__x {
   position: absolute; top: 14px; right: 14px; width: 36px; height: 36px; display: grid; place-items: center;
   border: 0; border-radius: 50%; background: rgba(255, 255, 255, .06); cursor: pointer; color: var(--fg-2);
 }
 .lsg__x:hover { background: rgba(255, 255, 255, .12); color: var(--fg); }
+/* 36px to look at, 44px to tap. */
+.lsg__x::after { content: ""; position: absolute; inset: -4px; }
 .lsg__x .ico { width: 16px; height: 16px; }
 .lsg :focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
 @media (max-width: 640px) {
@@ -70,7 +79,7 @@
 .cns__p { margin: 0 0 16px; font-size: 14px; line-height: 1.45; color: var(--fg-2); }
 .cns__p a { color: var(--fg); }
 .cns__act { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.cns__b { --bg: transparent; --fgc: var(--fg); justify-content: center; border-color: rgba(255, 255, 255, .32); }
+.cns__b { --bg: transparent; --fgc: var(--fg); justify-content: center; min-height: 44px; border-color: rgba(255, 255, 255, .32); }
 .cns__b:hover { --bg: rgba(255, 255, 255, .08); }
 .cns :focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
 .cns__short { display: none; }
@@ -83,7 +92,6 @@
   .cns__long { display: none; }
   .cns__short { display: inline; }
   .cns__act { margin-top: 10px; gap: 8px; }
-  .cns__b { min-height: 40px; }
 }
 @media (prefers-reduced-motion: reduce) { .cns { transition: opacity .2s; transform: none; } }
 
