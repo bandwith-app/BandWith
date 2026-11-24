@@ -76,7 +76,7 @@ function hero(page: ChannelPage, ch: Channel) {
           `<ul class="chips fhero__chips" data-fh>${page.hero.chips.map((c) => `<li>${ico(c.icon)}${esc(c.label)}</li>`).join('')}</ul>` +
           `<div class="fhero__cta" data-fh>` +
             `<a class="btn btn--lime" href="${page.demo ? '#try' : '#how'}" data-magnetic>${page.demo ? 'Try it here' : 'See how it works'} <svg class="ico btn__arrow btn__arrow--down" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>` +
-            `<a class="btn btn--ghost" href="/get/">Get the beta ${ico('arrow-up-right', 'ico btn__arrow')}</a>` +
+            `<a class="btn btn--ghost" href="/get/">Get the app ${ico('arrow-up-right', 'ico btn__arrow')}</a>` +
           `</div>` +
         `</div>` +
         `<div class="fhero__phone" data-fh-phone>` +
@@ -197,7 +197,7 @@ function next(ch: Channel, bone: boolean) {
         : `<p class="nextch__name">${name}</p><p class="nextch__line">${esc(n.line)} <span class="soon">Page coming soon</span></p>`) +
       `<div class="nextch__cta">` +
         `<a class="btn btn--ghost" href="/#rack">All eleven channels ${ico('arrow-right', 'ico btn__arrow')}</a>` +
-        `<a class="btn btn--lime" href="/get/" data-magnetic>Get the beta ${ico('arrow-up-right', 'ico btn__arrow')}</a>` +
+        `<a class="btn btn--lime" href="/get/" data-magnetic>Get the app ${ico('arrow-up-right', 'ico btn__arrow')}</a>` +
       `</div>` +
     `</div></section>`
   );

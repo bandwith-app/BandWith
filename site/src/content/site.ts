@@ -4,8 +4,33 @@
  */
 export const APP_URL = 'https://app.bandwith.fun';
 
-/** Web door: the app opens straight on Create account (?start=signup). */
-export const SIGNUP_URL = `${APP_URL}/?start=signup&src=site`;
+/**
+ * Web door: the app opens straight on Create account (?start=signup). Every
+ * link to it says where on the site it was (`src`), so sign-ups can be told
+ * apart by the spot that sent them. The app reads only `start`; `src` rides
+ * along in the address (src/lib/authCallback.ts). A new spot goes in this list
+ * first: test/conversion.test.ts refuses any other value on a page.
+ */
+export const SIGNUP_SPOTS = ['site-hero', 'site-nav', 'site-menu', 'site-get-web', 'site-footer'] as const;
+export type SignupSpot = (typeof SIGNUP_SPOTS)[number];
+export const signupUrl = (spot: SignupSpot) => `${APP_URL}/?start=signup&src=${spot}`;
+
+/** "Try it first, no account": the Stage mode demo, straight at the demo (content/pageRender.ts, id="try"). */
+export const STAGE_DEMO_URL = '/features/stage/#try';
+
+/**
+ * "Made by": who is behind BandWith, next to the trust line on the Get page.
+ * OFF until the owner fills it in: set the three slots and turn `on` to true.
+ *   name     the person's name, as they sign                    e.g. "Name Surname"
+ *   role     what they do, after a comma, lower case            e.g. "bass player in a wedding band"
+ *   contact  an email address (becomes a mailto: link) or an https:// address
+ * It renders as "Made by <name>, <role>. Write to me: <contact>" (content/render.ts,
+ * madeBy). The sentence has its Italian and Spanish; a role written in English
+ * needs its own key in src/i18n/dict/it.json and es.json, or it stays in English.
+ * With `on` false, or any slot empty, nothing is written on the page.
+ */
+export type MadeBy = { on: boolean; name: string; role: string; contact: string };
+export const MADE_BY: MadeBy = { on: false, name: '', role: '', contact: '' };
 
 /**
  * The Academy (user guide, 6 languages) inside the app's deployment. The site

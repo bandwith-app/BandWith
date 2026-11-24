@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'fs';
 import path from 'path';
-import { fromStatus, capText, meterCells, keptForInvites, meterLabel, capLineShown, capBlockShown } from '../src/core/capacity';
+import { fromStatus, capText, meterCells, keptForInvites, meterLabel, capLineShown, capBlockShown, counterShown, COUNTER_FROM } from '../src/core/capacity';
 import { HOME_ANSWERS } from '../src/content/answers';
 import { llmsTxt } from '../tools/seo';
 import { it as IT } from '../src/i18n/dict/it';
 import { es as ES } from '../src/i18n/dict/es';
 import { doneText } from '../src/ui/forms';
-import { APK_URL, TESTFLIGHT_URL, SIGNUP_URL } from '../src/content/site';
+import { APK_URL, TESTFLIGHT_URL, signupUrl } from '../src/content/site';
 
 const SITE = path.resolve(__dirname, '..');
 const read = (f: string) => readFileSync(path.join(SITE, f), 'utf8');
@@ -93,6 +93,61 @@ describe('closed-beta blocks on the Get page', () => {
   });
 });
 
+/**
+ * With plenty of open spots the count works against the invitation ("239 of
+ * 255 open spots left" reads as a small room): the counter and the "Why a
+ * limit?" section stay out of the page until 50 or fewer are left. From
+ * there on, and whenever only invites, or nobody, get in, all is as before.
+ */
+describe('the counter shows only when the limit matters', () => {
+  const left = (n: number) => fromStatus(status(255 - n))!;
+
+  it('more than 50 open spots left: no counter, no "Why a limit?"', () => {
+    expect(COUNTER_FROM).toBe(50);
+    for (const n of [255, 239, 113, 51]) {
+      const c = left(n);
+      expect(c.state, String(n)).toBe('open');
+      expect(c.publicLeft).toBe(n);
+      expect(counterShown(c), String(n)).toBe(false);
+      expect(capBlockShown(c, 'limit'), String(n)).toBe(false);
+    }
+  });
+
+  it('50 or fewer: the counter is back, with the sentence it always had', () => {
+    for (const n of [50, 49, 12, 1]) {
+      const c = left(n);
+      expect(c.state, String(n)).toBe('open');
+      expect(counterShown(c), String(n)).toBe(true);
+      expect(capBlockShown(c, 'limit'), String(n)).toBe(true);
+    }
+    expect(capText(left(50))).toBe('50 of 255 open spots left · 45 kept for band invites');
+  });
+
+  it('only invites, or nobody, get in: the counter shows, as before', () => {
+    for (const c of [fromStatus(status(255))!, fromStatus(status(271))!, fromStatus(status(300))!]) {
+      expect(counterShown(c), c.state).toBe(true);
+      expect(capBlockShown(c, 'limit'), c.state).toBe(true);
+    }
+  });
+
+  it('no answer from the database: nothing shows', () => {
+    expect(counterShown(null)).toBe(false);
+    expect(capBlockShown(null, 'limit')).toBe(false);
+  });
+
+  it('the threshold does not touch the closed-beta blocks', () => {
+    for (const n of [239, 50, 1]) for (const when of ['closed', 'invites', 'full']) expect(capBlockShown(left(n), when), `${n} ${when}`).toBe(false);
+  });
+
+  it('the home counter and the Get page’s "Why a limit?" section are written hidden, shown by the script', () => {
+    expect(read('index.html')).toMatch(/<div class="capblock" data-cap-block data-cap-show="limit" hidden>/);
+    expect(read('get/index.html')).toMatch(/<section class="sec sec--bone why" id="why"[^>]*data-cap-show="limit" hidden>/);
+    // The counter stays inside that section (pages/get.ts moves it up when the open spots are gone).
+    const why = read('get/index.html').split('id="why"')[1];
+    expect(why).toContain('data-cap-block');
+  });
+});
+
 describe('waitlist reply', () => {
   it('gives the place in line and escapes the email', () => {
     expect(doneText('a<b>@x.io', { ok: true, position: 12 })).toContain('#12 in line');
@@ -105,7 +160,7 @@ describe('Get page doors', () => {
   const html = read('get/index.html');
 
   it('link straight to the web app, the APK and TestFlight', () => {
-    expect(html).toContain(`href="${SIGNUP_URL.replace(/&/g, '&amp;')}" data-door="web"`);
+    expect(html).toContain(`href="${signupUrl('site-get-web').replace(/&/g, '&amp;')}" data-door="web"`);
     expect(html).toContain(`href="${APK_URL}" data-door="android"`);
     expect(html).toContain(`href="${TESTFLIGHT_URL}" data-door="ios"`);
   });

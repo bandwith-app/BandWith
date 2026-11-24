@@ -69,7 +69,7 @@ export const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({
               <Mail className="w-10 h-10" strokeWidth={1.75} />
             </motion.div>
             <Kicker overline={t('Link sent')} title={t('Check your email')} size="xl" />
-            <p className="text-[18px] font-medium leading-[1.35] tracking-[-0.005em] text-muted-foreground max-w-[340px]">
+            <p className="bw-auth-lede text-[18px] font-medium leading-[1.35] tracking-[-0.005em] text-muted-foreground max-w-[340px]">
               {sentBefore}<span className="text-foreground">{email}</span>{sentAfter}
             </p>
             <div className="flex-1" />
@@ -88,7 +88,7 @@ export const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({
             exit={{ opacity: 0 }}
           >
             <Kicker overline={t('Account recovery')} title={t('Reset password')} />
-            <p className="text-[16px] leading-[1.45] text-muted-foreground max-w-[340px]">
+            <p className="bw-auth-lede text-[16px] leading-[1.45] text-muted-foreground max-w-[340px]">
               {t("Enter the email you signed up with. We'll send you a link to choose a new password.")}
             </p>
             {error && <FormError>{error}</FormError>}

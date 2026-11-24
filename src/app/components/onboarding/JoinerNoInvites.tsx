@@ -53,7 +53,7 @@ export const JoinerNoInvites: React.FC<JoinerNoInvitesProps> = ({
           transition={{ duration: 0.35 }}
         >
           <Kicker overline={t('Join a band')} title={t('Invite found')} />
-          <p className="text-[16px] leading-[1.45] tracking-[-0.003em] text-muted-foreground max-w-[340px] break-words">
+          <p className="bw-auth-lede text-[16px] leading-[1.45] tracking-[-0.003em] text-muted-foreground max-w-[340px] break-words">
             {foundBefore}
             <span className="text-foreground font-medium">{email}</span>
             {foundAfter}
@@ -101,7 +101,7 @@ export const JoinerNoInvites: React.FC<JoinerNoInvitesProps> = ({
 
         <Kicker overline={t('Nothing here yet')} title={t('No invites found')} />
 
-        <p className="text-[16px] leading-[1.45] tracking-[-0.003em] text-muted-foreground max-w-[340px] break-words">
+        <p className="bw-auth-lede text-[16px] leading-[1.45] tracking-[-0.003em] text-muted-foreground max-w-[340px] break-words">
           {notFoundBefore}
           <span className="text-foreground font-medium">{email}</span>
           {notFoundAfter}
