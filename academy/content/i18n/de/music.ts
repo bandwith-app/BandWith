@@ -1477,19 +1477,19 @@ const music: AreaText = {
           type: "table",
           head: ["Status", "Bedeutung"],
           rows: [
-            ["**Live**", "Über das Internet verbunden: Mitglieder folgen dir."],
-            ["**Live · BT**", "Über das Internet verbunden und zusätzlich per Bluetooth am Senden."],
-            ["**Bluetooth**", "Kein Internet: Mitglieder in der Nähe folgen dir per Bluetooth."],
-            ["**Offline**", "Gerade erreicht nichts die Band."],
+            ["**Live**", "Du leitest: über das Internet oder, ohne Internet, per Bluetooth (Apps für iPhone, iPad und Android)."],
+            ["**Offline**", "Kein Internet und kein Bluetooth: Gerade erreicht nichts die Band."],
             ["**Speichern…**, **Gespeichert**, **Nicht gespeichert**", "Nach dem Ziehen: Die neue Reihenfolge wird kurz nach deiner letzten Bewegung gespeichert. **Gespeichert** erscheint kurz, dann kehrt der Status zurück."],
           ],
         },
         {
           type: "list",
           items: [
+            "Ohne Internet sagt eine Zeile unter dem Status, wer per Bluetooth mit dir verbunden ist: **1 Handy mit dir verbunden**, **3 Handys mit dir verbunden** oder **Noch kein Handy verbunden: bitte die Band, den Bühnenmodus zu öffnen**. Solange das Internet läuft, erscheint diese Zeile nicht.",
             "Mitglieder, die den Bühnenmodus später öffnen, springen auf den aktuellen Song.",
             "Eine neue Reihenfolge gilt für alle, auch für Mitglieder, die nicht mehr folgen, und wird in der Setlist des Gigs gespeichert. Der Gig hinter dem Bühnenmodus zeigt sie sofort.",
             "Beim Schließen des Bühnenmodus wird eine Verschiebung gespeichert, die noch auf das Speichern wartet.",
+            "Das Schließen des Bühnenmodus beendet auch ein Einzählen, einen Klick und Dem Tempo folgen, die du gestartet hast, auf jedem Handy, über das Internet und per Bluetooth.",
             "Leiten mehrere Admins gleichzeitig, gewinnt die neueste Bewegung.",
             "Einen Song streichen gilt nur für heute: Die Setlist des Gigs behält ihn. Mitglieder, die dir folgen, sehen ihn durchgestrichen und überspringen ihn auch, über das Internet oder Bluetooth. Dein Handy merkt sich die gestrichenen Songs für diesen Gig, wenn du den Bühnenmodus schließt und wieder öffnest.",
           ],
@@ -1522,16 +1522,16 @@ const music: AreaText = {
         {
           type: "list",
           items: [
-            "**· BT** hinter der Bezeichnung heißt, dass du per Bluetooth mit dem Leader verbunden bist.",
+            "Ohne Internet sagt eine Zeile unter dem Button, wie du mit dem Leader verbunden bist: **Mit dem Handy des Leaders verbunden** heißt, du folgst ihm per Bluetooth, **Nicht verbunden: bitte den Leader, den Bühnenmodus zu öffnen** heißt, dein Handy hat ihn noch nicht gefunden. Solange das Internet läuft, erscheint diese Zeile nicht.",
             "**Offline** heißt, dass gerade nichts dein Handy erreichen kann.",
             "Mitglieder können den Song anderer nicht wechseln und die Reihenfolge nicht ändern.",
             "Steht dort **Die App des Leaders ist veraltet: bitte um ein Update**, folgst du trotzdem: Der Leader braucht nur die neueste Version von BandWith.",
             "Steht dort **Die Band hat geändert, wer leiten darf: geh einmal online, um dem Leader zu folgen.**, geh einmal online (WLAN oder mobile Daten), während Stage offen ist: Dein Handy holt sich die Änderung und folgt dem Leader wieder.",
-            "Steht dort **Leader noch nicht bestätigt: geh einmal online, um ihn zu prüfen.**, folgst du, aber dein Handy kann noch nicht prüfen, ob der Leader Admin der Band ist: geh einmal online (WLAN oder mobile Daten), während Stage offen ist.",
-            "Steht dort **Leader noch nicht bestätigt: bitte den Leader, einmal online zu gehen.**, folgst du, aber das Handy des Leaders war seit dem neuen Schutz von Stage nicht online: der Leader geht einmal online, während Stage offen ist.",
+            "Steht dort **Leader noch nicht bestätigt: geh einmal online, um ihn zu prüfen.**, folgst du, aber dein Handy kann noch nicht prüfen, ob der Leader Admin der Band ist: geh einmal online (WLAN oder mobile Daten), während Stage offen ist. Bis dahin erreicht dich das Einzählen ohne Internet nicht.",
+            "Steht dort **Leader noch nicht bestätigt: bitte den Leader, einmal online zu gehen.**, folgst du, aber das Handy des Leaders war seit dem neuen Schutz von Stage nicht online: der Leader geht einmal online, während Stage offen ist. Bis dahin erreicht dich das Einzählen ohne Internet nicht.",
             "Leitest du und dort steht **Handys mit der neuesten App können dich noch nicht bestätigen: geh einmal mit offenem Bühnenmodus online.**, können dir ohne Internet nur Handys mit älteren BandWith-Versionen folgen: geh einmal online (WLAN oder mobile Daten), während Stage offen ist, dann können die Handys der Band prüfen, dass du es bist.",
             "Leitest du und dort steht **Du bist kein Admin dieser Band mehr: Ein anderer Admin muss leiten.**, hat sich deine Rolle in der Band geändert: Handys mit der neuesten BandWith-Version folgen dir nicht. Bitte einen Admin, den Bühnenmodus zu öffnen und zu leiten.",
-            "**Ältere App-Versionen:** Ändert sich die Rolle eines Admins (wird Mitglied oder verlässt die Band), wartet ein Gig, dessen Leader schon geprüft wurden, bis ein Admin mit der neuesten Version ihn einmal online öffnet. Bis dahin zeigen Handys mit der neuesten Version für diesen Gig **Die Band hat geändert, wer leiten darf: geh einmal online, um dem Leader zu folgen.** und folgen ohne Internet niemandem. Gigs, die noch niemand mit der neuesten Version geleitet hat, ändern sich nicht.",
+            "Ältere App-Versionen: Ändert sich die Rolle eines Admins (wird Mitglied oder verlässt die Band), wartet ein Gig, dessen Leader schon geprüft wurden, bis ein Admin mit der neuesten Version ihn einmal online öffnet. Bis dahin zeigen Handys mit der neuesten Version für diesen Gig **Die Band hat geändert, wer leiten darf: geh einmal online, um dem Leader zu folgen.** und folgen ohne Internet niemandem. Gigs, die noch niemand mit der neuesten Version geleitet hat, ändern sich nicht.",
           ],
         },
       ],
@@ -1569,6 +1569,7 @@ const music: AreaText = {
             "Die Schläge pro Takt kommen aus der **Taktart** des Songs, sonst aus seinem Akkordchart, sonst 4/4. In 6/8 und 12/8 leuchtet er auf den punktierten Schlägen. Zum Einzählen der Band siehe [[count-in]].",
             "Ein Song ohne BPM kann keinen Klick starten (**Kein BPM für diesen Song**). Trag das BPM im Songformular ein.",
             "Wechselst du zu einem anderen Song, wird der Klick des vorigen ausgeblendet.",
+            "Schließt der Leader den Bühnenmodus, stoppt der Klick der Band auf jedem Handy, über das Internet und per Bluetooth.",
             "Die Handys bleiben auf etwa 20–40 ms genau im Takt: richtig zum Einzählen und als Tempo-Referenz, nicht als In-Ear-Klick.",
             "Ohne Internet erreicht der Klick des Leaders trotzdem die Handys, die per Bluetooth mit seinem verbunden sind, in den Apps für iPhone, iPad und Android. Im Bühnenmodus steht dann in einer Zeile **Mit dem Handy des Leaders verbunden**. Bleibt der Leader länger als 10 Sekunden außer Reichweite, stoppt der Klick auf deinem Handy. Er läuft im Takt weiter, sobald der Leader wieder in Reichweite ist. Im Web braucht der Klick der Band Internet. Siehe [[stage-bluetooth-sync]].",
           ],
@@ -1653,7 +1654,7 @@ const music: AreaText = {
             "Mit **2 Takte** im Song zählt der erste Takt im halben Tempo und der zweite im Tempo.",
             "Beginnt ein Song vor Schlag 1 (zum Beispiel **Beginnt auf Schlag 4**), kommt **LOS** auf seiner ersten Note, nicht auf der 1.",
             "Die Band zählt rückwärts (4 3 2 1, die Voreinstellung) oder vorwärts (1 2 3 4). Der Leader wählt das unter **Für die ganze Band** in den Einzähl-Optionen, und jedes Handy der Band zählt so.",
-            "Ist **Dem Tempo folgen** an, setzt sich der Song ab Takt 1 in Bewegung, wenn das Einzählen endet. Läuft der Klick, läuft er im Takt weiter.",
+            "Ist **Dem Tempo folgen** an, setzt sich der Song ab Takt 1 in Bewegung, wenn das Einzählen endet. Läuft der Klick, läuft er im Takt weiter. Das Einzählen startet den Klick nie von selbst.",
           ],
         },
         {
@@ -1676,10 +1677,22 @@ const music: AreaText = {
         },
         {
           type: "list",
+          title: "Ohne Internet",
+          items: [
+            "In den Apps für iPhone, iPad und Android geht das Einzählen auch per Bluetooth: Jedes Handy, das mit dem des Leaders verbunden ist, zeigt denselben Countdown auf demselben Schlag. **Einzählen stoppen** beendet ihn auf jedem Handy, und **Trotzdem einzählen** geht genauso.",
+            "Jedes Handy braucht eingeschaltetes Bluetooth und muss den Gig vorher einmal mit Internet geöffnet haben: siehe [[stage-bluetooth-sync]]. Im Browser braucht das Einzählen Internet.",
+            "Ein Handy, das sich mitten im Einzählen verbindet, steigt auf dem richtigen Schlag ein, nie von vorn. Verbindet es sich zu spät, zeigt es nichts.",
+            "Gerät der Leader während des Einzählens außer Reichweite, läuft der Countdown von selbst bis **LOS** weiter. Ein Countdown, der nach 10 Sekunden außer Reichweite noch läuft, verschwindet.",
+            "Jedes Handy braucht die neueste Version von BandWith. Ein Handy mit einer älteren Version folgt per Bluetooth weiter den Songs und dem Klick, zeigt ohne Internet aber keinen Countdown; hat der Leader die ältere Version, zeigt ihn kein Handy.",
+            "Verliert der Leader mitten im Einzählen das Internet, erreicht **Einzählen stoppen** ein Mitglied nicht, das noch online ist: Dieses Handy zählt bis **LOS** weiter.",
+          ],
+        },
+        {
+          type: "list",
           title: "Gut zu wissen",
           items: [
             "Ein Handy, das die Nachricht spät bekommt, steigt auf dem richtigen Schlag in den Countdown ein.",
-            "Der Countdown braucht Internet: Er wird nicht per Bluetooth gesendet. Ohne Empfang zeigt ihn nur das Handy des Leaders. Per Bluetooth verbundene Handys bekommen trotzdem den Klick, wenn er beim Leader läuft, und Dem Tempo folgen ab Takt 1.",
+            "Ein Wechsel zu einem anderen Song oder das Schließen des Bühnenmodus beendet ein noch laufendes Einzählen auf jedem Handy.",
             "Die Handys bleiben auf etwa 20–40 ms genau im Takt.",
             "Ein Mitglied kann den Countdown auf dem eigenen Bildschirm mit **Auf diesem Telefon ausblenden** schließen.",
           ],
@@ -1731,7 +1744,7 @@ const music: AreaText = {
             "Spielt die Band einen Teil länger oder kürzer, tippe auf den Takt, die Zeile oder den Teil, wo ihr seid: Alle springen dorthin.",
             "Tippe auf **Wiederholen**, um den aktuellen Teil zu wiederholen (ein Vamp, ein Solo). Tippe auf **Loslassen**, um weiterzugehen.",
             "An einer Fermate wartet der Song, und die Zeile sagt **Warte auf den Leader**: Tippe auf **Weiter**.",
-            "Tippe auf **Stoppen**, um es zu beenden. Ein Wechsel zu einem anderen Song stoppt es auch.",
+            "Tippe auf **Stoppen**, um es zu beenden. Ein Wechsel zu einem anderen Song stoppt es auch, ebenso das Schließen des Bühnenmodus.",
           ],
         },
         {
@@ -1840,26 +1853,35 @@ const music: AreaText = {
       body: [
         {
           type: "p",
-          text: "In den Apps für iPhone, iPad und Android sendet das Handy des Admins den aktuellen Song, die Reihenfolge, den Klick und die Stelle im Song (Dem Tempo folgen) auch per Bluetooth. Handys von Mitgliedern in der Nähe empfangen das ohne Kopplung und ohne Internet. Die Ausnahme ist das Einzählen: Es braucht Internet.",
+          text: "In den Apps für iPhone, iPad und Android sendet das Handy des Admins den aktuellen Song, die Reihenfolge, den Klick, das Einzählen und die Stelle im Song (Dem Tempo folgen) auch per Bluetooth. Handys von Mitgliedern in der Nähe empfangen das ohne Kopplung und ohne Internet.",
         },
         {
           type: "steps",
           title: "Vor dem Gig vorbereiten",
           items: [
             "Alle holen sich die Setlist aufs Handy: Sag Ja zum Download (siehe [[live-mode-offline]]) oder öffne den Gig einmal, während du online bist. Der Bluetooth-Schlüssel des Gigs kommt mit.",
+            "Für das Einzählen öffnet außerdem jedes Handy den Gig einmal mit Internet, das des Leaders zuerst: So kann ein Handy prüfen, dass ein Einzählen von einem Admin der Band kommt.",
             "Schalte Bluetooth ein und erlaube BandWith, es zu nutzen.",
-            "Auf der Bühne öffnen alle den Bühnenmodus. Der Leader zeigt **Bluetooth** oder **Live · BT**; Mitglieder zeigen **· BT** hinter ihrer Folgen-Bezeichnung.",
+            "Auf der Bühne öffnen alle den Bühnenmodus. Ohne Internet sagt eine Zeile unter dem Status des Leaders und unter dem Button der Mitglieder, wie die Verbindung steht: Der Leader sieht zum Beispiel **3 Handys mit dir verbunden**, Mitglieder sehen **Mit dem Handy des Leaders verbunden**. Solange das Internet läuft, erscheint die Zeile nicht.",
           ],
         },
         {
           type: "list",
           title: "Wenn keine Verbindung zustande kommt",
           items: [
-            "„Bluetooth ist aus oder nicht erlaubt. Schalte es in den Einstellungen ein, um ohne Internet synchron zu bleiben.“",
-            "„Dieses Handy hat eine ältere Setlist. Geh einmal online, um per Bluetooth zu folgen.“ Das erscheint, wenn Songs hinzugefügt oder entfernt wurden, nachdem das Handy die Setlist zuletzt geladen hat. Eine neue Reihenfolge allein ist kein Problem.",
-            "„Die Uhrzeit dieses Handys und die des Leaders liegen weit auseinander. Stell bei beiden Datum und Uhrzeit auf automatisch.“ Die Nachrichten des Leaders tragen seine Uhrzeit; liegt sie weit vor der dieses Handys, wird ihnen nicht gefolgt, weil ein Handy sie fälschen könnte.",
+            "**Erlaube Bluetooth, um bei der Band zu bleiben, wenn das Internet ausfällt.** (der Leader sieht **Erlaube Bluetooth, damit die Band dir folgt, wenn das Internet ausfällt.**): BandWith darf Bluetooth nicht nutzen. Tippe auf den Button daneben: **Einstellungen öffnen** auf iPhone und iPad, **Erlauben** auf Android. Diese Zeile erscheint auch, wenn das Internet läuft.",
+            "**Bluetooth ist aus: schalte es im Kontrollzentrum ein, um ohne Internet synchron zu bleiben.** auf iPhone und iPad. Auf Android steht dort **Bluetooth ist aus: schalte es ein, um ohne Internet synchron zu bleiben.**, mit dem Button **Einschalten**.",
+            "**Nicht verbunden: bitte den Leader, den Bühnenmodus zu öffnen**: Dein Handy hat das des Leaders noch nicht gefunden. Der Leader sieht **Noch kein Handy verbunden: bitte die Band, den Bühnenmodus zu öffnen**.",
+            "**Dieses Handy hat eine ältere Setlist: geh einmal online, um dem Leader zu folgen.** Das erscheint, wenn Songs hinzugefügt oder entfernt wurden, nachdem das Handy die Setlist zuletzt geladen hat. Eine neue Reihenfolge allein ist kein Problem. Bis dahin folgt dieses Handy den Songs des Leaders nicht.",
+            "**Die Uhrzeit dieses Handys und die des Leaders liegen weit auseinander: stell bei beiden Datum und Uhrzeit auf automatisch.** Die Nachrichten des Leaders tragen seine Uhrzeit; liegt sie weit vor der dieses Handys, wird ihnen nicht gefolgt, weil ein Handy sie fälschen könnte.",
+            "**Dieses Handy kann dem Leader nicht ohne Internet folgen.** (der Leader sieht **Dieses Handy kann die Band nicht ohne Internet leiten.**): Das Bluetooth dieses Handys kann das nicht.",
             "Wenn jemand die Band verlässt, bekommt jeder kommende Gig einen neuen Bluetooth-Schlüssel. Handys mit einer älteren Version von BandWith behalten den alten Schlüssel und finden die anderen ohne Internet nicht: Öffne den Gig nach dem Update von BandWith einmal, während du online bist.",
+            "Sagt eine Zeile, dass der Leader noch nicht bestätigt ist oder dass die Band geändert hat, wer leiten darf, siehe [[follow-in-stage-mode]].",
           ],
+        },
+        {
+          type: "p",
+          text: "Das Einzählen geht per Bluetooth nur zwischen Handys mit der neuesten Version von BandWith: Ein Handy mit einer älteren Version folgt weiter den Songs und dem Klick und zeigt ohne Internet keinen Countdown. Siehe [[count-in]].",
         },
         {
           type: "note",
@@ -2044,10 +2066,11 @@ const music: AreaText = {
           type: "list",
           title: "Was du siehst",
           items: [
-            "Eine Leiste oben, zum Beispiel **Offline · wartet auf Empfang: 2 Änderungen**. Wartet nichts, zeigt sie **Offline · gespeicherte Daten**.",
+            "Die Leiste oben zeigt **Offline · gespeicherte Daten**. Sie zählt diese Änderungen nicht: Ihre Zahl gilt für Gigs und Proben, die ohne Empfang erstellt, geändert oder gelöscht wurden (siehe [[offline-mode]]).",
+            "Ein Hinweis zählt sie, zum Beispiel **2 Änderungen warten auf Empfang**. Im Bühnenmodus und Live-Modus steht er unter dem Titel, nach **Offline · Inhalte von …**. Auf der Seite des Gigs oder der Probe steht er unter der Setlist, in der Offline-Zeile.",
             "Zieht der Leader ohne Empfang einen Song, zeigt der Status **Auf diesem Handy gespeichert** und dann **Gespeichert**, sobald es die Setlist der Band erreicht.",
-            "Ist der Empfang zurück, zeigt die Leiste **Wieder online · wird gesendet: 2 Änderungen** und dann **Wieder online · alles aktuell**.",
-            "Um sofort zu senden, ohne zu warten, tippe in der Leiste auf **Jetzt senden**.",
+            "Ist der Empfang zurück, gehen sie von selbst raus, und der Hinweis verschwindet. Solange der Server noch nicht geantwortet hat, zeigt der Hinweis **2 Änderungen warten auf das Senden**. **Wieder online · alles aktuell** in der Leiste bezieht sich nicht auf diese Änderungen.",
+            "Eine Notiz, ein Vorschlag oder eine neue Reihenfolge, die der Server ablehnt, bleibt auf dem Handy: Der Hinweis zeigt **1 Änderung nicht gespeichert**. Tippe darauf, um sie zu sehen, mit **Kopieren** und **Entfernen**.",
           ],
         },
         {
@@ -2056,6 +2079,7 @@ const music: AreaText = {
           items: [
             "Sobald der Empfang zurück ist, wenn du die App wieder öffnest und alle 30 Sekunden, solange etwas wartet.",
             "Schließen der App behält, was wartet. Es geht raus, wenn du die App das nächste Mal mit Empfang öffnest.",
+            "Meldest du dich ab, während noch etwas wartet, fragt die App vorher: **Jetzt senden** sendet es. Siehe [[sign-out]].",
             "Eine Probennotiz, die der Server ablehnt, wird nicht weggeworfen. Der Live-Modus meldet **Eine Notiz wurde nicht gespeichert**, und der Text der Notiz steht in den Notizen der Probe und unter Einstellungen › Offline & live, mit **Kopieren** und **Entfernen**.",
           ],
         },
@@ -2124,7 +2148,7 @@ const music: AreaText = {
     },
     {
       q: "Funktioniert der Bühnenmodus ohne Internet?",
-      a: "In den Apps für Handy und Tablet ja. Sag einmal Ja zum Download, und die Setlists deiner nächsten 7 Tage bleiben auf deinem Handy; das Handy des Leaders hält die Band per Bluetooth beim selben Song. Im Web braucht der Bühnenmodus Internet.",
+      a: "In den Apps für Handy und Tablet ja. Sag einmal Ja zum Download, und die Setlists deiner nächsten 7 Tage bleiben auf deinem Handy; das Handy des Leaders hält die Band per Bluetooth beim selben Song, mit Klick und Einzählen. Im Web braucht der Bühnenmodus Internet.",
     },
     {
       q: "Lädt mein Handy die Setlists, ohne zu fragen?",
