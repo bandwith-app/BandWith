@@ -160,6 +160,8 @@ check (`app.check`) on each screen it reaches.
 | Check your email: the title and the text never run under the clock block (the closed Duo's reaches beside them) | `signup-code-layout` | all |
 | Check your email, keyboard up: the code field, a refused code's message and Verify show above it; the other buttons by scrolling, nothing slides under the status bar | `signup-code-layout` | all (not duo-laptop) |
 | Check your email: the system Back goes back to Create account with the fields kept, like the Back button on the screen | `signup-code-layout` | all |
+| Onboarding in a computer window (1440×900, 1920×1080, 2560×1180, a mouse): every step of the band path and of the solo path fills the window beside the brand page; the brand page's named steps and the header's "STEP 2 OF 6" are one count; no band is named before (or without) choosing one | `onboarding-desktop` | ipad-landscape (as a computer) |
+| Onboarding in a computer window: a main button that can't be pressed yet is neutral, not dimmed lime; the chosen path is marked on its card; Check your email reads field → Verify → two quiet links on one measure | `onboarding-desktop` | ipad-landscape (as a computer) |
 | Expired reset link (query or fragment): says so, offers a new link | `auth-callback` | all / full |
 | Sign-in server error: explains, Back to sign in, Back doesn't return to the dead link | `auth-callback` | all |
 | Already signed in: Back to sign in lands in the app | `auth-callback` | full |

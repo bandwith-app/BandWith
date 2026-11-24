@@ -81,7 +81,7 @@ export default function SetNewPasswordScreen() {
     <AuthScreen bodyClassName="pt-10">
       <form onSubmit={handleSubmit} noValidate className="flex-1 flex flex-col gap-5">
         <Kicker overline={t('Account recovery')} title={t('Set a new password')} />
-        <p className="text-[16px] leading-[1.45] text-muted-foreground max-w-[340px]">
+        <p className="bw-auth-lede text-[16px] leading-[1.45] text-muted-foreground max-w-[340px]">
           {t('Choose a new password for your BandWith account.')}
         </p>
         {error && <FormError>{error}</FormError>}
