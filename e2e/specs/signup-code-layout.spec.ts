@@ -57,12 +57,11 @@ async function signUp(app: App) {
 }
 
 /**
- * The clock / camera block of the closed iPhone Duo as it shows on the
- * simulator (device pass, duo-closed-signup-2b-code.png: it ends about 158 pt
- * down): further than the profile's 82 pt, beside the title and the first
- * line of the text.
+ * The clock / camera block of the closed iPhone Duo as its simulator reports
+ * it (iOS 27.2, `window.__bwRegions.status`): 84 × 174 pt, further down than
+ * the profile's 82 pt, beside the title and the first line of the text.
  */
-const DUO_CLOSED_BLOCK = { x: 382, y: 0, w: 84, h: 158, edge: 'right' as const };
+const DUO_CLOSED_BLOCK = { x: 382, y: 0, w: 84, h: 174, edge: 'right' as const };
 
 test('@smoke the title and the text never run under the clock block', async ({ app, duo }) => {
   await signUp(app);
