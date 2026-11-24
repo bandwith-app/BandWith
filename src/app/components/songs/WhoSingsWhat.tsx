@@ -8,7 +8,7 @@ import { useOptionalBand } from '@/lib/BandContext';
 import { useT } from '@/lib/i18n';
 import { userMessage } from '@/lib/userError';
 import { normalizeLyrics } from '@/lib/songFormat';
-import { ASSIGNABLE_PARTS, effectiveVocalParts, instrumentVoicePart, songVoiceParts, type VocalParts, type VoicePart } from '@/lib/voiceParts';
+import { ASSIGNABLE_PARTS, effectiveVocalParts, instrumentVoicePart, parseVocalParts, songVoiceParts, type VocalParts, type VoicePart } from '@/lib/voiceParts';
 import { useFlag } from '@/lib/appFlags';
 import { fetchSetlistVocalParts, fetchSongVocalParts, saveSetlistVocalParts, saveSongVocalParts } from '@/lib/services/vocalParts';
 import { useMemberNames, voiceLabelClass, voicePartLabel, VoiceAssignmentProvider } from '@/app/components/ui/VoiceParts';
@@ -37,8 +37,19 @@ function useCacheTick() {
   }, []);
 }
 
-/** The song's and (on a gig) the setlist row's assignment, fetched once per id. */
-function useStoredParts(songId: string | undefined, rowId: string | undefined, enabled: boolean) {
+/**
+ * The song's and (on a gig) the setlist row's assignment, fetched once per id.
+ * `held`: what the setlist song came with (the live pack with no signal),
+ * read until the fetch answers. With no signal it never does, and the parts
+ * fell back to each member's instrument: a singer on Backing for this song
+ * read "Lead · you".
+ */
+function useStoredParts(
+  songId: string | undefined,
+  rowId: string | undefined,
+  enabled: boolean,
+  held?: { song?: unknown; setlist?: unknown },
+) {
   useCacheTick();
   React.useEffect(() => {
     if (!enabled) return;
@@ -51,9 +62,12 @@ function useStoredParts(songId: string | undefined, rowId: string | undefined, e
         if (rowId in r) put(`r:${rowId}`, r[rowId]);
       });
   }, [songId, rowId, enabled]);
+  const heldSong = React.useMemo(() => parseVocalParts(held?.song), [held?.song]);
+  const heldSetlist = React.useMemo(() => parseVocalParts(held?.setlist), [held?.setlist]);
+  // Fetched (or just saved here) wins, also when it says "nobody assigned".
   return {
-    song: songId ? cache.get(`s:${songId}`) ?? null : null,
-    setlist: rowId ? cache.get(`r:${rowId}`) ?? null : null,
+    song: songId ? (cache.has(`s:${songId}`) ? cache.get(`s:${songId}`) ?? null : heldSong) : null,
+    setlist: rowId ? (cache.has(`r:${rowId}`) ? cache.get(`r:${rowId}`) ?? null : heldSetlist) : null,
   };
 }
 
@@ -69,6 +83,13 @@ export interface VoiceAssignmentScopeProps {
   setlistSongId?: string;
   songTitle?: string;
   lyrics?: string | null;
+  /**
+   * The assignment the setlist song came with (songs.vocal_parts and, on a
+   * gig, setlist_songs.vocal_parts, as livePack.songFromRow reads them): used
+   * until it is fetched, so with no signal it comes from the live pack.
+   */
+  songParts?: unknown;
+  setlistParts?: unknown;
   children: React.ReactNode;
 }
 
@@ -76,13 +97,14 @@ export interface VoiceAssignmentScopeProps {
  * Gives the lyrics inside it the song's "who sings what" (my part, names in
  * the legend) and, for admins, the sheet to change it.
  */
-export const VoiceAssignmentScope: React.FC<VoiceAssignmentScopeProps> = ({ songId, setlistSongId, songTitle, lyrics, children }) => {
+export const VoiceAssignmentScope: React.FC<VoiceAssignmentScopeProps> = ({ songId, setlistSongId, songTitle, lyrics, songParts, setlistParts, children }) => {
   const band = useOptionalBand();
   const used = React.useMemo(() => songVoiceParts(normalizeLyrics(lyrics)), [lyrics]);
   // Off with the kill switch (docs/flags.md): nothing fetched, no sheet.
   const voicesOn = useFlag('voice_parts');
   const enabled = voicesOn && used.length > 0 && !!songId;
-  const stored = useStoredParts(songId, setlistSongId, enabled);
+  const held = React.useMemo(() => ({ song: songParts, setlist: setlistSongId ? setlistParts : undefined }), [songParts, setlistParts, setlistSongId]);
+  const stored = useStoredParts(songId, setlistSongId, enabled, held);
   const [open, setOpen] = React.useState(false);
   const isAdmin = !!band?.isAdmin;
   const value = React.useMemo(

@@ -99,3 +99,29 @@
 :root[data-bw-two-pane][data-bw-stage-full] .bw-countin {
   padding-left: var(--bw-pane-trailing-x, 0px);
 }
+
+/* ── No signal in Stage mode (OfflineBanner) ─────────────────────────────
+   Stage mode and its layers all start below the offline bar (--safe-top
+   carries its height), so the bar is drawn above them: Stage itself (z 120,
+   the bar's own level, later in the page), the floor wedge (125), Song only
+   and the stage manager's player (130), the count-in sheet (140) and the
+   countdown (186). It says what waits for signal and holds Send now. Still
+   under the Duo rail (190), which it clears anyway. */
+:root:has(.bw-stage) .bw-offline-bar {
+  z-index: 187;
+}
+/* Full screen over two panes: Stage covers both, so does the bar. On the
+   iPhone Duo its words and its button stay on the first pane, off the fold
+   (46px before the words, 36px for the button after them). */
+:root[data-bw-stage-full][data-bw-two-pane] .bw-offline-bar {
+  left: 0 !important;
+}
+:root[data-bw-stage-full][data-bw-two-pane]:not([data-bw-wide]) .bw-offline-bar > span {
+  max-width: calc(var(--bw-pane-leading-w, 100%) - 82px);
+}
+/* Laptop pose: the wedge's Display starts at the clock block's top
+   (--bw-display-top), which knows nothing of the bar: its first row steps
+   below it, as top bars do (--bw-head-top). */
+:root[data-bw-status-block] .bw-fold-split--stage .bw-fold-display {
+  padding-top: calc(var(--bw-display-top, var(--safe-top-inset, 0px)) + var(--offline-h, 0px));
+}

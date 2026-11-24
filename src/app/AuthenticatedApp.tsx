@@ -105,7 +105,7 @@ import { PastEventsView } from "@/app/views/PastEventsView";
 import { DeputyGigsScreen } from "@/app/components/deputy/DeputyGigsScreen";
 import { useDeputyClaim } from "@/lib/deputyClaim";
 import { listMyDeputyGigs } from "@/lib/services/deputies";
-import { OfflineBanner } from "@/app/components/ui/OfflineBanner";
+import { AppOfflineBanner } from "@/app/components/ui/OfflineBanner";
 import { useNetworkStatus, isOfflineError, reportNetworkStatus } from "@/lib/offline/useNetworkStatus";
 import { enqueueMutation, getPendingMutations } from "@/lib/offline/syncQueue";
 import { deleteRehearsalDate, moveRehearsalDateOnly, restoreRehearsalDate } from "@/lib/services/rehearsalSkip";
@@ -4404,7 +4404,8 @@ export default function AuthenticatedApp() {
       <MapsChooserHost />
       {/* Paid plans P3b: the limit prompt, for every screen. */}
       <PlanLimitSheet bandId={realBand?.id ? String(realBand.id) : null} onOpenPlan={() => handleGridNav('Settings:plan')} />
-      <OfflineBanner
+      <AppOfflineBanner
+        userId={user?.id}
         isOnline={isOnline}
         wasOffline={wasOffline}
         pendingCount={pendingSyncCount}
