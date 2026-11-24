@@ -102,6 +102,17 @@ test.describe('solo account: nothing band-only is offered', () => {
     await expect(anyButton(app, 'Switch band')).toHaveCount(0);
     await look(app, 'solo Home');
 
+    // The empty calendar proposes nothing to a band that is not there
+    // ("Propose a rehearsal to the band." was its empty state).
+    await app.tab('Calendar');
+    await expect(app.page.getByRole('heading', { name: app.t('Nothing scheduled'), exact: true })).toBeVisible();
+    await expect(app.page.getByText(app.t('Propose a rehearsal to the band.'), { exact: true })).toHaveCount(0);
+    for (const bandOnly of ['Propose rehearsal', 'New rehearsal', 'New gig', 'New quote', 'Rehearsal', 'Quote']) {
+      await expect(app.page.getByRole('button', { name: app.t(bandOnly), exact: true }).filter({ visible: true }), bandOnly).toHaveCount(0);
+    }
+    await look(app, 'solo Calendar, empty');
+    await app.tab('Home');
+
     // Still solo after closing and opening the app (not sent back to the onboarding).
     await app.page.reload();
     await expect(app.page.getByRole('heading', { level: 1, name: app.t('My calendar') }).first()).toBeVisible({ timeout: 30_000 });

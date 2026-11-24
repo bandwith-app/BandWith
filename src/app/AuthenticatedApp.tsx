@@ -1756,6 +1756,11 @@ export default function AuthenticatedApp() {
     setShowTaskTemplates(false);
     setShowPricingModal(false);
   }, [isSolo]);
+  // With no band Chat is never the tab in view (an old chat notification
+  // could still ask for it): the calendar is, under its own name and header.
+  useEffect(() => {
+    if (isSolo && activeTab === 'Chat') setActiveTab('Events');
+  }, [isSolo, activeTab]);
   const [sharingQuote, setSharingQuote] = useState<Partial<Quote> | null>(null);
   // "Send quote" in the iPad composer: the share sheet emails the client's link by itself.
   const [sharingAutoSend, setSharingAutoSend] = useState(false);
@@ -4559,7 +4564,7 @@ export default function AuthenticatedApp() {
                 setEditingEventData(null);
                 setIsCreateEventOpen(true);
               }
-            }} onOpenPastEvents={() => setShowPastEvents(true)} onProposeRehearsal={() => handleCreateEvent('rehearsal')} isAdmin={isAdmin} onDayPickerOpen={setIsDayPickerOpen} userFeeMap={userFeeMap} bands={formattedBands} bandFilterOptions={bandPillOptions} selectedBandPill={selectedBandPill} onBandPillClick={setSelectedBandPill} isAdminOfBand={isAdminOfBand} focusMonth={calendarFocusMonth}
+            }} onOpenPastEvents={() => setShowPastEvents(true)} onProposeRehearsal={isSolo ? undefined : () => handleCreateEvent('rehearsal')} isAdmin={isAdmin} onDayPickerOpen={setIsDayPickerOpen} userFeeMap={userFeeMap} bands={formattedBands} bandFilterOptions={bandPillOptions} selectedBandPill={selectedBandPill} onBandPillClick={setSelectedBandPill} isAdminOfBand={isAdminOfBand} focusMonth={calendarFocusMonth}
               rehearsalPolls={rehearsalPolls}
               onConvertProposal={handleConvertProposal}
               onPollUpdated={() => {
