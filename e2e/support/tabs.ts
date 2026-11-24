@@ -23,6 +23,25 @@ export const calendarScreen = (page: Page, t: T): Locator => page.getByRole('gro
 /** Something only the Chat screen draws. */
 export const chatScreen = (page: Page, t: T): Locator => page.getByRole('tablist', { name: t('Chat filters'), exact: true });
 
+/**
+ * Presses a control of the Duo rail or the tab bar itself, not the spot where
+ * it was a moment ago.
+ *
+ * A Playwright click aims at the control's centre and then presses that
+ * point. The Duo rail re-centres whenever a screen adds or removes its
+ * buttons: Home opening its next gig beside the dashboard, a moment after
+ * launch, adds Back and Stage mode and moves the tabs up by a button. A press
+ * aimed just before that landed on the neighbour (Create instead of Calendar:
+ * CI 11-24, duo-book; the tab never changed).
+ * The trial click still checks what a tap needs (on screen, enabled, at rest,
+ * not covered) and lets the suite close the urgent pop-up; the press itself
+ * then goes to the control.
+ */
+export async function pressItself(control: Locator) {
+  await control.click({ trial: true });
+  await control.evaluate((el) => (el as HTMLElement).click());
+}
+
 /** Waits until the tab's own screen has taken the place of the one before it. */
 export async function tabScreenUp(page: Page, t: T, name: TabName) {
   const calendar = calendarScreen(page, t);

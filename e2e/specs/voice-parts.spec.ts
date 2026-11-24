@@ -141,19 +141,22 @@ test.describe('voice parts in Live mode', () => {
     await app.page.getByRole('menuitem', { name: app.t('Edit'), exact: true }).first().click();
     await app.settle();
 
-    // The form's steps: on to the lyrics, on the third and last one. Each
-    // Next is followed by the step it leads to: the form says "Step 3 of 3"
-    // (and swaps Next for Save song) at once, but the step's fields come only
-    // after the step before has left. One look at the lyrics field in that
-    // moment said "not there yet", and a third Next was waited for that the
-    // last step does not have (CI 11-23).
+    // The form's steps: on to the lyrics, on the third and last one, each
+    // Next pressed once the step before it is on screen, as a user does.
+    // The form says "Step 3 of 3" (and swaps Next for Save song) at once, but
+    // a step's fields come only after the step before has left:
+    // - one look at the lyrics field in that moment said "not there yet", and
+    //   a third Next was waited for that the last step does not have (CI 11-23);
+    // - two Next in a row, the second while step 1 was still leaving, left the
+    //   form on step 2's fields under "Step 3 of 3" for good (CI 11-24,
+    //   duo-open). That one is the app's (see the PR): not what this test is about.
     const form = app.page.getByRole('dialog', { name: app.t('Edit song') });
+    const next = form.getByRole('button', { name: app.t('Next'), exact: true });
     const box = form.locator('label', { hasText: app.t('Lyrics · text, Markdown or JSON') }).locator('textarea');
     await expect(form.getByText(app.t('Step {step} of {total}', { step: 1, total: 3 }))).toBeVisible();
-    for (const step of [2, 3]) {
-      await form.getByRole('button', { name: app.t('Next'), exact: true }).click();
-      await expect(form.getByText(app.t('Step {step} of {total}', { step, total: 3 }))).toBeVisible();
-    }
+    await next.click();
+    await expect(form.getByRole('textbox', { name: app.t('BPM'), exact: true })).toBeVisible();
+    await next.click();
     await expect(box).toBeVisible();
     await expect(box).toHaveValue(/All the way home/);
     expect(await box.inputValue()).not.toMatch(/\{\/?(bv|v2|all|sp)\}/);

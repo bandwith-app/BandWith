@@ -3,7 +3,7 @@ import { duoInitScript, type DuoProfile } from './support/devices';
 import { expectHealthy } from './support/health';
 import { settle } from './support/settle';
 import { slowMachine } from './support/slow';
-import { tabScreenUp } from './support/tabs';
+import { pressItself, tabScreenUp } from './support/tabs';
 import { stubNetwork, isCutStubbedRequest } from './support/network';
 import { tr, type Locale } from './support/i18n';
 
@@ -215,7 +215,7 @@ export const test = base.extend<Options & { app: App }>({
         // A tab with a count badge says it in its name ("Chat, 2 unread").
         const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const withCount = esc(t('{name}, {count} unread', { name: t(name), count: '__N__' })).replace('__N__', '\\d+\\+?');
-        await page.getByRole('button', { name: new RegExp(`^(${esc(t(name))}|${withCount})$`) }).first().click();
+        await pressItself(page.getByRole('button', { name: new RegExp(`^(${esc(t(name))}|${withCount})$`) }).first());
         // The tab's own screen, not the one that is still leaving (support/tabs.ts).
         await tabScreenUp(page, t, name);
         await settle(page);
