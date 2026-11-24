@@ -43,6 +43,8 @@ const ble = vi.hoisted(() => ({
   badStateReads: 0,
   /** Its clock answers are not the leader's: 'unsigned' (another pair), 'old' (the leader's, recorded 10 minutes ago). */
   clock: 'live' as 'live' | 'unsigned' | 'old',
+  /** The setlist the leader's state is made for (null: this phone's). */
+  leaderIds: null as null | string[],
 }));
 
 vi.mock('@capacitor-community/bluetooth-le', () => ({
@@ -89,7 +91,8 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
       if (char !== STAGE_BLE_CHARACTERISTIC && !signed) return new DataView(new ArrayBuffer(0));
       const state = { seq: 3, from: 'lead', songId: 'b2', order: null };
       const bad = ble.impostor || (signed && ble.badStateReads-- > 0);
-      const bytes = signed ? (await encodeSignedState(state, IDS, (bad ? IMPOSTOR : SIGNER).private))! : (await encodeStageState(state, IDS, KEY))!;
+      const ids = ble.leaderIds ?? IDS;
+      const bytes = signed ? (await encodeSignedState(state, ids, (bad ? IMPOSTOR : SIGNER).private))! : (await encodeStageState(state, ids, KEY))!;
       return new DataView(bytes.buffer);
     }),
     write: vi.fn(async () => {
@@ -153,6 +156,7 @@ beforeEach(async () => {
   ble.impostor = false;
   ble.badStateReads = 0;
   ble.clock = 'live';
+  ble.leaderIds = null;
   vi.clearAllMocks();
   __resetAppFlagsForTest(null);
   forgetScanStarts();
@@ -309,6 +313,26 @@ describe('useStageBle: the count-in on the live frame (member)', () => {
     const state = parseCountInBle(checked(onLive)[0][1])!;
     const error = Math.abs(state.startAt - result.current.clock!.sample!.offset - (count.startAt - AHEAD_MS));
     expect(error).toBeLessThan(15);
+    unmount();
+  });
+
+  it("from a leader whose setlist this phone lacks (an older download): the link is checked all the same, so the count-in is the leader's, and the click and the playhead are handed on", async () => {
+    // A song added since this phone last had the setlist: the signature and the clock check out, the songs don't match.
+    ble.leaderIds = [...IDS, 'c3'];
+    ble.live = { seq: 3, events: { countin: wire, click: clickWire(click), playhead: head } };
+    const onLive = vi.fn();
+    const onState = vi.fn();
+    const { result, unmount } = renderHook(() => useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: false, onState, onLive }));
+    await waitFor(() => expect(result.current.status).toBe('outdated'), { timeout: 3000 });
+    await waitFor(() => expect(checked(onLive)).toHaveLength(1), { timeout: 3000 });
+    expect(checked(onLive)[0]).toEqual(['countin', wire, true]);
+    expect(onLive).toHaveBeenCalledWith('click', clickWire(click));
+    expect(onLive).toHaveBeenCalledWith('playhead', head);
+    // On the leader's signed clock, like any member's.
+    await waitFor(() => expect(Math.abs((result.current.clock?.sample?.offset ?? NaN) - AHEAD_MS)).toBeLessThan(15), { timeout: 3000 });
+    // Its songs are not followed, and the line keeps saying why.
+    expect(onState).not.toHaveBeenCalled();
+    expect(result.current.status).toBe('outdated');
     unmount();
   });
 

@@ -612,6 +612,33 @@ describe('count-in over Bluetooth: the leader goes away', () => {
     expect(member.result.current.countIn.state).toBeNull();
   });
 
+  it("the leader in reach of a phone with an older setlist ('outdated'): a long count counts to its end there too; the leader gone, it is forgotten", () => {
+    air.memberStatus = 'outdated';
+    const leader = phone(true);
+    const member = phone(false);
+    setClock(measured(leader));
+    // 40 BPM, two bars: "2 1" in half time, then "4 3 2 1" 1.5 s apart, GO 13.5 s after the tap.
+    act(() => leader.result.current.countIn.set(startCountIn({ from: id(leader), songId: 'row-1', bpm: 40, meter: meterOf('4/4'), bars: 2, now: nowMs() })));
+    const tapped = nowMs();
+    pass(COUNTIN_LEAD_MS + 100);
+    expect(showing(member)).toBe('2');
+    // The last count before GO, more than 10 s after the count arrived: still counting.
+    pass(10_900);
+    expect(nowMs() - tapped).toBeGreaterThan(BLE_LEADER_GONE_MS);
+    expect(showing(member)).toBe('1');
+    pass(1000);
+    expect(showing(member)).toBe('GO');
+    // Played out, the leader still there: nothing on screen, and nothing to forget yet.
+    pass(GO_MS + BLE_LEADER_GONE_MS);
+    expect(showing(member)).toBeNull();
+    expect(member.result.current.countIn.state?.on).toBe(true);
+    // The leader out of reach: forgotten after the grace period.
+    air.memberStatus = 'searching';
+    member.rerender();
+    pass(BLE_LEADER_GONE_MS + 100);
+    expect(member.result.current.countIn.state).toBeNull();
+  });
+
   it('Bluetooth for the click switched off mid-count (ble_live), no internet: the member is told it stopped; the leader keeps its own', () => {
     const leader = phone(true);
     const member = phone(false);

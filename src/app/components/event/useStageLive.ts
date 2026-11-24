@@ -43,7 +43,7 @@ import {
   type PeerClock,
 } from '@/lib/stageClick';
 import { REGIA_EVENT } from '@/lib/stageRegia';
-import { bleLinked as linkedOverBle } from '@/lib/stageBleNotice';
+import { bleInReach, bleLinked as linkedOverBle } from '@/lib/stageBleNotice';
 import { parsePlayheadState, PLAYHEAD_EVENT, stopPlayhead, type PlayheadState } from '@/lib/playhead';
 import type { LiveEvent, LiveEvents } from '@/lib/stageBleSync';
 import { STAGE_KEY_EVENT } from '@/lib/stageBleNative';
@@ -1439,13 +1439,17 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   const bleLinked = !isLeader && linkedOverBle(ble.status);
   const leaderOnline = rtLeaders.size > 0;
   const leaderHere = !isLeader && (leaderOnline || bleLinked);
+  // The leader's phone in Bluetooth reach, its songs followed or not: a phone with an older
+  // setlist ('outdated') is linked too, and the leader's click, playhead and count-in reach it.
+  const bleNear = !isLeader && bleInReach(ble.status);
 
   // No internet path to the leader, and its Bluetooth link gone a while: stop
   // showing its click and playhead (like the channel does when it leaves).
   // Cleared, not stopped, so the leader back in reach catches up at once.
+  // Only a link gone counts: a leader in reach whose setlist this phone lacks keeps its beat here.
   const remoteRunning = !!(click && click.from !== clientId && click.on) || !!(playhead && playhead.from !== clientId && playhead.on);
   useEffect(() => {
-    if (isLeader || leaderOnline || bleLinked || !remoteRunning) return;
+    if (isLeader || leaderOnline || bleNear || !remoteRunning) return;
     const timer = setTimeout(() => {
       if (clickRef.current && clickRef.current.from !== clientId) {
         clickRef.current = null;
@@ -1457,14 +1461,14 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       }
     }, BLE_LEADER_GONE_MS);
     return () => clearTimeout(timer);
-  }, [isLeader, leaderOnline, bleLinked, remoteRunning, clientId]);
+  }, [isLeader, leaderOnline, bleNear, remoteRunning, clientId]);
   // The same for its count-in that came over Bluetooth only. Meanwhile the count has run on
   // the shared clock and ended on its own (it is worked out from its start, never frozen);
   // this forgets it, so the leader back in reach starts from what its phone serves then.
   // A count that came on the channel is left as it always was.
   const remoteCounting = !!(countIn && countIn.from !== clientId && countIn.on);
   useEffect(() => {
-    if (isLeader || leaderOnline || bleLinked || !remoteCounting) return;
+    if (isLeader || leaderOnline || bleNear || !remoteCounting) return;
     const timer = setTimeout(() => {
       heldCountInRef.current = null;
       if (!countInBleRef.current || !countInRef.current || countInRef.current.from === clientId) return;
@@ -1473,7 +1477,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       setCountInState(null);
     }, BLE_LEADER_GONE_MS);
     return () => clearTimeout(timer);
-  }, [isLeader, leaderOnline, bleLinked, remoteCounting, clientId]);
+  }, [isLeader, leaderOnline, bleNear, remoteCounting, clientId]);
 
   return {
     /** The setlist in its live order. */

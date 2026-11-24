@@ -51,6 +51,16 @@ export type StageBleStatus =
 export const bleLinked = (status: StageBleStatus | undefined) =>
   status === 'connected' || status === 'old-leader' || status === 'unverified' || status === 'leader-unverified';
 
+/**
+ * The leader's phone is in Bluetooth reach of this member's: linked and
+ * following it, or linked to a leader whose setlist this phone lacks
+ * ('outdated'). That phone can't follow the leader's songs (its line says
+ * so), but the link is up and checked like any other, and what keeps time
+ * (the click, the count-in, the playhead of Follow the tempo) doesn't depend
+ * on the setlist: it is not dropped as if the leader had left.
+ */
+export const bleInReach = (status: StageBleStatus | undefined) => bleLinked(status) || status === 'outdated';
+
 export interface StageBleNoticeInput {
   status: StageBleStatus;
   /** The live channel (internet) is connected. */
