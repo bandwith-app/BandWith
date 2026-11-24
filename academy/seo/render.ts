@@ -4,7 +4,7 @@
  * applies. Plain strings, no React, no browser globals: it runs at build time.
  */
 import type { Block, Device, Role, ShotDevice } from '../content/types';
-import { SHOT_FILES } from '../content/shotFiles';
+import { SHOT_FILES, SHOT_SIZES } from '../content/shotFiles';
 import type { Lang } from '../src/langs';
 import { translate } from '../src/uiText';
 import { MUSIC_SYMBOLS, type MusicSymbolId } from '@/lib/musicSymbols';
@@ -19,8 +19,6 @@ export interface Ctx {
   titles: Map<string, string>;
   /** The URL path of an article in this language. */
   articlePath: (id: string) => string;
-  /** Pixel size of a screenshot file (shots/<id>@<device>.webp), when known. */
-  shotSize?: (file: string) => { w: number; h: number } | null;
 }
 
 export const t = (ctx: { lang: Lang }, s: string, vars?: Record<string, string | number>) => translate(ctx.lang, s, vars);
@@ -104,22 +102,42 @@ export function shotDevice(id: string, pinned?: ShotDevice): ShotDevice | null {
 }
 export const shotFile = (id: string, dev: ShotDevice) => `shots/${id}@${dev}.webp`;
 
+/** `width` and `height` of a capture, from the index: the browser keeps its place (and its ratio) before it loads. */
+const dims = (id: string, dev: ShotDevice) => {
+  const size = SHOT_SIZES[`${id}@${dev}`];
+  return size ? ` width="${size[0]}" height="${size[1]}"` : '';
+};
+
+/**
+ * What a static page shows instead of the wide capture, with no script to ask
+ * the device: a phone-wide window gets the phone's screens, a touch screen
+ * wider than that the tablet's. Each is a <source> of the <picture>, and
+ * styles.css gives the frame that device's shape under the same media query.
+ */
+const SHOT_SWAPS: { dev: ShotDevice; media: string; cls: string }[] = [
+  { dev: 'phone', media: '(max-width: 599px)', cls: 'narrow-phone' },
+  { dev: 'tablet', media: '(min-width: 600px) and (pointer: coarse)', cls: 'touch-tablet' },
+];
+
 function shot(b: Extract<Block, { type: 'shot' }>, ctx: Ctx): string {
   const dev = shotDevice(b.id, b.device);
   const caption = inline(b.caption, ctx);
   if (!dev) return '';
-  const file = shotFile(b.id, dev);
-  const size = ctx.shotSize?.(file);
-  const dims = size ? ` width="${size.w}" height="${size.h}"` : '';
+  const have = SHOT_FILES[b.id] ?? [];
+  // A pinned shot is one device's own screen; a phone or tablet capture is already the nearest there is.
+  const swaps = b.device || dev !== 'web' ? [] : SHOT_SWAPS.filter((s) => have.includes(s.dev));
   const bar =
     dev === 'web'
       ? '<div class="shot__bar" aria-hidden="true"><i></i><i></i><i></i><span>app.bandwith.fun</span></div>'
       : '';
   const hinge = dev === 'duoBook' || dev === 'duoLaptop' ? '<span class="shot__hinge" aria-hidden="true"></span>' : '';
+  const img = `<img src="/academy/${shotFile(b.id, dev)}" alt="${esc(plain(b.caption, ctx.titles))}" loading="lazy" decoding="async"${dims(b.id, dev)}>`;
+  const sources = swaps.map((s) => `<source media="${s.media}" srcset="/academy/${shotFile(b.id, s.dev)}"${dims(b.id, s.dev)}>`).join('');
+  const label = (d: ShotDevice, cls = '') => `<span class="dev shot__dev${cls}">${esc(t(ctx, SHOT_DEVICE_LABEL[d]))}</span>`;
   return (
-    `<figure class="shot shot--${dev}"><div class="shot__frame shot__frame--${dev}">${bar}` +
-    `<div class="shot__screen"><img src="/academy/${file}" alt="${esc(plain(b.caption, ctx.titles))}" loading="lazy" decoding="async"${dims}></div>${hinge}</div>` +
-    `<figcaption><span class="dev shot__dev">${esc(t(ctx, SHOT_DEVICE_LABEL[dev]))}</span><span>${caption}</span></figcaption></figure>`
+    `<figure class="shot shot--${dev}${swaps.map((s) => ` shot--${s.cls}`).join('')}"><div class="shot__frame shot__frame--${dev}">${bar}` +
+    `<div class="shot__screen">${sources ? `<picture>${sources}${img}</picture>` : img}</div>${hinge}</div>` +
+    `<figcaption>${label(dev)}${swaps.map((s) => label(s.dev, ` shot__dev--${s.cls}`)).join('')}<span>${caption}</span></figcaption></figure>`
   );
 }
 

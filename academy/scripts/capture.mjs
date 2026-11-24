@@ -4,11 +4,11 @@
  * DevTools protocol (no puppeteer: Node's built-in WebSocket is enough).
  *
  *   VITE_DEMO_MODE=true npx vite --port 5185 --strictPort   # in another shell
- *   node academy/scripts/capture.mjs <shot-id>[,<shot-id>…] [--devices phone,tablet,web] [--base http://localhost:5185]
+ *   node academy/scripts/capture.mjs <shot-id>[,<shot-id>…] [--devices phone,tablet,web] [--base http://localhost:5185] [--out <folder>]
  *   node academy/scripts/capture.mjs --explore "<step>;<step>" --devices phone   # prints the buttons on screen (and what js: steps return), saves out/explore@phone.png
  *
  * Each capture starts from empty site data: demo session on, role tours seen,
- * song view on Lyrics & chords, then the late urgent alert is dismissed. The steps for a
+ * song view on Lyrics & chords, the page's clock at 9:41 of the capture day, then the late urgent alert is dismissed. The steps for a
  * shot live in RECIPES below (click by visible text or aria-label, scroll, wait).
  * Run one capture job at a time (two-phone shots share one browser's storage).
  * A recipe named <id>@wide replaces <id> on tablet and web; <id>@tablet or <id>@web on that device only.
@@ -152,14 +152,21 @@ const offlineNotes = (openStage) => ['seed:live', 'member', 'push:event|Rooftop 
 // Harbor Lights' form, step 2: 6/8, a 2-bar count-in, the band in one beat early.
 const SONG_FORM = ['click:Repertoire', 'wait:800', 'click:Actions for Harbor Lights', 'wait:600', 'click:Edit', 'wait:1200', 'click:Next', 'wait:1200',
   'click:Time signature 6/8', 'click:2 bars', 'click:One beat earlier', 'wait:500'];
+// Tablet and web keep the song list beside the song: clicking a row lower down leaves the list scrolled
+// to it, its header cut. This puts the list back at its top (the gap is more than the header is tall).
+const LIST_TOP = 'top:Songs & setlists|400';
 const CENTER = (css) => `js:[...document.querySelectorAll('${css}')].filter((e) => e.getBoundingClientRect().width > 0)[0].scrollIntoView({ block: 'center' })`;
 const RECIPES = {
   'gig-workspace-admin': ['click:Calendar', 'click:Client A — Wedding', 'wait:1200'],
   'gig-workspace-member': ['member', 'click:Calendar', 'click:Client A — Wedding', 'wait:1200', 'scroll:Your fee'],
   'music-reader': ['click:Repertoire', 'click:Actions for Harbor Lights', 'wait:500', 'click:Chord chart', 'wait:1200', 'click:Lyrics & chords', 'wait:800'],
+  'music-reader@wide': ['click:Repertoire', 'click:Actions for Harbor Lights', 'wait:500', 'click:Chord chart', 'wait:1200', 'click:Lyrics & chords', 'wait:800', LIST_TOP],
   // Weekly rehearsal (tomorrow) with focus songs, in Live mode on the current song.
   'music-rehearsal-live': ['seed:focus', 'click:Calendar', 'wait:800', "js:(() => { const cells = [...document.querySelectorAll('[aria-label]')].filter((e) => /^\\w+day, /.test(e.getAttribute('aria-label'))); const i = cells.findIndex((e) => /today/.test(e.getAttribute('aria-label'))); cells[i + 1].click(); return true; })()", 'wait:1500', 'click:Open live mode', 'wait:1500', 'click:Lyrics & chords', 'wait:1000'],
   'music-song-only': ['seed:focus', 'click:Calendar', 'wait:800', "js:(() => { const cells = [...document.querySelectorAll('[aria-label]')].filter((e) => /^\\w+day, /.test(e.getAttribute('aria-label'))); const i = cells.findIndex((e) => /today/.test(e.getAttribute('aria-label'))); cells[i + 1].click(); return true; })()", 'wait:1500', 'click:Open live mode', 'wait:1500', 'click:Lyrics & chords', 'wait:1000', 'click:Full screen', 'wait:1200'],
+  // The lyrics correction on Paper Boats, with Changes selected.
+  'music-suggestions': ['click:Repertoire', 'wait:800', 'click:Suggestions from members', 'wait:1200', 'click:Paper Boats Lyrics correction', 'wait:1200'],
+  'music-suggestions@wide': ['click:Repertoire', 'wait:800', 'click:Suggestions from members', 'wait:1200', 'click:Paper Boats Lyrics correction', 'wait:1200', LIST_TOP],
   'music-stage': ['click:Go live', 'wait:1500'],
   // Tablet and web: Go live opens the gig beside the calendar; Stage mode is its play button.
   'music-stage@wide': ['click:Go live', 'wait:1500', 'click:Open stage mode', 'wait:1500'],
@@ -176,9 +183,11 @@ const RECIPES = {
   'who-sings-what@wide': ['seed:live', 'seed:voices', ...STAGE_WIDE, ...SONG_TAB, 'click:Got it', 'click:Who sings what', 'wait:1000', 'click:This gig only', 'wait:800'],
   // The chord editor on the first word of a backing line: Voice with Whole line and Backing pressed.
   'voice-picker': ['seed:voices', 'click:Repertoire', 'wait:800', 'click:Actions for Paper Boats', 'wait:600', 'click:Edit chords', 'wait:1500', 'click:(ooh,', 'wait:1000'],
+  'voice-picker@wide': ['seed:voices', 'click:Repertoire', 'wait:800', 'click:Actions for Paper Boats', 'wait:600', 'click:Edit chords', 'wait:1500', 'click:(ooh,', 'wait:1000', LIST_TOP],
   'song-live-fields': [...SONG_FORM, 'top:BPM'],
+  'song-live-fields@web': [...SONG_FORM, 'top:BPM', LIST_TOP],
   // The tablet's form is shorter: it starts one row lower to reach Played with a backing track.
-  'song-live-fields@tablet': [...SONG_FORM, 'top:Transpose for the band|10'],
+  'song-live-fields@tablet': [...SONG_FORM, 'top:Transpose for the band|10', LIST_TOP],
   // The leader's Count in on Paper Boats (96 BPM, 4/4), caught on beat 2.
   'stage-count-in': ['seed:live', ...STAGE, ...COUNT_2],
   'stage-count-in@wide': ['seed:live', ...STAGE_WIDE, ...COUNT_2],
@@ -204,6 +213,8 @@ const opt = (name, def) => {
 const base = opt('--base', 'http://localhost:5185');
 const devices = opt('--devices', 'phone,tablet,web').split(',');
 const explore = opt('--explore', null);
+// Another folder for the .webp files: look at a new capture beside the old one before replacing it.
+const shotsDir = path.resolve(opt('--out', SHOTS));
 const ids = explore !== null ? ['explore'] : (args[0] || '').split(',').filter(Boolean);
 if (!ids.length) {
   console.error('usage: capture.mjs <shot-id>[,…] [--devices phone,tablet,web] | --explore "<steps>"');
@@ -376,6 +387,25 @@ async function step(send, s) {
   throw new Error(`unknown step: ${s}`);
 }
 
+/**
+ * The page's clock, set to 9:41 in the morning of the capture day and running from there: what a
+ * screen shows no longer depends on the hour of the capture (Stage mode fades the times already
+ * past, "updated 18:31"…). One offset for every tab and reload of a capture, so two phones agree.
+ */
+const clockScript = (offset) => `(() => {
+  const Real = Date;
+  class Clock extends Real {
+    constructor(...args) { if (args.length) super(...args); else super(Real.now() + ${offset}); }
+    static now() { return Real.now() + ${offset}; }
+  }
+  window.Date = Clock;
+})()`;
+const clocks = new Map();
+async function setClock(send, offset) {
+  if (clocks.has(send)) await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: clocks.get(send) });
+  clocks.set(send, (await send('Page.addScriptToEvaluateOnNewDocument', { source: clockScript(offset) })).identifier);
+}
+
 /** The device's screen, in the dark theme (the app follows the system setting; Academy shots are dark). */
 async function emulate(send, d) {
   await send('Emulation.setDeviceMetricsOverride', { width: d.width, height: d.height, deviceScaleFactor: 2, mobile: d.mobile });
@@ -395,7 +425,10 @@ async function dismissAlert(send) {
 
 async function capture({ send, newTab }, device, shotId, steps) {
   const d = DEVICES[device];
+  const today = new Date();
+  const clock = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 9, 41, 0).getTime() - Date.now();
   await emulate(send, d);
+  await setClock(send, clock);
   await send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   await send('Storage.clearDataForOrigin', { origin: new URL(base).origin, storageTypes: 'all' });
   await send('Page.navigate', { url: base });
@@ -417,6 +450,7 @@ async function capture({ send, newTab }, device, shotId, steps) {
   if (steps.some((s) => s.startsWith('lead:'))) {
     lead = await newTab();
     await emulate(lead.send, d);
+    await setClock(lead.send, clock);
     await lead.send('Page.navigate', { url: base });
     await sleep(3500);
     await dismissAlert(lead.send);
@@ -463,7 +497,8 @@ async function capture({ send, newTab }, device, shotId, steps) {
     console.log(png);
     return;
   }
-  const webp = path.join(SHOTS, `${shotId}@${device}.webp`);
+  mkdirSync(shotsDir, { recursive: true });
+  const webp = path.join(shotsDir, `${shotId}@${device}.webp`);
   execFileSync('cwebp', ['-quiet', '-q', '82', '-resize', String(d.webp), '0', png, '-o', webp]);
   console.log(`${shotId}@${device}`);
 }

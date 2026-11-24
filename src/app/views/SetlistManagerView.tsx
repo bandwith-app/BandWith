@@ -64,6 +64,8 @@ import { useUnsavedGuard } from '@/lib/unsavedGuard';
 import { UnsavedChangesSheet } from '@/app/components/bw/UnsavedChanges';
 import { AcademyHelpButton } from '@/app/components/academy/AcademyHelpButton';
 import { fetchBandPlan } from '@/lib/usePlan';
+import { BandRequiredScreen } from '@/app/components/band/BandRequired';
+import { useBandFeatures } from '@/lib/bandFeatures';
 import { madeWithMark } from '@/lib/planText';
 
 /** Readiness dots: 16 per row, one dot per song (scaled down past 48 songs). */
@@ -199,6 +201,8 @@ const SetlistOrderRow: React.FC<{
 
 interface SetlistManagerViewProps {
   onClose: () => void;
+  /** No band (solo schedule): "Band required" offers this. */
+  onCreateBand?: () => void;
 }
 
 type ViewMode = 'songs' | 'setlists';
@@ -207,9 +211,16 @@ type ViewMode = 'songs' | 'setlists';
 const editorSnapshot = (name: string, songIds: string[], sets: number[], rowIds: (string | undefined)[]) =>
   JSON.stringify([name.trim(), songIds, compactSets(sets), rowIds.map((r) => r ?? null)]);
 
-export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose }) => {
+export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose, onCreateBand }) => {
   const t = useT();
-  const { selectedBand, isAdmin } = useBand();
+  const { selectedBand, bands, isAdmin, refreshBands, loading: bandsLoading } = useBand();
+  // No real band (src/lib/bandFeatures.ts): there is no band library to load,
+  // ever. Songs only need a place to be kept: when the personal band exists,
+  // this is one of the gates to lift.
+  const bandFeatures = useBandFeatures();
+  // A band account whose bands could not be loaded: no band is coming either.
+  // (Only while the band list is still loading is the loader below right.)
+  const bandsNotLoaded = bandFeatures && !selectedBand?.id && !bandsLoading && !bands?.length;
   const { user } = useAuth();
   // Setlists are written by admins only (migration 074); members read them.
   const canEditSetlists = isAdmin;
@@ -930,6 +941,20 @@ export const SetlistManagerView: React.FC<SetlistManagerViewProps> = ({ onClose 
       )}
     </motion.section>
   ) : null;
+
+  if (!bandFeatures || bandsNotLoaded) {
+    return (
+      <BandRequiredScreen
+        onBack={onClose}
+        backLabel={t('Go back')}
+        overline={t('Songs & setlists')}
+        title={t('Repertoire')}
+        onCreateBand={onCreateBand}
+        notLoaded={bandsNotLoaded}
+        onRetry={() => void refreshBands?.()}
+      />
+    );
+  }
 
   return (
     <motion.div

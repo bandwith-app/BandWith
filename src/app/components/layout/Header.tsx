@@ -37,6 +37,8 @@ interface HeaderProps {
   unreadCount: number;
   isHidden: boolean;
   isScrolled?: boolean;
+  /** The account may not use band features (`!useBandFeatures()`, src/lib/bandFeatures.ts): no band role and no band switcher. */
+  isSolo?: boolean;
 }
 
 
@@ -52,6 +54,7 @@ export const Header: React.FC<HeaderProps> = ({
   unreadCount,
   isHidden,
   isScrolled = false,
+  isSolo = false,
 }) => {
   const { profile } = useAuth();
   const t = useT();
@@ -107,7 +110,8 @@ export const Header: React.FC<HeaderProps> = ({
   })();
 
   const isAdminRole = selectedBand.role === 'ADMIN' || profile?.role === 'admin';
-  const canSwitchBands = bands.length > 1 || isAdminRole;
+  // No band: nothing to switch between (a band is created from Settings).
+  const canSwitchBands = !isSolo && (bands.length > 1 || isAdminRole);
 
   const expandedContentHeight = (activeTab === 'Chat' || activeTab === 'Events') ? 72 : 92;
   const collapsedContentHeight = 54;
@@ -226,7 +230,7 @@ export const Header: React.FC<HeaderProps> = ({
                   selectedBand.role === 'ADMIN' ? "bg-destructive-solid" : "bg-accent"
                 )} />
                 <span className="bw-label-sm text-foreground leading-none">
-                  {selectedBand.role === 'ADMIN' ? t('Admin') : t('Member')}
+                  {isSolo ? t('Solo schedule') : selectedBand.role === 'ADMIN' ? t('Admin') : t('Member')}
                 </span>
               </motion.div>
 

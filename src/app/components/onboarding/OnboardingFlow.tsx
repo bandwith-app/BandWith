@@ -22,7 +22,8 @@ import JoinerNoInvites from './JoinerNoInvites';
 import { PendingInvitesPrompt } from '@/app/components/notifications/PendingInvitesPrompt';
 import { declineInvitation, declineInvitationByToken, inviteErrorMessage, InviteError } from '@/lib/services/invitations';
 import { closeTopOverlay, isEditableTarget } from '@/lib/overlayBack';
-import { DuoAuthLayout, CREATOR_BRAND_STEPS, SOLO_BRAND_STEPS } from './DuoAuthLayout';
+import { DuoAuthLayout } from './DuoAuthLayout';
+import { brandPlan, flowScreen } from './onboardingSteps';
 import { t } from '@/lib/i18n';
 import { AUTH_SCREEN_PARAM, START_PARAM, authScreenFromUrl, dropUrlParams } from '@/lib/authCallback';
 
@@ -460,20 +461,13 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
   // iPhone Duo, open: BRAND page on the left (with the named steps during
   // onboarding), the screen on the right (Figma "Duo · 01").
-  const brandSteps =
-    screenMode === 'flow' && path === 'creator'
-      ? CREATOR_BRAND_STEPS
-      : screenMode === 'flow' && path === 'solo'
-        ? SOLO_BRAND_STEPS
-        : undefined;
-  const brandCurrent =
-    path === 'solo'
-      ? !isAuthenticated ? 1 : currentStep <= 1 ? 3 : 4
-      : !isAuthenticated ? 1 : currentStep <= 1 ? 2 : Math.min(7, currentStep + 1);
+  const brand =
+    screenMode === 'flow' && (path === 'creator' || path === 'solo')
+      ? brandPlan(path, flowScreen(path, isAuthenticated, currentStep))
+      : undefined;
   const duo = (node: React.ReactNode) => (
     <DuoAuthLayout
-      steps={brandSteps}
-      current={brandCurrent}
+      plan={brand}
       screenKey={`${screenMode}-${path}-${currentStep}-${joinerSubStep}-${isAuthenticated}`}
     >
       {node}

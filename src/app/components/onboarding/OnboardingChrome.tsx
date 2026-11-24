@@ -2,7 +2,6 @@ import { keyboardSafeTap } from '@/lib/keyboardSafeTap';
 import React from 'react';
 import { cn } from '@/app/components/ui/utils';
 import { BackButton } from '@/app/components/bw/Form';
-import type { OnboardingPath } from '@/lib/OnboardingContext';
 import { useT } from '@/lib/i18n';
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -12,18 +11,8 @@ import { useT } from '@/lib/i18n';
  * bottom sheet).
  * ───────────────────────────────────────────────────────────────────────── */
 
-export type WizardScreen = 'account' | 'intent' | 'band' | 'profile' | 'invite' | 'songs';
-
-const CREATOR_ORDER: WizardScreen[] = ['account', 'intent', 'band', 'profile', 'invite', 'songs'];
-const SOLO_ORDER: WizardScreen[] = ['account', 'intent', 'profile'];
-const JOINER_ORDER: WizardScreen[] = ['account', 'profile'];
-
-/** Step number and total for a screen, depending on the onboarding path. */
-export function wizardStep(path: OnboardingPath | null | undefined, screen: WizardScreen): { step: number; total: number } {
-  const order = path === 'joiner' ? JOINER_ORDER : path === 'solo' ? SOLO_ORDER : CREATOR_ORDER;
-  const i = order.indexOf(screen);
-  return { step: i < 0 ? 1 : i + 1, total: order.length };
-}
+// The step lists and their counts live in onboardingSteps.ts.
+export { wizardStep, type WizardScreen } from './onboardingSteps';
 
 /** Figma "Step Indicator": done = fg, current = 40pt lime pill, upcoming = dot-off. */
 export const StepIndicator: React.FC<{ step: number; total: number; className?: string }> = ({ step, total, className }) => (

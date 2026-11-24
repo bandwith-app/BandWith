@@ -7,6 +7,7 @@ import { AuthScreen, FormError, Kicker, PillButton } from '@/app/components/bw/F
 import { Metric } from '@/app/components/bw/Metric';
 import { setStatusBarTone } from '@/lib/systemBars';
 import { useT } from '@/lib/i18n';
+import { wizardTotal } from './onboardingSteps';
 
 interface CompletionScreenProps {
   onComplete: () => void;
@@ -22,7 +23,7 @@ export const CompletionScreen: React.FC<CompletionScreenProps> = ({
   error = null,
 }) => {
   const t = useT();
-  const { bandData, invites, songs, profileData } = useOnboarding();
+  const { bandData, invites, songs, profileData, path } = useOnboarding();
   const { user } = useAuth();
   const [showContent, setShowContent] = useState(false);
 
@@ -46,7 +47,8 @@ export const CompletionScreen: React.FC<CompletionScreenProps> = ({
     // Full-bleed dark screen (Figma "Ready to rock"): scope the dark theme so
     // fg / dot / muted tokens resolve to their on-dark values.
     <AuthScreen
-      className="dark bg-sheet text-foreground relative overflow-hidden"
+      // `bw-auth-finish`: where the pills sit in a computer window (onboarding-desktop.css).
+      className="bw-auth-finish dark bg-sheet text-foreground relative overflow-hidden"
       bodyClassName="pt-16 pb-8 gap-6"
       footer={
         <motion.div
@@ -61,7 +63,7 @@ export const CompletionScreen: React.FC<CompletionScreenProps> = ({
         </motion.div>
       }
     >
-      {/* Lime progress pills: every step done */}
+      {/* Lime progress pills: one per step of the path, every one done */}
       <motion.div
         className="flex items-center gap-1"
         aria-hidden="true"
@@ -69,7 +71,7 @@ export const CompletionScreen: React.FC<CompletionScreenProps> = ({
         animate="show"
         variants={{ show: { transition: { staggerChildren: 0.08 } } }}
       >
-        {Array.from({ length: 5 }).map((_, i) => (
+        {Array.from({ length: wizardTotal(path) }).map((_, i) => (
           <motion.span
             key={i}
             className="h-2.5 w-6 rounded-full bg-accent"

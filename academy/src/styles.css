@@ -331,7 +331,11 @@ kbd {
 }
 .shot__screen { aspect-ratio: 390 / 844; overflow-y: auto; border-radius: 34px; scrollbar-width: none; }
 .shot__screen::-webkit-scrollbar { display: none; }
-.shot__screen img { display: block; width: 100%; }
+.shot__screen picture { display: block; }
+/* As wide as its frame, as tall as its own ratio says. `height: auto` is what keeps it: every
+   <img> declares its file's width and height (no jump while it loads), and without it the
+   height attribute would stand while the width shrinks, stretching the capture. */
+.shot__screen img { display: block; width: 100%; height: auto; }
 .shot__frame--duoClosed { width: min(300px, 80%); border-radius: 30px; }
 .shot__frame--duoClosed .shot__screen { aspect-ratio: auto; max-height: 640px; border-radius: 20px; }
 .shot__frame--tablet { width: 100%; border-radius: 30px; }
@@ -352,6 +356,26 @@ kbd {
 .shot__hinge { position: absolute; pointer-events: none; background: linear-gradient(var(--hinge-dir), rgba(0,0,0,0) 0%, rgba(0,0,0,0.55) 50%, rgba(0,0,0,0) 100%); }
 .shot__frame--duoBook .shot__hinge { --hinge-dir: 90deg; top: 9px; bottom: 9px; left: calc(9px + (100% - 18px) * 0.4784); width: calc((100% - 18px) * 0.0421); }
 .shot__frame--duoLaptop .shot__hinge { --hinge-dir: 180deg; left: 9px; right: 9px; top: calc(9px + (100% - 18px) * 0.4784); height: calc((100% - 18px) * 0.0421); }
+/* A phone draws three pixels a point: its phone-shaped frames stay within the captures' 780. */
+@media (max-width: 599px) {
+  .shot__frame--phone, .shot__frame--duoClosed { width: min(280px, 82%); }
+}
+/* Static pages (academy/seo/render.ts) have no script to ask the device: the <picture> swaps the
+   wide capture for the phone's on a phone-wide window, the tablet's on a wider touch screen,
+   and the browser window turns into that device's frame under the same media query. */
+.shot__dev--narrow-phone, .shot__dev--touch-tablet { display: none; }
+@media (max-width: 599px) {
+  .shot--narrow-phone .shot__frame { width: min(280px, 82%); padding: 10px; border-radius: 44px; overflow: visible; background: #0a0a0a; }
+  .shot--narrow-phone .shot__screen { aspect-ratio: 390 / 844; border-radius: 34px; }
+  .shot--narrow-phone .shot__bar, .shot--narrow-phone .shot__dev { display: none; }
+  .shot--narrow-phone .shot__dev--narrow-phone { display: inline-flex; }
+}
+@media (min-width: 600px) and (pointer: coarse) {
+  .shot--touch-tablet .shot__frame { padding: 10px; border-radius: 30px; overflow: visible; background: #0a0a0a; }
+  .shot--touch-tablet .shot__screen { border-radius: 22px; }
+  .shot--touch-tablet .shot__bar, .shot--touch-tablet .shot__dev { display: none; }
+  .shot--touch-tablet .shot__dev--touch-tablet { display: inline-flex; }
+}
 .shot__scroll {
   position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); pointer-events: none;
   background: #050505; color: #d5fb46; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase;
