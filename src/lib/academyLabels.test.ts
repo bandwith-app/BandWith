@@ -81,22 +81,28 @@ const labelsOf = (a: Pick<Article, 'body'>): string[] =>
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /**
  * "Starts on beat {n}" as a pattern: "Starts on beat 4" matches, n = "4".
- * Only a number fills a placeholder, or the guide's own "…" for a name it
- * can't know ("Go to …" is "Go to {title}"), so "{name} paid" never vouches
- * for a made-up label.
+ * A placeholder is filled only by a number, by the guide's own "…" for a name
+ * it can't know ("Go to …" is "Go to {title}"), or by a counted phrase that is
+ * itself a text of the app ("You’re offline · 2 changes waiting for signal" is
+ * "You’re offline · {changes} waiting for signal" with "{count} changes"), so
+ * "{name} paid" never vouches for a made-up label.
  */
 function fill(key: string, label: string): Record<string, string> | null {
   const names: string[] = [];
   const source = escape(key).replace(/\\\{(\w+)\\\}/g, (_m, name: string) => {
     names.push(name);
-    return '(\\d+|…)';
+    return '(.+?)';
   });
   const m = label.match(new RegExp(`^${source}$`));
   if (!m) return null;
   const vars: Record<string, string> = {};
   names.forEach((name, i) => (vars[name] ??= m[i + 1]));
-  return vars;
+  return Object.values(vars).every((v) => plain(v) || (counted(v) && v.length < label.length && sourcesOf(v).length > 0)) ? vars : null;
 }
+/** A number, or the guide's "…". */
+const plain = (value: string) => /^(\d+|…)$/.test(value);
+/** "2 changes": a number and its noun, to be found among the app's texts. */
+const counted = (value: string) => /^\d+ \S/.test(value);
 
 /** Dictionary keys without their "|context" (it.ts: "Start|follow"). */
 const KEYS = [...new Set(Object.keys(dictIt).map((k) => k.replace(/\|[a-z]+$/, '')))];
@@ -117,7 +123,13 @@ function shownIn(lang: string, label: string): string[] {
   for (const { key, vars } of sourcesOf(label)) {
     for (const [k, v] of Object.entries(dict)) {
       if (k !== key && !k.startsWith(`${key}|`)) continue;
-      out.add(v.replace(/\{(\w+)\}/g, (m, name: string) => vars[name] ?? m));
+      // A counted phrase inside is shown in its own translation ("2 modifiche").
+      let shown = [v];
+      for (const [name, value] of Object.entries(vars)) {
+        const with_ = plain(value) ? [value] : shownIn(lang, value);
+        shown = shown.flatMap((s) => with_.map((w) => s.split(`{${name}}`).join(w)));
+      }
+      shown.forEach((s) => out.add(s));
     }
   }
   // No translation in the app: it shows the English one.
