@@ -14,7 +14,12 @@
  *   Nico (drums), Tom (guitar), Lena P. (keys). Deputies: Ivo M. (keys, covers
  *   Lena on the wedding), Luca T. (bass, usual fee €180).
  * - No prices of the product, no promises of features the app doesn't have.
+ * - "The small things" says each capability once, in one line (see SpecItem);
+ *   the steps live in the Academy article the page links under "Learn it"
+ *   (site/test/coverage.test.ts, IN_THE_GUIDE).
  */
+
+import type { ShotDevice } from '../site';
 
 /** Icon ids from site/partials/sprite.html (without the "i-" prefix). */
 export type Icon =
@@ -41,7 +46,29 @@ export type FlowStep = {
 export type Cell = boolean | string | { dash: string };
 export type RoleRow = { what: string; admin: Cell; member: Cell; deputy: Cell };
 
-export type Detail = { icon: Icon; title: string; body: string; wide?: boolean };
+/**
+ * "The small things": three capabilities up front, each with the product
+ * itself (a capture in the crop component, or a fragment drawn in HTML when
+ * no capture shows the thing: content/fragments.ts), then the rest as a spec
+ * sheet, one line each under two to four labels.
+ */
+export type FeatureUi =
+  /** An Academy capture (the phone's unless `device` says otherwise): [top, bottom] of its height, or [top, bottom, left, right] to zoom in. */
+  | { shot: string; device?: ShotDevice; region: [number, number] | [number, number, number, number]; alt: string }
+  /** A fragment drawn in HTML (a key of FRAGMENTS), checked against the app's own screen. */
+  | { fragment: string };
+export type Featured = {
+  title: string;
+  /** Who does it or when, 2–4 words in mono next to the number ("Leader starts it"). */
+  tag: string;
+  /** Two or three short sentences, 140 characters at most. */
+  body: string;
+  ui: FeatureUi;
+};
+/** One capability, one line: a short title and a sentence or two, 110 characters at most. */
+export type SpecItem = { title: string; line: string };
+/** Items that belong together under a mono label; an even number, so both columns are full. */
+export type SpecGroup = { label: string; items: SpecItem[] };
 
 /** An Academy article: id (must exist), a short title and one line. */
 export type Learn = { id: string; title: string; line: string };
@@ -67,6 +94,12 @@ export type ChannelPage = {
   /** Optional interactive demo (markup and script per kind, see render.ts / ui/demos). */
   demo?: { kind: string; heading: Heading; lead: string };
   roles: { heading: Heading; lead: string; rows: RoleRow[] };
-  details: { heading: Heading; items: Detail[] };
+  details: {
+    heading: Heading;
+    /** One sentence on how the rest is sorted; it names how many there are ("The other ten are…"). */
+    lead: string;
+    featured: [Featured, Featured, Featured];
+    groups: SpecGroup[];
+  };
   learn: Learn[];
 };

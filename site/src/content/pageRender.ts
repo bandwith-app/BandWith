@@ -3,18 +3,23 @@
  * page's <head> extras and <main>. Used at build time by the partials plugin:
  *   <!--@page-head:quotes-contracts-->  and  <!--@page:quotes-contracts-->
  * Section order and tone: hero, how it works (dark), try it (bone, if the
- * page has a demo), who sees what (dark), the small things + learn it (one
- * bone sheet), next channel (dark). Devices are shown once, on the home page.
+ * page has a demo), who sees what (dark), the small things (three panels with
+ * the product, then a spec sheet) + learn it (one bone sheet), next channel
+ * (dark). Devices are shown once, on the home page.
  */
 import { CHANNELS, bySlug, channelUrl, pad2, type Channel } from './features';
-import { academyArticle, shot } from './site';
+import { academyArticle, shot, SHOT_SIZE } from './site';
 import { DEMOS } from './demos/index';
 import { PAGES } from './pages';
-import type { Cell, ChannelPage, Heading, Icon } from './pages/types';
+import { FRAGMENTS } from './fragments';
+import type { Cell, ChannelPage, FeatureUi, Heading, Icon } from './pages/types';
 import { pageAnswers } from './answersRender';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const ico = (id: Icon, cls = 'ico') => `<svg class="${cls}" aria-hidden="true"><use href="#i-${id}"/></svg>`;
+
+/** Counts written as words: "And ten more", "Six short articles". */
+export const WORDS = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve'];
 
 function line(text: string, em?: string) {
   const t = esc(text);
@@ -97,7 +102,7 @@ function hero(page: ChannelPage, ch: Channel) {
           `<ul class="chips fhero__chips" data-fh>${page.hero.chips.map((c) => `<li>${ico(c.icon)}${esc(c.label)}</li>`).join('')}</ul>` +
           `<div class="fhero__cta" data-fh>` +
             `<a class="btn btn--lime" href="${page.demo ? '#try-it' : '#how'}" data-magnetic>${page.demo ? 'Try it here' : 'See how it works'} <svg class="ico btn__arrow btn__arrow--down" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>` +
-            `<a class="btn btn--ghost" href="/get/">Get the beta ${ico('arrow-up-right', 'ico btn__arrow')}</a>` +
+            `<a class="btn btn--ghost" href="/get/">Get the app ${ico('arrow-up-right', 'ico btn__arrow')}</a>` +
           `</div>` +
         `</div>` +
         heroMark(page) +
@@ -156,19 +161,46 @@ function roles(page: ChannelPage, bone: boolean) {
   );
 }
 
+/** "Three up, then the spec sheet": the product in a panel, a capture or a drawn fragment. */
+function featureUi(ui: FeatureUi) {
+  if ('fragment' in ui) {
+    const f = FRAGMENTS[ui.fragment];
+    if (!f) throw new Error(`No fragment "${ui.fragment}"`);
+    return `<div class="feat__ui feat__ui--drawn" role="img" aria-label="${esc(f.alt)}">${f.html}</div>`;
+  }
+  const device = ui.device ?? 'phone';
+  const [w, h] = SHOT_SIZE[device];
+  // The crop fits a region of the capture into the box (ui/crop.ts); other devices say their own shape.
+  const ar = device === 'phone' ? '' : ` data-ar="${(h / w).toFixed(4)}"`;
+  return (
+    `<div class="feat__ui"><div class="crop feat__crop" data-crop="${ui.region.join(' ')}"${ar}>` +
+    `<img class="crop__img" src="${shot(ui.shot, device)}" alt="${esc(ui.alt)}" width="${w}" height="${h}" loading="lazy" decoding="async" /></div></div>`
+  );
+}
+
 function details(page: ChannelPage, bone: boolean) {
-  const items = page.details.items.map((x) =>
-    `<li class="bento__c${x.wide ? ' bento__c--wide' : ''}" data-reveal-item>${ico(x.icon)}<b>${esc(x.title)}</b><p>${esc(x.body)}</p></li>`,
+  const d = page.details;
+  const featured = d.featured.map((f, i) =>
+    `<li class="feat" data-reveal-item>${featureUi(f.ui)}` +
+    `<div class="feat__txt"><p class="mono feat__n"><span class="feat__no" aria-hidden="true">${pad2(i + 1)}</span><span>${esc(f.tag)}</span></p>` +
+    `<h3 class="feat__t">${esc(f.title)}</h3><p class="feat__p">${esc(f.body)}</p></div></li>`,
+  ).join('');
+  const count = d.groups.reduce((n, g) => n + g.items.length, 0);
+  const groups = d.groups.map((g, i) =>
+    `<section class="spec__g" aria-labelledby="spec-${i + 1}">` +
+      `<h3 class="mono spec__l" id="spec-${i + 1}"><span>${esc(g.label)}</span><b aria-hidden="true">${g.items.length}</b></h3>` +
+      `<ul class="spec__items">${g.items.map((x) => `<li class="spec__i"><h4>${esc(x.title)}</h4><p>${esc(x.line)}</p></li>`).join('')}</ul>` +
+    `</section>`,
   ).join('');
   return (
     `<section class="sec${bone ? ' sec--bone' : ''} details" aria-labelledby="det-h"${bone ? ' data-light' : ''}><div class="wrap">` +
-      `<div class="head"><p class="label">The small things</p><h2 class="h2" id="det-h" data-split>${h2(page.details.heading)}</h2></div>` +
-      `<ul class="bento" data-reveal-group>${items}</ul>` +
+      `<div class="head"><p class="label">The small things</p><h2 class="h2" id="det-h" data-split>${h2(d.heading)}</h2><p class="lead">${esc(d.lead)}</p></div>` +
+      `<ol class="feats" data-reveal-group>${featured}</ol>` +
+      `<div class="spec"><p class="mono spec__head"><span>And ${(WORDS[count] ?? String(count)).toLowerCase()} more</span><span>Each one is in the Guide</span></p>${groups}</div>` +
     `</div></section>`
   );
 }
 
-const WORDS = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
 function learn(page: ChannelPage, bone: boolean) {
   const n = page.learn.length;
   const items = page.learn.map((l) =>
@@ -194,7 +226,7 @@ function next(ch: Channel, bone: boolean) {
         : `<p class="nextch__name">${name}</p><p class="nextch__line">${esc(n.line)} <span class="soon">Page coming soon</span></p>`) +
       `<div class="nextch__cta">` +
         `<a class="btn btn--ghost" href="/#rack">All eleven channels ${ico('arrow-right', 'ico btn__arrow')}</a>` +
-        `<a class="btn btn--lime" href="/get/" data-magnetic>Get the beta ${ico('arrow-up-right', 'ico btn__arrow')}</a>` +
+        `<a class="btn btn--lime" href="/get/" data-magnetic>Get the app ${ico('arrow-up-right', 'ico btn__arrow')}</a>` +
       `</div>` +
     `</div>${markSign('nextch__mark', ico('arrow-right'), 'last', n.live ? channelUrl(n) : undefined)}</div></section>`
   );

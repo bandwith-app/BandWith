@@ -47,16 +47,49 @@ export const page: ChannelPage = {
   },
   details: {
     heading: { lines: ['Not hidden.', 'Never sent.'], em: 'sent.' },
-    items: [
-      { icon: 'shield', title: 'Enforced by the server', body: 'Money, quote prices, contracts and other people’s fees are protected by the database, not only hidden in the app. A member’s phone never receives them.', wide: true },
-      { icon: 'refresh', title: 'New role, fresh copy', body: 'When a role changes, the phone drops what it kept of the band and loads it again. A former admin no longer keeps the client and prices on the phone.' },
-      { icon: 'message-circle', title: 'Who can message whom', body: 'Admins write to anyone in the band. Members write directly only to admins, and talk to each other in the band or gig chat. Deputies are in no chat.' },
-      { icon: 'zap', title: 'Error reports you can switch off', body: 'When something breaks, the app sends the error: its message and trace, the screen, the app version and the platform. No name, email or account id, and it’s deleted after 14 days. It’s on by default: switch it off on each device in Settings › Privacy & account › Send crash reports.', wide: true },
-      { icon: 'eye-off', title: 'Statistics only with a yes', body: 'In the iPhone and Android apps, Anonymous usage statistics stays off until you say yes. It counts which screens are used, never your songs, gigs or messages, and nothing for ads. Crash details from the phone apps go to Firebase Crashlytics only with that yes.' },
-      { icon: 'lock', title: 'App lock', body: 'Face ID, fingerprint or the device passcode when BandWith starts again after being closed. On by default on iPhone, iPad and Android.' },
-      { icon: 'download', title: 'Export, or delete', body: 'Export my data saves a JSON copy of your profile, bands, personal gigs and gig answers. Delete account removes your profile, personal gigs and direct messages for good; your band, gig and group chat messages stay, shown as from a Former member. The only admin of a band makes someone else admin first.', wide: true },
-      { icon: 'calendar', title: 'A hold, not the quote', body: 'While a gig is still a quote, members see only Possible gig – keep the date free, with the day, time and place. The client, the fee and the notes stay with the admins.' },
-      { icon: 'download', title: 'Offline copies stay yours', body: 'Setlists kept for no signal hold lyrics, chords and your own notes, never fees or contracts. They stay on your device only, and are removed the day after the gig.' },
+    lead: 'Three things to know first. The other six are sorted by role, by phone and by report.',
+    featured: [
+      {
+        title: 'A hold, not the quote',
+        tag: 'What a member sees',
+        body: 'While a gig is still a quote, members see only Possible gig – keep the date free, with the day, time and place.',
+        ui: { shot: 'quote-hold-card', region: [0.12, 0.48], alt: 'A member’s Home: Possible gig – keep the date free, Mon Dec 7, 22:00–01:00 at The Blue Room, New York, with I’m free and I can’t' },
+      },
+      {
+        title: 'Offline copies stay yours',
+        tag: 'On this device only',
+        body: 'Setlists kept for no signal hold lyrics, chords and your own notes, never fees or contracts. Removed the day after the gig.',
+        ui: { shot: 'settings-offline-live', region: [0, 0.36], alt: 'Settings, Offline & live: lyrics, chords and your own notes on this device, no fees, no contracts, with Automatic download on' },
+      },
+      {
+        title: 'Export, or delete',
+        tag: 'Your account',
+        body: 'Export my data saves a JSON copy of your profile, bands, personal gigs and gig answers. Delete account removes your profile for good.',
+        ui: { shot: 'basics-settings-privacy', region: [0.225, 0.59], alt: 'Privacy & account: Export my data as a JSON copy, the terms, the privacy policy, and Delete account' },
+      },
+    ],
+    groups: [
+      {
+        label: 'Between roles',
+        items: [
+          { title: 'Enforced by the server', line: 'Money, quote prices and contracts are protected by the database. A member’s phone never receives them.' },
+          { title: 'Who can message whom', line: 'Admins write to anyone. Members write directly only to admins. Deputies are in no chat.' },
+        ],
+      },
+      {
+        label: 'On your phone',
+        items: [
+          { title: 'New role, fresh copy', line: 'When a role changes, the phone drops what it kept of the band and loads it again.' },
+          { title: 'App lock', line: 'Face ID, fingerprint or the passcode when BandWith starts again. On by default on iPhone, iPad and Android.' },
+        ],
+      },
+      {
+        label: 'What the app reports',
+        items: [
+          { title: 'Error reports you can switch off', line: 'On by default: the error, no name, email or account id, deleted after 14 days. Off with Send crash reports.' },
+          { title: 'Statistics only with a yes', line: 'Anonymous usage statistics stays off until you say yes. Crash details go to Firebase Crashlytics only with that yes.' },
+        ],
+      },
     ],
   },
   learn: [

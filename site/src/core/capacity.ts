@@ -17,8 +17,14 @@
  * (the hero's line here, the Get page's counter in pages/get.ts, and the
  * [data-cap-show] blocks: the waitlist and the lines for invited people).
  *
+ * The counter itself (the LED meter, "N of 255 open spots left") and the "Why
+ * a limit?" section are told only when the limit matters to the visitor:
+ * 50 open spots or fewer, or none (counterShown). With plenty left they stay
+ * out of the page: a count next to the doors reads as "this is small", not
+ * as "come in".
+ *
  * Without the RPC the counter stays hidden in production. In dev it shows a
- * sample; `?capacity=open|invites|full` previews a state anywhere.
+ * sample; `?capacity=open|few|invites|full` previews a state anywhere.
  */
 export type CapState = 'open' | 'invites' | 'full';
 export type Capacity = {
@@ -57,8 +63,11 @@ export function fromStatus(d: Status | null | undefined): Capacity | null {
   };
 }
 
-const SAMPLES: Record<CapState, Status> = {
+/** Preview states: the three real ones, and "few" (open, with the counter back). */
+type Preview = CapState | 'few';
+const SAMPLES: Record<Preview, Status> = {
   open: { cap: 300, reserved: 45, taken: 142, public_left: 113, invite_left: 158, state: 'open' },
+  few: { cap: 300, reserved: 45, taken: 217, public_left: 38, invite_left: 83, state: 'open' },
   invites: { cap: 300, reserved: 45, taken: 271, public_left: 0, invite_left: 29, state: 'invites' },
   full: { cap: 300, reserved: 45, taken: 300, public_left: 0, invite_left: 0, state: 'full' },
 };
@@ -69,7 +78,7 @@ export function getCapacity(): Promise<Capacity | null> {
   if (pending) return pending;
   pending = (async () => {
     const q = new URLSearchParams(location.search).get('capacity');
-    const preview = q === 'open' || q === 'invites' || q === 'full' ? q : null;
+    const preview: Preview | null = q === 'open' || q === 'few' || q === 'invites' || q === 'full' ? q : null;
     const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
     const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
     if (url && key && !preview && !import.meta.env.DEV) {
@@ -104,6 +113,17 @@ export function capText(c: Capacity): string {
   return `${c.publicLeft} of ${c.cap - c.reserved} open spots left · ${keptForInvites(c)} kept for band invites`;
 }
 
+/** The counter comes back at this many open spots left, or fewer. */
+export const COUNTER_FROM = 50;
+
+/**
+ * Whether the counter and the "Why a limit?" section are on the page: when
+ * 50 open spots or fewer are left, and whenever only invites, or nobody, get
+ * in. With more left (or no answer from the database) they stay out.
+ */
+export const counterShown = (c: Capacity | null): boolean =>
+  !!c && (c.state !== 'open' || c.publicLeft <= COUNTER_FROM);
+
 /**
  * Whether a [data-cap-line] shows. data-cap-line="closed" (the home hero) is
  * a notice: it stays out while open spots are left, where a count next to
@@ -134,20 +154,26 @@ export function meterLabel(c: Capacity): string {
 
 /**
  * Whether a [data-cap-show] block is on the page: "closed" (the waitlist) when
- * open spots are gone, "invites" / "full" only in that state. They are written
- * `hidden` in the HTML, so while the beta is open (or the count is unknown)
- * nobody reads "Tonight's show is full": not a visitor, a crawler or llms-full.txt.
+ * open spots are gone, "invites" / "full" only in that state, "limit" (the
+ * counter and "Why a limit?") when counterShown. They are written `hidden` in
+ * the HTML, so while the beta is open (or the count is unknown) nobody reads
+ * "Tonight's show is full": not a visitor, a crawler or llms-full.txt.
  */
-export const capBlockShown = (c: Capacity | null, when?: string | null): boolean =>
-  !!c && c.state !== 'open' && (when === 'closed' || when === c.state);
+export const capBlockShown = (c: Capacity | null, when?: string | null): boolean => {
+  if (!c) return false;
+  if (when === 'limit') return counterShown(c);
+  return c.state !== 'open' && (when === 'closed' || when === c.state);
+};
 
-/** Fills every capacity placeholder on the page. */
+/** Fills every capacity placeholder on the page; <html data-cap> says it is done. */
 export async function renderCapacity() {
   const c = await getCapacity();
   const closed = !!c && c.state !== 'open';
   const root = document.documentElement;
   root.classList.toggle('is-full', closed);
   root.classList.toggle('is-invites', c?.state === 'invites');
+  // Says the capacity step is done, and with what: open · invites · full · none (no answer).
+  root.dataset.cap = c?.state ?? 'none';
 
   document.querySelectorAll<HTMLElement>('[data-cap-show]').forEach((el) => { el.hidden = !capBlockShown(c, el.dataset.capShow); });
 

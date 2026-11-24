@@ -49,16 +49,49 @@ export const page: ChannelPage = {
   },
   details: {
     heading: { lines: ['Less back', 'and forth.'] },
-    items: [
-      { icon: 'users', title: 'Members propose, admins decide', body: 'A member taps Propose rehearsal with a topic and the days that suit them, once a week per band. An admin turns it into a poll with Build poll, or declines it with a reason.', wide: true },
-      { icon: 'eye', title: 'Free counts, not reasons', body: 'Each day in the builder shows how many members are free, from their calendars. Never who is busy, or why.' },
-      { icon: 'wallet', title: 'The room, split', body: 'Enter the room cost and each person’s share is worked out. In a poll members see only their share; the total stays with the admins.' },
-      { icon: 'list-music', title: 'Songs and prep tasks', body: 'Pick focus songs from the repertoire or a saved setlist. Add tasks like Bring chord charts, ticked off on the rehearsal page.' },
-      { icon: 'refresh', title: 'Weekly, biweekly, monthly', body: 'One rehearsal with a repeat rule, shown in the calendar about four months ahead. One roster and one answer for the series. Delete this date, or Delete the whole series.' },
-      { icon: 'clock', title: 'A vote-by time', body: 'Pick a day before the first date and a time. Then voting closes, the poll shows Voting closed, and an admin locks in a date.', wide: true },
-      { icon: 'timer', title: 'One clock for the band', body: 'In Live mode the admin taps Start rehearsal. Pause for the break, Resume, then End. The Rehearsal summary shows the time played without breaks and every song you went through, and the rehearsal page keeps it.', wide: true },
-      { icon: 'zap', title: 'Mark now, write later', body: 'Tap Mark when something needs work: the song and the minute are kept, and you keep playing. At the pause, To write lists the marks to finish.' },
-      { icon: 'list-music', title: 'Songs to practise', body: 'When it ends, each person gets one push with their songs. Home shows To practise, and the next rehearsal opens with FROM LAST TIME.' },
+    lead: 'Three things to know first. The other six are sorted from the first date to the last song.',
+    featured: [
+      {
+        title: 'One clock for the band',
+        tag: 'Admin starts it',
+        body: 'Start rehearsal, Pause for the break, then End. The Rehearsal summary keeps the time played and every song you went through.',
+        ui: { shot: 'music-rehearsal-live', region: [0, 0.3], alt: 'Live mode at a weekly rehearsal: Start rehearsal, then Mark and Notes' },
+      },
+      {
+        title: 'Songs to practise',
+        tag: 'When it ends',
+        body: 'Each person gets one push with their songs. Home shows To practise, and the next rehearsal opens with FROM LAST TIME.',
+        ui: { shot: 'home-to-practise', region: [0.3, 0.68], alt: 'Home, To practise: Harbor Lights, from the rehearsal of Nov 15, tempo 96, with Practised' },
+      },
+      {
+        title: 'A vote-by time',
+        tag: 'Admin sets it',
+        body: 'Pick a day before the first date and a time. Then the poll shows Voting closed, and an admin locks in a date.',
+        ui: { shot: 'shot-poll-card', region: [0.13, 0.47], alt: 'A rehearsal poll on Home: Extra rehearsal next week, 3 of 5 answered, three dates and Vote now' },
+      },
+    ],
+    groups: [
+      {
+        label: 'Finding the date',
+        items: [
+          { title: 'Members propose, admins decide', line: 'A member taps Propose rehearsal with the days that suit them. An admin builds the poll, or declines.' },
+          { title: 'Free counts, not reasons', line: 'Each day in the builder shows how many members are free. Never who is busy, or why.' },
+        ],
+      },
+      {
+        label: 'Setting it up',
+        items: [
+          { title: 'The room, split', line: 'Enter the room cost and each share is worked out. Members see only their share.' },
+          { title: 'Weekly, biweekly, monthly', line: 'One rehearsal with a repeat rule. Later: Delete this date, or Delete the whole series.' },
+        ],
+      },
+      {
+        label: 'In the room',
+        items: [
+          { title: 'Songs and prep tasks', line: 'Pick focus songs from the repertoire or a setlist. Add tasks like Bring chord charts, ticked off on the page.' },
+          { title: 'Mark now, write later', line: 'Tap Mark when something needs work and keep playing. At the pause, To write lists the marks to finish.' },
+        ],
+      },
     ],
   },
   learn: [

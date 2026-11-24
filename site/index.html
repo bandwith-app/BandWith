@@ -22,10 +22,21 @@
               <span class="line"><span>Run the band.</span></span>
               <span class="line"><span>Play the <em>show.</em></span></span>
             </h1>
-            <p class="hero__lead" data-hero-lead>Gigs, quotes, rehearsals, setlists, fees and the show itself, in one app for the whole band. Everyone sees their part. Only theirs.</p>
+            <!-- What it is, for whom, and that it is free: the first sentence keeps its own line. -->
+            <p class="hero__lead" data-hero-lead>
+              <span class="hero__what">The free app for gigging bands.</span>
+              <span class="hero__how">Gigs, rehearsals, setlists, quotes and pay in one place, and a live setlist on every phone at the show.</span>
+            </p>
+            <!-- The web app is the main door on every device: it opens right here, nothing to install.
+                 Open spots gone (html.is-full, core/capacity.ts): the waitlist takes its place. -->
             <div class="hero__cta" data-hero-cta>
-              <a class="btn btn--lime" href="/get/" data-magnetic>Get the beta <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
-              <a class="btn btn--ghost" href="#noise">See it work <svg class="ico btn__arrow btn__arrow--down" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
+              <a class="btn btn--lime hero__go" href="https://app.bandwith.fun/?start=signup&amp;src=site-hero" data-magnetic data-web-cta>Start free in your browser <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
+              <a class="btn btn--lime hero__go cta-full" href="/get/#waitlist">Join the waitlist <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
+              <p class="hero__fine mono" data-web-cta>Free during the beta · No card · 2 minutes</p>
+              <div class="hero__more">
+                <a class="btn btn--ghost hero__apps" href="/get/">Get the iPhone or Android app <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
+                <a class="hero__try" href="/features/stage/#try">Try it first, no account <svg class="ico" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
+              </div>
             </div>
             <p class="cap-line hero__cap" data-cap-line="closed" hidden><span class="cap-line__led" aria-hidden="true"></span><span data-cap-text></span></p>
           </div>
@@ -93,6 +104,11 @@
           </div>
         </div>
       </section>
+
+      <!-- ─────────────────── WHAT IS BANDWITH (Q&A) ─────────────────── -->
+      <!-- Right after the group chat: what it is, who it is for, and that it is free, before the long tour.
+           Shown without FAQPage markup: /faq/ carries it (tools/seo.ts, FAQ_SCHEMA). -->
+      <!--@home-answers-->
 
       <!-- ─────────────────────── ONE NIGHT ─────────────────────── -->
       <section class="night" id="night" data-night aria-labelledby="night-h">
@@ -219,9 +235,6 @@
         </div>
       </section>
 
-      <!-- ─────────────────── WHAT IS BANDWITH (Q&A) ─────────────────── -->
-      <!--@home-answers-->
-
       <!-- ─────────────────────── GET IN ─────────────────────── -->
       <section class="sec sec--bone getband" id="get" data-light aria-labelledby="get-h">
         <div class="wrap">
@@ -230,7 +243,8 @@
             <h2 class="h2" id="get-h" data-split>Come in.<br />Bring the band.</h2>
             <p class="lead">BandWith is free while it’s in beta. We let people in at the pace our servers can take, so it stays fast for everyone already inside.</p>
           </div>
-          <div class="capblock" data-cap-block>
+          <!-- Out of the page while plenty of open spots are left (core/capacity.ts, counterShown). -->
+          <div class="capblock" data-cap-block data-cap-show="limit" hidden>
             <div class="ledm" data-cap-meter data-cells="40"></div>
             <p class="capblock__line"><span data-cap-line hidden><span data-cap-text></span></span> <a href="/get/#why">Why a limit?</a></p>
             <p class="capblock__sample mono" data-cap-sample hidden>Preview numbers</p>

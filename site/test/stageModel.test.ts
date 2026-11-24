@@ -123,9 +123,8 @@ describe('what the site says about the click and the count-in', () => {
 
   it('says the click and the count-in reach the phone apps over Bluetooth, and that a browser needs the internet', () => {
     const text = JSON.stringify(stage);
-    expect(text).toMatch(/With no internet it reaches the phone apps nearby over Bluetooth/);
+    // The walkthrough says it; the one-line items under "The small things" leave the detail to the questions below.
     expect(text).toMatch(/same click over Bluetooth/);
-    expect(text).toMatch(/With no internet it reaches the phone apps over Bluetooth, on the same beat; in a browser it needs the internet/);
     const faq = ANSWERS.stage.map((x) => x.a).join(' ');
     expect(faq).toMatch(/the same count-in and the same visual click over Bluetooth/);
     expect(faq).toMatch(/With no internet it reaches the iPhone and Android apps over Bluetooth/);

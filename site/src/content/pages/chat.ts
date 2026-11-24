@@ -46,13 +46,42 @@ export const page: ChannelPage = {
   },
   details: {
     heading: { lines: ['Fewer threads.', 'Clear rules.'] },
-    items: [
-      { icon: 'bell', title: 'A push for every message', body: 'Everyone else in the chat is told. No push for a chat you have open on screen, and opening a chat marks its notifications as read.', wide: true },
-      { icon: 'users', title: 'One chat per band, one per event', body: 'If the chat already exists, BandWith opens it. People added to the lineup later join with the next message.' },
-      { icon: 'eye-off', title: 'Times, never the fee', body: 'The strip and the side pane show times, place and status. Never the fee or the client.' },
-      { icon: 'lock', title: 'A direct chat stays between two', body: 'BandWith never reuses it for someone else, so nobody else can read that history.' },
-      { icon: 'check', title: 'Ticks that mean everyone', body: 'Clock, one tick, two grey, two coloured. In group chats they change only when everyone has received or read it.' },
-      { icon: 'wifi-off', title: 'Nothing typed is lost', body: 'Without a connection a message isn’t sent: it goes back into the composer with a note, ready to send again when you’re online.', wide: true },
+    lead: 'Three things to know first. The other four are sorted by who is told and who has read.',
+    featured: [
+      {
+        title: 'Times, never the fee',
+        tag: 'On every event chat',
+        body: 'The strip on top shows times, place and status. Never the fee or the client.',
+        ui: { shot: 'shot-event-chat', region: [0, 0.32], alt: 'The Rooftop Session chat: a strip with today’s load-in at 17:00 at Terrazza Aurora, and a message about the setlist' },
+      },
+      {
+        title: 'One chat per band, one per event',
+        tag: 'No duplicates',
+        body: 'If the chat already exists, BandWith opens it. People added to the lineup later join with the next message.',
+        ui: { shot: 'shot-chat-inbox', region: [0.27, 0.55], alt: 'The chat inbox: the Velvet Static band chat, the Rooftop Session chat and a direct chat with Marta C.' },
+      },
+      {
+        title: 'Find a chat, a person, a word',
+        tag: 'From the inbox',
+        body: 'Type two letters in Search chats and the results come grouped as Chats, People and Messages.',
+        ui: { shot: 'shot-chat-inbox', region: [0, 0.27], alt: 'The chat inbox: the filters All, Direct, Bands and Events above the search field' },
+      },
+    ],
+    groups: [
+      {
+        label: 'Getting through',
+        items: [
+          { title: 'A push for every message', line: 'Everyone else in the chat is told. No push for a chat you have open on screen.' },
+          { title: 'Nothing typed is lost', line: 'With no connection a message waits in the chat, marked Waiting for connection, and sends itself later.' },
+        ],
+      },
+      {
+        label: 'Who has read',
+        items: [
+          { title: 'Ticks that mean everyone', line: 'In group chats the ticks change only when everyone has received or read the message.' },
+          { title: 'A direct chat stays between two', line: 'BandWith never reuses it for someone else, so nobody else can read that history.' },
+        ],
+      },
     ],
   },
   learn: [

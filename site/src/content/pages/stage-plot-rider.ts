@@ -46,13 +46,42 @@ export const page: ChannelPage = {
   },
   details: {
     heading: { lines: ['Less to explain', 'at load-in.'] },
-    items: [
-      { icon: 'eye', title: 'What the venue sees', body: 'The venue opens the link in a browser, with no account: the rider, the gig’s times and venue, the stage plot, the input list and who brings what, in its own language when available. Never the client or any fee.', wide: true },
-      { icon: 'grip', title: 'Hold to add, hold to move', body: 'Hold an empty spot to add a musician or gear right there. A quick swipe still scrolls the page.' },
-      { icon: 'plus', title: 'More than one layout', body: 'Name each layout and set the stage width and depth in metres. + NEW LAYOUT adds another.' },
-      { icon: 'sliders', title: 'Your channels stay', body: 'Fine-tune with EDIT LIST: source, mic or DI, who. Saving the plot again keeps your changes; a rebuild from the lineup asks first.' },
-      { icon: 'check', title: 'Who brings what', body: 'BAND BRINGS and VENUE PROVIDES, one per line, suggested from the lineup. Tick The venue agreed to this when it’s settled.' },
-      { icon: 'refresh', title: 'Sent means shared', body: 'Show readiness reads Rider v3 · sent to the venue once the link or the PDF is shared. Saving the PDF to the phone doesn’t count.', wide: true },
+    lead: 'Three things to know first. The other four are sorted by plot and by venue.',
+    featured: [
+      {
+        title: 'Who brings what',
+        tag: 'Suggested from the lineup',
+        body: 'BAND BRINGS and VENUE PROVIDES, one per line. Tick The venue agreed to this when it’s settled.',
+        ui: { fragment: 'rider-brings' },
+      },
+      {
+        title: 'Sent means shared',
+        tag: 'Show readiness',
+        body: 'It reads Rider v3 · sent to the venue once the link or the PDF is shared. Saving the PDF to the phone doesn’t count.',
+        ui: { shot: 'gig-workspace-admin', region: [0.62, 0.92], alt: 'Show readiness on a gig: the setlist, lyrics and charts, and Rider v3 · sent to the venue, ticked' },
+      },
+      {
+        title: 'A tab on the iPad',
+        tag: 'iPad',
+        body: 'On an iPad, Rider & stage is a tab of the gig, next to Overview and Setlist.',
+        ui: { shot: 'gig-workspace-admin', device: 'tablet', region: [0.34, 0.74, 0.375, 0.725], alt: 'A gig on an iPad: the Overview, Setlist, Rider & stage and Money tabs above show readiness' },
+      },
+    ],
+    groups: [
+      {
+        label: 'On the plot',
+        items: [
+          { title: 'Hold to add, hold to move', line: 'Hold an empty spot to add a musician or gear right there. A quick swipe still scrolls the page.' },
+          { title: 'More than one layout', line: 'Name each layout and set the stage width and depth in metres. + NEW LAYOUT adds another.' },
+        ],
+      },
+      {
+        label: 'Off to the venue',
+        items: [
+          { title: 'What the venue sees', line: 'A link, no account: the rider, times, stage plot, input list and who brings what. Never the client or a fee.' },
+          { title: 'Your channels stay', line: 'Fine-tune the input list with EDIT LIST. Saving the plot again keeps your changes.' },
+        ],
+      },
     ],
   },
   learn: [

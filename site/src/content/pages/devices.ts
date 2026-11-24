@@ -47,13 +47,42 @@ export const page: ChannelPage = {
   },
   details: {
     heading: { lines: ['Built for', 'where you are.'] },
-    items: [
-      { icon: 'wifi-off', title: 'Works without a connection', body: 'Bands, gigs and setlists stay on the device. In Settings › Offline & live, the phone apps keep every setlist of your next 7 days, on Wi-Fi only if you like. Changes made with no signal wait on the phone, counted as 2 changes waiting for signal, and go out when it’s back. Quotes, chat messages and invites need a connection.', wide: true },
-      { icon: 'monitor', title: 'One-screen composers', body: 'On an iPad, a new gig, rehearsal or quote is one screen of numbered cards with a live preview beside them.' },
-      { icon: 'book-open', title: 'Laptop pose', body: 'Half folded on a table: read on the top half, touch on the bottom. Band desk, Planner, Find a date, Floor wedge, Quote desk.' },
-      { icon: 'smartphone', title: 'Android, from an APK', body: 'Installed from the release page, not a store. A new version shows up in the app: Update, then Install.' },
-      { icon: 'globe', title: 'In any browser', body: 'Sign in with the same account. No push, no Face ID or fingerprint, no app lock, no Bluetooth in Stage mode, no setlists downloaded ahead of the gig.' },
-      { icon: 'arrow-left', title: 'Back does what you expect', body: 'Android’s Back and back gesture close the top layer first; on Home, Tap again to exit. On the web, Escape and the browser’s Back close the top layer, and never anything outside the app.', wide: true },
+    lead: 'Three things to know first. The other four are sorted by how you get in and how it behaves.',
+    featured: [
+      {
+        title: 'Works without a connection',
+        tag: 'Phone apps',
+        body: 'In Settings › Offline & live, keep every setlist of your next 7 days, on Wi-Fi only if you like. Offline edits wait: 2 changes waiting for signal.',
+        ui: { shot: 'stage-offline-banner', region: [0.04, 0.38], alt: 'Stage mode with no signal: Offline, content from 18:31, and 2 changes waiting for signal' },
+      },
+      {
+        title: 'Laptop pose',
+        tag: 'Dual-screen, half folded',
+        body: 'Read on the top half, touch on the bottom. Band desk, Planner, Find a date, Floor wedge, Quote desk.',
+        ui: { shot: 'music-stage', device: 'duoLaptop', region: [0.42, 0.98], alt: 'Stage mode in Laptop pose: the next song on the top half, and Prev, the click and a large Next on the bottom half' },
+      },
+      {
+        title: 'One-screen composers',
+        tag: 'iPad',
+        body: 'A new gig, rehearsal or quote is one screen of numbered cards with a live preview beside them.',
+        ui: { shot: 'ipad-gig-composer', device: 'tablet', region: [0.03, 0.6, 0, 0.5], alt: 'A new gig on an iPad: numbered cards for the event, the date and time, the venue and the lineup on one screen' },
+      },
+    ],
+    groups: [
+      {
+        label: 'Getting in',
+        items: [
+          { title: 'Android, from an APK', line: 'Installed from the release page, not a store. A new version shows up in the app: Update, then Install.' },
+          { title: 'In any browser', line: 'Same account. No push, no app lock, no Bluetooth in Stage mode, no setlists downloaded ahead.' },
+        ],
+      },
+      {
+        label: 'How it behaves',
+        items: [
+          { title: 'Back does what you expect', line: 'Android’s Back closes the top layer first. On the web, Escape and the browser’s Back do the same.' },
+          { title: 'What still needs signal', line: 'Quotes, chat messages and invites need a connection. Bands, gigs and setlists stay on the device.' },
+        ],
+      },
     ],
   },
   learn: [

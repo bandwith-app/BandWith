@@ -50,20 +50,53 @@ export const page: ChannelPage = {
   },
   details: {
     heading: { lines: ['Made for', 'a dark stage.'] },
-    items: [
-      { icon: 'zap', title: 'Follow the tempo', body: 'Turn on Follow the tempo and your page moves with the leader’s phone: the bar, the line or the section being played is lit, and a strip says what comes next, like Next: Bridge in 4 bars. The leader taps Start, taps a bar to move everyone there, Hold to repeat a section, Stop. The song needs a BPM.', wide: true },
-      { icon: 'clock', title: 'Count-in, your way', body: 'One or two bars in the song’s own meter, then GO. On your phone, add Vibrate on every beat or Sound in headphones. With no internet it reaches the phone apps over Bluetooth, on the same beat; in a browser it needs the internet.' },
-      { icon: 'timer', title: 'A click for the eyes', body: 'A tempo reference, not for in-ears. It runs from the song’s BPM. With no internet it reaches the phone apps nearby over Bluetooth.' },
-      { icon: 'download', title: 'Ready before the gig', body: 'Each member says yes once, with Download and keep it automatic, and the phone apps keep every setlist of the next 7 days, updated by itself and removed the day after. On the gig, admins see Offline: 4 of 5 members ready and tap Remind for whoever isn’t. Change it anytime in Settings › Offline & live.', wide: true },
-      { icon: 'shield', title: 'A secret key per gig', body: 'Only the band’s active members get it. Only phones with the key find the leader over Bluetooth.' },
-      { icon: 'users', title: 'Your lines, lit', body: 'When a song says who sings what, each part looks its own way in the lyrics: 2nd voice, Backing, All, Spoken. Highlight my part dims the lines you don’t sing.' },
-      { icon: 'eye', title: 'The screen stays awake', body: 'For as long as Stage mode is open. Keep the leader’s phone unlocked: a locked leader stops the band’s sync.' },
-      { icon: 'minus', title: 'Strike a song tonight', body: 'Tap − at the end of a row. Prev and Next jump over it, on every phone. The gig’s setlist keeps it. Hold and drag a row to reorder.' },
-      { icon: 'calendar', title: 'Rehearsals too', body: 'On an upcoming rehearsal it’s Live mode: the focus songs, chords, the click and the leader, plus the rehearsal timer and notes. No run of show.' },
-      { icon: 'music', title: 'Your key, your screen', body: 'Transpose for yourself with − key +. Nobody else’s chart changes.' },
-      { icon: 'play', title: 'The stage manager plays the songs', body: 'One admin’s laptop or tablet, cabled to the mixer, taps Stage manager: play audio here, counts Audio ready and plays with no internet. Play a song and every screen jumps to it with Now playing. Members’ phones never make a sound. Get the audio days before: under the gig’s setlist, Audio on this device has Download audio, shows progress and why a song can’t come down, with Try again. The phone app downloads it by itself in the 3 days before a confirmed gig.', wide: true },
-      { icon: 'monitor', title: 'Full screen is the song', body: 'Full screen opens Song only: one small line with the song’s number and title, then the words, chords or chart. No times, no tabs. Show everything brings it all back.' },
-      { icon: 'book-open', title: 'Hands on the instrument', body: 'At the bottom, only Prev, the click and Next, plus Count in for the leader. Arrow keys and Page Up/Down step too, so a page-turner pedal works. The leader and the stage manager keep working.' },
+    lead: 'Three things to know first. The other ten are sorted by when you reach for them.',
+    featured: [
+      {
+        title: 'Follow the tempo',
+        tag: 'Leader starts it',
+        body: 'Your page moves with the leader’s phone. The bar being played is lit, and a strip says what comes next.',
+        ui: { fragment: 'stage-tempo' },
+      },
+      {
+        title: 'Ready before the gig',
+        tag: 'Each member, once',
+        body: 'Say yes once and the phone apps keep every setlist of the next 7 days. Admins see who is ready and remind the rest.',
+        ui: { fragment: 'stage-offline' },
+      },
+      {
+        title: 'The stage manager plays the songs',
+        tag: 'One admin’s laptop',
+        body: 'Cabled to the mixer, it plays each recording with no internet. Every screen jumps to the song. Phones never make a sound.',
+        ui: { fragment: 'stage-manager' },
+      },
+    ],
+    groups: [
+      {
+        label: 'Keeping time',
+        items: [
+          { title: 'Count-in, your way', line: 'One or two bars in the song’s own meter, then GO. Add Vibrate on every beat or Sound in headphones.' },
+          { title: 'A click for the eyes', line: 'A tempo reference from the song’s BPM: a glow on the edge of the screen, never a sound.' },
+        ],
+      },
+      {
+        label: 'On your own screen',
+        items: [
+          { title: 'Your lines, lit', line: '2nd voice, Backing, All and Spoken each look their own way. Highlight my part dims the rest.' },
+          { title: 'Your key, your screen', line: 'Transpose for yourself with − key +. Nobody else’s chart changes.' },
+          { title: 'Full screen is the song', line: 'Song only: its number and title, then the words, chords or chart.' },
+          { title: 'Hands on the instrument', line: 'Only Prev, the click and Next at the bottom. Arrow keys step too, so a page-turner pedal works.' },
+        ],
+      },
+      {
+        label: 'Running the set',
+        items: [
+          { title: 'Strike a song tonight', line: 'Tap − on a row. Prev and Next jump over it on every phone; the gig’s setlist keeps it.' },
+          { title: 'The screen stays awake', line: 'For as long as Stage mode is open. Keep the leader’s phone unlocked.' },
+          { title: 'A secret key per gig', line: 'Only the band’s active members get it, and only their phones find the leader over Bluetooth.' },
+          { title: 'Rehearsals too', line: 'On a rehearsal it’s Live mode: the focus songs, chords, the click, plus the timer and notes.' },
+        ],
+      },
     ],
   },
   learn: [

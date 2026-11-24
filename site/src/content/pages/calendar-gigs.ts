@@ -48,13 +48,42 @@ export const page: ChannelPage = {
   },
   details: {
     heading: { lines: ['Small things', 'that save a call.'] },
-    items: [
-      { icon: 'users', title: 'Who’s free, never why', body: 'When you pick a date, the picker counts the members with nothing else on that day, in any of their calendars. Counts only: a personal gig shows as busy, never its title, venue or fee.', wide: true },
-      { icon: 'clock', title: 'Shows past midnight', body: '21:00 to 02:00 is one gig. It stays upcoming until the show really ends.' },
-      { icon: 'file-text', title: 'Drafts only you see', body: 'Close the wizard and save a draft. It follows you to your other devices. Nobody is told until you create the gig.' },
-      { icon: 'bell', title: 'One notice per change', body: 'A new date, time, call time or venue sends the lineup one Gig updated. A changed fee reaches only that musician.' },
-      { icon: 'map-pin', title: 'Venue and forecast', body: 'Search the venue by name, clubs and studios included, and its street and city fill in. For a gig in the next seven days, the wizard shows the forecast and the sunset time.' },
-      { icon: 'calendar', title: 'In your own calendar', body: 'Settings & account, then Calendar sync: a private link for Apple Calendar, Google Calendar or Outlook. The gigs and rehearsals you’re on follow by themselves, with the times, the venue and your role, never fees or clients. Add to calendar on an event saves just that one.', wide: true },
+    lead: 'Three things to know first. The other four are sorted by when they matter.',
+    featured: [
+      {
+        title: 'A colour per kind',
+        tag: 'On the month grid',
+        body: 'Gigs, rehearsals, quotes and personal dates each take their own colour. A small number on a day means several events.',
+        ui: { shot: 'calendar-month', region: [0.55, 0.895, 0.03, 0.97], alt: 'The month grid of November 2026: days with a gig in lime, a rehearsal in blue, a personal date in pink and a quote in brown' },
+      },
+      {
+        title: 'Venue and forecast',
+        tag: 'Clubs and studios too',
+        body: 'Search the venue by name and its street and city fill in. For a gig in the next seven days, the wizard shows the forecast and the sunset time.',
+        ui: { shot: 'gig-workspace-admin', region: [0.07, 0.36], alt: 'A gig’s header: Client A — Wedding at Villa Necchi, Via Mozart 14, with a map link and the forecast' },
+      },
+      {
+        title: 'In your own calendar',
+        tag: 'Apple, Google, Outlook',
+        body: 'Calendar sync is a private link: the gigs and rehearsals you’re on follow by themselves, never fees or clients. Add to calendar saves just one.',
+        ui: { shot: 'gig-workspace-admin', region: [0.36, 0.56], alt: 'A gig’s times, load in 15:00, soundcheck 16:30 and show 20:30, above Add to calendar and Google Calendar' },
+      },
+    ],
+    groups: [
+      {
+        label: 'Picking the date',
+        items: [
+          { title: 'Who’s free, never why', line: 'The date picker counts the members with nothing else on that day. A personal gig shows as busy, never its title.' },
+          { title: 'Shows past midnight', line: '21:00 to 02:00 is one gig. It stays upcoming until the show really ends.' },
+        ],
+      },
+      {
+        label: 'Telling the band',
+        items: [
+          { title: 'Drafts only you see', line: 'Save a draft and it follows you to your other devices. Nobody is told until you create the gig.' },
+          { title: 'One notice per change', line: 'A new date, time or venue sends the lineup one Gig updated. A changed fee reaches only that musician.' },
+        ],
+      },
     ],
   },
   learn: [
