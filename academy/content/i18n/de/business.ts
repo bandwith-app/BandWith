@@ -142,6 +142,7 @@ const business: AreaText = {
             "Du kannst deine Antwort ändern, bis der Gig bestätigt ist. Die Karte steht auch an diesem Tag in deinem Kalender.",
           ],
         },
+        { type: "shot", id: "quote-hold-card", caption: "Die Karte zum Freihalten bei einem Mitglied unter Start, schon beantwortet: Tag, Uhrzeit, Ort und die zwei Antworten." },
         {
           type: "steps",
           title: "Sehen, wer Zeit hat (Admins)",
@@ -150,6 +151,7 @@ const business: AreaText = {
             "Unter **Wer Zeit hat** stehen die Mitglieder in den Gruppen **Haben Zeit ({count})**, **Können nicht ({count})** und **Noch keine Antwort ({count})**. **In der Besetzung** markiert die, die du ins Angebot gesetzt hast.",
           ],
         },
+        { type: "shot", id: "quote-hold-answers", caption: "Wer Zeit hat im Kalendertermin des Angebots: wer Zeit hat, wer nicht kann und wer noch nicht geantwortet hat." },
         {
           type: "list",
           title: "Wie es weitergeht",

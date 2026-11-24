@@ -2074,7 +2074,7 @@ const music: AreaModule = {
           tone: "tip",
           text: "Members nearby see the leader's new order at once over Bluetooth, before it is saved.",
         },
-        { type: "shot", id: "stage-offline-banner", caption: "Stage mode with no signal: the content tag and the bar with the changes waiting for signal." },
+        { type: "shot", id: "stage-offline-banner", caption: "Stage mode with no signal: the content tag and, under it, the changes waiting for signal." },
       ],
     },
     {
@@ -2256,40 +2256,41 @@ const music: AreaModule = {
       role: "admin",
       viewport: "phone",
     },
-    // Placeholders for the live release: no capture yet (the integrated pass takes them).
+    // The live release. Captured by academy/scripts/capture.mjs, whose seeds put Paper Boats and Harbor Lights
+    // first in Rooftop set and the gig at The Loft, Brooklyn.
     {
       id: "live-pack-consent",
-      how: "As a member, open the Rooftop Session gig from the live_pack_ready push (or tap Download for offline under its setlist the first time). Leave the sheet Have the setlist with you, even without signal open.",
+      how: "As a member who was never asked, tap the “setlist ready without signal” push of Rooftop Session: the gig opens with the sheet Have the setlist with you, even without signal.",
       role: "member",
       viewport: "phone",
     },
     {
       id: "live-offline-ready",
-      how: "As admin, download the pack of Rooftop Session, with 4 of 5 members ready. Open the gig and scroll to the setlist so Offline ready · updated … and Offline: 4 of 5 members ready show; tap that row to list who is not ready.",
+      how: "As admin, with 4 of the 5 members' phones holding the setlist (not Lena P.), open Rooftop Session, tap Offline: 4 of 5 members ready to list who is not ready, and centre the two Offline rows.",
       role: "admin",
       viewport: "phone",
     },
     {
       id: "settings-offline-live",
-      how: "As a member with two packs kept, open the menu › Settings & account › Offline & live, with Automatic download on.",
+      how: "As a member, open Rooftop Session and Weekly rehearsal (with its focus songs) so two setlists are kept, then the menu › Settings & account › Offline & live, and turn Automatic download on.",
       role: "member",
       viewport: "phone",
     },
     {
       id: "stage-offline-banner",
-      how: "With the Rooftop Session pack downloaded, turn the network off, open the gig, tap Open stage mode, add a personal note on Paper Boats and suggest a change, so the bar says You’re offline · 2 changes waiting for signal and the Offline · content from … tag shows.",
+      how: "As a member, open Rooftop Session with signal, turn the network off, tap Open stage mode, the Lyrics & chords tab, add a note on the whole song (Paper Boats) and send a second one with Suggest to the band, so the tags say Offline · content from … and 2 changes waiting for signal.",
       role: "member",
       viewport: "phone",
     },
     {
       id: "voice-parts-stage",
-      how: "Give Paper Boats voice parts ({bv} on the chorus answers, {v2} on one verse line, {all} on the last chorus line) and Who sings what (Backing: two members). As a member with Backing vocals, open Rooftop Session in Stage mode, Lyrics & chords tab, Highlight my part on.",
+      how: "Give Paper Boats voice parts ({bv} on the answer lines, {v2} on one verse line, {all} on the first chorus line) and Who sings what (Lead: Lena P., 2nd voice: Marta C., Backing: Sam O. and you). As a member, open Rooftop Session in Stage mode, Lyrics & chords tab, Highlight my part on, and close the first-time hint with Got it.",
       role: "member",
       viewport: "phone",
     },
     {
       id: "voice-picker",
-      how: "As admin, Repertoire › Paper Boats › Edit chords. Tap the first word of a chorus answer line, so the bar shows Voice with Whole line selected and Backing pressed.",
+      how: "With the same Paper Boats, as admin: Repertoire › Paper Boats › Edit chords. Tap the first word of the backing line in verse 1, so the bar shows Voice with Whole line selected and Backing pressed.",
       role: "admin",
       viewport: "phone",
     },
@@ -2301,19 +2302,19 @@ const music: AreaModule = {
     },
     {
       id: "song-live-fields",
-      how: "As admin, Repertoire › Harbor Lights › Edit › Next to Details · optional. Scroll so BPM, Key, Time signature (6/8), Count-in (2 bars, Starts on beat 2) and Played with a backing track show.",
+      how: "As admin, Repertoire › Harbor Lights › Edit › Next to Details · optional. Pick 6/8, 2 bars and One beat earlier (Starts on beat 2), then scroll so BPM, Key, Time signature, Count-in and Played with a backing track show (on a tablet, from Transpose for the band down).",
       role: "admin",
       viewport: "phone",
     },
     {
       id: "stage-count-in",
-      how: "As admin, open Rooftop Session in Stage mode on Paper Boats and tap Count in; capture on beat 2 of the countdown.",
+      how: "As admin, open Rooftop Session in Stage mode on Paper Boats (96 BPM, 4/4) and tap Count in; capture on beat 2 of the countdown.",
       role: "admin",
       viewport: "phone",
     },
     {
       id: "stage-follow-tempo",
-      how: "As a member with Follow the tempo on, Chord chart tab, while the leader runs Harbor Lights; capture with a bar lit and the Next: … strip showing.",
+      how: "Two devices. The leader opens Rooftop Session in Stage mode, goes to Harbor Lights and turns Follow the tempo on; a member opens Stage mode with Follow the tempo on, Chord chart tab; the leader taps Start. Capture the member's screen on bar 3 of the Verse, when the line says Next: Chorus in 2 bars.",
       role: "member",
       viewport: "phone",
     },

@@ -1,6 +1,6 @@
 import { test, expect, type App } from '../fixtures';
 import type { Locator } from '@playwright/test';
-import { escapeRe, eventDetail, openEvent, SEED, systemBack } from '../support/flows';
+import { escapeRe, eventDetail, isWide, openEvent, SEED, systemBack } from '../support/flows';
 import { hubRow, openHub, openChatTab } from '../support/hub';
 
 /**
@@ -120,23 +120,38 @@ test.describe('inbox opened as Home loads', () => {
 
   test('@smoke no gig opens behind the inbox, and Back (the Duo rail\'s too) closes the inbox', async ({ app }) => {
     const { page } = app;
-    await page.goto('/');
     const bellName = `${app.t('Notifications')}, `;
-    await expect(page.getByRole('button', { name: new RegExp(`^${escapeRe(bellName)}`) }).filter({ visible: true }).first()).toBeVisible({
-      timeout: 30_000,
-    });
     // Tap the bell the moment it shows (on the open Duo, Home may not have
     // opened its next gig beside the dashboard yet), and note in the same
-    // tick whether a gig was open already.
-    const gigBefore = await page.evaluate((prefix) => {
-      const had = !!document.querySelector('.bw-event-detail');
-      const bell = [...document.querySelectorAll<HTMLElement>('button[aria-label]')].find((b) => {
-        const r = b.getBoundingClientRect();
-        return (b.getAttribute('aria-label') || '').startsWith(prefix) && r.width > 0 && r.height > 0;
-      });
-      bell?.click();
-      return had;
+    // tick whether a gig was open already. Done by the page itself, on the
+    // frame that first has the bell: looked for from here, the look ran into
+    // the urgent pop-up, the suite closed that first, and by the time the bell
+    // was tapped (a second later on CI) the gig had opened (CI 11-23).
+    await page.addInitScript((prefix) => {
+      const w = window as unknown as { __bellTapped?: { gigBefore: boolean } };
+      const look = () => {
+        const bell = [...document.querySelectorAll<HTMLElement>('button[aria-label]')].find((b) => {
+          const r = b.getBoundingClientRect();
+          return (b.getAttribute('aria-label') || '').startsWith(prefix) && r.width > 0 && r.height > 0;
+        });
+        if (!bell) return void requestAnimationFrame(look);
+        w.__bellTapped = { gigBefore: !!document.querySelector('.bw-event-detail') };
+        bell.click();
+      };
+      document.addEventListener('DOMContentLoaded', () => requestAnimationFrame(look));
     }, bellName);
+    await page.goto('/');
+    let gigBefore = false;
+    await expect
+      .poll(
+        async () => {
+          const tapped = await page.evaluate(() => (window as unknown as { __bellTapped?: { gigBefore: boolean } }).__bellTapped);
+          if (tapped) gigBefore = tapped.gigBefore;
+          return !!tapped;
+        },
+        { message: 'the bell showed and was tapped', timeout: 30_000 },
+      )
+      .toBe(true);
     const inbox = page.getByRole('heading', { name: app.t('Inbox'), exact: true });
     await expect(inbox).toBeVisible();
     await expect(page.getByText(/Vote on rehearsal dates/i).first()).toBeVisible();
@@ -152,8 +167,15 @@ test.describe('inbox opened as Home loads', () => {
     await app.settle();
     await expect(inbox).toBeHidden();
     // Two pages: the next gig shows beside Home once the inbox is closed.
+    // Not on a tablet when the gig was open before the inbox: the inbox takes
+    // the whole window there and closes the gig for it (AuthenticatedApp,
+    // tabletHubOpen), and Home opens its next gig once per visit
+    // (lib/homeAutoDetail), so that gig does not come back on its own. The
+    // check expected it back all the same, and failed whenever the gig got
+    // there before the bell was tapped (CI 11-23, ipad-landscape).
     const twoPane = await page.evaluate(() => document.documentElement.hasAttribute('data-bw-two-pane'));
-    if (twoPane) await expect(eventDetail(app)).toBeVisible();
+    const closedForTheInbox = gigBefore && (await isWide(app));
+    if (twoPane && !closedForTheInbox) await expect(eventDetail(app)).toBeVisible();
     await app.check('Home after closing the inbox');
   });
 });

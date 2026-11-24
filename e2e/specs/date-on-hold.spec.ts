@@ -57,6 +57,9 @@ test.describe('member: a possible gig is only a hold card', () => {
   });
 
   test('@smoke the hold is in the calendar too: same neutral card, same answers', async ({ app }) => {
+    // (app.tab waits for the Calendar itself: Home has a hold card too, and
+    // while Home was still leaving this test took that one, which then went
+    // away under it: "Element is not attached to the DOM", CI 11-23.)
     await app.tab('Calendar');
     let card = app.page.getByTestId('date-hold-card').filter({ visible: true }).first();
     if (test.info().project.name === 'duo-laptop') {

@@ -2,6 +2,8 @@ import { test as base, expect, type Locator, type Page } from '@playwright/test'
 import { duoInitScript, type DuoProfile } from './support/devices';
 import { expectHealthy } from './support/health';
 import { settle } from './support/settle';
+import { slowMachine } from './support/slow';
+import { tabScreenUp } from './support/tabs';
 import { stubNetwork, isCutStubbedRequest } from './support/network';
 import { tr, type Locale } from './support/i18n';
 
@@ -33,6 +35,28 @@ export function fakeDate(offset: number) {
   FakeDate.parse = RealDate.parse;
   FakeDate.UTC = RealDate.UTC;
   (globalThis as unknown as { Date: unknown }).Date = FakeDate;
+}
+
+/**
+ * Closes the urgent pop-up for `page.addLocatorHandler`: presses its Dismiss
+ * until the pop-up is gone.
+ *
+ * Short tries, because the pop-up may step aside on its own mid-click (a
+ * sheet opened): then there is nothing left to close. But not one try: while
+ * the pop-up slides in, its button is "not stable", and a runner that draws a
+ * frame or two a second keeps it so for longer than a try lasts. One try
+ * then gave up with the pop-up still open, and Playwright, which waits for
+ * the pop-up to hide once the handler returns, spent the whole time of the
+ * interrupted action waiting (CI 11-23, duo-laptop: "locator.click: Timeout
+ * 10000ms exceeded" on the first Calendar tap, 30 s on the first look at Home).
+ */
+export async function closeUrgentPopup(dismiss: Locator) {
+  for (;;) {
+    // Pressed: it closes (Playwright waits for it to go).
+    if (await dismiss.click({ timeout: 2_000 }).then(() => true, () => false)) return;
+    // Not pressed: gone on its own (or the page is), or still on its way in.
+    if (!(await dismiss.isVisible().catch(() => false))) return;
+  }
 }
 
 export type Role = 'admin' | 'member';
@@ -86,7 +110,7 @@ export const test = base.extend<Options & { app: App }>({
   duo: [null, { option: true }],
   autoOpen: [true, { option: true }],
 
-  app: async ({ page, role, lang: locale, duo, autoOpen }, use, testInfo) => {
+  app: async ({ page, browserName, role, lang: locale, duo, autoOpen }, use, testInfo) => {
     const errors: string[] = [];
     page.on('pageerror', (e) => {
       const msg = e.message.split('\n')[0];
@@ -98,6 +122,7 @@ export const test = base.extend<Options & { app: App }>({
     });
 
     await stubNetwork(page.context());
+    await slowMachine(page.context(), browserName);
     // Only Date moves to FIXED_NOW. Playwright's clock.install also fakes
     // performance.now and timers; after a page reload its performance.now
     // runs ahead of the browser's animation timeline by the time spent before
@@ -136,12 +161,8 @@ export const test = base.extend<Options & { app: App }>({
 
     // The urgent pop-up (an unanswered gig invitation) shows up on its own a
     // moment after launch, over whatever the test is doing: close it whenever
-    // it is in the way, like the testers did. It may also step aside on its
-    // own mid-click (a sheet opened): then there is nothing left to close,
-    // so a short try, not the whole test's time.
-    await page.addLocatorHandler(page.getByRole('button', { name: t('Dismiss alert'), exact: true }), async (b) => {
-      await b.click({ timeout: 2_000 }).catch(() => undefined);
-    });
+    // it is in the way, like the testers did.
+    await page.addLocatorHandler(page.getByRole('button', { name: t('Dismiss alert'), exact: true }), closeUrgentPopup);
     await page.addLocatorHandler(page.getByRole('button', { name: t('Close tour'), exact: true }), async (b) => {
       await b.click();
     });
@@ -195,6 +216,8 @@ export const test = base.extend<Options & { app: App }>({
         const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const withCount = esc(t('{name}, {count} unread', { name: t(name), count: '__N__' })).replace('__N__', '\\d+\\+?');
         await page.getByRole('button', { name: new RegExp(`^(${esc(t(name))}|${withCount})$`) }).first().click();
+        // The tab's own screen, not the one that is still leaving (support/tabs.ts).
+        await tabScreenUp(page, t, name);
         await settle(page);
       },
       button: (source, opts = {}) => {

@@ -2064,7 +2064,7 @@ const music: AreaText = {
           tone: "tip",
           text: "Os membros por perto veem a nova ordem do líder na hora por Bluetooth, antes de ela ser salva.",
         },
-        { type: "shot", id: "stage-offline-banner", caption: "O Modo palco sem sinal: a etiqueta do conteúdo e a barra com as alterações aguardando sinal." },
+        { type: "shot", id: "stage-offline-banner", caption: "O Modo palco sem sinal: a etiqueta do conteúdo e, abaixo, as alterações aguardando sinal." },
       ],
     },
     {

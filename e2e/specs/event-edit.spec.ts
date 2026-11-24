@@ -405,12 +405,21 @@ test.describe('Show readiness (admin)', () => {
     const hub = app.page.getByRole('heading', { name: app.t('Contracts & docs'), exact: true });
     await expect(hub).toBeVisible();
     // On top, not under the search: what's drawn at the title is the title.
-    const onTop = await hub.evaluate((h) => {
-      const r = h.getBoundingClientRect();
-      const el = document.elementFromPoint(r.left + Math.min(8, r.width / 2), r.top + r.height / 2);
-      return !!el && h.contains(el);
-    });
-    expect(onTop, 'Contracts & docs is drawn above everything').toBe(true);
+    // Looked at until it is so: the new contract's form fades out over the
+    // title for a moment after Back, and one look in that moment (a runner
+    // drawing a frame or two a second) saw the form. A search left open
+    // under the gig never goes away, and still fails here.
+    await expect
+      .poll(
+        () =>
+          hub.evaluate((h) => {
+            const r = h.getBoundingClientRect();
+            const el = document.elementFromPoint(r.left + Math.min(8, r.width / 2), r.top + r.height / 2);
+            return !!el && h.contains(el);
+          }),
+        { message: 'Contracts & docs is drawn above everything' },
+      )
+      .toBe(true);
     await expect(search).toHaveCount(0);
     await app.button('Go back', { exact: true }).last().click();
     await app.settle();

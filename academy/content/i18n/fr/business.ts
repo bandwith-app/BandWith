@@ -142,6 +142,7 @@ const business: AreaText = {
             "Tu peux changer ta réponse tant que le concert n’est pas confirmé. La carte est aussi sur ce jour dans ton calendrier.",
           ],
         },
+        { type: "shot", id: "quote-hold-card", caption: "La carte de date en option sur l’accueil d’un membre, avec sa réponse : le jour, l’heure, le lieu et les deux réponses." },
         {
           type: "steps",
           title: "Voir qui est libre (admins)",
@@ -150,6 +151,7 @@ const business: AreaText = {
             "Sous **Qui est libre**, les membres sont regroupés en **Libres ({count})**, **Indisponibles ({count})** et **Sans réponse ({count})**. **Dans la formation** marque ceux que tu as mis sur le devis.",
           ],
         },
+        { type: "shot", id: "quote-hold-answers", caption: "Qui est libre sur l’événement du devis : qui est libre, qui ne peut pas et qui n’a pas encore répondu." },
         {
           type: "list",
           title: "Et ensuite",
