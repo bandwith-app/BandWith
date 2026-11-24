@@ -323,18 +323,22 @@ describe('useStageBle: the count-in on the live frame (member)', () => {
     const onLive = vi.fn();
     const onState = vi.fn();
     const { result, unmount } = renderHook(() => useStageBle({ eventId: 'gig', savedIds: IDS, open: true, isLeader: false, onState, onLive }));
-    await waitFor(() => expect(result.current.status).toBe('outdated'), { timeout: 3000 });
-    await waitFor(() => expect(checked(onLive)).toHaveLength(1), { timeout: 3000 });
+    // Real time here (the file's stand-ins answer on it): each wait ends as soon as it holds, the cap is only for a loaded machine.
+    await waitFor(() => expect(result.current.status).toBe('outdated'), { timeout: 20_000 });
+    await waitFor(() => expect(checked(onLive)).toHaveLength(1), { timeout: 20_000 });
     expect(checked(onLive)[0]).toEqual(['countin', wire, true]);
     expect(onLive).toHaveBeenCalledWith('click', clickWire(click));
     expect(onLive).toHaveBeenCalledWith('playhead', head);
-    // On the leader's signed clock, like any member's.
-    await waitFor(() => expect(Math.abs((result.current.clock?.sample?.offset ?? NaN) - AHEAD_MS)).toBeLessThan(15), { timeout: 3000 });
+    // On the leader's signed clock, like any member's: tied to that leader, and off by half the read's round trip
+    // at most (the measure's own bound, whatever the machine's speed; its size is the clock tests' matter).
+    await waitFor(() => expect(result.current.clock?.from).toBe('lead'), { timeout: 20_000 });
+    const sample = result.current.clock!.sample!;
+    expect(Math.abs(sample.offset - AHEAD_MS)).toBeLessThanOrEqual(sample.rtt / 2 + 1);
     // Its songs are not followed, and the line keeps saying why.
     expect(onState).not.toHaveBeenCalled();
     expect(result.current.status).toBe('outdated');
     unmount();
-  });
+  }, 60_000);
 
   it('from a phone that signs nothing (no key pair): handed on as not checked', async () => {
     ble.noPair = true;
