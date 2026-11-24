@@ -124,9 +124,9 @@ test.describe('no photos', () => {
         const n = document.querySelector<HTMLElement>('#night')!;
         const t = document.querySelector<HTMLElement>('[data-night-track]')!;
         const top = n.getBoundingClientRect().top + window.scrollY;
+        // A plain jump: a wheel event would hand the scroll to the smooth scroller, which resumes from where it last was.
         window.scrollTo(0, top + (t.scrollWidth - window.innerWidth) * frac);
       }, p);
-      await page.mouse.wheel(0, 2);
     };
     await scrollTo(4 / 6);
     await expect(cells.nth(4)).toHaveClass(/is-on/);
