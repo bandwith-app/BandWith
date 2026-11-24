@@ -46,16 +46,49 @@ export const page: ChannelPage = {
   },
   details: {
     heading: { lines: ['The small print,', 'taken care of.'] },
-    items: [
-      { icon: 'globe', title: 'In the client’s language', body: 'EN, IT, ES, FR, DE or PT for the PDF, the message and the client’s page. Your app stays in yours, and the choice is remembered for that client on this device.', wide: true },
-      { icon: 'calendar', title: 'The date is held', body: 'Saving a quote puts a tentative event on its date in the admins’ calendar while you wait.' },
-      { icon: 'eye-off', title: 'Fees stay inside', body: 'The client sees the lineup as one line, never what each musician earns.' },
-      { icon: 'users', title: 'The band keeps it free', body: 'Every member gets a card, Possible gig – keep the date free, with the day, time and place, and answers I’m free or I can’t. No client, no fee.' },
-      { icon: 'refresh', title: 'Edit after sending', body: 'The client’s page switches to the new version. Send the update tells them.' },
-      { icon: 'lock', title: 'A yes, then a signature', body: 'Accepting records the typed name, the time and the version the client saw. It isn’t a legal signature: the contract PDF ends with two signature lines, and you tap Mark as signed when it comes back.', wide: true },
-      { icon: 'wallet', title: 'Then the final balance', body: 'On the gig made from an accepted quote, FINAL BALANCE works out what’s left: the total, minus the deposit, minus other payments. Pick the due date and the ways to pay, then send it by email, WhatsApp or link.', wide: true },
-      { icon: 'check', title: 'Deposit, then paid', body: 'Mark deposit received when it arrives. Mark as paid when the rest does: payouts, show readiness and analytics follow.' },
-      { icon: 'arrow-right', title: 'Straight to the band', body: 'Bank details with copy buttons, your own Stripe payment link, or cash. BandWith never takes the payment.' },
+    lead: 'Three things to know first. The other six are sorted by where the deal stands.',
+    featured: [
+      {
+        title: 'In the client’s language',
+        tag: 'PDF, message, page',
+        body: 'EN, IT, ES, FR, DE or PT for the PDF, the message and the client’s page. Your app stays in yours.',
+        ui: { shot: 'quote-share', region: [0.16, 0.5], alt: 'Sharing a quote: the client language set to EN among six, then WhatsApp and Text message' },
+      },
+      {
+        title: 'The band keeps it free',
+        tag: 'Every member',
+        body: 'Each member gets a card, Possible gig – keep the date free, and answers I’m free or I can’t. No client, no fee.',
+        ui: { shot: 'quote-hold-card', region: [0.12, 0.48], alt: 'A member’s Home: Possible gig – keep the date free, Mon Dec 7, 22:00–01:00 at The Blue Room, New York, with I’m free and I can’t' },
+      },
+      {
+        title: 'A yes, then a signature',
+        tag: 'The client, on a link',
+        body: 'Accepting records the typed name, the time and the version seen. It isn’t a legal signature: the contract PDF ends with two signature lines.',
+        ui: { shot: 'quote-client-confirmation', region: [0, 0.32], alt: 'Client confirmation: sent, viewed, discussing, accepted, and the conversation with the client' },
+      },
+    ],
+    groups: [
+      {
+        label: 'While the client decides',
+        items: [
+          { title: 'The date is held', line: 'Saving a quote puts a tentative event on its date in the admins’ calendar while you wait.' },
+          { title: 'Edit after sending', line: 'The client’s page switches to the new version. Send the update tells them.' },
+        ],
+      },
+      {
+        label: 'Getting paid',
+        items: [
+          { title: 'Then the final balance', line: 'FINAL BALANCE works out what’s left: the total, minus the deposit, minus other payments.' },
+          { title: 'Deposit, then paid', line: 'Mark deposit received, then Mark as paid: payouts, show readiness and analytics follow.' },
+        ],
+      },
+      {
+        label: 'What stays with the band',
+        items: [
+          { title: 'Fees stay inside', line: 'The client sees the lineup as one line, never what each musician earns.' },
+          { title: 'Straight to the band', line: 'Bank details, your own Stripe payment link, or cash. BandWith never takes the payment.' },
+        ],
+      },
     ],
   },
   learn: [

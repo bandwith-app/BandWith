@@ -47,13 +47,42 @@ export const page: ChannelPage = {
   },
   details: {
     heading: { lines: ['Made for', 'last-minute calls.'] },
-    items: [
-      { icon: 'mail', title: 'Invites that wait, then expire', body: 'An invite is valid for 7 days, with one reminder when 2 are left. Admins see the open ones under Invited: Not accepted yet, Expired or Declined, with Send again, Copy link or Cancel invite. The person joins as soon as their account is made.', wide: true },
-      { icon: 'wallet', title: 'A default fee per person', body: 'Set it on their page under In the band. New gigs and quotes fill it in; you can still change it on each gig.' },
-      { icon: 'users', title: 'Who covers what', body: 'The deputies list groups the band by instrument and tells you which ones still have no deputy.' },
-      { icon: 'refresh', title: 'The gig changed?', body: 'Move the date, times or venue after a deputy answered and the request is flagged. Send update shows them what changed and asks Still OK.' },
-      { icon: 'calendar', title: 'A calendar that keeps up', body: 'After a yes, a deputy can tap Subscribe to my gigs. Their calendar follows every change and marks cancelled gigs.' },
-      { icon: 'lock', title: 'The link is the key', body: 'Anyone with a reply link can answer. If it reached the wrong person, Unlink account replaces every link sent to that deputy: old reply pages and calendar feeds stop working.', wide: true },
+    lead: 'Three things to know first. The other four are sorted by band and by deputy.',
+    featured: [
+      {
+        title: 'The right deputy first',
+        tag: 'Replacing a member',
+        body: 'The sheet lists the band’s deputies, the same instrument first, with their usual fee. Ask in the app, or by message.',
+        ui: { shot: 'people-find-deputy', region: [0.5, 0.86], alt: 'Find a deputy for Lena P. on keys: Ivo M., keys, first, then Luca T., bass, usual fee €180, with Ask in the app' },
+      },
+      {
+        title: 'The gig changed?',
+        tag: 'After a deputy’s yes',
+        body: 'Move the date, times or venue and the request is flagged. Send update shows them what changed and asks Still OK.',
+        ui: { shot: 'people-deputy-gigs', region: [0.66, 1], alt: 'Deputy gigs: Yes, Not sure yet and No, I can’t, then a gig answered yes and marked Something changed' },
+      },
+      {
+        title: 'Invites that wait, then expire',
+        tag: 'Valid for 7 days',
+        body: 'One reminder when 2 days are left. Under Invited, admins see the open ones, with Send again, Copy link or Cancel invite.',
+        ui: { shot: 'people-invite', region: [0.64, 1], alt: 'Invite member: a search for the person, then the role, Member or Admin' },
+      },
+    ],
+    groups: [
+      {
+        label: 'In the band',
+        items: [
+          { title: 'A default fee per person', line: 'Set it on their page under In the band. New gigs and quotes fill it in; you can still change it.' },
+          { title: 'Who covers what', line: 'The deputies list groups the band by instrument and tells you which ones still have no deputy.' },
+        ],
+      },
+      {
+        label: 'For deputies',
+        items: [
+          { title: 'A calendar that keeps up', line: 'After a yes, a deputy can tap Subscribe to my gigs. Their calendar follows every change.' },
+          { title: 'The link is the key', line: 'Anyone with a reply link can answer. Unlink account replaces every link sent to that deputy.' },
+        ],
+      },
     ],
   },
   learn: [

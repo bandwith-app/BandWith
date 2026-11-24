@@ -38,6 +38,15 @@ rack and the footer are generated from that list.
 - Screens are the Academy captures (`academy/public/shots`), served at
   `/shots/` in dev and copied into `dist/shots` on build. Demo data only
   (band "Velvet Static", persona Leo M.).
+- Channel pages end with "The small things" (`details` in
+  `src/content/pages/<slug>.ts`, rendered by `pageRender.ts`): three numbered
+  panels, each with the product (an Academy capture in the crop component, on
+  any device, or a fragment drawn in HTML from `src/content/fragments.ts` when
+  no capture shows the thing; a fragment uses the app's own labels and is
+  checked against the app's screen), then a spec sheet: every other capability
+  in one line, under two to four mono labels, an even number per label so both
+  columns are full. The long explanation stays in the Guide, which the next
+  section links.
 - Motion: at most two pinned scenes per page and none below 1081px or with
   reduced motion; everything works and reads without JavaScript animation.
 - Photos (`public/photos`): Unsplash, toned Ink → Lime; credits in the footer.
@@ -138,11 +147,13 @@ https://bandwith.fun (manual release only).
 ## Tests
 
 `site/test/*.test.ts` run with the app's vitest (`pnpm test:run`): channel
-list, Academy links and captures exist, the Stage demo rules, the
+list, Academy links and captures exist, the shape of "The small things"
+(`pages.test.ts`), the Stage demo rules, the
 languages, and search (`seo.test.ts`: JSON-LD, hreflang, sitemap, robots,
 llms.txt, share cards, 404). `coverage.test.ts` lists what the app does and
 the words the site uses for it, and what the app stopped doing: add a row
 with every release. `pnpm e2e:site` (Playwright, desktop Chromium + iPhone WebKit) runs
 `e2e/site/`: the language suggestion, the translated scripts, the Get page's
 doors and `release-fixes.spec.ts` (the Stage and Money demos, the closed-beta
-blocks, narrow phones).
+blocks, narrow phones) and `capabilities.spec.ts` (the three panels and the
+spec sheet at each width, captures fitted, fragments in the page's language).

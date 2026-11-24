@@ -48,16 +48,49 @@ export const page: ChannelPage = {
   },
   details: {
     heading: { lines: ['Written for', 'the players.'] },
-    items: [
-      { icon: 'music', title: 'Words and chords in one text', body: 'A chord goes in brackets before its word: [Am]word. Paste a chords-over-lyrics sheet and the app merges it into inline chords. Section names in Italian, Spanish, French, German and Portuguese are understood.', wide: true },
-      { icon: 'download', title: 'From iReal Pro', body: 'Tap a song or a playlist on the forum: the chords, form, key, style and tempo come in. No melody, no lyrics. ChordPro and MusicXML files work too.' },
-      { icon: 'sliders', title: 'A chord editor', body: 'Admins tap a word to put a chord on it, drag a chord to move it, and copy a verse’s chords to another section. The Voice row marks a line, or a few words, as Lead, 2nd voice, Backing, All or Spoken.' },
-      { icon: 'lock', title: 'My notes, mine only', body: 'Notes on a line, a word or a chord, and your own files. Nobody else sees them, admins included.' },
-      { icon: 'timer', title: 'Find the tempo', body: 'Tap along, or work the BPM out from the recording. ÷2 and ×2 fix a half or double tempo. For Stage mode, set the time signature and a count-in of 1 or 2 bars.' },
-      { icon: 'file-text', title: 'Setlists that travel', body: 'Split a setlist into sets and see the running time. Export it as a PDF with artist, key, BPM, duration and set. On a gig, admins reorder, add and remove songs right in the overview, and the lineup gets one push with what changed.', wide: true },
-      { icon: 'list-music', title: 'From rehearsals', body: 'The song’s page shows the band’s open notes from rehearsals above your own. A Tempo or Key note that names the value gets a button: admins Set on the song, members Suggest to the band.', wide: true },
-      { icon: 'message-circle', title: 'Hold a line', body: 'Hold a line of the lyrics and Note for me opens on it. In Live mode at a rehearsal, Note for the band opens a band note on that song, section and line.' },
-      { icon: 'music', title: 'Signs, not shorthand', body: 'Repeats, endings, segno, coda and fermatas look the same in the reader and on stage. Under every chart, What the symbols mean explains each one.' },
+    lead: 'Three things to know first. The other six are sorted by where a song goes next.',
+    featured: [
+      {
+        title: 'Words and chords in one text',
+        tag: 'Lyrics & chords',
+        body: 'A chord goes in brackets before its word: [Am]word. Paste a chords-over-lyrics sheet and the app merges it into inline chords.',
+        ui: { shot: 'music-reader', region: [0.3, 0.62], alt: 'A song in the reader: Harbor Lights, verse 1, with the chords A, E, F♯m and D above the words' },
+      },
+      {
+        title: 'Setlists that travel',
+        tag: 'Sets, PDF, live edits',
+        body: 'Split a setlist into sets and see the running time. Export a PDF. On a gig, the lineup gets one push with what changed.',
+        ui: { shot: 'music-setlist-editor', region: [0.3, 0.66], alt: 'The setlist editor: Rooftop set, the library filtered by genre and two songs picked' },
+      },
+      {
+        title: 'A chord editor',
+        tag: 'Admins',
+        body: 'Tap a word to put a chord on it, drag a chord to move it. The Voice row marks a line as Lead, 2nd voice, Backing, All or Spoken.',
+        ui: { shot: 'voice-picker', region: [0.62, 0.95], alt: 'The chord editor’s Voice row: Whole line or Just these words, then Lead, 2nd voice, Backing, All and Spoken' },
+      },
+    ],
+    groups: [
+      {
+        label: 'Getting songs in',
+        items: [
+          { title: 'From iReal Pro', line: 'Tap a song or a playlist on the forum: chords, form, key, style and tempo come in. ChordPro and MusicXML too.' },
+          { title: 'Find the tempo', line: 'Tap along, or work the BPM out from the recording. Set the time signature and a count-in of 1 or 2 bars.' },
+        ],
+      },
+      {
+        label: 'Notes on the song',
+        items: [
+          { title: 'My notes, mine only', line: 'Notes on a line, a word or a chord, and your own files. Nobody else sees them, admins included.' },
+          { title: 'Hold a line', line: 'Hold a lyric line and Note for me opens on it. At a rehearsal, Note for the band opens a band note.' },
+        ],
+      },
+      {
+        label: 'On the chart',
+        items: [
+          { title: 'From rehearsals', line: 'The band’s open notes from rehearsals sit above your own. On a Tempo or Key note, admins tap Set on the song.' },
+          { title: 'Signs, not shorthand', line: 'Repeats, endings, segno, coda and fermatas. Under every chart, What the symbols mean explains each one.' },
+        ],
+      },
     ],
   },
   learn: [

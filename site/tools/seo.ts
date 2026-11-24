@@ -275,7 +275,7 @@ export function llmsTxt(): string {
  * is full" and the lines for invited people: `hidden` in the HTML, named here
  * too so they stay out whatever hides them).
  */
-const SKIP = '#try, [aria-hidden="true"], script, style, template, svg, form, button, nav, .crop, .sr-only, [data-hero-picks], [hidden], .full, .full__inv-shut, .gdoors__inv, [data-cap-show]';
+const SKIP = '#try, [aria-hidden="true"], script, style, template, svg, form, button, nav, .crop, [role="img"], .sr-only, [data-hero-picks], [hidden], .full, .full__inv-shut, .gdoors__inv, [data-cap-show]';
 const BLOCKS = new Set(['H1', 'H2', 'H3', 'H4', 'P', 'LI', 'SUMMARY', 'TABLE', 'FIGCAPTION']);
 
 function textOf(el: Element): string {
