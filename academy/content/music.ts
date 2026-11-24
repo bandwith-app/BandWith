@@ -1487,19 +1487,19 @@ const music: AreaModule = {
           type: "table",
           head: ["Status", "Meaning"],
           rows: [
-            ["**Live**", "Connected over the internet: members follow you."],
-            ["**Live · BT**", "Connected over the internet and sending over Bluetooth too."],
-            ["**Bluetooth**", "No internet: members nearby follow you over Bluetooth."],
-            ["**Offline**", "Nothing reaches the band right now."],
+            ["**Live**", "You are leading: over the internet or, with no internet, over Bluetooth (iPhone, iPad and Android apps)."],
+            ["**Offline**", "No internet and no Bluetooth: nothing reaches the band right now."],
             ["**Saving…**, **Saved**, **Not saved**", "After a drag: the new order is saved shortly after your last move. **Saved** shows for a moment, then the status returns."],
           ],
         },
         {
           type: "list",
           items: [
+            "With no internet, a line under the status says who is linked to you over Bluetooth: **1 phone connected to you**, **3 phones connected to you**, or **No phones connected yet: ask the band to open Stage**. While the internet works this line doesn't show.",
             "Members who open Stage mode later catch up on the current song.",
             "A new order applies to everyone, also members who stopped following, and is saved to the gig's setlist. The gig behind Stage mode shows it at once.",
             "Closing Stage mode saves a move still waiting for its save.",
+            "Closing Stage mode also ends a count-in, a click and Follow the tempo you started, on every phone, over the internet and over Bluetooth.",
             "If several admins lead at once, the newest move wins.",
             "Striking a song off is for tonight only: the gig's setlist keeps it. Members following you see it crossed out and skip it too, over the internet or Bluetooth. Your phone remembers the struck songs for that gig if you close Stage mode and open it again.",
           ],
@@ -1532,16 +1532,16 @@ const music: AreaModule = {
         {
           type: "list",
           items: [
-            "**· BT** after the label means you are linked to the leader over Bluetooth.",
+            "With no internet, a line under the button says how you are linked to the leader: **Connected to the leader's phone** means you follow it over Bluetooth, **Not connected: ask the leader to open Stage** means your phone hasn't found it yet. While the internet works this line doesn't show.",
             "**Offline** means nothing can reach your phone right now.",
             "Members cannot move anyone else's song or change the order.",
             "If a line says **The leader's app is out of date: ask them to update**, you are still following: the leader just needs the latest version of BandWith.",
             "If a line says **The band changed who can lead: connect to the internet once to follow the leader.**, go online once (Wi-Fi or mobile data) with Stage open: your phone picks up the change and follows the leader again.",
-            "If a line says **Leader not verified yet: connect to the internet once to check it.**, you are following, but your phone can't yet check that the leader is a band admin: go online once (Wi-Fi or mobile data) with Stage open.",
-            "If a line says **Leader not verified yet: ask the leader to connect to the internet once.**, you are following, but the leader's phone hasn't been online since Stage got its new security: the leader goes online once with Stage open.",
+            "If a line says **Leader not verified yet: connect to the internet once to check it.**, you are following, but your phone can't yet check that the leader is a band admin: go online once (Wi-Fi or mobile data) with Stage open. Until then the count-in doesn't reach you without internet.",
+            "If a line says **Leader not verified yet: ask the leader to connect to the internet once.**, you are following, but the leader's phone hasn't been online since Stage got its new security: the leader goes online once with Stage open. Until then the count-in doesn't reach you without internet.",
             "If you lead and a line says **Phones on the latest app can't check you yet: connect to the internet once with Stage open.**, only phones on older versions of BandWith can follow you offline: go online once (Wi-Fi or mobile data) with Stage open, and the band's phones can check it's you.",
             "If you lead and a line says **You're no longer an admin for this band: another admin needs to lead.**, your role in the band changed: phones on the latest version of BandWith don't follow you. Ask an admin to open Stage and lead.",
-            "**Older app versions:** after an admin's role changes (made a member, or removed from the band), a gig whose leaders were already checked waits until an admin on the latest version opens it online once. Until then, phones on the latest version show **The band changed who can lead: connect to the internet once to follow the leader.** for that gig and don't follow anyone offline. Gigs no one led on the latest version yet are not affected.",
+            "Older app versions: after an admin's role changes (made a member, or removed from the band), a gig whose leaders were already checked waits until an admin on the latest version opens it online once. Until then, phones on the latest version show **The band changed who can lead: connect to the internet once to follow the leader.** for that gig and don't follow anyone offline. Gigs no one led on the latest version yet are not affected.",
           ],
         },
       ],
@@ -1579,6 +1579,7 @@ const music: AreaModule = {
             "The beats in a bar come from the song's **Time signature**, else from its chord chart, else 4/4. In 6/8 and 12/8 it flashes on the dotted beats. To count the band in, see [[count-in]].",
             "A song without BPM can't start a click (**No BPM for this song**). Add the BPM in the song form.",
             "Moving to another song hides the click for the song before.",
+            "When the leader closes Stage mode, the band's click stops on every phone, over the internet and over Bluetooth.",
             "Phones keep in time to about 20–40 ms: right for a count-in and a tempo reference, not for an in-ear click.",
             "With no internet, the leader's click still reaches the phones linked to the leader's over Bluetooth, in the iPhone, iPad and Android apps. A line in Stage mode then says **Connected to the leader's phone**. If the leader stays out of reach for more than 10 seconds, the click stops on your phone. It comes back on the beat when they are in reach again. On the web the band's click needs the internet. See [[stage-bluetooth-sync]].",
           ],
@@ -1663,7 +1664,7 @@ const music: AreaModule = {
             "With **2 bars** set on the song, the first bar counts in half time and the second in time.",
             "A song that starts before beat 1 (for example **Starts on beat 4**) gets **GO** on its first note, not on 1.",
             "The band counts down (4 3 2 1, the default) or up (1 2 3 4). The leader picks it under **For the whole band** in the count-in options, and every phone in the band counts that way.",
-            "If **Follow the tempo** is on, the song starts moving from bar 1, as the count ends. If the click is running, it goes on in time.",
+            "If **Follow the tempo** is on, the song starts moving from bar 1, as the count ends. If the click is running, it goes on in time. The count-in never starts the click by itself.",
           ],
         },
         {
@@ -1686,10 +1687,22 @@ const music: AreaModule = {
         },
         {
           type: "list",
+          title: "With no internet",
+          items: [
+            "In the iPhone, iPad and Android apps the count-in also goes over Bluetooth: every phone linked to the leader's shows the same countdown on the same beat. **Stop the count-in** ends it on every phone, and **Count in anyway** works the same way.",
+            "Every phone needs Bluetooth on and the gig opened once with internet beforehand: see [[stage-bluetooth-sync]]. In a browser the count-in needs the internet.",
+            "A phone that links in the middle of a count joins on the right beat, never from the top. If it links too late, it shows nothing.",
+            "If the leader goes out of reach during the count, the countdown runs on to **GO** by itself. A count still on screen after 10 seconds out of reach goes away.",
+            "Every phone needs the latest version of BandWith. A phone on an older version keeps following the songs and the click over Bluetooth, but shows no countdown without internet; with the leader on an older version, no phone does.",
+            "If the leader loses the internet in the middle of a count, **Stop the count-in** doesn't reach a member who is still online: that phone counts on to **GO**.",
+          ],
+        },
+        {
+          type: "list",
           title: "Good to know",
           items: [
             "A phone that gets the message late joins the countdown on the right beat.",
-            "The countdown needs the internet: it isn't sent over Bluetooth. With no signal only the leader's phone shows it. Phones linked over Bluetooth still get the click, if the leader has it running, and Follow the tempo from bar 1.",
+            "Moving to another song, or closing Stage mode, ends a count still running, on every phone.",
             "Phones keep in time to about 20–40 ms.",
             "A member can close the countdown on their own screen with **Hide on this phone**.",
           ],
@@ -1741,7 +1754,7 @@ const music: AreaModule = {
             "If the band plays a part longer or shorter, tap the bar, line or section where you are: everyone jumps there.",
             "Tap **Hold** to repeat the current section (a vamp, a solo). Tap **Let go** to move on.",
             "At a fermata the song waits and the line says **Waiting for the leader**: tap **Go on**.",
-            "Tap **Stop** to end it. Moving to another song stops it too.",
+            "Tap **Stop** to end it. Moving to another song stops it too, and so does closing Stage mode.",
           ],
         },
         {
@@ -1850,26 +1863,35 @@ const music: AreaModule = {
       body: [
         {
           type: "p",
-          text: "In the iPhone, iPad and Android apps, the admin's phone also sends the current song, the order, the click and the place in the song (Follow the tempo) over Bluetooth. Members' phones nearby pick it up with no pairing and no internet. The count-in is the exception: it needs the internet.",
+          text: "In the iPhone, iPad and Android apps, the admin's phone also sends the current song, the order, the click, the count-in and the place in the song (Follow the tempo) over Bluetooth. Members' phones nearby pick it up with no pairing and no internet.",
         },
         {
           type: "steps",
           title: "Get ready before the gig",
           items: [
             "Everyone gets the setlist on their phone: say yes to the download (see [[live-mode-offline]]) or open the gig once while online. The gig's Bluetooth key comes with it.",
+            "For the count-in, every phone also opens the gig once with internet, the leader's first: that is how a phone can check that a count comes from a band admin.",
             "Turn Bluetooth on and allow BandWith to use it.",
-            "On stage, everyone opens Stage mode. The leader shows **Bluetooth** or **Live · BT**; members show **· BT** after their follow label.",
+            "On stage, everyone opens Stage mode. With no internet, a line under the leader's status and under the members' button says how the link is: the leader sees for example **3 phones connected to you**, members see **Connected to the leader's phone**. While the internet works the line doesn't show.",
           ],
         },
         {
           type: "list",
           title: "When it doesn't connect",
           items: [
-            "“Bluetooth is off or not allowed. Turn it on in Settings to stay in sync without internet.”",
-            "“This phone has an older setlist. Connect to the internet once to follow over Bluetooth.” This shows when songs were added or removed after the phone last loaded the setlist. A new order alone is fine.",
-            "“This phone's time and the leader's are far apart. Set both to automatic date and time.” The leader's messages carry its time; one far ahead of this phone's isn't followed, since a phone could fake it.",
+            "**Allow Bluetooth to stay with the band when the internet drops.** (the leader sees **Allow Bluetooth so the band can follow you when the internet drops.**): BandWith isn't allowed to use Bluetooth. Tap the button beside it: **Open Settings** on iPhone and iPad, **Allow** on Android. This line shows while the internet works too.",
+            "**Bluetooth is off: turn it on in Control Center to stay in sync without internet.** on iPhone and iPad. On Android it says **Bluetooth is off: turn it on to stay in sync without internet.**, with a **Turn on** button.",
+            "**Not connected: ask the leader to open Stage**: your phone hasn't found the leader's yet. The leader sees **No phones connected yet: ask the band to open Stage**.",
+            "**This phone has an older setlist: connect to the internet once to follow the leader.** This shows when songs were added or removed after the phone last loaded the setlist. A new order alone is fine. Until then this phone doesn't follow the leader's songs. The leader's click, count-in and Follow the tempo still reach it over Bluetooth for as long as the leader's phone is in reach. Go to the leader's song by hand: the click and Follow the tempo show on that song.",
+            "**This phone's time and the leader's are far apart: set both to automatic date and time.** The leader's messages carry its time; one far ahead of this phone's isn't followed, since a phone could fake it.",
+            "**This phone can't follow the leader without internet.** (the leader sees **This phone can't lead the band without internet.**): this phone's Bluetooth can't do it.",
             "After someone leaves the band, every gig coming up gets a new Bluetooth key. Phones on an older version of BandWith keep the old key and can't find the others without internet: after updating BandWith, open the gig once while online.",
+            "For a line that says the leader isn't verified yet, or that the band changed who can lead, see [[follow-in-stage-mode]].",
           ],
+        },
+        {
+          type: "p",
+          text: "The count-in goes over Bluetooth only between phones on the latest version of BandWith: a phone on an older version keeps following the songs and the click, and shows no countdown without internet. See [[count-in]].",
         },
         {
           type: "note",
@@ -2054,10 +2076,12 @@ const music: AreaModule = {
           type: "list",
           title: "What you see",
           items: [
-            "A bar at the top, for example **You’re offline · 2 changes waiting for signal**. With nothing waiting it says **You’re offline · showing cached info**.",
+            "A bar at the top counts everything that waits on this phone, for example **You’re offline · 2 changes waiting for signal** (with one, **You’re offline · 1 change waiting for signal**). With nothing waiting it says **You’re offline · showing cached info**. It shows on top of Stage mode and Live mode too.",
+            "The bar counts these changes together with gigs and rehearsals created, edited or deleted with no signal (see [[offline-mode]]). Chat messages are not in the count: each message says **Waiting for connection** or **Not sent** in its chat.",
+            "A tag counts only the Stage, Live and rehearsal part, for example **2 changes waiting for signal**: with a gig edit also waiting, the bar's number is higher. In Stage mode and Live mode the tag is under the title, below **Offline · content from …**. On the gig's or rehearsal's page it is under the setlist, in the offline row.",
             "After the leader drags a song with no signal, the status says **Saved on this phone**, then **Saved** once it reaches the band's setlist.",
-            "When the signal is back, the bar says **Back online · sending 2 changes**, then **Back online · up to date**.",
-            "To send at once without waiting, tap **Send now** in the bar.",
+            "When the signal is back, the bar says **Back online · sending 2 changes**, then **Back online · up to date**, and the tag goes away. To send at once, tap **Send now** in the bar: it sends both kinds. If a gig or rehearsal change is waiting for another try, the bar says **Back online · 1 change will be sent shortly**. While the server hasn't answered yet, the tag says **2 changes waiting to send**.",
+            "A note, a suggestion or a new order that the server refuses stays on the phone: the tag says **1 change wasn’t saved**. Tap it to see it, with **Copy** and **Remove**.",
           ],
         },
         {
@@ -2066,6 +2090,7 @@ const music: AreaModule = {
           items: [
             "As soon as the signal is back, when you open the app again, and every 30 seconds while something is waiting.",
             "Closing the app keeps what is waiting. It goes the next time you open the app with signal.",
+            "If you sign out while something is still waiting, the app asks first: **Send now** sends it. See [[sign-out]].",
             "A rehearsal note the server refuses is not thrown away. Live mode says **A note wasn't saved**, and the note's words are listed in the rehearsal's notes and in Settings › Offline & live, with **Copy** and **Remove**.",
           ],
         },
@@ -2134,7 +2159,7 @@ const music: AreaModule = {
     },
     {
       q: "Does Stage mode work without internet?",
-      a: "In the phone and tablet apps, yes. Say yes once to the download and the setlists of your next 7 days stay on your phone; the leader's phone keeps the band on the same song over Bluetooth. On the web Stage mode needs the internet.",
+      a: "In the phone and tablet apps, yes. Say yes once to the download and the setlists of your next 7 days stay on your phone; the leader's phone keeps the band on the same song over Bluetooth, with the click and the count-in. On the web Stage mode needs the internet.",
     },
     {
       q: "Does my phone download the setlists without asking?",

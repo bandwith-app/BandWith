@@ -157,6 +157,9 @@ check (`app.check`) on each screen it reaches.
 | Create account with email (confirmation on) → Check your email: a wrong code says so, Send a new code, the 6-digit code typed → What brings you here?, no second password prompt | `signup-code` | all |
 | Check your email: the whole code pasted at once; "I’ve confirmed it: sign in" (the email's link was used) opens the sign-in screen | `signup-code` | full |
 | Check your email on a 320 px wide phone: the code field, Verify, Send a new code and the sign-in fallback fit, in every language | `signup-code` | phone-portrait |
+| Check your email: the title and the text never run under the clock block (the closed Duo's reaches beside them) | `signup-code-layout` | all |
+| Check your email, keyboard up: the code field, a refused code's message and Verify show above it; the other buttons by scrolling, nothing slides under the status bar | `signup-code-layout` | all (not duo-laptop) |
+| Check your email: the system Back goes back to Create account with the fields kept, like the Back button on the screen | `signup-code-layout` | all |
 | Expired reset link (query or fragment): says so, offers a new link | `auth-callback` | all / full |
 | Sign-in server error: explains, Back to sign in, Back doesn't return to the dead link | `auth-callback` | all |
 | Already signed in: Back to sign in lands in the app | `auth-callback` | full |

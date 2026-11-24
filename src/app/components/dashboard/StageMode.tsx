@@ -904,6 +904,8 @@ export const StageMode: React.FC<StageModeProps> = ({
                   setlistSongId={rehearsal ? undefined : lyricsSong?.id}
                   songTitle={lyricsSong?.title}
                   lyrics={lyricsContent.lyrics}
+                  songParts={lyricsSong?.vocalParts}
+                  setlistParts={lyricsSong?.setlistVocalParts}
                 >
                 <FollowArea follow={follow} accent={accentColor}>
                 <SongBody
@@ -1121,7 +1123,7 @@ export const StageMode: React.FC<StageModeProps> = ({
         <StageClickFrame state={clickState} offset={click.offset} accent={accentColor} onDone={clickUi.onDone} />
       )}
       {songOnly && !laptop && lyricsSong && (
-        <VoiceAssignmentScope songId={lyricsSong.songId} setlistSongId={rehearsal ? undefined : lyricsSong.id} songTitle={lyricsSong.title} lyrics={lyricsContent.lyrics}>
+        <VoiceAssignmentScope songId={lyricsSong.songId} setlistSongId={rehearsal ? undefined : lyricsSong.id} songTitle={lyricsSong.title} lyrics={lyricsContent.lyrics} songParts={lyricsSong.vocalParts} setlistParts={lyricsSong.setlistVocalParts}>
         <StageSongOnly
           title={lyricsSong.title}
           index={Math.max(0, current)}

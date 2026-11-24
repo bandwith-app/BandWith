@@ -3,7 +3,7 @@ import { test, expect, closeUrgentPopup, fakeDate, FIXED_NOW, type App } from '.
 import { openHub } from '../support/hub';
 import { escapeRe, openEvent, SEED } from '../support/flows';
 import { settle } from '../support/settle';
-import { tabScreenUp, type TabName } from '../support/tabs';
+import { pressItself, tabScreenUp, type TabName } from '../support/tabs';
 
 /**
  * Live mode: Follow the tempo and the count-in (plan live-offline-and-tempo
@@ -230,7 +230,7 @@ async function secondDevice(app: App): Promise<{ page: Page; other: App }> {
     page,
     settle: () => settle(page),
     tab: async (name: TabName) => {
-      await page.getByRole('button', { name: app.t(name), exact: true }).first().click();
+      await pressItself(page.getByRole('button', { name: app.t(name), exact: true }).first());
       await tabScreenUp(page, app.t, name);
       await settle(page);
     },

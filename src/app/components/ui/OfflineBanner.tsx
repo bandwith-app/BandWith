@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { WifiOff, Wifi, RefreshCw } from '@/app/components/icons';
 import { cn } from './utils';
 import { useT } from '@/lib/i18n';
+import { sendWaitingNow, useWaitingChanges } from '@/app/hooks/useLiveOutbox';
 
 interface OfflineBannerProps {
   isOnline: boolean;
@@ -85,7 +86,8 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({
           className={cn(
             // Figma "State / Offline + toast" → Offline banner: full-width strip under the status bar.
             // iPhone Duo open: only on the trailing page (bw-pane-trailing-bar).
-            'bw-rail-clear bw-pane-trailing-bar fixed inset-x-0 top-0 z-[120] flex items-center gap-3 px-4 pb-3 bw-status-clear',
+            // bw-offline-bar: Stage mode keeps it above its own layers (src/styles/stage.css).
+            'bw-offline-bar bw-rail-clear bw-pane-trailing-bar fixed inset-x-0 top-0 z-[120] flex items-center gap-3 px-4 pb-3 bw-status-clear',
             !isOnline ? 'bg-warning text-warning-foreground' : 'bg-success text-success-foreground'
           )}
           style={{ paddingTop: 'calc(var(--safe-top-inset, 0px) + 12px)' }}
@@ -126,4 +128,29 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({
       )}
     </AnimatePresence>
   );
+};
+
+/**
+ * The app's bar, counting every change that waits on this phone: the offline
+ * queue (gigs and rehearsals created, edited or deleted: `pendingCount`) and
+ * the live outboxes (my notes, suggestions and the leader's order from Stage
+ * mode, rehearsal notes: the count of the "waiting" tag). "Send now" sends
+ * both. Chat messages are not counted: each one says "Waiting for connection"
+ * in its own chat.
+ */
+export const AppOfflineBanner: React.FC<OfflineBannerProps & { userId?: string | null }> = ({
+  userId,
+  pendingCount = 0,
+  onSyncNow,
+  ...rest
+}) => {
+  const live = useWaitingChanges(userId);
+  const sendNow =
+    onSyncNow || (userId && live > 0)
+      ? () => {
+          onSyncNow?.();
+          if (userId) void sendWaitingNow(userId).catch(() => undefined);
+        }
+      : undefined;
+  return <OfflineBanner {...rest} pendingCount={pendingCount + live} onSyncNow={sendNow} />;
 };

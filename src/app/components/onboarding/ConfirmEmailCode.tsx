@@ -14,6 +14,8 @@ import {
 import { FormError, Kicker, PillButton, PillField } from '@/app/components/bw/Form';
 import { WizardTop } from './OnboardingChrome';
 import { useT } from '@/lib/i18n';
+import { useSystemBack } from '@/lib/backStack';
+import { isKeyboardOpen } from '@/lib/keyboardInsets';
 
 interface ConfirmEmailCodeProps {
   /** The address the code was sent to. */
@@ -77,6 +79,31 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({
   // Checking a code and sending a new one never overlap: a new code makes the
   // one being checked worthless, and would empty the field under its answer.
   const resendingRef = useRef(false);
+
+  // Android's system Back (and Escape) does what the Back button here does:
+  // the Create account form, its fields kept. Without it the onboarding's own
+  // back handling only knew "step 1" and left for the Welcome screen.
+  useSystemBack(true, () => {
+    onBack();
+  });
+
+  // Keyboard up: Verify is pinned above it (see the bar below), so a refusal
+  // shown under the field could end behind that bar. It is brought above it.
+  const formRef = useRef<HTMLFormElement>(null);
+  const verifyBarRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!codeError || !isKeyboardOpen()) return;
+    const frame = requestAnimationFrame(() => {
+      const message = formRef.current?.querySelector<HTMLElement>('[role="alert"]');
+      const bar = verifyBarRef.current;
+      if (!message || !bar || getComputedStyle(bar).position !== 'sticky') return;
+      // From where the bar really is: keyboardInsets may have padded the
+      // scroller under the field, and a pinned bar rests above that padding.
+      message.style.scrollMarginBottom = `${Math.max(0, window.innerHeight - bar.getBoundingClientRect().top) + 8}px`;
+      message.scrollIntoView?.({ block: 'nearest' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [codeError]);
 
   // A dead link from the email (any callback problem that isn't its own
   // sentence): on this screen the way out is a new code.
@@ -187,7 +214,10 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({
         <div className="h-14 shrink-0 flex items-center px-4 bw-status-clear">
           <WizardTop onBack={onBack} step={step} total={total} />
         </div>
-        <div className="flex flex-col px-4 pt-2 gap-5">
+        {/* Closed iPhone Duo, upright: the clock / camera block reaches down
+            beside the title and the first lines, wider than the top bar's
+            clearance covers, so they stop before it like the top bar does. */}
+        <div className="flex flex-col px-4 pt-2 gap-5 [[data-bw-posture=closed][data-bw-status-edge=right]_&]:pe-[max(1rem,var(--bw-status-clear-x))]">
           <Kicker overline={t('Account')} title={t('Check your email')} />
           <p role="status" className="text-[16px] leading-[1.45] tracking-[-0.003em] text-muted-foreground -mt-1 break-words">
             {sentBefore}
@@ -198,6 +228,7 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({
       </div>
       <form
         id="confirm-email-code-form"
+        ref={formRef}
         noValidate
         onSubmit={(e) => {
           e.preventDefault();
@@ -235,7 +266,14 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({
         </p>
         </div>
       </form>
-      <div className="shrink-0 px-4 pt-3 flex flex-col gap-3" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}>
+      {/* Keyboard up (keyboardInsets.ts marks <html>): Verify stays pinned just
+          above it, where keyboardInsets already keeps the field clear of a
+          pinned footer; the secondary buttons are reached by scrolling. Not in
+          the Duo's Laptop pose, where the field itself rests on that strip. */}
+      <div
+        ref={verifyBarRef}
+        className="shrink-0 px-4 pt-3 pb-3 bg-background [html[data-keyboard=open]:not([data-bw-posture=tabletop])_&]:sticky [html[data-keyboard=open]:not([data-bw-posture=tabletop])_&]:bottom-0 [html[data-keyboard=open]:not([data-bw-posture=tabletop])_&]:z-10 [html[data-keyboard=open]:not([data-bw-posture=tabletop])_&]:py-2"
+      >
         <PillButton
           type="submit"
           form="confirm-email-code-form"
@@ -245,6 +283,8 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({
         >
           {t('Verify')}
         </PillButton>
+      </div>
+      <div className="shrink-0 px-4 flex flex-col gap-3" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}>
         <PillButton variant="ghost" size="md" onClick={handleResend} loading={resend === 'sending'} disabled={resend === 'sent' || verifying}>
           {resend === 'sent' ? t('New code sent') : t('Send a new code')}
         </PillButton>
@@ -254,6 +294,13 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({
           </PillButton>
         )}
       </div>
+      {/* Keyboard up and the page scrolled: the top bar leaves behind the
+          status bar's own strip instead of sliding under the clock. */}
+      <div
+        aria-hidden="true"
+        className="hidden [html[data-keyboard=open]_&]:block fixed top-0 inset-x-0 z-10 bg-background"
+        style={{ height: 'var(--safe-top-inset, 0px)' }}
+      />
     </div>
   );
 };

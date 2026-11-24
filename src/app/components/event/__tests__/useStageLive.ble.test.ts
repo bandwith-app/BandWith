@@ -242,6 +242,33 @@ describe('useStageLive: click and playhead over Bluetooth', () => {
     expect(member.result.current.playhead.state?.on).toBe(true);
   });
 
+  it("no internet, linked to a leader whose setlist this phone lacks ('outdated'): its click and playhead run for as long as it is in reach, and stop once it is gone", () => {
+    vi.useFakeTimers();
+    net.up = false;
+    // An older download here: the leader's songs can't be followed, the link is up all the same.
+    air.memberStatus = 'outdated';
+    const leader = phone(true);
+    const member = phone(false);
+    act(() => leader.result.current.click.setOn(true, four));
+    act(() => leader.result.current.playhead.set(startPlayhead({ from: 'x', songId: 'row-1', bpm: 120, startAt: Date.now() })));
+    expect(member.result.current.click.state?.on).toBe(true);
+    // A whole song later the leader is still there: so is its beat.
+    act(() => vi.advanceTimersByTime(BLE_LEADER_GONE_MS * 20));
+    expect(member.result.current.click.state?.on).toBe(true);
+    expect(member.result.current.playhead.state?.on).toBe(true);
+    // The line still tells why the songs don't follow, and the follow button doesn't say "following".
+    expect(member.result.current.bluetooth).toBe('outdated');
+    expect(member.result.current.leaderHere).toBe(false);
+    // The leader out of reach: gone after the grace period, like for anyone else.
+    air.memberStatus = 'searching';
+    member.rerender();
+    act(() => vi.advanceTimersByTime(BLE_LEADER_GONE_MS - 1000));
+    expect(member.result.current.click.state?.on).toBe(true);
+    act(() => vi.advanceTimersByTime(1100));
+    expect(member.result.current.click.state).toBeNull();
+    expect(member.result.current.playhead.state).toBeNull();
+  });
+
   it('closing Stage on the leader stops its click and playhead over Bluetooth too', () => {
     net.up = false;
     const leader = phone(true);

@@ -1477,19 +1477,19 @@ const music: AreaText = {
           type: "table",
           head: ["Stato", "Significato"],
           rows: [
-            ["**Live**", "Connesso via internet: i membri ti seguono."],
-            ["**Live · BT**", "Connesso via internet e in trasmissione anche via Bluetooth."],
-            ["**Bluetooth**", "Niente internet: i membri vicini ti seguono via Bluetooth."],
-            ["**Offline**", "In questo momento non arriva niente alla band."],
+            ["**Live**", "Stai guidando: via internet oppure, senza internet, via Bluetooth (app per iPhone, iPad e Android)."],
+            ["**Offline**", "Niente internet e niente Bluetooth: in questo momento non arriva niente alla band."],
             ["**Salvataggio…**, **Salvato**, **Non salvato**", "Dopo un trascinamento: il nuovo ordine viene salvato poco dopo l’ultima mossa. **Salvato** compare per un attimo, poi torna lo stato."],
           ],
         },
         {
           type: "list",
           items: [
+            "Senza internet, una riga sotto lo stato dice chi è collegato a te via Bluetooth: **1 telefono collegato a te**, **3 telefoni collegati a te**, oppure **Nessun telefono collegato: chiedi alla band di aprire la modalità palco**. Finché internet funziona questa riga non compare.",
             "I membri che aprono la Modalità palco più tardi si allineano sul brano corrente.",
             "Un nuovo ordine vale per tutti, anche per i membri che hanno smesso di seguirti, e viene salvato nella scaletta del gig. Il gig dietro la Modalità palco lo mostra subito.",
             "Chiudendo la Modalità palco viene salvato uno spostamento ancora in attesa di salvataggio.",
+            "Chiudendo la Modalità palco si fermano anche il conteggio, il click e Segui il tempo che avevi avviato, su tutti i telefoni, via internet e via Bluetooth.",
             "Se più admin guidano insieme, vince l’ultima mossa.",
             "Togliere un brano vale solo per stasera: la scaletta del gig lo conserva. I membri che ti seguono lo vedono barrato e lo saltano anche loro, via internet o via Bluetooth. Il tuo telefono ricorda i brani tolti per quel gig se chiudi e riapri la Modalità palco.",
           ],
@@ -1522,16 +1522,16 @@ const music: AreaText = {
         {
           type: "list",
           items: [
-            "**· BT** dopo l’etichetta vuol dire che sei collegato al leader via Bluetooth.",
+            "Senza internet, una riga sotto il pulsante dice come sei collegato al leader: **Collegato al telefono del leader** vuol dire che lo segui via Bluetooth, **Non collegato: chiedi al leader di aprire la modalità palco** vuol dire che il tuo telefono non l’ha ancora trovato. Finché internet funziona questa riga non compare.",
             "**Offline** vuol dire che in questo momento non arriva niente al tuo telefono.",
             "I membri non possono spostare il brano degli altri né cambiare l’ordine.",
             "Se compare **L’app del leader non è aggiornata: chiedi di aggiornarla**, stai comunque seguendo: al leader basta installare l’ultima versione di BandWith.",
             "Se compare **La band ha cambiato chi può guidare: collegati a internet una volta per seguire il leader.**, collegati una volta (Wi-Fi o dati) con Stage aperto: il telefono riceve la modifica e torna a seguire il leader.",
-            "Se compare **Leader non ancora verificato: collegati a internet una volta per controllarlo.**, stai seguendo, ma il tuo telefono non può ancora controllare che il leader sia un admin della band: collegati una volta (Wi-Fi o dati) con Stage aperto.",
-            "Se compare **Leader non ancora verificato: chiedi al leader di collegarsi a internet una volta.**, stai seguendo, ma il telefono del leader non è più stato online da quando Stage ha la nuova protezione: il leader si collega una volta con Stage aperto.",
+            "Se compare **Leader non ancora verificato: collegati a internet una volta per controllarlo.**, stai seguendo, ma il tuo telefono non può ancora controllare che il leader sia un admin della band: collegati una volta (Wi-Fi o dati) con Stage aperto. Fino ad allora il conteggio non ti arriva senza internet.",
+            "Se compare **Leader non ancora verificato: chiedi al leader di collegarsi a internet una volta.**, stai seguendo, ma il telefono del leader non è più stato online da quando Stage ha la nuova protezione: il leader si collega una volta con Stage aperto. Fino ad allora il conteggio non ti arriva senza internet.",
             "Se guidi tu e compare **I telefoni con l'app aggiornata non possono ancora verificarti: collegati a internet una volta con la modalità palco aperta.**, senza internet ti possono seguire solo i telefoni con versioni precedenti di BandWith: collegati una volta (Wi-Fi o dati) con Stage aperto e i telefoni della band potranno verificare che sei tu.",
             "Se guidi tu e compare **Non sei più admin di questa band: deve guidare un altro admin.**, il tuo ruolo nella band è cambiato: i telefoni con l'ultima versione di BandWith non ti seguono. Chiedi a un admin di aprire la modalità palco e guidare.",
-            "**Versioni precedenti dell'app:** quando cambia il ruolo di un admin (diventa membro o lascia la band), un concerto i cui leader erano già verificati aspetta che un admin con l'ultima versione lo apra online una volta. Fino ad allora, i telefoni con l'ultima versione mostrano **La band ha cambiato chi può guidare: collegati a internet una volta per seguire il leader.** per quel concerto e senza internet non seguono nessuno. I concerti che nessuno ha ancora guidato con l'ultima versione non cambiano.",
+            "Versioni precedenti dell'app: quando cambia il ruolo di un admin (diventa membro o lascia la band), un concerto i cui leader erano già verificati aspetta che un admin con l'ultima versione lo apra online una volta. Fino ad allora, i telefoni con l'ultima versione mostrano **La band ha cambiato chi può guidare: collegati a internet una volta per seguire il leader.** per quel concerto e senza internet non seguono nessuno. I concerti che nessuno ha ancora guidato con l'ultima versione non cambiano.",
           ],
         },
       ],
@@ -1569,6 +1569,7 @@ const music: AreaText = {
             "I battiti per battuta vengono dal **Tempo (metro)** del brano, altrimenti dalla sua griglia accordi, altrimenti 4/4. In 6/8 e 12/8 lampeggia sui movimenti puntati. Per dare il conteggio alla band, vedi [[count-in]].",
             "Un brano senza BPM non può avviare il click (**Nessun BPM per questo brano**). Aggiungi il BPM nel modulo del brano.",
             "Passando a un altro brano, il click del brano precedente si nasconde.",
+            "Quando il leader chiude la Modalità palco, il click della band si ferma su tutti i telefoni, via internet e via Bluetooth.",
             "I telefoni restano a tempo entro circa 20–40 ms: va bene per un conteggio iniziale e come riferimento di tempo, non come click in cuffia.",
             "Senza internet, il click del leader arriva comunque ai telefoni collegati al suo via Bluetooth, nelle app per iPhone, iPad e Android. In Modalità palco una riga dice allora **Collegato al telefono del leader**. Se il leader resta fuori portata per più di 10 secondi, il click si ferma sul tuo telefono. Riparte a tempo quando torna a portata. Sul web il click della band ha bisogno di internet. Vedi [[stage-bluetooth-sync]].",
           ],
@@ -1653,7 +1654,7 @@ const music: AreaText = {
             "Con **2 battute** impostate sul brano, la prima battuta conta a metà tempo e la seconda a tempo.",
             "Un brano che parte prima del movimento 1 (per esempio **Parte sul movimento 4**) ha il **VIA** sulla sua prima nota, non sull’1.",
             "La band conta alla rovescia (4 3 2 1, il modo predefinito) o in avanti (1 2 3 4). Lo sceglie il leader sotto **Per tutta la band** nelle opzioni del conteggio, e ogni telefono della band conta così.",
-            "Se **Segui il tempo** è attivo, il brano inizia a scorrere dalla battuta 1, quando finisce il conteggio. Se il click è in corso, continua a tempo.",
+            "Se **Segui il tempo** è attivo, il brano inizia a scorrere dalla battuta 1, quando finisce il conteggio. Se il click è in corso, continua a tempo. Il conteggio non avvia mai il click da solo.",
           ],
         },
         {
@@ -1676,10 +1677,22 @@ const music: AreaText = {
         },
         {
           type: "list",
+          title: "Senza internet",
+          items: [
+            "Nelle app per iPhone, iPad e Android il conteggio passa anche via Bluetooth: ogni telefono collegato a quello del leader mostra lo stesso conto alla rovescia sullo stesso movimento. **Ferma il conteggio** lo ferma su tutti i telefoni, e **Conta lo stesso** funziona allo stesso modo.",
+            "Su ogni telefono servono il Bluetooth acceso e il gig aperto una volta con internet prima della serata: vedi [[stage-bluetooth-sync]]. In un browser il conteggio ha bisogno di internet.",
+            "Un telefono che si collega a metà conteggio entra sul movimento giusto, mai dall’inizio. Se si collega troppo tardi, non mostra niente.",
+            "Se il leader esce dalla portata durante il conteggio, il conto alla rovescia arriva da solo fino al **VIA**. Un conteggio ancora sullo schermo dopo 10 secondi fuori portata sparisce.",
+            "Su ogni telefono serve l’ultima versione di BandWith. Un telefono con una versione precedente continua a seguire i brani e il click via Bluetooth, ma senza internet non mostra il conto alla rovescia; se la versione precedente è quella del leader, non lo mostra nessuno.",
+            "Se il leader perde internet a metà conteggio, **Ferma il conteggio** non arriva a un membro che è ancora online: quel telefono conta fino al **VIA**.",
+          ],
+        },
+        {
+          type: "list",
           title: "Buono a sapersi",
           items: [
             "Un telefono che riceve il messaggio in ritardo si unisce al conto alla rovescia sul movimento giusto.",
-            "Il conto alla rovescia ha bisogno di internet: non viene inviato via Bluetooth. Senza campo lo mostra solo il telefono del leader. I telefoni collegati via Bluetooth ricevono comunque il click, se il leader lo ha in corso, e Segui il tempo dalla battuta 1.",
+            "Passare a un altro brano, o chiudere la Modalità palco, ferma su tutti i telefoni un conteggio ancora in corso.",
             "I telefoni restano a tempo entro circa 20–40 ms.",
             "Un membro può chiudere il conto alla rovescia sul proprio schermo con **Nascondi su questo telefono**.",
           ],
@@ -1731,7 +1744,7 @@ const music: AreaText = {
             "Se la band allunga o accorcia una parte, tocca la battuta, la riga o la sezione dove siete: tutti saltano lì.",
             "Tocca **Ripeti** per ripetere la sezione corrente (un vamp, un assolo). Tocca **Lascia** per andare avanti.",
             "Su una corona il brano aspetta e la riga dice **In attesa del leader**: tocca **Prosegui**.",
-            "Tocca **Ferma** per finire. Anche passare a un altro brano lo ferma.",
+            "Tocca **Ferma** per finire. Anche passare a un altro brano lo ferma, e così chiudere la Modalità palco.",
           ],
         },
         {
@@ -1840,26 +1853,35 @@ const music: AreaText = {
       body: [
         {
           type: "p",
-          text: "Nelle app per iPhone, iPad e Android, il telefono dell’admin invia anche via Bluetooth il brano corrente, l’ordine, il click e il punto del brano (Segui il tempo). I telefoni dei membri vicini li ricevono senza abbinamento e senza internet. Fa eccezione il conteggio: ha bisogno di internet.",
+          text: "Nelle app per iPhone, iPad e Android, il telefono dell’admin invia anche via Bluetooth il brano corrente, l’ordine, il click, il conteggio e il punto del brano (Segui il tempo). I telefoni dei membri vicini li ricevono senza abbinamento e senza internet.",
         },
         {
           type: "steps",
           title: "Preparati prima del gig",
           items: [
             "Ognuno ha la scaletta sul telefono: di’ sì al download (vedi [[live-mode-offline]]) oppure apri il gig una volta mentre sei online. Insieme arriva la chiave Bluetooth del gig.",
+            "Per il conteggio, ogni telefono apre anche il gig una volta con internet, per primo quello del leader: è così che un telefono può controllare che il conteggio arrivi da un admin della band.",
             "Attiva il Bluetooth e consenti a BandWith di usarlo.",
-            "Sul palco, tutti aprono la Modalità palco. Il leader mostra **Bluetooth** o **Live · BT**; i membri mostrano **· BT** dopo l’etichetta di chi seguono.",
+            "Sul palco, tutti aprono la Modalità palco. Senza internet, una riga sotto lo stato del leader e sotto il pulsante dei membri dice com’è il collegamento: il leader vede per esempio **3 telefoni collegati a te**, i membri vedono **Collegato al telefono del leader**. Finché internet funziona la riga non compare.",
           ],
         },
         {
           type: "list",
           title: "Quando non si collega",
           items: [
-            "“Il Bluetooth è spento o non consentito. Attivalo in Impostazioni per restare sincronizzato senza internet.”",
-            "“Questo telefono ha una scaletta vecchia. Collegati a internet una volta per seguire via Bluetooth.” Compare quando sono stati aggiunti o tolti brani dopo l’ultima volta che il telefono ha caricato la scaletta. Un nuovo ordine da solo va bene.",
-            "“L'ora di questo telefono e quella del leader sono molto diverse. Imposta data e ora automatiche su entrambi.” I messaggi del leader portano la sua ora; se è molto avanti rispetto a questo telefono non vengono seguiti, perché un telefono potrebbe falsificarla.",
+            "**Consenti il Bluetooth per restare con la band quando cade internet.** (il leader vede **Consenti il Bluetooth così la band ti segue anche quando cade internet.**): BandWith non ha il permesso di usare il Bluetooth. Tocca il pulsante accanto: **Apri Impostazioni** su iPhone e iPad, **Consenti** su Android. Questa riga compare anche quando internet funziona.",
+            "**Bluetooth spento: attivalo dal Centro di Controllo per restare sincronizzato senza internet.** su iPhone e iPad. Su Android dice **Bluetooth spento: attivalo per restare sincronizzato senza internet.**, con il pulsante **Attiva**.",
+            "**Non collegato: chiedi al leader di aprire la modalità palco**: il tuo telefono non ha ancora trovato quello del leader. Il leader vede **Nessun telefono collegato: chiedi alla band di aprire la modalità palco**.",
+            "**Questo telefono ha una scaletta vecchia: collegati a internet una volta per seguire il leader.** Compare quando sono stati aggiunti o tolti brani dopo l’ultima volta che il telefono ha caricato la scaletta. Un nuovo ordine da solo va bene. Fino ad allora questo telefono non segue i brani del leader. Il click, il conteggio e Segui il tempo del leader gli arrivano comunque via Bluetooth finché il telefono del leader è a portata. Vai a mano al brano del leader: il click e Segui il tempo compaiono su quel brano.",
+            "**L'ora di questo telefono e quella del leader sono molto diverse: imposta data e ora automatiche su entrambi.** I messaggi del leader portano la sua ora; se è molto avanti rispetto a questo telefono non vengono seguiti, perché un telefono potrebbe falsificarla.",
+            "**Questo telefono non può seguire il leader senza internet.** (il leader vede **Questo telefono non può guidare la band senza internet.**): il Bluetooth di questo telefono non è in grado di farlo.",
             "Quando qualcuno lascia la band, ogni gig in arrivo riceve una nuova chiave Bluetooth. I telefoni con una versione vecchia di BandWith tengono la chiave vecchia e senza internet non trovano gli altri: dopo aver aggiornato BandWith, apri il gig una volta mentre sei online.",
+            "Per una riga che dice che il leader non è ancora verificato, o che la band ha cambiato chi può guidare, vedi [[follow-in-stage-mode]].",
           ],
+        },
+        {
+          type: "p",
+          text: "Il conteggio passa via Bluetooth solo tra telefoni con l’ultima versione di BandWith: un telefono con una versione precedente continua a seguire i brani e il click, e senza internet non mostra il conto alla rovescia. Vedi [[count-in]].",
         },
         {
           type: "note",
@@ -2044,10 +2066,12 @@ const music: AreaText = {
           type: "list",
           title: "Cosa vedi",
           items: [
-            "Una barra in alto, per esempio **Sei offline · 2 modifiche in attesa di segnale**. Se non c’è niente in attesa dice **Sei offline · dati in cache**.",
+            "Una barra in alto conta tutto ciò che aspetta su questo telefono, per esempio **Sei offline · 2 modifiche in attesa di segnale** (con una sola, **Sei offline · 1 modifica in attesa di segnale**). Se non c’è niente in attesa dice **Sei offline · dati in cache**. Compare anche sopra la Modalità palco e la Modalità live.",
+            "La barra conta queste modifiche insieme a gig e prove creati, modificati o eliminati senza campo (vedi [[offline-mode]]). I messaggi di chat non sono nel numero: ogni messaggio dice **In attesa di connessione** o **Non inviato** nella sua chat.",
+            "Un’etichetta conta solo la parte di palco, live e prove, per esempio **2 modifiche in attesa di segnale**: se aspetta anche una modifica a un gig, il numero della barra è più alto. In Modalità palco e Modalità live l’etichetta sta sotto il titolo, dopo **Offline · contenuti di …**. Nella pagina del gig o della prova sta sotto la scaletta, nella riga dell’offline.",
             "Dopo che il leader trascina un brano senza campo, lo stato dice **Salvato su questo telefono**, poi **Salvato** quando arriva alla scaletta della band.",
-            "Quando torna il campo, la barra dice **Di nuovo online · invio di 2 modifiche**, poi **Di nuovo online · tutto aggiornato**.",
-            "Per inviare subito senza aspettare, tocca **Invia ora** nella barra.",
+            "Quando torna il campo, la barra dice **Di nuovo online · invio di 2 modifiche**, poi **Di nuovo online · tutto aggiornato**, e l’etichetta sparisce. Per inviare subito, tocca **Invia ora** nella barra: invia entrambi i tipi. Se una modifica a un gig o a una prova aspetta un nuovo tentativo, la barra dice **Di nuovo online · a breve l’invio di 1 modifica**. Finché il server non ha risposto, l’etichetta dice **2 modifiche in attesa di invio**.",
+            "Una nota, un suggerimento o un nuovo ordine che il server rifiuta resta sul telefono: l’etichetta dice **1 modifica non salvata**. Toccala per vederlo, con **Copia** e **Rimuovi**.",
           ],
         },
         {
@@ -2056,6 +2080,7 @@ const music: AreaText = {
           items: [
             "Appena torna il campo, quando riapri l’app, e ogni 30 secondi finché c’è qualcosa in attesa.",
             "Chiudere l’app non perde ciò che è in attesa. Parte la prossima volta che apri l’app con il campo.",
+            "Se esci dall’account mentre qualcosa è ancora in attesa, l’app chiede prima: **Invia ora** lo invia. Vedi [[sign-out]].",
             "Una nota di prova che il server rifiuta non viene buttata via. La Modalità live dice **Una nota non è stata salvata**, e le parole della nota sono elencate nelle note della prova e in Impostazioni › Offline e live, con **Copia** e **Rimuovi**.",
           ],
         },
@@ -2124,7 +2149,7 @@ const music: AreaText = {
     },
     {
       q: "La Modalità palco funziona senza internet?",
-      a: "Nelle app per telefono e tablet sì. Di’ sì una volta al download e le scalette dei tuoi prossimi 7 giorni restano sul telefono; il telefono del leader tiene la band sullo stesso brano via Bluetooth. Sul web la Modalità palco ha bisogno di internet.",
+      a: "Nelle app per telefono e tablet sì. Di’ sì una volta al download e le scalette dei tuoi prossimi 7 giorni restano sul telefono; il telefono del leader tiene la band sullo stesso brano via Bluetooth, con il click e il conteggio. Sul web la Modalità palco ha bisogno di internet.",
     },
     {
       q: "Il mio telefono scarica le scalette senza chiedere?",

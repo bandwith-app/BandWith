@@ -786,17 +786,17 @@
   <table class="grid">
     <thead><tr><th>Stato</th><th>Significato</th></tr></thead>
     <tbody>
-      <tr><td><b class="ui">Live</b></td><td>Connesso via internet: i membri lo seguono.</td></tr>
-      <tr><td><b class="ui">Live · BT</b></td><td>Connesso via internet e in trasmissione anche via Bluetooth.</td></tr>
-      <tr><td><b class="ui">Bluetooth</b></td><td>Niente internet: i membri vicini lo seguono via Bluetooth.</td></tr>
-      <tr><td><b class="ui">Offline</b></td><td>Al momento non arriva nulla alla band.</td></tr>
+      <tr><td><b class="ui">Live</b></td><td>Il leader sta guidando: via internet oppure, senza internet, via Bluetooth (app per iPhone, iPad e Android).</td></tr>
+      <tr><td><b class="ui">Offline</b></td><td>Niente internet e niente Bluetooth: al momento non arriva nulla alla band.</td></tr>
       <tr><td><b class="ui">Saving…</b>, <b class="ui">Saved</b>, <b class="ui">Not saved</b></td><td>Dopo un trascinamento: il nuovo ordine viene salvato poco dopo l'ultimo spostamento. <b class="ui">Saved</b> compare per un attimo, poi torna lo stato.</td></tr>
     </tbody>
   </table>
   <ul>
+    <li>Senza internet, una riga sotto lo stato dice chi è collegato al leader via Bluetooth: <b class="ui">1 phone connected to you</b>, <b class="ui">3 phones connected to you</b> oppure <b class="ui">No phones connected yet: ask the band to open Stage</b>. Finché internet funziona questa riga non compare.</li>
     <li>I membri che aprono lo Stage mode più tardi si allineano al brano corrente.</li>
     <li>Un nuovo ordine vale per tutti, anche per chi ha smesso di seguire, e viene salvato nella setlist del gig; il gig dietro lo Stage mode lo mostra subito.</li>
     <li>Chiudendo lo Stage mode viene salvato anche uno spostamento ancora in attesa.</li>
+    <li>Chiudendo lo Stage mode si fermano anche il count-in, il click e Follow the tempo avviati dal leader, su tutti i telefoni, via internet e via Bluetooth.</li>
     <li>Se più admin guidano contemporaneamente, prevale lo spostamento più recente.</li>
     <li>Togliere un brano vale solo per la serata: la setlist del gig lo conserva. I membri che seguono lo vedono barrato e lo saltano anche loro, via internet o Bluetooth. Il telefono ricorda i brani tolti per quel gig anche se si chiude e si riapre lo Stage mode.</li>
   </ul>
@@ -811,7 +811,7 @@
     <li>Toccando <b class="ui">Follow leader</b> torna al brano del leader e riprende a seguirlo.</li>
   </ol>
   <ul>
-    <li><b class="ui">· BT</b> dopo l'etichetta indica il collegamento al leader via Bluetooth.</li>
+    <li>Senza internet, una riga sotto il pulsante dice com'è il collegamento al leader: <b class="ui">Connected to the leader's phone</b> indica che lo si segue via Bluetooth, <b class="ui">Not connected: ask the leader to open Stage</b> che il telefono non l'ha ancora trovato. Finché internet funziona questa riga non compare.</li>
     <li><b class="ui">Offline</b> indica che al momento nulla può raggiungere il telefono.</li>
     <li>Il membro non può spostare il brano degli altri né cambiare l'ordine.</li>
   </ul>
@@ -836,6 +836,7 @@
     <li>I battiti per battuta derivano dal <b class="ui">Time signature</b> del brano, altrimenti dalla griglia accordi, altrimenti 4/4. In 6/8 e 12/8 lampeggia sui movimenti puntati. Per l'attacco della band vedi <a data-ref="count-in">Contare l'attacco della band</a>.</li>
     <li>Un brano senza BPM non può avviare il click (<b class="ui">No BPM for this song</b>); il BPM si aggiunge nel modulo del brano.</li>
     <li>Passando a un altro brano, il click del brano precedente si nasconde.</li>
+    <li>Quando il leader chiude lo Stage mode, il click della band si ferma su tutti i telefoni, via internet e via Bluetooth.</li>
     <li>I telefoni restano allineati entro circa 20–40 ms: adatto a un count-in e come riferimento di tempo, non come click in-ear.</li>
     <li>Senza internet il click del leader arriva comunque ai telefoni collegati al suo via Bluetooth, nelle app per iPhone, iPad e Android. In Stage mode una riga dice allora <b class="ui">Connected to the leader's phone</b>. Se il leader resta fuori portata per più di 10 secondi, il click si ferma sul proprio telefono; riparte a tempo quando il leader torna a portata. Sul web il click della band richiede internet (vedi <a data-ref="stage-bluetooth-sync">Stage mode senza internet (Bluetooth)</a>).</li>
   </ul>
@@ -887,11 +888,20 @@
     <li>Con <b class="ui">2 bars</b> sul brano, la prima battuta conta a metà tempo e la seconda a tempo.</li>
     <li>Un brano che parte prima del movimento 1 (ad esempio <b class="ui">Starts on beat 4</b>) ha il <b class="ui">GO</b> sulla sua prima nota, non sull'1.</li>
     <li>La band conta alla rovescia (4 3 2 1, il predefinito) o in avanti (1 2 3 4). Lo sceglie il leader sotto <b class="ui">For the whole band</b> nelle opzioni del count-in, e ogni telefono della band conta così.</li>
-    <li>Con <b class="ui">Follow the tempo</b> attivo, il brano inizia a scorrere dalla battuta 1, quando finisce il conto; un click già avviato prosegue a tempo.</li>
+    <li>Con <b class="ui">Follow the tempo</b> attivo, il brano inizia a scorrere dalla battuta 1, quando finisce il conto; un click già avviato prosegue a tempo. Il count-in non avvia mai il click da solo.</li>
     <li>Ogni telefono ha le sue opzioni: in Stage mode le apre <b class="ui">Count-in</b>, sulla stessa riga di <b class="ui">Setlist</b>. <b class="ui">Vibrate on every beat</b> è più forte sul primo movimento della battuta. <b class="ui">Sound in headphones</b> vale <b class="ui">Off</b> o <b class="ui">Click</b>: il click suona solo in cuffia o negli in-ear, a meno che non sia attivo <b class="ui">Also through the phone’s speaker</b> (in un browser serve quell'interruttore per sentirlo).</li>
     <li>Un brano con <b class="ui">Played with a backing track</b> non ha il pulsante <b class="ui">Count in</b>, e nemmeno un brano che la regia sta suonando. Il leader può comunque contare l'attacco: apre le opzioni del count-in e tocca <b class="ui">Count in anyway</b>. Un brano senza BPM non può avere il count-in.</li>
     <li>Un telefono che riceve il messaggio in ritardo entra nel conto sul movimento giusto. I telefoni restano allineati entro circa 20–40 ms. Un membro può chiudere il conto sul proprio schermo con <b class="ui">Hide on this phone</b>.</li>
-    <li>Il conto alla rovescia richiede internet: non viene trasmesso via Bluetooth. Senza segnale lo mostra solo il telefono del leader. I telefoni collegati via Bluetooth ricevono comunque il click, se il leader lo ha avviato, e Follow the tempo dalla battuta 1.</li>
+    <li>Passare a un altro brano, o chiudere lo Stage mode, ferma su tutti i telefoni un count-in ancora in corso.</li>
+  </ul>
+  <p class="steps-title">Senza internet</p>
+  <ul>
+    <li>Nelle app per iPhone, iPad e Android il count-in passa anche via Bluetooth: ogni telefono collegato a quello del leader mostra lo stesso conto alla rovescia sullo stesso movimento. <b class="ui">Stop the count-in</b> lo ferma su tutti i telefoni, e <b class="ui">Count in anyway</b> funziona allo stesso modo.</li>
+    <li>Su ogni telefono servono il Bluetooth acceso e il gig aperto una volta con internet prima della serata (vedi <a data-ref="stage-bluetooth-sync">Stage mode senza internet (Bluetooth)</a>). In un browser il count-in richiede internet.</li>
+    <li>Un telefono che si collega a metà conto entra sul movimento giusto, mai dall'inizio; se si collega troppo tardi non mostra nulla.</li>
+    <li>Se il leader esce dalla portata durante il conto, il conto alla rovescia arriva da solo fino al <b class="ui">GO</b>. Un conto ancora sullo schermo dopo 10 secondi fuori portata sparisce.</li>
+    <li>Su ogni telefono serve l'ultima versione di BandWith. Un telefono con una versione precedente continua a seguire i brani e il click via Bluetooth, ma senza internet non mostra il conto alla rovescia; se la versione precedente è quella del leader, non lo mostra nessuno.</li>
+    <li>Se il leader perde internet a metà conto, <b class="ui">Stop the count-in</b> non arriva a un membro ancora online: quel telefono conta fino al <b class="ui">GO</b>.</li>
   </ul>
   <div class="roles">
     <div data-role="admin">Avvia e ferma il count-in per tutta la band, e sceglie se la band conta alla rovescia o in avanti.</div>
@@ -922,7 +932,7 @@
     <li>Se la band suona una parte più lunga o più corta, si tocca la battuta, la riga o la sezione in cui si è: tutti saltano lì.</li>
     <li><b class="ui">Hold</b> ripete la sezione corrente (un vamp, un assolo); <b class="ui">Let go</b> fa proseguire.</li>
     <li>Su una corona il brano aspetta e la riga dice <b class="ui">Waiting for the leader</b>: si tocca <b class="ui">Go on</b>.</li>
-    <li><b class="ui">Stop</b> lo termina; passare a un altro brano lo ferma comunque.</li>
+    <li><b class="ui">Stop</b> lo termina; anche passare a un altro brano o chiudere lo Stage mode lo ferma.</li>
   </ol>
   <ul>
     <li>Solo il leader sposta il punto della band; i membri accendono o spengono la vista sul proprio telefono.</li>
@@ -982,17 +992,24 @@
   <div class="devnote" data-devices="web">Su un portatile nel browser, l’audio lo tiene il browser: va usato sempre lo stesso browser, senza cancellarne i dati prima del gig. Anche i link di Google Drive si scaricano, se il file è condiviso come “Chiunque abbia il link”.</div>
 
   <h3 id="art-stage-bluetooth-sync" data-roles="admin,member">Stage mode senza internet (Bluetooth)</h3>
-  <p>Nelle app per iPhone, iPad e Android il telefono dell'admin trasmette anche via Bluetooth il brano corrente, l'ordine, il click e il punto del brano (Follow the tempo). I telefoni dei membri nelle vicinanze li ricevono senza abbinamento e senza internet. Fa eccezione il count-in: richiede internet.</p>
+  <p>Nelle app per iPhone, iPad e Android il telefono dell'admin trasmette anche via Bluetooth il brano corrente, l'ordine, il click, il count-in e il punto del brano (Follow the tempo). I telefoni dei membri nelle vicinanze li ricevono senza abbinamento e senza internet.</p>
   <p class="steps-title">Preparazione prima del gig</p>
   <ol class="steps">
     <li>Tutti hanno la setlist sul telefono: con un sì al download (vedi <a data-ref="live-mode-offline">Stage e Live mode senza segnale</a>) o aprendo il gig una volta online. La chiave Bluetooth del gig arriva con lei.</li>
+    <li>Per il count-in, ogni telefono apre anche il gig una volta con internet, per primo quello del leader: è così che un telefono può controllare che il conto arrivi da un admin della band.</li>
     <li>Si attiva il Bluetooth e si consente a BandWith di usarlo.</li>
-    <li>Sul palco tutti aprono lo Stage mode. Il leader mostra <b class="ui">Bluetooth</b> o <b class="ui">Live · BT</b>; i membri mostrano <b class="ui">· BT</b> dopo l'etichetta del follow.</li>
+    <li>Sul palco tutti aprono lo Stage mode. Senza internet, una riga sotto lo stato del leader e sotto il pulsante dei membri dice com'è il collegamento: il leader vede ad esempio <b class="ui">3 phones connected to you</b>, i membri vedono <b class="ui">Connected to the leader's phone</b>. Finché internet funziona la riga non compare.</li>
   </ol>
   <p class="steps-title">Se non si collega</p>
   <ul>
-    <li><b class="ui">“Bluetooth is off or not allowed. Turn it on in Settings to stay in sync without internet.”</b></li>
-    <li><b class="ui">“This phone has an older setlist. Connect to the internet once to follow over Bluetooth.”</b> Compare quando sono stati aggiunti o tolti brani dopo l'ultimo caricamento della setlist sul telefono; un semplice cambio d'ordine non crea problemi.</li>
+    <li><b class="ui">Allow Bluetooth to stay with the band when the internet drops.</b> (il leader vede <b class="ui">Allow Bluetooth so the band can follow you when the internet drops.</b>): BandWith non ha il permesso di usare il Bluetooth. Il pulsante accanto è <b class="ui">Open Settings</b> su iPhone e iPad, <b class="ui">Allow</b> su Android. Questa riga compare anche quando internet funziona.</li>
+    <li><b class="ui">Bluetooth is off: turn it on in Control Center to stay in sync without internet.</b> su iPhone e iPad; su Android <b class="ui">Bluetooth is off: turn it on to stay in sync without internet.</b>, con il pulsante <b class="ui">Turn on</b>.</li>
+    <li><b class="ui">Not connected: ask the leader to open Stage</b>: il telefono non ha ancora trovato quello del leader. Il leader vede <b class="ui">No phones connected yet: ask the band to open Stage</b>.</li>
+    <li><b class="ui">This phone has an older setlist: connect to the internet once to follow the leader.</b> Compare quando sono stati aggiunti o tolti brani dopo l'ultimo caricamento della setlist sul telefono; un semplice cambio d'ordine non crea problemi. Fino ad allora quel telefono non segue i brani del leader. Il click, il count-in e Follow the tempo del leader gli arrivano comunque via Bluetooth finché il telefono del leader è a portata. Al brano del leader si va a mano: il click e Follow the tempo compaiono su quel brano.</li>
+    <li><b class="ui">This phone's time and the leader's are far apart: set both to automatic date and time.</b> I messaggi del leader portano la sua ora; se è molto avanti rispetto a quella del telefono non vengono seguiti, perché un telefono potrebbe falsificarla.</li>
+    <li><b class="ui">This phone can't follow the leader without internet.</b> (il leader vede <b class="ui">This phone can't lead the band without internet.</b>): il Bluetooth di quel telefono non è in grado di farlo.</li>
+    <li>Finché una riga dice <b class="ui">Leader not verified yet: connect to the internet once to check it.</b> o <b class="ui">Leader not verified yet: ask the leader to connect to the internet once.</b>, il telefono segue i brani ma senza internet non riceve il count-in. Basta un passaggio online con lo Stage aperto: del telefono del membro nel primo caso, di quello del leader nel secondo.</li>
+    <li>Il count-in passa via Bluetooth solo tra telefoni con l'ultima versione di BandWith: un telefono con una versione precedente continua a seguire i brani e il click, e senza internet non mostra il conto alla rovescia (vedi <a data-ref="count-in">Contare l'attacco della band</a>).</li>
   </ul>
   <aside class="note privacy">Ogni gig ha una propria chiave segreta, consegnata solo ai membri attivi della band. Solo i telefoni con la chiave trovano il leader e ne accettano i messaggi.</aside>
   <div class="devnote" data-devices="web">Niente sincronizzazione Bluetooth e niente copia della setlist sul dispositivo: sul web lo Stage mode richiede internet.</div>
@@ -1095,14 +1112,18 @@
   </ul>
   <p class="steps-title">Cosa si vede</p>
   <ul>
-    <li>Una barra in alto, ad es. <b class="ui">You’re offline · 2 changes waiting for signal</b>; senza nulla in attesa, <b class="ui">You’re offline · showing cached info</b>.</li>
+    <li>Una barra in alto conta tutto ciò che aspetta sul telefono, ad es. <b class="ui">You’re offline · 2 changes waiting for signal</b> (con una sola, <b class="ui">You’re offline · 1 change waiting for signal</b>); senza nulla in attesa, <b class="ui">You’re offline · showing cached info</b>. Compare anche sopra lo Stage e il Live mode.</li>
+    <li>La barra conta queste modifiche insieme a gig e prove creati, modificati o eliminati senza segnale (vedi <a data-ref="offline-mode">Usare BandWith offline</a>). I messaggi di chat non sono nel numero: ogni messaggio dice <b class="ui">Waiting for connection</b> o <b class="ui">Not sent</b> nella sua chat.</li>
+    <li>Un'etichetta conta solo la parte di Stage, Live e prove, ad es. <b class="ui">2 changes waiting for signal</b>: se aspetta anche una modifica a un gig, il numero della barra è più alto. Nello Stage e nel Live mode l'etichetta sta sotto il titolo, dopo <b class="ui">Offline · content from …</b>; nella pagina del gig o della prova sta sotto la setlist, nella riga dell'offline.</li>
     <li>Dopo che il leader ha trascinato un brano senza segnale, lo stato indica <b class="ui">Saved on this phone</b>, poi <b class="ui">Saved</b> quando arriva alla setlist della band.</li>
-    <li>Al ritorno del segnale: <b class="ui">Back online · sending 2 changes</b>, poi <b class="ui">Back online · up to date</b>. <b class="ui">Send now</b> nella barra invia subito.</li>
+    <li>Al ritorno del segnale la barra dice <b class="ui">Back online · sending 2 changes</b>, poi <b class="ui">Back online · up to date</b>, e l'etichetta sparisce. <b class="ui">Send now</b> nella barra invia subito entrambi i tipi. Se una modifica a un gig o a una prova aspetta un nuovo tentativo, la barra dice <b class="ui">Back online · 1 change will be sent shortly</b>. Finché il server non ha risposto, l'etichetta dice <b class="ui">2 changes waiting to send</b>.</li>
+    <li>Una nota, un suggerimento o un nuovo ordine che il server rifiuta resta sul telefono: l'etichetta dice <b class="ui">1 change wasn’t saved</b>; toccandola lo si vede, con <b class="ui">Copy</b> e <b class="ui">Remove</b>.</li>
   </ul>
   <p class="steps-title">Quando parte</p>
   <ul>
     <li>Appena torna il segnale, quando si riapre l'app e ogni 30 secondi finché qualcosa è in attesa.</li>
     <li>Chiudere l'app non perde nulla: parte alla prossima apertura con segnale.</li>
+    <li>Uscendo dall'account con qualcosa ancora in attesa, l'app chiede prima: <b class="ui">Send now</b> lo invia (vedi <a data-ref="sign-out">Uscire dall'account</a>).</li>
     <li>Una nota di prova che il server rifiuta non viene buttata via. Il Live mode dice <b class="ui">A note wasn't saved</b>, e le parole della nota sono elencate nelle note della prova e in Settings › <b class="ui">Offline &amp; live</b>, con <b class="ui">Copy</b> e <b class="ui">Remove</b>.</li>
   </ul>
   <aside class="note tip">I membri vicini vedono subito il nuovo ordine del leader via Bluetooth, prima ancora che sia salvato.</aside>
@@ -1123,7 +1144,7 @@
     <dt>La band riceve una notifica per ogni brano spostato?</dt>
     <dd>No. Nulla viene inviato prima del salvataggio; poi ognuno riceve un'unica push che riassume le modifiche.</dd>
     <dt>Lo Stage mode funziona senza internet?</dt>
-    <dd>Nelle app per telefono e tablet sì. Con un sì al download le setlist dei prossimi 7 giorni restano sul telefono, e il telefono del leader tiene la band sullo stesso brano via Bluetooth. Sul web serve internet.</dd>
+    <dd>Nelle app per telefono e tablet sì. Con un sì al download le setlist dei prossimi 7 giorni restano sul telefono, e il telefono del leader tiene la band sullo stesso brano via Bluetooth, con il click e il count-in. Sul web serve internet.</dd>
     <dt>Il telefono scarica le setlist senza chiedere?</dt>
     <dd>No. La prima volta lo chiede un foglio. Con <b class="ui">Download and keep it automatic</b> le setlist successive arrivano da sole; si cambia quando si vuole in Settings › <b class="ui">Offline &amp; live</b>.</dd>
     <dt>Le setlist sul telefono contengono compensi o contratti?</dt>

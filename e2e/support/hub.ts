@@ -1,7 +1,7 @@
 import { expect, type Locator } from '@playwright/test';
 import type { App } from '../fixtures';
 import { escapeRe } from './flows';
-import { tabScreenUp } from './tabs';
+import { pressItself, tabScreenUp } from './tabs';
 
 /**
  * The Account hub (Settings tab): identity, band, band assets and app
@@ -57,7 +57,7 @@ export const chip = (app: App, label: string): Locator =>
  * `app.tab('Chat')` (exact name) misses it.
  */
 export async function openChatTab(app: App) {
-  await app.page.getByRole('button', { name: new RegExp(`^${escapeRe(app.t('Chat'))}(,|$)`) }).first().click();
+  await pressItself(app.page.getByRole('button', { name: new RegExp(`^${escapeRe(app.t('Chat'))}(,|$)`) }).first());
   await tabScreenUp(app.page, app.t, 'Chat');
   await app.settle();
 }
