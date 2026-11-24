@@ -57,6 +57,9 @@ export interface WedgeSong {
   /** Follow the tempo (171): songs.time_signature and songs.line_timing. */
   timeSignature?: string | null;
   lineTiming?: unknown;
+  /** Who sings what as the setlist song came with it (the live pack with no signal): songs.vocal_parts, and this gig's override. */
+  vocalParts?: unknown;
+  setlistVocalParts?: unknown;
 }
 
 export interface FloorWedgeModeProps {
@@ -313,7 +316,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
             </span>
             <span className="bw-label-md normal-case truncate min-w-0 text-accent">{song.title}</span>
           </p>
-          <VoiceAssignmentScope songId={song.songId} setlistSongId={rehearsal ? undefined : song.id} songTitle={song.title} lyrics={content.lyrics}>
+          <VoiceAssignmentScope songId={song.songId} setlistSongId={rehearsal ? undefined : song.id} songTitle={song.title} lyrics={content.lyrics} songParts={song.vocalParts} setlistParts={song.setlistVocalParts}>
           <SongBody
             song={content}
             view={songView}
@@ -344,7 +347,7 @@ export const FloorWedgeMode: React.FC<FloorWedgeModeProps> = ({
             className="flex-1 min-h-0 overflow-y-auto overscroll-contain"
             aria-label={shownView !== 'lyrics' ? t('Chords · {title}', { title: song.title }) : t('Lyrics · {title}', { title: song.title })}
           >
-            <VoiceAssignmentScope songId={song.songId} setlistSongId={rehearsal ? undefined : song.id} songTitle={song.title} lyrics={content.lyrics}>
+            <VoiceAssignmentScope songId={song.songId} setlistSongId={rehearsal ? undefined : song.id} songTitle={song.title} lyrics={content.lyrics} songParts={song.vocalParts} setlistParts={song.setlistVocalParts}>
             <SongBody
               song={content}
               view={songView}
