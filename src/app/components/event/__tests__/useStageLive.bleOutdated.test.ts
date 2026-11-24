@@ -17,6 +17,14 @@ import { STAGE_BLE_CLOCK_CHARACTERISTIC, STAGE_BLE_LIVE_CHARACTERISTIC, encodeCl
  * playhead of Follow the tempo) doesn't depend on the setlist: it runs for
  * as long as the leader is in reach, and stops like for anyone else once the
  * leader is gone.
+ *
+ * Time: app time is faked and moves only when a test moves it (`pass`), never
+ * with the machine's own clock, and in steps shorter than one clock read's
+ * round trip. WebCrypto (signing, checking) answers on the real event loop,
+ * and `pass` waits for it after every step. So however slow the machine is,
+ * the same things happen at the same app times: the leader's clock is
+ * measured exactly (see the stand-in's clock read), and nothing here waits a
+ * number of real milliseconds.
  */
 
 // jsdom has no WebCrypto; the app runs where it does (WKWebView, Android WebView).
@@ -31,6 +39,13 @@ const KEY = toBase64(new Uint8Array(32).map((_, i) => i * 7));
 const SIGNER = await generateSigner();
 /** The leader's clock runs this far ahead of the member's. */
 const AHEAD_MS = 500;
+/** A read of the leader's clock is back this long after it was asked for (app time): half of it each way. */
+const CLOCK_READ_MS = 20;
+/**
+ * App time moves in steps of this: less than CLOCK_READ_MS, so a clock answer
+ * still being signed (real time) is never overtaken by app time.
+ */
+const STEP_MS = 10;
 /** This phone's setlist (an older download), and the leader's (a song added since). */
 const SONGS = [
   { id: 'row-1', songId: 'song-1' },
@@ -46,6 +61,9 @@ const ble = vi.hoisted(() => ({
   notify: new Map<string, (v: DataView) => void>(),
   goodbye: null as null | (() => void),
   live: { seq: 1, events: {} as Record<string, unknown> },
+  /** Clock reads answered, and those whose answer came back later than CLOCK_READ_MS (must stay 0: see STEP_MS). */
+  clockReads: 0,
+  lateClockReads: 0,
 }));
 
 vi.mock('@/lib/supabase', () => ({
@@ -95,12 +113,17 @@ vi.mock('@capacitor-community/bluetooth-le', () => ({
     }),
     read: vi.fn(async (_id: string, _s: string, char: string) => {
       if (!ble.inReach) throw new Error('Not connected.');
-      const { nowMs } = await import('@/lib/stageClick');
       if (char === STAGE_BLE_CLOCK_CHARACTERISTIC) {
-        // 5 ms each way.
-        await new Promise((r) => setTimeout(r, 5));
-        const frame = await encodeClock(nowMs() + AHEAD_MS, SIGNER.private);
-        await new Promise((r) => setTimeout(r, 5));
+        // Asked for now (the hook took its t0 just before this call, with no await in between), stamped
+        // by the leader half-way, back CLOCK_READ_MS after: an exact measure of AHEAD_MS. The signature
+        // takes real time, during which app time may have moved a step; the answer still comes back at
+        // the same app time, so the measure doesn't depend on how fast this machine signs.
+        const asked = nowMs();
+        const frame = await encodeClock(asked + CLOCK_READ_MS / 2 + AHEAD_MS, SIGNER.private);
+        const left = asked + CLOCK_READ_MS - nowMs();
+        ble.clockReads++;
+        if (left < 0) ble.lateClockReads++;
+        await new Promise((r) => setTimeout(r, Math.max(0, left)));
         return new DataView(frame.buffer);
       }
       if (char === STAGE_BLE_LIVE_CHARACTERISTIC) {
@@ -149,24 +172,31 @@ const { startPlayhead } = await import('@/lib/playhead');
 const { nextSeq } = await import('@/lib/stageLive');
 const { meterOf } = await import('@/lib/meter');
 
+// Real time is only what WebCrypto takes: a loaded machine gets all the time it needs.
+vi.setConfig({ testTimeout: 120_000 });
+
 const member = () => renderHook(() => useStageLive({ eventId: 'gig-1', setlistId: 'list-1', songs: SONGS, open: true, isLeader: false }));
 type Member = ReturnType<typeof member>;
 /** The leader's clock, as its phone reads it now. */
 const leaderNow = () => nowMs() + AHEAD_MS;
+/** App time moves on by `ms`, a step at a time, every WebCrypto answer awaited on the way. */
+const wait = (ms: number) => act(() => pass(ms, STEP_MS));
 /** The leader changes what it serves on the live frame: a change notice, then the member reads it. */
 const serve = async (events: Record<string, unknown>) => {
   ble.live = { seq: ble.live.seq + 1, events };
   await act(async () => {
     ble.notify.get(STAGE_BLE_LIVE_CHARACTERISTIC)?.(new DataView(new ArrayBuffer(4)));
-    await pass(50, 10);
+    await pass(50, STEP_MS);
   });
 };
-/** App time moves on until the check holds (up to 15 s of it). */
-const until = async (check: () => boolean) => {
-  for (let i = 0; i < 150 && !check(); i++) await act(() => pass(100, 50));
-  expect(check()).toBe(true);
+/**
+ * App time moves on until the check holds. The cap is app time (60 s of it, far more than a
+ * link, a clock burst or a grace period take), not real time: a slow machine only takes longer.
+ */
+const until = async (check: () => boolean, what: string) => {
+  for (let moved = 0; moved < 60_000 && !check(); moved += 50) await wait(50);
+  if (!check()) throw new Error(`still not after 60 s of app time: ${what}`);
 };
-const wait = (ms: number) => act(() => pass(ms));
 /** The leader's click and playhead, running on a song both phones have. */
 const running = () => ({
   click: clickWire({ seq: nextSeq(undefined, Date.now() + AHEAD_MS), from: 'lead', on: true, bpm: 120, beats: 4, bars: null, startAt: leaderNow(), songId: 'row-1' }),
@@ -185,10 +215,15 @@ const showing = (m: Member): string | null => {
   const pos = countInAt(plan, state, nowMs(), offset);
   return pos.stage === 'done' ? null : pos.stage === 'before' ? 'ready' : plan.events[pos.event].label;
 };
-/** Linked to the leader's phone, its clock measured, and (older setlist) told so. */
+/** The stand-in's clock answer is exact; what is left is the frame's own step (a tenth of a millisecond). */
+const EXACT_MS = 0.2;
+/** The leader's clock as this phone measured it over the link (null: not yet). */
+const measured = (m: Member) => (m.result.current.click.state ? m.result.current.click.offset : null);
+/** Linked to the leader's phone in that state, with what its live frame serves read. */
 const linked = async (m: Member, status: string) => {
-  await until(() => m.result.current.bluetooth === status);
-  await until(() => !!m.result.current.click.state || !!m.result.current.countIn.state || Object.keys(ble.live.events).length === 0);
+  await until(() => m.result.current.bluetooth === status, `Bluetooth status ${status}`);
+  if (ble.live.events.click) await until(() => !!m.result.current.click.state, "the leader's click read");
+  if (ble.live.events.countin) await until(() => !!m.result.current.countIn.state, "the leader's count-in shown");
 };
 
 beforeEach(() => {
@@ -197,12 +232,21 @@ beforeEach(() => {
   ble.notify.clear();
   ble.goodbye = null;
   ble.live = { seq: 1, events: {} };
+  ble.clockReads = 0;
+  ble.lateClockReads = 0;
   __resetAppFlagsForTest(null);
   forgetScanStarts();
   forgetSignedLeaders();
-  vi.useFakeTimers({ shouldAdvanceTime: true });
+  // App time only moves with `pass`: never with real time (no shouldAdvanceTime), so a slow machine changes nothing.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'] });
+  vi.setSystemTime(new Date('2026-11-24T20:00:00Z'));
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  // Every clock answer came back on time in app time: the measure was exact (else STEP_MS is too long for CLOCK_READ_MS).
+  expect(ble.clockReads).toBeGreaterThan(0);
+  expect(ble.lateClockReads).toBe(0);
+});
 
 describe('Stage over Bluetooth: a member with an older setlist (no internet), the leader in reach', () => {
   it("the leader's click and playhead keep running for as long as the leader is in reach, well past the 10 s of a leader gone", async () => {
@@ -212,12 +256,12 @@ describe('Stage over Bluetooth: a member with an older setlist (no internet), th
     expect(m.result.current.click.state).toMatchObject({ on: true, from: 'lead', bpm: 120 });
     expect(m.result.current.playhead.state).toMatchObject({ on: true, from: 'lead' });
     // On the leader's clock, measured over the link (the same one a member on the right setlist uses).
-    await until(() => Math.abs(m.result.current.click.offset - AHEAD_MS) < 15);
+    await until(() => measured(m) !== null && Math.abs(measured(m)! - AHEAD_MS) < EXACT_MS, "the leader's clock measured");
     await wait(BLE_LEADER_GONE_MS + 5000);
     expect(m.result.current.bluetooth).toBe('outdated');
     expect(m.result.current.click.state).toMatchObject({ on: true, from: 'lead', bpm: 120 });
     expect(m.result.current.playhead.state).toMatchObject({ on: true, from: 'lead' });
-    expect(Math.abs(m.result.current.click.offset - AHEAD_MS)).toBeLessThan(15);
+    expect(Math.abs(measured(m)! - AHEAD_MS)).toBeLessThan(EXACT_MS);
     m.unmount();
   });
 
@@ -226,7 +270,7 @@ describe('Stage over Bluetooth: a member with an older setlist (no internet), th
     await linked(m, 'outdated');
     const count = slowCount();
     await serve({ countin: countInBleWire(count) });
-    await until(() => !!m.result.current.countIn.state?.on);
+    await until(() => !!m.result.current.countIn.state?.on, "the leader's count-in shown");
     expect(m.result.current.countIn.state).toMatchObject({ on: true, from: 'lead', songId: 'row-1' });
     // 40 BPM, two bars: "2 1" in half time, then "4 3 2 1" 1.5 s apart, GO 12 s into the count.
     const tapped = count.startAt - COUNTIN_LEAD_MS;
@@ -250,12 +294,12 @@ describe('Stage over Bluetooth: a member with an older setlist (no internet), th
     ble.live = { seq: 2, events: { ...running(), countin: countInBleWire(slowCount()) } };
     const m = member();
     await linked(m, 'outdated');
-    await until(() => !!m.result.current.countIn.state?.on);
+    expect(m.result.current.countIn.state?.on).toBe(true);
     expect(m.result.current.click.state?.on).toBe(true);
     // The leader walks away: the link drops, nothing answers.
     ble.inReach = false;
     await act(async () => ble.goodbye?.());
-    await until(() => m.result.current.bluetooth === 'searching');
+    await until(() => m.result.current.bluetooth === 'searching', 'the link dropped');
     await wait(BLE_LEADER_GONE_MS - 2000);
     expect(m.result.current.click.state?.on).toBe(true);
     await wait(2500);
@@ -273,7 +317,7 @@ describe('Stage over Bluetooth: the same phone on the right setlist (what must n
     const m = member();
     await linked(m, 'connected');
     // Its first state waits for the leader's clock, then applies.
-    await until(() => m.result.current.currentId === 'row-2');
+    await until(() => m.result.current.currentId === 'row-2', "the leader's song followed");
     expect(m.result.current.leaderHere).toBe(true);
     await wait(BLE_LEADER_GONE_MS + 2000);
     expect(m.result.current.click.state?.on).toBe(true);
