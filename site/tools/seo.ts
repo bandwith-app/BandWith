@@ -4,7 +4,8 @@
  *
  * - applySeo: the share card (absolute og:image per page and language, Twitter
  *   card) and the Schema.org JSON-LD graph, built from the finished page in its
- *   own language, so the markup always says what the page shows.
+ *   own language, so the markup always says what the page shows. FAQPage
+ *   markup sits on /faq/ and /get/ only (FAQ_SCHEMA): one URL per question.
  * - robots.txt, sitemap.xml (every page × language with hreflang alternates),
  *   llms.txt / llms-full.txt, and the hosting config (redirects, cache headers).
  * - 404.html: noindex, no canonical, never in the sitemap.
@@ -24,6 +25,17 @@ export const NOT_FOUND = '404.html';
 /** Public contact and official profiles for the Organization (sameAs: none yet, 11-21). */
 export const ORG_EMAIL = 'ciao@bandwith.fun';
 export const SAME_AS: string[] = [];
+
+/** The pages whose Q&A carries FAQPage markup (every question marked up on one URL only). */
+export const FAQ_SCHEMA: string[] = ['faq/index.html', 'get/index.html'];
+
+/**
+ * The offer's availability. The beta is open, and free, but its spots are
+ * capped (bw_capacity_status: 300 accounts, a waitlist when they are gone),
+ * so LimitedAvailability stays the honest value; InStock would promise a
+ * spot to everyone.
+ */
+export const OFFER_AVAILABILITY = 'https://schema.org/LimitedAvailability';
 
 /** Crawlers named in robots.txt: search engines and AI assistants, all let in. */
 export const AI_CRAWLERS = [
@@ -113,14 +125,17 @@ export function applySeo(doc: Document, enRel: string, lang: Lang, tr: (s: strin
     availableOnDevice: 'iPhone, iPad, Android, Surface Duo, web browser',
     inLanguage: APP_LANGS,
     isAccessibleForFree: true,
-    offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR', availability: 'https://schema.org/LimitedAvailability', url: SITE_ORIGIN + pathIn('/get/', lang) },
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR', availability: OFFER_AVAILABILITY, url: SITE_ORIGIN + pathIn('/get/', lang) },
     downloadUrl: [TESTFLIGHT_URL, APK_URL, APP_URL],
     featureList: CHANNELS.map((c) => tr(c.name)),
     screenshot: ['gig-workspace-admin', 'calendar-month', 'music-stage'].map((id) => `${SITE_ORIGIN}${shot(id)}`),
     publisher: { '@id': ORG },
   };
 
-  const shown = [...doc.querySelectorAll('.faq__list details')].map((d) => {
+  // FAQPage once per question on the whole site: /faq/ (it shows every question of content/answers.ts)
+  // and /get/ (its own "Before you sign up"). The home and channel pages show their questions without
+  // the markup, so no question is marked up on two URLs.
+  const shown = !FAQ_SCHEMA.includes(enRel) ? [] : [...doc.querySelectorAll('.faq__list details')].map((d) => {
     const s = d.querySelector('summary');
     return { q: norm(s?.textContent), a: norm(s?.nextElementSibling?.textContent) };
   }).filter((x) => x.q && x.a);
@@ -226,7 +241,7 @@ export function llmsTxt(): string {
     '',
     `> ${DEFINITION}`,
     '',
-    'BandWith is free while it’s in private beta, with a limited number of spots. Roles decide what each person sees: admins run the deal (client, quote, contract, every fee), members see their gigs and their own fee, deputies see only the requests sent to them. The server enforces it.',
+    'BandWith is free while it’s in beta, with a limited number of spots. Roles decide what each person sees: admins run the deal (client, quote, contract, every fee), members see their gigs and their own fee, deputies see only the requests sent to them. The server enforces it.',
     `The app is at ${APP_URL}.`,
     '',
     '## Pages',
@@ -254,8 +269,13 @@ export function llmsTxt(): string {
   ].join('\n');
 }
 
-/** Blocks that become a line of the full text; skipped: demos, decorations, controls. */
-const SKIP = '#try, [aria-hidden="true"], script, style, template, svg, form, button, nav, .crop, .sr-only, [data-hero-picks], [hidden]';
+/**
+ * Blocks that become a line of the full text; skipped: demos, decorations,
+ * controls, and what only a closed beta shows (the waitlist "Tonight's show
+ * is full" and the lines for invited people: `hidden` in the HTML, named here
+ * too so they stay out whatever hides them).
+ */
+const SKIP = '#try, [aria-hidden="true"], script, style, template, svg, form, button, nav, .crop, .sr-only, [data-hero-picks], [hidden], .full, .full__inv-shut, .gdoors__inv, [data-cap-show]';
 const BLOCKS = new Set(['H1', 'H2', 'H3', 'H4', 'P', 'LI', 'SUMMARY', 'TABLE', 'FIGCAPTION']);
 
 function textOf(el: Element): string {

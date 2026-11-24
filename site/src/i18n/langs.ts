@@ -43,7 +43,8 @@ export const isPageHref = (href: string) => href.startsWith('/') && !href.starts
 
 /**
  * An href as it should read on a page in `lang`: site pages get the prefix,
- * the Academy opens in the same language, everything else is untouched.
+ * the Academy opens on its static page in the same language
+ * (/academy/it/a/<id>/), everything else is untouched.
  */
 export function localizeHref(href: string, lang: Lang): string {
   if (lang === 'en') return href;
@@ -53,10 +54,8 @@ export function localizeHref(href: string, lang: Lang): string {
   }
   // The privacy policy has Italian and Spanish versions (the terms are English only).
   if (href === 'https://app.bandwith.fun/legal/privacy.html') return `https://app.bandwith.fun/legal/privacy-${lang}.html`;
-  const academy = /^(https:\/\/app\.bandwith\.fun\/academy\/)([^#]*)(#.*)?$/.exec(href);
-  if (academy && !/[?&]lang=/.test(academy[2])) {
-    const q = academy[2] ? `${academy[2]}&lang=${lang}` : `?lang=${lang}`;
-    return `${academy[1]}${q}${academy[3] ?? ''}`;
-  }
+  // The Academy's static pages: /academy/en/… → /academy/<lang>/… (the home, or one article).
+  const academy = /^(https:\/\/app\.bandwith\.fun\/academy\/)(?:en\/)?((?:a\/[a-z0-9-]+\/)?)$/.exec(href);
+  if (academy) return `${academy[1]}${lang}/${academy[2]}`;
   return href;
 }

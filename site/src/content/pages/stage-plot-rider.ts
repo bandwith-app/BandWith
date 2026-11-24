@@ -3,7 +3,7 @@ import type { ChannelPage } from './types';
 export const page: ChannelPage = {
   slug: 'stage-plot-rider',
   title: 'Stage plot & rider',
-  description: 'Draw the stage plot with a finger and the input list fills itself in. Say who brings what, then share the rider with the venue as a link: no account, no client, no fees.',
+  description: 'Draw the stage plot with a finger and the input list fills itself in. Share the rider with the venue as a link: no account, no client, no fees.',
   ogTitle: 'Stage plot & rider · The venue knows before you arrive.',
   hero: {
     heading: { lines: ['The venue knows', 'before you arrive.'], em: 'arrive.' },

@@ -13,11 +13,11 @@ import {
 } from '@/app/components/icons';
 import { useAuth } from '@/lib/AuthContext';
 import { Capacitor } from '@capacitor/core';
-import { supabase, getAuthCallbackUrl } from '@/lib/supabase';
 import { authErrorKind, authErrorMessage } from '@/lib/authErrors';
 import { useOnboarding } from '@/lib/OnboardingContext';
-import { AuthScreen, FormError, Kicker, OrDivider, PillButton, PillField } from '@/app/components/bw/Form';
+import { FormError, Kicker, OrDivider, PillButton, PillField } from '@/app/components/bw/Form';
 import { WizardTop, wizardStep } from './OnboardingChrome';
+import { ConfirmEmailCode } from './ConfirmEmailCode';
 import { LegalSheet, legalUrl, type LegalDoc } from '@/app/components/legal/LegalSheet';
 import { useT } from '@/lib/i18n';
 
@@ -27,7 +27,7 @@ interface AccountCreationProps {
   prefilledEmail?: string;
   /** Joining with an existing account and a wrong password: "Forgot password?". */
   onForgotPassword?: () => void;
-  /** "Check your email" → "I’ve confirmed it: sign in". */
+  /** "Check your email", confirmed through the email's link instead of its code → "I’ve confirmed it: sign in". */
   onSignIn?: () => void;
 }
 
@@ -58,7 +58,6 @@ export const AccountCreation: React.FC<AccountCreationProps> = ({
   const [success, setSuccess] = useState<string | null>(null);
   /** Email confirmation is on: the account exists once this address is confirmed. */
   const [confirmEmail, setConfirmEmail] = useState<string | null>(null);
-  const [resend, setResend] = useState<'idle' | 'sending' | 'sent'>('idle');
   /** Joining with an address that already has an account, and the password didn't match. */
   const [wrongPassword, setWrongPassword] = useState(false);
 
@@ -149,9 +148,9 @@ export const AccountCreation: React.FC<AccountCreationProps> = ({
         }
       }
 
+      // The session is all the next steps need: the password stays in this form.
       setAccountData({
         email,
-        password,
         authMethod: 'email',
       });
 
@@ -166,56 +165,27 @@ export const AccountCreation: React.FC<AccountCreationProps> = ({
     }
   };
 
-  const handleResend = async () => {
-    if (!confirmEmail || resend === 'sending') return;
-    setResend('sending');
-    setError(null);
-    const { error } = await supabase.auth.resend({
-      type: 'signup',
-      email: confirmEmail,
-      options: { emailRedirectTo: getAuthCallbackUrl() },
-    });
-    if (!mountedRef.current) return;
-    if (error) {
-      setError(authErrorMessage(error));
-      setResend('idle');
-      return;
-    }
-    setResend('sent');
-  };
-
   const { step, total } = wizardStep(path, 'account');
 
-  // Email confirmation on: no session until the link is opened.
+  // Email confirmation on: no session until the code from the email is typed
+  // here (or its link is opened). The right code signs the person in, and the
+  // onboarding goes on as after a sign-up that needs no confirmation.
   if (confirmEmail) {
-    const [sentBefore, sentAfter = ''] = t('We sent a link to {email}. Open it on this device to confirm your address and finish creating your account.', {
-      email: '\u0000',
-    }).split('\u0000');
     return (
-      <AuthScreen
-        top={<WizardTop onBack={() => { setConfirmEmail(null); setResend('idle'); setError(null); }} step={step} total={total} />}
-        bodyClassName="pt-2 gap-5"
-        footer={
-          <>
-            {onSignIn && (
-              <PillButton onClick={onSignIn} trailingIcon={<ArrowUpRight className="w-5 h-5" />}>
-                {t('I’ve confirmed it: sign in')}
-              </PillButton>
-            )}
-            <PillButton variant="ghost" size="md" onClick={handleResend} loading={resend === 'sending'} disabled={resend === 'sent'}>
-              {resend === 'sent' ? t('Email sent again') : t('Send the email again')}
-            </PillButton>
-          </>
-        }
-      >
-        <Kicker overline={t('Account')} title={t('Check your email')} />
-        <p role="status" className="text-[16px] leading-[1.45] tracking-[-0.003em] text-muted-foreground -mt-1 break-words">
-          {sentBefore}
-          <span className="text-foreground font-medium">{confirmEmail}</span>
-          {sentAfter}
-        </p>
-        {error && <FormError>{error}</FormError>}
-      </AuthScreen>
+      <ConfirmEmailCode
+        email={confirmEmail}
+        step={step}
+        total={total}
+        onBack={() => { setConfirmEmail(null); setError(null); }}
+        onVerified={() => {
+          setAccountData({ email, authMethod: 'email' });
+          onComplete();
+        }}
+        onSignIn={onSignIn}
+        // The phone app came back from the email's link with an error (effect above).
+        linkError={error}
+        onLinkErrorShown={() => setError(null)}
+      />
     );
   }
 
@@ -233,7 +203,7 @@ export const AccountCreation: React.FC<AccountCreationProps> = ({
         <div className="flex flex-col px-4 pt-2 gap-5">
           <Kicker overline={t('Account')} title={isJoiner ? t('Join band') : t('Create account')} />
           <p className="text-[16px] leading-[1.45] tracking-[-0.003em] text-muted-foreground -mt-1">
-            {isJoiner ? t('One step to join the crew.') : t("Let's get you set up in seconds.")}
+            {isJoiner ? t('One step to join the crew.') : t('Your account first, then your band. About two minutes.')}
           </p>
 
           {/* OAuth */}

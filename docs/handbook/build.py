@@ -1,5 +1,5 @@
 """Assemble the BandWith handbook and print it to PDF, in Italian ("Funzioni e comportamenti")
-or English ("Features and behaviour").
+or English ("Features and behavior").
 
 usage: .venv/bin/python docs/handbook/build.py [--lang it|en] [OUT.pdf]
 
@@ -69,8 +69,8 @@ LANGS = {
         'cover_foot': 'Novembre 2026 · app.bandwith.fun',
     },
     'en': {
-        'out': 'BandWith-features-and-behaviour.pdf',
-        'title': 'BandWith · Features and behaviour',
+        'out': 'BandWith-features-and-behavior.pdf',
+        'title': 'BandWith · Features and behavior',
         'parts': ['Overview', 'Devices', 'Features', 'Outside the app', 'Appendices'],
         'part': 'Part',
         'toc': 'Contents',

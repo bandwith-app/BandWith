@@ -133,11 +133,9 @@ const music: AreaText = {
             ["**Duración**", "Minutos y segundos en dos casillas (min : seg). Sirve para los totales de las setlists."],
             ["**BPM**", "El tempo, hasta 3 cifras. Lo usa el clic del Modo escenario."],
             ["**Tono**", "Texto libre, p. ej. Do mayor. Se muestra en la lista, en el escenario y en el control de transporte del lector."],
-            // <draft live-tempo>
             ["**Compás**", "4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 o 7/8. Lo usan el clic y la cuenta de entrada. Si no eliges ninguno, se usa el del cuadro de acordes; si no, 4/4. Consulta [[song-live-settings]]."],
-            ["**Cuenta**", "**1 compás** o **2 compases**, y cuántos tiempos antes empieza la canción (**Empieza en el primer tiempo** si no hay ninguno)."],
+            ["**Cuenta**", "**1 compás** o **2 compases**, y el tiempo en el que entra la banda: **Empieza en el tiempo 1**, salvo que lo muevas con − y +."],
             ["**Se toca con pista de acompañamiento**", "La canción no tiene cuenta de entrada en el escenario: la pista arranca a la banda."],
-            // </draft>
             ["**Tap**, **BPM de la grabación**, ÷2 / ×2", "Herramientas debajo de BPM para encontrar el tempo. Consulta [[transpose-and-tempo]]."],
             ["**Transponer para la banda**", "Cambia el tono, el cifrado y los acordes de la letra para todos. Solo aparece cuando hay algo que transponer."],
             ["**Género**", "Etiquetas para elegir entre los géneros de la banda, o uno nuevo con la etiqueta discontinua **Género** y luego **Añadir género**. Los géneros filtran la biblioteca cuando creas una setlist."],
@@ -148,7 +146,7 @@ const music: AreaText = {
             ["**Partitura**", "Un enlace a un PDF o a una partitura en internet, en lugar de subir un cifrado. Debe empezar por https://."],
             ["**Acordes**", "Un enlace a una página de acordes. Se guarda en las notas de la canción como «Acordes: <enlace>». Debe empezar por https://."],
             ["**Notas**", "Notas de la banda sobre la canción: ideas de arreglo, cambios de tono."],
-            ["**Letra · texto, Markdown o JSON**", "La letra de la canción, con los acordes dentro si quieres. Consulta [[lyrics-and-chords-format]]. **Pegar o importar la letra**, debajo de la casilla, abre la hoja de importación en su pestaña Letra."],
+            ["**Letra · texto, Markdown o JSON**", "La letra de la canción, con los acordes dentro si quieres. Consulta [[lyrics-and-chords-format]]. **Pegar o importar la letra**, debajo de la casilla, abre la hoja de importación en su pestaña Letra. Una letra de más de 20.000 caracteres no se puede guardar: el formulario lo dice y conserva tu texto hasta que lo acortes. Si otra persona cambió la letra mientras la editabas, el formulario pregunta: **Cargar la última versión** (tus cambios se pierden) o **Guardar la mía**."],
           ],
         },
         { type: "note", tone: "privacy", text: "Las grabaciones y los cifrados que subes se guardan en privado para tu banda: solo los miembros de la banda pueden abrirlos." },
@@ -436,7 +434,7 @@ const music: AreaText = {
           ],
         },
         { type: "p", text: "El editor de acordes necesita la letra. Si no hay, te pide que la añadas primero en Editar tema. Después de guardar, la banda recibe una push de que han cambiado los acordes." },
-        { type: "note", tone: "tip", text: "Si sales con cambios sin guardar, se te pregunta «¿Guardar los cambios?» con **Guardar cambios**, **Descartar** y **Seguir editando**." },
+        { type: "note", tone: "tip", text: "Si sales con cambios sin guardar, se te pregunta «¿Guardar los cambios?» con **Guardar cambios**, **Descartar** y **Seguir editando**. Si otra persona guardó la misma letra mientras la editabas, el editor lo dice y conserva tus cambios: toca **Cargar la última versión** para ver los suyos (los tuyos se pierden) o **Guardar la mía** para guardar los tuyos encima." },
         {
           type: "roles",
           rows: [
@@ -957,7 +955,7 @@ const music: AreaText = {
             "Si la canción ha cambiado después de la sugerencia, la pantalla avisa de que estás comparando con su versión actual.",
             "Una nota para la banda se añade a las notas de la canción.",
             "Una sugerencia que incluye un cifrado también sustituye el cifrado de la canción.",
-            "Las sugerencias revisadas se quedan en **Revisadas**.",
+            "Las sugerencias revisadas se quedan en **Revisadas**. Una lista larga muestra primero las más recientes: toca **Cargar sugerencias anteriores** al final para ver el resto.",
           ],
         },
         {
@@ -1435,22 +1433,19 @@ const music: AreaText = {
           type: "list",
           items: [
             "El clic es solo visual: no hay sonido. No impide tocar la pantalla.",
-            // <draft live-tempo>
             "Los pulsos de un compás salen del **Compás** de la canción; si no, de su cuadro de acordes; si no, 4/4. En 6/8 y 12/8 destella en los tiempos con puntillo. Para dar la entrada a la banda, consulta [[count-in]].",
-            // </draft>
             "Una canción sin BPM no puede iniciar un clic (**Sin BPM para esta canción**). Añade los BPM en el formulario de la canción.",
             "Al pasar a otra canción se oculta el clic de la canción anterior.",
             "Los teléfonos se mantienen sincronizados con unos 20–40 ms de margen: bien para una cuenta de entrada y como referencia de tempo, no para un clic en los auriculares in-ear.",
-            "El clic de la banda necesita internet: no se envía por Bluetooth.",
+            "Sin internet, el clic del líder sigue llegando a los teléfonos conectados al suyo por Bluetooth, en las apps de iPhone, iPad y Android. En el Modo escenario una línea dice entonces **Conectado al teléfono del líder**. Si el líder queda fuera de alcance más de 10 segundos, el clic se para en tu teléfono. Vuelve a tempo cuando el líder está otra vez al alcance. En la web, el clic de la banda necesita internet. Consulta [[stage-bluetooth-sync]].",
           ],
         },
       ],
     },
-    // <draft live-tempo> Written from the plan (§4, §6) and PR #272 before D1, B2 and B4 landed: verify every label against the final UI.
     {
       id: "song-live-settings",
       title: "Prepara una canción para la cuenta de entrada",
-      summary: "Dale a una canción su compás, cuánto dura la cuenta de entrada, una anacrusa y si la arranca una pista de acompañamiento.",
+      summary: "Dale a una canción su compás, cuánto dura la cuenta de entrada, el tiempo en el que entra la banda y si la arranca una pista de acompañamiento.",
       roles: ["admin"],
       kind: "task",
       keywords: ["compás", "métrica", "6/8", "7/8", "cuenta de entrada", "cuenta", "anacrusa", "entrada", "pista de acompañamiento", "secuencia", "backing track"],
@@ -1462,7 +1457,7 @@ const music: AreaText = {
             "Abre el menú de la canción y toca **Editar**, luego **Siguiente** para llegar a **Detalles · opcional**.",
             "Debajo de **BPM** y **Tono**, elige el **Compás**: 4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 o 7/8.",
             "En **Cuenta**, elige **1 compás** o **2 compases**. Dos compases van bien en las canciones lentas: el primero se cuenta a medio tiempo.",
-            "Si la canción empieza antes del primer tiempo del compás, toca + hasta que diga cuántos tiempos antes, por ejemplo **Empieza 2 tiempos antes**. Toca − para volver a **Empieza en el primer tiempo**.",
+            "La línea de debajo dice dónde entra la banda. **Empieza en el tiempo 1** es el primer tiempo del compás. Si la canción empieza antes, toca − (**Un tiempo antes**): en 4/4, **Empieza en el tiempo 4** es un tiempo antes del compás. Toca + (**Un tiempo después**) para volver.",
             "Si una pista de acompañamiento arranca a la banda, activa **Se toca con pista de acompañamiento**: la canción no tiene cuenta de entrada en el escenario.",
             "Toca **Guardar ahora**.",
           ],
@@ -1472,8 +1467,8 @@ const music: AreaText = {
           title: "Conviene saber",
           items: [
             "Si no eliges compás, la canción usa el de su cuadro de acordes (el formulario dice **De la partitura de acordes.**); si no, 4/4.",
-            "El clic y la cuenta de entrada siguen el compás: 6/8 y 12/8 se cuentan en tiempos con puntillo, como los cuentan los músicos.",
-            "Los **BPM** son el pulso que cuentas: la negra en 4/4, 3/4 o 5/8, la negra con puntillo en 6/8, 9/8 y 12/8.",
+            "El clic y la cuenta de entrada siguen el compás: 6/8, 9/8 y 12/8 se cuentan en tiempos con puntillo, como los cuentan los músicos.",
+            "Los **BPM** son el pulso que cuentas: negras en 4/4, 3/4, 5/8 o 7/8, los tiempos con puntillo en 6/8, 9/8 y 12/8. En los compases en /8 el formulario lo dice debajo del compás. Una canción que toma el 6/8 de su cuadro de acordes, sin un compás elegido aquí, mantiene los BPM en cada corchea.",
           ],
         },
         {
@@ -1483,13 +1478,13 @@ const music: AreaText = {
             { role: "member", text: "Ve el resultado en el escenario. No puede cambiarlo." },
           ],
         },
-        { type: "shot", id: "song-live-fields", caption: "El formulario de la canción debajo de BPM y Tono: Compás, Cuenta, la anacrusa y Se toca con pista de acompañamiento." },
+        { type: "shot", id: "song-live-fields", caption: "El formulario de la canción debajo de BPM y Tono: Compás, Cuenta, el tiempo en el que empieza la canción y Se toca con pista de acompañamiento." },
       ],
     },
     {
       id: "count-in",
       title: "Da la entrada a la banda",
-      summary: "El líder toca Contar y todos los teléfonos muestran la misma cuenta atrás al tempo de la canción, y luego YA donde entra la banda.",
+      summary: "El líder toca Cuenta y todos los teléfonos muestran la misma cuenta atrás al tempo de la canción, y luego YA donde entra la banda.",
       roles: ["admin", "member"],
       kind: "task",
       keywords: ["cuenta de entrada", "cuenta atrás", "contar", "dar la entrada", "1 2 3 4", "empezar juntos", "primer tiempo", "vibración", "metrónomo"],
@@ -1500,10 +1495,10 @@ const music: AreaText = {
           title: "Dirige la cuenta de entrada",
           items: [
             "En el Modo escenario o el Modo en vivo, ve a la canción.",
-            "Toca **Contar**.",
+            "Toca **Cuenta**, junto al botón del clic.",
             "Tras 1,5 segundos, todos los teléfonos en Modo escenario muestran una cuenta atrás a pantalla completa al tempo de la canción: un número grande en cada tiempo y un anillo que se llena compás a compás.",
             "La banda entra en **YA**. La cuenta atrás desaparece sola.",
-            "Para pararla antes del final, toca **Detener**. Se para en todos los teléfonos.",
+            "Para pararla antes del final, toca **Detener la cuenta**. Se para en todos los teléfonos.",
           ],
         },
         {
@@ -1522,26 +1517,28 @@ const music: AreaText = {
           type: "list",
           title: "Cómo cuenta",
           items: [
-            "Con **2 compases** en la canción, el primer compás se cuenta a medio tiempo («1 — 2 —») y el segundo a tempo.",
-            "Una canción que empieza unos tiempos antes termina la cuenta atrás con **YA** en su primera nota, no en el 1.",
-            "La banda elige el sentido: cuenta atrás (4 3 2 1, la opción predeterminada) o la cuenta clásica (1 2 3 4).",
-            "Si **Seguir el tempo** está activado, la canción empieza a avanzar en **YA**. Si el clic está en marcha, sigue a tempo.",
+            "Con **2 compases** en la canción, el primer compás se cuenta a medio tiempo y el segundo a tempo.",
+            "Una canción que empieza antes del tiempo 1 (por ejemplo **Empieza en el tiempo 4**) tiene el **YA** en su primera nota, no en el 1.",
+            "La banda cuenta hacia atrás (4 3 2 1, la opción predeterminada) o hacia delante (1 2 3 4). Lo elige el líder en **Para toda la banda**, en las opciones de la cuenta, y todos los teléfonos de la banda cuentan así.",
+            "Si **Seguir el tempo** está activado, la canción empieza a avanzar desde el compás 1, cuando termina la cuenta. Si el clic está en marcha, sigue a tempo.",
           ],
         },
         {
           type: "list",
           title: "En tu propio teléfono (opcional)",
           items: [
-            "Vibración en cada tiempo, más fuerte en el primero: para quien no puede mirar la pantalla.",
-            "Una cuenta hablada o un clic en tus auriculares. Nunca suena por el altavoz del teléfono, salvo que lo elijas.",
+            "En el Modo escenario, toca **Cuenta**, en la misma fila que **Setlist**, para abrir las opciones. Se guardan en este dispositivo.",
+            "**Vibrar en cada tiempo**: más fuerte en el primer tiempo del compás, para quien no puede mirar la pantalla.",
+            "**Sonido en auriculares**: **Desactivada** o **Clic**. El clic solo suena en auriculares o monitores in-ear. Para oírlo en voz alta, activa **También por el altavoz del teléfono**; en un navegador hace falta ese interruptor para oírlo.",
           ],
         },
         {
           type: "list",
           title: "Cuando no hay cuenta de entrada",
           items: [
-            "Una canción marcada como **Se toca con pista de acompañamiento** no tiene botón **Contar**: la pista arranca a la banda. Un admin aún puede iniciar una desde el menú de la canción.",
-            "Mientras la cabina reproduce el audio de la canción, no se ofrece la cuenta de entrada.",
+            "Una canción marcada como **Se toca con pista de acompañamiento** no tiene botón **Cuenta**: la pista arranca a la banda. El líder aún puede dar la entrada: abre las opciones de la cuenta y toca **Contar de todos modos**.",
+            "Mientras la cabina reproduce el audio de la canción, **Cuenta** se oculta igual, y **Contar de todos modos** sigue funcionando.",
+            "A una canción sin BPM no se le puede dar la entrada.",
           ],
         },
         {
@@ -1549,45 +1546,46 @@ const music: AreaText = {
           title: "Conviene saber",
           items: [
             "Un teléfono que recibe el mensaje tarde se une a la cuenta atrás en el tiempo correcto.",
-            "Sin señal, la cuenta de entrada llega a los teléfonos cercanos por Bluetooth.",
+            "La cuenta atrás necesita internet: no se envía por Bluetooth. Sin señal solo la muestra el teléfono del líder. Los teléfonos conectados por Bluetooth siguen recibiendo el clic, si el líder lo tiene en marcha, y Seguir el tempo desde el compás 1.",
             "Los teléfonos se mantienen sincronizados con unos 20–40 ms de margen.",
+            "Un miembro puede cerrar la cuenta atrás en su propia pantalla con **Ocultar en este teléfono**.",
           ],
         },
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Inicia y para la cuenta de entrada para toda la banda." },
-            { role: "member", text: "La ve en su teléfono y elige vibración o auriculares para su propio dispositivo." },
+            { role: "admin", text: "Inicia y para la cuenta de entrada para toda la banda, y elige si la banda cuenta hacia atrás o hacia delante." },
+            { role: "member", text: "La ve en su teléfono, puede ocultarla ahí, y elige vibración o un clic en auriculares para su propio dispositivo." },
           ],
         },
-        { type: "shot", id: "stage-count-in", caption: "La cuenta de entrada en todos los teléfonos: el número del tiempo, el anillo y Detener." },
+        { type: "shot", id: "stage-count-in", caption: "La cuenta de entrada en todos los teléfonos: el número del tiempo, el anillo y el botón que la detiene." },
       ],
     },
     {
       id: "follow-the-tempo",
       title: "Seguir el tempo",
-      summary: "Actívalo y el cuadro de acordes, la estructura o la letra avanzan con la canción, sincronizados con el teléfono del líder.",
+      summary: "Actívalo y el cuadro de acordes o la letra avanzan con la canción, sincronizados con el teléfono del líder.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["seguir el tempo", "desplazamiento automático", "cursor", "compás actual", "siguiente sección", "desplazar la letra", "mantener", "vamp", "velocidad de ensayo"],
+      keywords: ["seguir el tempo", "desplazamiento automático", "cursor", "compás actual", "siguiente sección", "desplazar la letra", "repetir", "vamp", "calderón"],
       related: ["count-in", "song-live-settings", "stage-click", "stage-mode"],
       body: [
         {
           type: "steps",
           title: "Actívalo",
           items: [
-            "En el Modo escenario o el Modo en vivo, abre las opciones de vista de la pestaña de la canción (donde eliges **Letra y acordes** o **Cuadro de acordes**).",
-            "Activa **Seguir el tempo**. Viene desactivado y se guarda en este dispositivo.",
-            "Cuando el líder empieza la canción con **Contar** o con el clic, tu pantalla avanza con ella.",
+            "En el Modo escenario o el Modo en vivo, abre la pestaña de la canción (**Letra**, **Letra y acordes** o **Cuadro de acordes**).",
+            "Toca **Seguir el tempo**, junto a las opciones de vista. Viene desactivado y se guarda en este dispositivo.",
+            "La línea sobre la canción dice **Empieza cuando el líder empiece la canción**. Cuando el líder empieza, tu pantalla avanza con la banda.",
           ],
         },
         {
           type: "table",
           head: ["Vista", "Qué avanza"],
           rows: [
-            ["**Cuadro de acordes**", "El compás actual se ilumina y el cuadro se desplaza para mantenerlo a la vista."],
-            ["Estructura", "La sección actual aparece resaltada. Una franja arriba dice qué viene después, por ejemplo «Siguiente: Puente en 4 compases»."],
-            ["**Letra y acordes**, **Letra**, **Solo la canción**", "La línea actual aparece resaltada y el texto se desplaza suavemente. Sin tiempos de línea, avanza sección a sección."],
+            ["**Cuadro de acordes**", "El compás actual se ilumina y el cuadro se desplaza para mantenerlo a la vista. En una canción sin cifrado compás a compás se ilumina la sección actual."],
+            ["**Letra y acordes**, **Letra**", "La línea actual aparece resaltada y el texto se desplaza para mantenerla a la vista. Las líneas se reparten entre los compases de su sección, así que una línea puede iluminarse un poco antes o después."],
+            ["**Solo la canción**", "Lo mismo, a pantalla completa."],
             ["Monitor de suelo", "Una cuenta atrás grande hasta la siguiente sección, por ejemplo «Estribillo en 4»."],
           ],
         },
@@ -1595,10 +1593,12 @@ const music: AreaText = {
           type: "steps",
           title: "Dirígelo",
           items: [
-            "Empieza la canción con **Contar** o con el clic. El compás 1 empieza en todos los teléfonos en el mismo momento.",
-            "Si la banda alarga o acorta una parte, toca la sección, el compás o la línea donde estáis: todos saltan ahí.",
-            "Toca **Mantener** para repetir la sección actual (un vamp, un solo) hasta que vuelvas a tocarlo.",
-            "Toca **Detener** para terminar. Pasar a otra canción también lo detiene.",
+            "Activa **Seguir el tempo** también en tu teléfono. La línea sobre la canción dice **La banda te sigue cuando empiezas**, con los botones del líder al lado.",
+            "Toca **Empezar**: el compás 1 empieza en todos los teléfonos en el mismo momento. **Cuenta** también lo empieza, en el compás 1 cuando termina la cuenta.",
+            "Si la banda alarga o acorta una parte, toca el compás, la línea o la sección donde estáis: todos saltan ahí.",
+            "Toca **Repetir** para repetir la sección actual (un vamp, un solo). Toca **Soltar** para seguir adelante.",
+            "En un calderón la canción espera y la línea dice **Esperando al líder**: toca **Seguir**.",
+            "Toca **Parar** para terminar. Pasar a otra canción también lo detiene.",
           ],
         },
         {
@@ -1606,16 +1606,16 @@ const music: AreaText = {
           title: "Conviene saber",
           items: [
             "Solo el líder mueve el punto de la banda. Los miembros activan o desactivan la vista en su propio teléfono.",
-            "Una canción necesita BPM para seguirla. Sin ellos, el interruptor dice «Añade los BPM para seguir esta canción».",
-            "Las repeticiones, los finales, D.C., D.S., segno y coda del cifrado se tocan en orden. Un calderón espera hasta que el líder toca.",
-            "Para seguir línea a línea, un admin pone los tiempos de las líneas en la canción con **Sincronizar líneas**: tocando al ritmo de la grabación o indicando los compases de cada línea.",
-            "En un ensayo, **Tocar al 80 %** ralentiza a la vez el clic y el seguimiento. Los BPM de la canción no cambian.",
+            "Para seguir una canción hacen falta un BPM y un cuadro de acordes o una letra. Sin BPM el interruptor está desactivado y dice «Añade un BPM para seguir esta canción».",
+            "La línea sobre la canción dice qué viene después, por ejemplo «Luego: Puente en 4 compases».",
+            "Las repeticiones, los finales, D.C., D.S., segno y coda del cifrado se tocan en orden.",
+            "Después de desplazarte a mano, la canción se queda donde la dejaste unos segundos y luego vuelve a seguir.",
+            "Sin internet, el punto del líder sigue llegando a los teléfonos conectados por Bluetooth, en las apps de iPhone, iPad y Android.",
           ],
         },
         { type: "shot", id: "stage-follow-tempo", caption: "Seguir el tempo en el cuadro de acordes: el compás actual iluminado y la siguiente sección arriba." },
       ],
     },
-    // </draft>
     {
       id: "stage-manager",
       title: "Reproduce el audio de las canciones desde la cabina",
@@ -1705,7 +1705,7 @@ const music: AreaText = {
       keywords: ["bluetooth", "sin conexión", "sin cobertura", "sin wifi", "ble", "clave de escenario"],
       related: ["stage-mode", "lead-stage-mode", "follow-in-stage-mode", "live-mode-offline"],
       body: [
-        { type: "p", text: "En las apps de iPhone, iPad y Android, el teléfono del admin también envía la canción actual y el orden por Bluetooth. Los teléfonos de los miembros cercanos lo reciben sin emparejar y sin internet." },
+        { type: "p", text: "En las apps de iPhone, iPad y Android, el teléfono del admin también envía por Bluetooth la canción actual, el orden, el clic y el punto de la canción (Seguir el tempo). Los teléfonos de los miembros cercanos lo reciben sin emparejar y sin internet. La excepción es la cuenta de entrada: necesita internet." },
         {
           type: "steps",
           title: "Prepárate antes del concierto",
@@ -1916,6 +1916,7 @@ const music: AreaText = {
           items: [
             "En cuanto vuelve la señal, cuando vuelves a abrir la app y cada 30 segundos mientras haya algo pendiente.",
             "Cerrar la app conserva lo pendiente. Se envía la próxima vez que abras la app con señal.",
+            "Una nota de ensayo que el servidor rechaza no se tira. El Modo en vivo dice **Una nota no se guardó**, y el texto de la nota aparece en las notas del ensayo y en Ajustes › Sin conexión y en vivo, con **Copiar** y **Quitar**.",
           ],
         },
         {
@@ -1923,7 +1924,7 @@ const music: AreaText = {
           tone: "tip",
           text: "Los miembros cercanos ven el nuevo orden del líder al momento por Bluetooth, antes de que se guarde.",
         },
-        { type: "shot", id: "stage-offline-banner", caption: "El Modo escenario sin señal: la etiqueta del contenido y la barra con los cambios esperando señal." },
+        { type: "shot", id: "stage-offline-banner", caption: "El Modo escenario sin señal: la etiqueta del contenido y, debajo, los cambios esperando señal." },
       ],
     },
     {
@@ -2015,12 +2016,10 @@ const music: AreaText = {
       q: "¿Por qué no veo el foro de iReal Pro dentro de la app en la web?",
       a: "El foro no se puede mostrar dentro de una página web, así que se abre en su propia ventana. Copia ahí un enlace y toca Pegar enlace, o arrastra el enlace a la casilla.",
     },
-    // <draft live-tempo>
     {
-      q: "¿Por qué una canción no tiene botón Contar?",
-      a: "La canción está marcada como Se toca con pista de acompañamiento: la pista arranca a la banda. Un admin aún puede iniciar una cuenta de entrada desde el menú de la canción.",
+      q: "¿Por qué una canción no tiene botón Cuenta?",
+      a: "La canción está marcada como Se toca con pista de acompañamiento, o la está reproduciendo la cabina. El líder aún puede dar la entrada: abre las opciones de la cuenta y toca Contar de todos modos. A una canción sin BPM no se le puede dar la entrada.",
     },
-    // </draft>
   ],
 
   glossary: [
@@ -2048,10 +2047,8 @@ const music: AreaText = {
     { term: "Setlist sin conexión", definition: "La copia de la setlist de un concierto o un ensayo guardada en tu teléfono para cuando no hay señal: letras, acordes, partes vocales y tus propias notas.", see: "live-mode-offline" },
     { term: "Parte vocal", definition: "Quién canta una línea o unas palabras: Voz principal, Segunda voz, Coros, Todos o Hablado, cada una con su propio aspecto.", see: "voice-parts" },
     { term: "Resaltar mi parte", definition: "Un interruptor en cada dispositivo que mantiene brillantes las líneas que cantas y atenúa un poco las demás.", see: "highlight-my-part" },
-    // <draft live-tempo>
     { term: "Cuenta de entrada", definition: "La cuenta atrás en todos los teléfonos, al tempo y en el compás de la canción, que termina con YA donde entra la banda.", see: "count-in" },
-    { term: "Seguir el tempo", definition: "Un interruptor en cada dispositivo que hace avanzar el cuadro de acordes, la estructura o la letra con la canción, sincronizados con el líder.", see: "follow-the-tempo" },
-    // </draft>
+    { term: "Seguir el tempo", definition: "Un interruptor en cada dispositivo que hace avanzar el cuadro de acordes o la letra con la canción, sincronizados con el líder.", see: "follow-the-tempo" },
   ],
 };
 

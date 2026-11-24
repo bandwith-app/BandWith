@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-  initialState, stepSong, leaderStep, leaderGo, toggleStrike, setOnline, toggleClick,
-  memberStep, memberFollow, memberStatus, leaderStatus, clickOn, inSync,
+  initialState, stepSong, leaderStep, leaderGo, toggleStrike, setOnline, toggleClick, toggleCountIn, endCountIn,
+  memberStep, memberFollow, memberStatus, leaderStatus, clickOn, clickReaches, countInReaches, countInSeen, inSync,
 } from '../src/ui/stageModel';
+import { page as stage } from '../src/content/pages/stage';
+import { ANSWERS, HOME_ANSWERS } from '../src/content/answers';
+import { readFileSync } from 'fs';
+import path from 'path';
 
 const m = (s: ReturnType<typeof initialState>, id: string) => s.members.find((x) => x.id === id)!;
 
@@ -51,13 +55,87 @@ describe('Stage demo rules', () => {
     expect(m(s, 'nico').song).toBe(5);
   });
 
-  it('the band click needs the internet and stops when the song changes', () => {
+  // The app sends the click over Bluetooth too (PR #274, useStageLive: blePublishLive(CLICK_EVENT)).
+  it('the band click keeps going without internet on the phone apps, and stops when the song changes', () => {
     let s = toggleClick(initialState());
     expect(clickOn(s)).toBe(true);
     s = setOnline(s, false);
-    expect(clickOn(s)).toBe(false);
-    expect(toggleClick(s).click).toBe(false);
-    s = toggleClick(setOnline(s, true));
+    expect(clickOn(s)).toBe(true);
+    expect(clickReaches(s, m(s, 'sara'))).toBe(true); // iPhone app, over Bluetooth
+    expect(clickReaches(s, m(s, 'nico'))).toBe(true); // Android app, over Bluetooth
+    expect(clickReaches(s, m(s, 'tom'))).toBe(false); // the web app has no Bluetooth
+    // It can be started with no internet too.
+    const off = setOnline(initialState(), false);
+    expect(toggleClick(off).click).toBe(true);
+    s = setOnline(s, true);
+    expect(clickReaches(s, m(s, 'tom'))).toBe(true);
     expect(leaderStep(s, 1).click).toBe(false);
+  });
+
+  // The count-in travels over Bluetooth too (PR #311, useStageLive.setCountIn: blePublishLive(COUNTIN_EVENT, countInBleWire(state))).
+  it('the count-in shows on every phone with a connection, and without one on the phone apps over Bluetooth', () => {
+    let s = toggleCountIn(initialState());
+    expect(s.count).toBe(true);
+    for (const id of ['sara', 'nico', 'tom']) expect(countInReaches(s, m(s, id)), id).toBe(true);
+    expect(countInSeen(s)).toBe(3);
+    s = toggleCountIn(setOnline(initialState(), false));
+    expect(s.count).toBe(true); // the leader's own phone counts
+    expect(countInReaches(s, m(s, 'sara'))).toBe(true); // iPhone app, over Bluetooth
+    expect(countInReaches(s, m(s, 'nico'))).toBe(true); // Android app, over Bluetooth
+    expect(countInReaches(s, m(s, 'tom'))).toBe(false); // in a browser the count-in needs the internet
+    expect(countInSeen(s)).toBe(2);
+    // No count running: nobody shows one.
+    expect(countInReaches(initialState(), m(s, 'sara'))).toBe(false);
+  });
+
+  it('a count-in ends at Go, on Count in again and with another song; losing the Wi‑Fi does not end it', () => {
+    const s = toggleCountIn(initialState());
+    expect(endCountIn(s).count).toBe(false);
+    expect(toggleCountIn(s).count).toBe(false);
+    expect(leaderStep(s, 1).count).toBe(false);
+    // The venue Wi‑Fi drops mid-count: Bluetooth carries it on for the phone apps.
+    const off = setOnline(s, false);
+    expect(off.count).toBe(true);
+    expect(countInSeen(off)).toBe(2);
+    const idle = initialState();
+    expect(endCountIn(idle)).toBe(idle);
+  });
+
+  it('the count-in never starts the click by itself', () => {
+    expect(toggleCountIn(initialState()).click).toBe(false);
+    expect(toggleCountIn(toggleClick(initialState())).click).toBe(true);
+  });
+});
+
+describe('what the site says about the click and the count-in', () => {
+  const SITE = path.resolve(__dirname, '..');
+  const copy = [
+    JSON.stringify(stage), JSON.stringify(ANSWERS), JSON.stringify(HOME_ANSWERS),
+    readFileSync(path.join(SITE, 'src/ui/stageDemo.ts'), 'utf8'),
+    readFileSync(path.join(SITE, 'src/i18n/dict/it.json'), 'utf8'),
+    readFileSync(path.join(SITE, 'src/i18n/dict/es.json'), 'utf8'),
+  ].join('\n');
+
+  it('never says the click needs the internet or isn’t sent over Bluetooth', () => {
+    expect(copy).not.toMatch(/click needs the internet|needs the internet: it isn’t sent|isn’t sent over Bluetooth|on every online phone/i);
+    expect(copy).not.toMatch(/click (della band |visivo )?ha bisogno di internet|non viene inviato via Bluetooth|clic (de la banda |visual )?necesita internet|no se envía por Bluetooth/i);
+  });
+
+  it('says the click and the count-in reach the phone apps over Bluetooth, and that a browser needs the internet', () => {
+    const text = JSON.stringify(stage);
+    expect(text).toMatch(/With no internet it reaches the phone apps nearby over Bluetooth/);
+    expect(text).toMatch(/same click over Bluetooth/);
+    expect(text).toMatch(/With no internet it reaches the phone apps over Bluetooth, on the same beat; in a browser it needs the internet/);
+    const faq = ANSWERS.stage.map((x) => x.a).join(' ');
+    expect(faq).toMatch(/the same count-in and the same visual click over Bluetooth/);
+    expect(faq).toMatch(/With no internet it reaches the iPhone and Android apps over Bluetooth/);
+    expect(faq).toMatch(/in a browser it needs the internet/);
+  });
+
+  // Since PR #311 the count-in is sent over Bluetooth: the site no longer says it needs a connection.
+  it('never says the count-in needs a connection, or that only the leader’s phone shows it offline', () => {
+    expect(copy).not.toMatch(/count-in needs a connection|only the leader’s phone shows|only Leo’s phone shows|Only the count-in needs/i);
+    expect(copy).not.toMatch(/lo mostra solo il telefono del leader|solo il telefono di Leo|Solo il conteggio ha bisogno/i);
+    expect(copy).not.toMatch(/solo (la muestra|aparece en) el (teléfono|móvil) del líder|solo la muestra el teléfono de Leo|Solo la cuenta de entrada necesita/i);
   });
 });

@@ -140,14 +140,17 @@ def fallback_link(url):
 
 
 # Rule: LIME = band moments (joining, people, news). INK = account & security.
+# The code is what the app asks for on "Check your email" (src/lib/signupCode.ts:
+# SIGNUP_CODE_LENGTH digits = the project's "Email OTP length"). The link stays
+# below it: app versions already installed only know the link.
 def confirm_signup(variant="lime"):
     return document(
-        "Confirm your email",
-        "One tap and your BandWith account is ready.",
+        "Your BandWith confirmation code",
+        "Enter the code in BandWith and your account is ready.",
         [
-            hero(variant, "Confirm your email", "One tap<br>and you&rsquo;re in.",
-                 "Confirm this address to finish setting up BandWith &mdash; gigs, rehearsals and your whole band in one calendar.",
-                 "Confirm email", "{{ .ConfirmationURL }}"),
+            hero(variant, "Confirm your email", "One code<br>and you&rsquo;re in.",
+                 "Enter this code in BandWith to confirm this address and finish setting up &mdash; gigs, rehearsals and your whole band in one calendar.",
+                 "Confirm with this link", "{{ .ConfirmationURL }}", code_box("{{ .Token }}")),
             info_card([
                 fallback_link("{{ .ConfirmationURL }}"),
                 info_block("Not you?",
@@ -508,7 +511,7 @@ def preview(html):
                 .replace("{{ .Email }}", "alex@example.com")
                 .replace("{{ .NewEmail }}", "alex.drums@example.com")
                 .replace("{{ .SiteURL }}", PUBLIC_URL)
-                .replace("{{ .Token }}", "48291375"))
+                .replace("{{ .Token }}", "482913"))
     for k, v in {"BandName": "The Night Shift", "InviterName": "Marco Rossi", "Role": "Drums",
                  "InviteURL": PUBLIC_URL + "/?invite=k3x9q2…", "AppURL": PUBLIC_URL,
                  "To": "alex@example.com", "ExpiresIn": "in 3 days", "ExpiresInLabel": "In 3 days",

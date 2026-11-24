@@ -47,10 +47,11 @@ import { bleLinked as linkedOverBle } from '@/lib/stageBleNotice';
 import { parsePlayheadState, PLAYHEAD_EVENT, stopPlayhead, type PlayheadState } from '@/lib/playhead';
 import type { LiveEvent, LiveEvents } from '@/lib/stageBleSync';
 import { STAGE_KEY_EVENT } from '@/lib/stageBleNative';
+import { useFlag } from '@/lib/appFlags';
 
 /** The broadcast 191's bw_stage_new_band_key sends on the stage topic. */
 const STAGE_KEY_BROADCAST = 'stage-key';
-import { COUNTIN_EVENT, parseCountInState, stopCountIn, type CountInState } from '@/lib/countIn';
+import { COUNTIN_EVENT, countInBleWire, countInWindow, parseCountInBle, parseCountInState, stopCountIn, type CountInState } from '@/lib/countIn';
 
 /** Round trips measured when a click starts; the fastest sets the offset. */
 const PINGS = 6;
@@ -201,6 +202,13 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   // with its clock fixed is a new leader for members, not an old one gone back.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const clientId = useMemo(() => Math.random().toString(36).slice(2, 10), [eventId, open]);
+  /**
+   * Every id this phone has had in this Stage. Closing Stage makes the next
+   * one in the same render, before the goodbyes are said, while what this
+   * phone started (its click, playhead, count-in) still carries the last.
+   */
+  const ownIdsRef = useRef(new Set<string>());
+  ownIdsRef.current.add(clientId);
   const [order, setOrder] = useState<string[] | null>(null);
   const [songId, setSongId] = useState<string | null>(null);
   const [fallbackIndex, setFallbackIndex] = useState(0);
@@ -282,6 +290,30 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   // Count-in (countIn.ts): the newest one, ours or the leader's.
   const [countIn, setCountInState] = useState<CountInState | null>(null);
   const countInRef = useRef<CountInState | null>(null);
+  /**
+   * The count-in showing came over Bluetooth only (no copy of it on the
+   * channel): it is shown on its leader's measured clock, never on this
+   * phone's own (offline the two can be seconds apart).
+   */
+  const countInBleRef = useRef(false);
+  /**
+   * A leader's count-in read over Bluetooth that can't be shown yet: its
+   * clock isn't measured, or that leader is on another song here (its move
+   * still on the way). Tried again when the clock or a state of the leader's
+   * arrives; by then it shows the beats that are left, or nothing.
+   */
+  const heldCountInRef = useRef<CountInState | null>(null);
+  /** The newest count-in start read from the checked Bluetooth link (its leader id and seq). */
+  const bleCountRef = useRef<{ from: string; seq: number } | null>(null);
+  const retryHeldCountInRef = useRef<() => void>(() => {});
+  // The kill switches (app_flags, docs/flags.md). Off: nothing of the feature is sent, taken
+  // or kept, on the channel or over Bluetooth; switched off while it runs, see the effects below.
+  const countInOn = useFlag('count_in');
+  const countInOnRef = useRef(countInOn);
+  countInOnRef.current = countInOn;
+  const followTempoOn = useFlag('follow_tempo');
+  const followTempoOnRef = useRef(followTempoOn);
+  followTempoOnRef.current = followTempoOn;
 
   const live = !!eventId && open;
   const ordered = useMemo(() => applyOrder(songs, order), [songs, order]);
@@ -384,6 +416,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
       if (state.order) setOrder(state.order);
       setSkipped(state.skipped ?? []);
       if (followingRef.current) setSongId(state.songId);
+      // A count-in over Bluetooth that waited for this move.
+      retryHeldCountInRef.current();
     },
     // armQuiet is stable (refs only).
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -391,8 +425,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   );
 
   // Click, playhead, count-in over Bluetooth: checked like the channel's, then the same receivers.
-  const bleLiveRef = useRef<(event: LiveEvent, payload: unknown) => void>(() => {});
-  const onBleLive = useCallback((event: LiveEvent, payload: unknown) => bleLiveRef.current(event, payload), []);
+  const bleLiveRef = useRef<(event: LiveEvent, payload: unknown, signed?: boolean) => void>(() => {});
+  const onBleLive = useCallback((event: LiveEvent, payload: unknown, signed?: boolean) => bleLiveRef.current(event, payload, signed), []);
   /**
    * Leader: the stopped click and playhead, for phones linked over Bluetooth.
    * 'closing': Stage closes. 'off': the click and playhead over Bluetooth were
@@ -404,8 +438,10 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   const bleFarewell = useCallback(
     (why: 'closing' | 'off' = 'closing'): LiveEvents => {
       const out: LiveEvents = {};
+      // Its own, under the id it had when it started them (ownIdsRef): closing Stage has a new id already.
+      const own = (from: string | undefined) => !!from && ownIdsRef.current.has(from);
       const running = clickRef.current;
-      if (isLeader && running?.from === clientId && running.on) {
+      if (isLeader && own(running?.from) && running?.on) {
         const stopped = { ...running, on: false, seq: nextSeq(running.seq) };
         out[CLICK_EVENT] = clickWire(stopped);
         if (why === 'off') {
@@ -419,7 +455,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
         }
       }
       const head = playheadRef.current;
-      if (isLeader && head?.from === clientId && head.on) {
+      if (isLeader && own(head?.from) && head?.on) {
         const stopped = stopPlayhead(head);
         out[PLAYHEAD_EVENT] = stopped;
         if (why === 'off') {
@@ -430,6 +466,12 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
           blePublishLiveRef.current(PLAYHEAD_EVENT, again);
         }
       }
+      // A count-in still counting stops too (one that played out has nothing to stop). Unlike the
+      // click, nothing is sent again on the channel when Bluetooth is switched off: a phone online
+      // never lets Bluetooth stop a count the channel brought (receiveBleCountIn), so it counts on
+      // undisturbed, and a countdown it had hidden stays hidden.
+      const count = countInRef.current;
+      if (isLeader && own(count?.from) && count?.on && countInWindow(count, nowMs()) !== 'over') out[COUNTIN_EVENT] = countInBleWire(stopCountIn(count));
       return out;
     },
     [isLeader, clientId],
@@ -612,6 +654,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
 
   const receivePlayhead = useCallback(
     (state: PlayheadState) => {
+      // Follow the tempo switched off (follow_tempo): a leader whose switch isn't read yet is not followed.
+      if (!followTempoOnRef.current) return;
       if (state.from === clientId) return;
       if (playheadRef.current && !isNewer(state, playheadRef.current)) return;
       playheadRef.current = state;
@@ -625,10 +669,19 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   );
 
   const receiveCountIn = useCallback(
-    (state: CountInState) => {
+    (state: CountInState, via: 'realtime' | 'bluetooth' = 'realtime') => {
+      // The count-in switched off (count_in): none is shown, from the channel or from Bluetooth.
+      if (!countInOnRef.current) return;
       if (state.from === clientId) return;
-      if (countInRef.current && !isNewer(state, countInRef.current)) return;
+      const last = countInRef.current;
+      // The channel's copy of the count already showing from Bluetooth (only admins send there):
+      // from now on it stands like any count from the channel. Not applied again: shown once.
+      if (via === 'realtime' && last && last.seq === state.seq && last.from === state.from) countInBleRef.current = false;
+      if (last && !isNewer(state, last)) return;
+      // What this one replaces is no longer waiting.
+      if (heldCountInRef.current && !isNewer(heldCountInRef.current, state)) heldCountInRef.current = null;
       countInRef.current = state;
+      countInBleRef.current = via === 'bluetooth';
       setCountInState(state);
       // Measure the leader's clock again now, over Realtime and Bluetooth: the count must be on the beat.
       if (state.on) {
@@ -639,15 +692,87 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     [clientId, syncWith, bleBurst],
   );
 
-  bleLiveRef.current = (event, payload) => {
+  /**
+   * The leader's count-in from the Bluetooth live frame. The frame is checked
+   * with the band key only (every member has it) and serves the newest count
+   * for as long as Stage is open, so much more is asked of it than of a
+   * broadcast on the channel (only admins can send there):
+   * - `signed`: read from a phone checked as an admin's on this link, its
+   *   signed state and its signed clock (useStageBle `linkChecked`); anything
+   *   else, a Stop included, is not the leader's;
+   * - a seq that leader's clock could have made (one far ahead would win over
+   *   every real count that follows);
+   * - a count the channel brought, while this phone is on the channel, is the
+   *   channel's: Bluetooth neither stops it nor puts another in its place
+   *   while it counts;
+   * - a Stop only ends a count this same link served (same leader id, the
+   *   start read from it), and is never kept on its own;
+   * - a start is shown on that leader's measured clock only (held until there
+   *   is one): live on it, the count joins on the right beat; played out, or
+   *   starting later than a tap can put it, nothing shows;
+   * - and for the song that leader is on here, when this phone knows it (held
+   *   until its move arrives, in case the frame was read first).
+   * The newest seq wins across both paths, so one that also arrives on the
+   * channel is shown once.
+   */
+  const receiveBleCountIn = useCallback(
+    (state: CountInState, signed: boolean) => {
+      if (!countInOnRef.current) return;
+      if (state.from === clientId || !signed) return;
+      const clock = pickClock(state.from, rtClockRef.current, bleClockRef?.current ?? null);
+      if (!seqPlausible(state.seq, Date.now() + (clock?.offset ?? 0), clock ? SEQ_AHEAD_MEASURED : SEQ_AHEAD_MAX)) return;
+      const last = countInRef.current;
+      const held = heldCountInRef.current;
+      // The channel's count: brought by it (or confirmed by its copy), with this phone on the channel.
+      const channels = !!last && last.from !== clientId && !countInBleRef.current && stageJoined.current;
+      if (!state.on) {
+        // The start it stops, if that one was still waiting here.
+        if (held && held.from === state.from && state.seq > held.seq) heldCountInRef.current = null;
+        const served = bleCountRef.current;
+        if (!last?.on || last.from !== state.from || state.seq <= last.seq) return;
+        if (!served || served.from !== last.from || served.seq !== last.seq) return;
+        if (channels) return;
+        receiveCountIn(state, 'bluetooth');
+        return;
+      }
+      // The newest start this link served: only that count can be stopped over it.
+      const served = bleCountRef.current;
+      if (!served || served.from !== state.from || state.seq > served.seq) bleCountRef.current = { from: state.from, seq: state.seq };
+      // This one again (a retry), or one it replaces: no longer waiting.
+      if (held && !isNewer(held, state)) heldCountInRef.current = null;
+      if (last && !isNewer(state, last)) return;
+      if (channels && last?.on && countInWindow(last, nowMs() + (pickClock(last.from, rtClockRef.current, bleClockRef?.current ?? null)?.offset ?? 0)) !== 'over') return;
+      if (!clock) {
+        heldCountInRef.current = state;
+        bleBurst();
+        return;
+      }
+      if (countInWindow(state, nowMs() + clock.offset) !== 'live') return;
+      const led = remoteRef.current;
+      if (led && led.from === state.from && led.songId && state.songId && led.songId !== state.songId) {
+        heldCountInRef.current = state;
+        return;
+      }
+      receiveCountIn(state, 'bluetooth');
+    },
+    [clientId, receiveCountIn, bleBurst, bleClockRef],
+  );
+  retryHeldCountInRef.current = () => {
+    const held = heldCountInRef.current;
+    if (held) receiveBleCountIn(held, true);
+  };
+
+  bleLiveRef.current = (event, payload, signed) => {
     if (event === CLICK_EVENT) {
       const state = parseClickState(payload);
       if (state) receiveClick(state);
     } else if (event === PLAYHEAD_EVENT) {
       const state = parsePlayheadState(payload);
       if (state) receivePlayhead(state);
+    } else if (event === COUNTIN_EVENT) {
+      const state = parseCountInBle(payload);
+      if (state) receiveBleCountIn(state, signed === true);
     }
-    // D1's count-in ('countin') arrives here too: parse it and hand it to its receiver.
   };
 
   // The channel lives while Stage mode is open.
@@ -1031,6 +1156,9 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     playheadRef.current = null;
     setPlayheadState(null);
     countInRef.current = null;
+    countInBleRef.current = false;
+    heldCountInRef.current = null;
+    bleCountRef.current = null;
     setCountInState(null);
     pingTimers.current.forEach(clearTimeout);
   }, [open]);
@@ -1081,6 +1209,8 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
    */
   const setPlayhead = useCallback(
     (next: PlayheadState) => {
+      // Switched off (follow_tempo): no playhead, here or sent.
+      if (!followTempoOnRef.current) return;
       const state = { ...next, from: clientId };
       playheadRef.current = state;
       setPlayheadState(state);
@@ -1095,13 +1225,53 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   /** Leader: a count-in (start or Stop) on every phone; anyone else's stays on their phone. */
   const setCountIn = useCallback(
     (next: CountInState) => {
+      // Switched off (count_in): no count-in, here or sent.
+      if (!countInOnRef.current) return;
       const state = { ...next, from: clientId };
       countInRef.current = state;
+      countInBleRef.current = false;
       setCountInState(state);
-      if (isLeader) void channelRef.current?.send({ type: 'broadcast', event: COUNTIN_EVENT, payload: state });
+      if (isLeader) {
+        void channelRef.current?.send({ type: 'broadcast', event: COUNTIN_EVENT, payload: state });
+        // No internet on stage: the same count for phones linked over Bluetooth, in its short form.
+        blePublishLive(COUNTIN_EVENT, countInBleWire(state));
+      }
     },
-    [clientId, isLeader],
+    [clientId, isLeader, blePublishLive],
   );
+
+  // The count-in switched off (app_flags count_in) while one is there: it ends like a Stop. The
+  // leader's phone says so on both paths, so a phone that has not read the switch yet stops too;
+  // then every phone forgets it (no countdown, no button waiting for a count that won't come).
+  useEffect(() => {
+    if (countInOn) return;
+    heldCountInRef.current = null;
+    const count = countInRef.current;
+    if (!count) return;
+    if (isLeader && count.from === clientId && count.on) {
+      const off = stopCountIn(count);
+      void channelRef.current?.send({ type: 'broadcast', event: COUNTIN_EVENT, payload: off });
+      blePublishLive(COUNTIN_EVENT, countInBleWire(off));
+    }
+    countInRef.current = null;
+    countInBleRef.current = false;
+    setCountInState(null);
+  }, [countInOn, isLeader, clientId, blePublishLive]);
+
+  // Follow the tempo switched off (app_flags follow_tempo) mid-song: the same, with the playhead.
+  // The song, the click and the count-in go on as they are.
+  useEffect(() => {
+    if (followTempoOn) return;
+    const head = playheadRef.current;
+    if (!head) return;
+    if (isLeader && head.from === clientId && head.on) {
+      const off = stopPlayhead(head);
+      void channelRef.current?.send({ type: 'broadcast', event: PLAYHEAD_EVENT, payload: off });
+      blePublishLive(PLAYHEAD_EVENT, off);
+    }
+    playheadRef.current = null;
+    setPlayheadState(null);
+  }, [followTempoOn, isLeader, clientId, blePublishLive]);
 
   /** Make song `i` (in the live order) the current one. */
   const select = useCallback(
@@ -1254,7 +1424,15 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
   const playheadPeer = playhead && playhead.from !== clientId ? playhead.from : null;
   const playheadOffset = pickClock(playheadPeer, rtClock, ble.clock)?.offset ?? 0;
   const countInPeer = countIn && countIn.from !== clientId ? countIn.from : null;
-  const countInOffset = pickClock(countInPeer, rtClock, ble.clock)?.offset ?? 0;
+  const countInClock = pickClock(countInPeer, rtClock, ble.clock);
+  const countInOffset = countInClock?.offset ?? 0;
+  // A count that came over Bluetooth only, its leader's clock no longer measured (Bluetooth
+  // starting again, say): off the screen rather than counted on this phone's own clock.
+  const countInShown = countIn && countInPeer && countIn.on && countInBleRef.current && !countInClock ? null : countIn;
+  // The leader's clock measured (or measured again): a count-in held for it shows now.
+  useEffect(() => {
+    retryHeldCountInRef.current();
+  }, [rtClock, ble.clock]);
 
   // The leader's phone is reachable: on the channel, or linked over Bluetooth.
   // Linked in any of its states (signed, an older app's, not checkable yet: #288).
@@ -1280,6 +1458,22 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     }, BLE_LEADER_GONE_MS);
     return () => clearTimeout(timer);
   }, [isLeader, leaderOnline, bleLinked, remoteRunning, clientId]);
+  // The same for its count-in that came over Bluetooth only. Meanwhile the count has run on
+  // the shared clock and ended on its own (it is worked out from its start, never frozen);
+  // this forgets it, so the leader back in reach starts from what its phone serves then.
+  // A count that came on the channel is left as it always was.
+  const remoteCounting = !!(countIn && countIn.from !== clientId && countIn.on);
+  useEffect(() => {
+    if (isLeader || leaderOnline || bleLinked || !remoteCounting) return;
+    const timer = setTimeout(() => {
+      heldCountInRef.current = null;
+      if (!countInBleRef.current || !countInRef.current || countInRef.current.from === clientId) return;
+      countInRef.current = null;
+      countInBleRef.current = false;
+      setCountInState(null);
+    }, BLE_LEADER_GONE_MS);
+    return () => clearTimeout(timer);
+  }, [isLeader, leaderOnline, bleLinked, remoteCounting, clientId]);
 
   return {
     /** The setlist in its live order. */
@@ -1346,7 +1540,7 @@ export function useStageLive<T extends LiveSongRef>({ eventId, setlistId, songs,
     },
     /** The count-in (countIn.ts): newest state, whose, offset, and (leader) send. */
     countIn: {
-      state: countIn,
+      state: countInShown,
       mine: !!countIn && countIn.from === clientId,
       offset: countInOffset,
       set: setCountIn,

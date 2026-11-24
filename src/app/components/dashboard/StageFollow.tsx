@@ -42,6 +42,7 @@ import {
 import { barForCell, barForLine, barForSection, followContext, followFrame, leaderStartAt, type FollowContext, type FollowFrame, type FollowStatus } from '@/lib/followTempo';
 import type { SongChart } from '@/lib/ireal';
 import type { StageClickControls } from './StageClick';
+import { useFlag } from '@/lib/appFlags';
 import '@/styles/follow.css';
 
 /** useStageLive().playhead */
@@ -163,7 +164,11 @@ export function useFollowTempo(opts: {
 }): FollowTempo {
   const { playhead, song, isLeader, click } = opts;
   const [on, setOn] = useFollowTempoPreference();
-  const available = !!playhead;
+  // The kill switch (app_flags follow_tempo, docs/flags.md): off, there is nothing to follow, so
+  // the switch, the strip, the leader's buttons and the lit bar all go. This device's own choice
+  // (`on`) is kept for when it is back.
+  const flagOn = useFlag('follow_tempo');
+  const available = flagOn && !!playhead;
   const canFollow = !!song && songCanFollow({ bpm: song.bpm, chart: song.chart, lyrics: song.lyrics });
   const needsBpm = !!song && !(song.bpm && song.bpm > 0);
   const timeline = useMemo(

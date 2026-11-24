@@ -172,13 +172,13 @@ const together: AreaText = {
           items: [
             "Ouvre la répétition.",
             "Touche **SUPPRIMER** sous **CHAT RÉPÉTITION**.",
-            "Touche **Oui, supprimer**, ou **ANNULER** pour la garder.",
+            "Touche **Oui, supprimer**, ou **ANNULER** pour la garder. Une répétition qui se répète demande à la place quelles dates : **Supprimer cette date** retire seulement la date que tu as ouverte, **Supprimer toute la série** retire toutes les dates avec leurs notes.",
           ],
         },
         {
           type: "note",
           tone: "warning",
-          text: "La suppression est irréversible. Une répétition récurrente est un seul événement : la supprimer retire toutes les dates de la série.",
+          text: "La suppression d’une répétition ou de toute une série est irréversible. Une seule date supprimée peut revenir : un admin ouvre la série et touche **RÉTABLIR** à côté d’elle, sous **Dates supprimées**.",
         },
         {
           type: "p",
@@ -245,7 +245,7 @@ const together: AreaText = {
         {
           type: "note",
           tone: "warning",
-          text: "Toutes les dates d’une série partagent la même répétition : un seul effectif, une seule réponse par membre, une seule setlist. La modifier ou la supprimer change toutes les dates.",
+          text: "Toutes les dates d’une série partagent la même répétition : un seul effectif, une seule réponse par membre, une seule setlist. La modifier change toutes les dates. Deux choses peuvent se faire sur une seule date : la supprimer (**Supprimer cette date**, voir [[delete-a-rehearsal]]) et la déplacer : quand tu changes la date, **Quelles dates déplacer ?** propose **Seulement cette date** ou **Toute la série**.",
         },
       ],
     },
@@ -770,7 +770,7 @@ const together: AreaText = {
             "Dans les discussions de groupe et d’événement, chaque message affiche le nom de l’expéditeur, avec « · Admin » pour les admins.",
             "La discussion charge les 50 derniers messages. Remonte et touche **Charger les messages précédents** pour en voir plus.",
             "Les messages sont du texte simple : pas de pièces jointes, de réactions, ni de modification ou suppression d’un seul message.",
-            "Sans connexion, le message n’est pas envoyé et revient dans la zone de saisie avec « Message non envoyé. Vérifie ta connexion et réessaie. » Renvoie-le quand tu es en ligne.",
+            "Sans connexion, le message reste dans la discussion avec la mention **En attente de connexion** et part tout seul quand tu es de nouveau en ligne, même si tu fermes la discussion. Un message qui n’a pas pu partir indique **Non envoyé** : touche **Réessayer** ou **Supprimer**.",
             "Une mention est mise en évidence pour tout le monde mais n’envoie pas de notification en plus : chaque personne de la discussion est déjà prévenue de chaque message.",
           ],
         },

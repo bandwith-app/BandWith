@@ -2,16 +2,30 @@
    Get page: capacity, three doors, waitlist when full
    ══════════════════════════════════════════════════════════════════ */
 
-.gethead { padding: calc(var(--nav-h) + clamp(64px, 12vh, 120px)) 0 clamp(48px, 8vh, 80px); }
+.gethead { padding: calc(var(--nav-h) + clamp(64px, 12vh, 120px)) 0 clamp(32px, 5vh, 56px); }
 .gethead__title { font-size: clamp(72px, 16vw, 260px); }
+/* Open: only the intro. Open spots gone: the counter comes back next to it (pages/get.ts). */
 .gethead__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 32px 64px; align-items: end; margin-top: 40px; }
-.gethead__cap { margin: 0; }
+.gethead__grid .capblock { margin: 0; max-width: none; }
 .capblock__nums { display: flex; gap: 32px; margin-bottom: 14px; font-family: var(--font-mono); font-size: 12px; font-weight: 500; letter-spacing: var(--track-mono); text-transform: uppercase; color: var(--fg-dim); }
 .capblock__nums b { display: block; font-family: var(--font-display); font-weight: 700; font-size: clamp(48px, 5vw, 80px); line-height: .9; letter-spacing: -0.03em; color: var(--lime); }
 .gethead .capblock__line { color: var(--fg-2); }
 .gethead .capblock__sample a { color: inherit; }
 html.is-full .capblock__nums b { color: var(--personal); }
+/* The counter in its usual place, with "Why a limit?" (on bone: ink numbers, no link to the section it is in). */
+.why__cap { margin: clamp(28px, 4vw, 48px) 0 0; max-width: 560px; }
+.why .capblock__nums { color: #5c5b5a; }
+.why .capblock__nums b { color: #000; }
+.why .capblock__line { color: var(--ink-copy); }
+.why .capblock__line a { display: none; }
 @media (max-width: 900px) { .gethead__grid { grid-template-columns: minmax(0, 1fr); } }
+/* Phones: headline, two lines of intro, then the first door and its button on the first screen. */
+@media (max-width: 700px) {
+  .gethead { padding: calc(var(--nav-h) + 20px) 0 20px; }
+  .gethead .label { margin-bottom: 12px; }
+  .gethead__grid { margin-top: 16px; }
+  .gethead .lead { font-size: 16px; line-height: 1.4; }
+}
 
 /* ── Doors ─────────────────────────────────────────────────────── */
 .gdoors { padding-bottom: clamp(80px, 12vh, 140px); }
@@ -75,10 +89,14 @@ html.is-full .capblock__nums b { color: var(--personal); }
 .bform.is-busy button[type="submit"] { cursor: progress; opacity: .7; }
 .bform.is-closed .bform__status { padding: 12px 14px; border-radius: 14px; background: rgba(0,0,0,.06); }
 @media (max-width: 1080px) { .gdoors__grid { grid-template-columns: minmax(0, 1fr); max-width: 640px; margin: 0 auto; } }
+/* Phones: the button right under the door's name and line, its facts after it. */
+@media (max-width: 700px) {
+  .gdoor__facts { order: 1; margin-top: 0; }
+  .gdoor__act { margin-top: 0; padding-top: 4px; }
+}
 
 /* ── Full: waitlist first, doors closed ────────────────────────── */
-.full { display: none; padding-bottom: 24px; }
-html.is-full .full { display: block; }
+.full { padding-bottom: 24px; }
 .full__card { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 32px 64px; align-items: end; }
 .full__card > div { padding: 8px 0; }
 .full .h2 { color: #fff; }
@@ -86,14 +104,10 @@ html.is-full .full { display: block; }
 .bform--wait { margin: 0; padding: 28px; border-radius: var(--radius-md); background: var(--card); color: #000; }
 @media (max-width: 900px) { .full__card { grid-template-columns: minmax(0, 1fr); } }
 .full__inv { margin: 20px 0 0; max-width: 34em; font-size: 16px; line-height: 1.5; color: var(--fg-2); }
-.full__inv-shut { display: none; }
 /* invites: only band invites get in, so the doors stay open for them. */
-.gdoors__inv { display: none; margin-bottom: 16px; color: var(--lime); }
-html.is-invites .gdoors__inv { display: block; }
+.gdoors__inv { margin-bottom: 16px; color: var(--lime); }
 /* full: nobody gets in. Doors stay reachable (an update, a sign-in) but quiet. */
 html.is-full:not(.is-invites) .gdoor { opacity: .55; }
-html.is-full:not(.is-invites) .full__inv-open { display: none; }
-html.is-full:not(.is-invites) .full__inv-shut { display: inline; }
 
 /* ── What happens next ─────────────────────────────────────────── */
 .steps4 { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; counter-reset: s; }

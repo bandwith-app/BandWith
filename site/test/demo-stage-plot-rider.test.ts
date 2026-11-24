@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { addItem, gearItem, initialPlot, presetItem, removeItem, freeSpot, type Plot } from '../src/ui/demos/stage-plot-rider';
+import { addItem, gearItem, initialPlot, presetItem, removeItem, freeSpot, dragLabel, itemNames, markHtml, type Plot } from '../src/ui/demos/stage-plot-rider';
+import { makeTranslator } from '../src/i18n/translate';
+import { SAME } from '../src/i18n/same';
+import { it as IT } from '../src/i18n/dict/it';
+import { es as ES } from '../src/i18n/dict/es';
 
 const list = (p: Plot) => p.inputs.map((c) => `${c.source}/${c.mic}`);
 
@@ -37,4 +41,17 @@ describe('stage plot demo follows the app (src/lib/stagePlot.ts)', () => {
     const spot = freeSpot(p.items, presetItem('vocals'));
     expect(spot).not.toEqual({ x: 0.5, y: 0.66 });
   });
+
+  // Every mark says its name and how to move it. Whatever is added to the plot, in any order,
+  // the sentence exists in Italian and Spanish (it used to for five of the thirteen names).
+  it('names every mark the plot can hold', () => {
+    expect(itemNames()).toEqual(['Lead vox', 'Vocals', 'Guitar amp', 'Bass amp', 'Keys', 'Drums · riser', 'Percussion', 'Sax', 'Trumpet', 'Other musician', 'Wedge', 'Speaker', 'DI box']);
+    expect(markHtml(presetItem('keys'), true)).toContain('aria-label="Keys. Drag, or use the arrow keys, to move it."');
+  });
+  for (const [lang, dict] of [['it', IT], ['es', ES]] as const) {
+    it(`${lang}: the drag label of every mark is translated`, () => {
+      const t = makeTranslator(lang, dict, SAME);
+      expect(itemNames().map(dragLabel).filter((l) => t.text(l) == null)).toEqual([]);
+    });
+  }
 });

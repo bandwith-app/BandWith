@@ -1,13 +1,18 @@
 /**
  * The Stage mode demo's rules, kept apart from the DOM so they can be tested
- * (stageModel.test.ts). They follow the app's behaviour as the Academy
- * describes it (academy/content/music.ts, Stage articles):
+ * (stageModel.test.ts). They follow the app's behaviour (src/app/components/
+ * event/useStageLive.ts and useStageBle.ts):
  * - the leader (admin) moves the song for everyone who follows;
  * - a member who steps alone stops following until they tap Follow leader;
  * - songs struck off tonight are skipped by Prev / Next;
  * - without internet the phone apps keep following over Bluetooth, the web
  *   app can't (no Bluetooth there) and catches up when the internet is back;
- * - the band's click needs the internet: it isn't sent over Bluetooth.
+ * - the band's click travels over Bluetooth too (PR #274): without internet
+ *   it keeps flashing on the phone apps, not on the web app;
+ * - the count-in travels over Bluetooth too (PR #311): without internet the
+ *   phone apps show the same countdown on the same beat, the web app
+ *   doesn't; a phone that gets it mid-count joins on the beat the others
+ *   are on. It never starts the click by itself.
  */
 
 export type Song = { title: string; key: string; dur: string; bpm: number };
@@ -18,6 +23,8 @@ export type StageState = {
   leaderSong: number;
   struck: number[];
   click: boolean;
+  /** A count-in is running (the leader tapped Count in). */
+  count: boolean;
   members: Member[];
 };
 
@@ -38,6 +45,7 @@ export function initialState(): StageState {
     leaderSong: 0,
     struck: [],
     click: false,
+    count: false,
     members: [
       { id: 'sara', name: 'Sara', part: 'Vocals', platform: 'iphone', following: true, song: 0 },
       { id: 'nico', name: 'Nico', part: 'Drums', platform: 'android', following: true, song: 0 },
@@ -62,8 +70,8 @@ const sync = (s: StageState): StageState => ({
 
 export function leaderGo(s: StageState, song: number): StageState {
   if (song < 0 || song >= SETLIST.length || song === s.leaderSong) return s;
-  // Moving to another song hides the click for the song before.
-  return sync({ ...s, leaderSong: song, click: false });
+  // Moving to another song hides the click for the song before, and ends its count-in.
+  return sync({ ...s, leaderSong: song, click: false, count: false });
 }
 
 export const leaderStep = (s: StageState, dir: 1 | -1) => leaderGo(s, stepSong(s.leaderSong, dir, s.struck));
@@ -75,14 +83,16 @@ export function toggleStrike(s: StageState, song: number): StageState {
 }
 
 export function setOnline(s: StageState, online: boolean): StageState {
-  // Without internet the band's click stops; back online, everyone following catches up.
-  return sync({ ...s, online, click: online ? s.click : false });
+  // The click and a count-in under way keep running (Bluetooth carries them to the phone apps);
+  // back online, everyone following catches up.
+  return sync({ ...s, online });
 }
 
-export function toggleClick(s: StageState): StageState {
-  if (!s.online) return s;
-  return { ...s, click: !s.click };
-}
+export const toggleClick = (s: StageState): StageState => ({ ...s, click: !s.click });
+
+/** The leader taps Count in (again: stops it). */
+export const toggleCountIn = (s: StageState): StageState => ({ ...s, count: !s.count });
+export const endCountIn = (s: StageState): StageState => (s.count ? { ...s, count: false } : s);
 
 const patch = (s: StageState, id: string, f: (m: Member) => Member): StageState => ({
   ...s,
@@ -108,7 +118,14 @@ export function memberStatus(s: StageState, m: Member): Status {
   return s.online ? { label: 'Following leader', tone: 'live' } : { label: 'Following leader · BT', tone: 'bt' };
 }
 
-/** The band's click shows on a phone when it runs and the phone is online. */
-export const clickOn = (s: StageState) => s.click && s.online;
+/** The band's click runs: it shows on the leader's phone and on every phone the leader reaches. */
+export const clickOn = (s: StageState) => s.click;
+/** The click on a member's phone: over the internet, or over Bluetooth in the phone apps. */
+export const clickReaches = (s: StageState, m: Member) => s.click && reachable(s, m);
+
+/** The count-in on a member's phone: over the internet, or over Bluetooth in the phone apps (like the click). */
+export const countInReaches = (s: StageState, m: Member) => s.count && reachable(s, m);
+/** How many of the band's phones show the count-in. */
+export const countInSeen = (s: StageState) => s.members.filter((m) => countInReaches(s, m)).length;
 
 export const inSync = (s: StageState) => s.members.filter((m) => m.song === s.leaderSong).length;

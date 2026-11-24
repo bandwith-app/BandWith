@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   authScreenFromUrl,
+  dropUrlParams,
   authScreenUrl,
   callbackProblem,
   callbackProblemText,
@@ -95,6 +96,52 @@ describe('screen to open after a dead link', () => {
     expect(authScreenUrl('https://app.bandwith.fun', 'forgot-password')).toBe(
       'https://app.bandwith.fun/?bw_screen=forgot-password'
     );
+  });
+});
+
+describe('sign-up link from the site', () => {
+  it('?start=signup opens the Create account form', () => {
+    expect(authScreenFromUrl('?start=signup')).toBe('sign-up');
+  });
+
+  it('other parameters of the site link (src=…) do not matter', () => {
+    expect(authScreenFromUrl('?start=signup&src=site-nav')).toBe('sign-up');
+    expect(authScreenFromUrl('?src=site-hero&start=signup')).toBe('sign-up');
+  });
+
+  it('an invite or deputy link wins over it', () => {
+    const invite = '3f2b8c1e-7a4d-4e5f-9b6a-1c2d3e4f5a6b';
+    const deputy = 'a'.repeat(64);
+    expect(authScreenFromUrl(`?start=signup&invite=${invite}`)).toBeNull();
+    expect(authScreenFromUrl(`?invite=${invite}&start=signup&src=site-nav`)).toBeNull();
+    expect(authScreenFromUrl(`?start=signup&deputy=${deputy}`)).toBeNull();
+  });
+
+  it('leaves ?bw_screen=… as it was, also next to start=signup', () => {
+    expect(authScreenFromUrl('?bw_screen=sign-in')).toBe('sign-in');
+    expect(authScreenFromUrl('?bw_screen=forgot-password')).toBe('forgot-password');
+    expect(authScreenFromUrl('?bw_screen=sign-in&start=signup')).toBe('sign-in');
+  });
+
+  it('ignores any other start value', () => {
+    expect(authScreenFromUrl('?start=login')).toBeNull();
+    expect(authScreenFromUrl('?start=')).toBeNull();
+    expect(authScreenFromUrl('?start=SIGNUP')).toBeNull();
+    expect(authScreenFromUrl('?start=signup2')).toBeNull();
+    expect(authScreenFromUrl('?src=site-nav')).toBeNull();
+  });
+
+  it('dropUrlParams takes only the named flags off the address bar', () => {
+    window.history.replaceState(null, '', '/?start=signup&src=site-nav#top');
+    dropUrlParams(['start', 'bw_screen']);
+    expect(window.location.pathname + window.location.search + window.location.hash).toBe('/?src=site-nav#top');
+    // Nothing to drop: the address (and the history entry) stay as they are.
+    const state = { bwBack: true };
+    window.history.replaceState(state, '', '/?src=site-nav');
+    dropUrlParams(['start']);
+    expect(window.location.search).toBe('?src=site-nav');
+    expect(window.history.state).toEqual(state);
+    window.history.replaceState(null, '', '/');
   });
 });
 

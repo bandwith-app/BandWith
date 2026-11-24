@@ -28,6 +28,16 @@ export const payoutsTotal = () => MUSICIANS.reduce((t, m) => t + m.fee, 0);
 export const bandFund = () => BAND_FEE - payoutsTotal();
 
 export const eur = (n: number) => `€${Math.round(n).toLocaleString('en-US')}`;
+
+/**
+ * The log line after a tap on a musician's switch: who, paid or back to
+ * pending, and what is still due. One sentence per musician and outcome, with
+ * the amount as the only moving part, so the Italian and Spanish dictionaries
+ * hold it for every order of taps ("{name} paid · <b>{eur}</b> still due",
+ * site/test/demo-money.test.ts).
+ */
+export const paidLine = (m: Musician, paid: boolean, left: number) =>
+  `${m.name} ${paid ? 'paid' : 'back to pending'} · ${left ? `<b>${eur(left)}</b> still due` : '<b>everyone paid</b> · the gig leaves Payouts on Home'}`;
 const badge = (paid: boolean) => `<span class="mdp__badge${paid ? ' is-paid' : ''}">${paid ? 'PAID' : 'PENDING'}</span>`;
 
 /** What each role's phone holds, for the side panel. A member never gets the band's numbers. */
@@ -160,7 +170,7 @@ export function initMoneyDemo(root: HTMLElement | null, reduce: boolean) {
       s = togglePaid(s, m.id);
       render(before);
       const left = dueTotal(s);
-      say(`${m.name} ${s.paid[m.id] ? 'paid' : 'back to pending'} · ${left ? `<b>${eur(left)}</b> still due` : '<b>everyone paid</b> · the gig leaves Payouts on Home'}`);
+      say(paidLine(m, !!s.paid[m.id], left));
     } else if (b.dataset.mdAct === 'all') {
       s = markAllPaid(s);
       render(before);

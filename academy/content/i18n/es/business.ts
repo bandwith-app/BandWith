@@ -124,30 +124,50 @@ const business: AreaText = {
     },
     {
       id: "ask-lineup-availability",
-      title: "Pregunta a la formación antes de que el cliente diga que sí",
-      summary: "Comprueba qué músicos están libres en la fecha mientras el presupuesto sigue abierto.",
+      title: "Fecha en reserva: quién está libre antes de que el cliente diga que sí",
+      summary: "Mientras un concierto sigue siendo un presupuesto, cada miembro recibe una tarjeta que le pide reservar la fecha, y responde en ella.",
       roles: ["admin", "member"],
       kind: "task",
-      keywords: ["consulta de disponibilidad", "disponibilidad", "estás disponible", "reservar la fecha", "provisional"],
+      keywords: ["fecha en reserva", "posible concierto", "reserva la fecha", "quién está libre", "consulta de disponibilidad", "disponibilidad", "estás disponible", "reservar la fecha", "provisional"],
       related: ["create-a-quote", "quote-to-gig", "quote-drafts"],
       body: [
+        { type: "p", text: "No hay nada que activar. Cuando guardas un presupuesto nuevo con fecha, también como borrador, a cada miembro de la banda que no es admin se le pide que reserve esa fecha. El paso 3 de un presupuesto nuevo lo dice en **Disponibilidad de la formación**." },
         {
           type: "steps",
+          title: "Responde a una fecha en reserva (miembros)",
           items: [
-            "En el paso 3 de un presupuesto nuevo, activa **Pregunta ya a la formación** (en **Disponibilidad de la formación**). En el iPad, el interruptor está bajo el PDF en vivo: «Comprueba quién está libre antes de enviar».",
-            "Guarda el presupuesto con **Guardar y compartir**, o ciérralo y elige **Guardar borrador**. En los dos casos se pregunta a los músicos.",
-            "Sigue las respuestas en el evento del presupuesto en el calendario: muestra «Disponibilidad: {free} de {total} libres» y una lista que puedes abrir.",
+            "Abre Inicio. En **Posibles conciertos**, la tarjeta **Posible concierto – reserva la fecha** muestra el día, la hora y el lugar. También recibes una notificación y una push; al tocarla se abre la misma tarjeta.",
+            "Toca **Estoy libre** o **No puedo**.",
+            "Puedes cambiar tu respuesta hasta que se confirme el concierto. La tarjeta también está en ese día de tu calendario.",
           ],
         },
-        { type: "p", text: "Un aviso lo confirma, por ejemplo «Presupuesto Q-2026-0014 guardado · disponibilidad pedida a 4». Con el interruptor desactivado, solo se pregunta a los músicos cuando el presupuesto se convierte en concierto." },
+        { type: "shot", id: "quote-hold-card", caption: "La tarjeta de fecha en reserva en el Inicio de un miembro, ya respondida: el día, la hora, el lugar y las dos respuestas." },
+        {
+          type: "steps",
+          title: "Mira quién está libre (admins)",
+          items: [
+            "Abre el evento del presupuesto en el calendario, o el propio presupuesto.",
+            "En **Quién está libre**, los miembros aparecen agrupados en **Libres ({count})**, **No pueden ({count})** y **Sin respuesta ({count})**. **En la formación** marca a los que pusiste en el presupuesto.",
+          ],
+        },
+        { type: "shot", id: "quote-hold-answers", caption: "Quién está libre en el evento del presupuesto: quién está libre, quién no puede y quién aún no ha respondido." },
+        {
+          type: "list",
+          title: "Qué pasa después",
+          items: [
+            "Si cambia el día o la hora, los miembros reciben «Posible concierto – nuevos detalles» y responden de nuevo: sus respuestas anteriores se borran. Si solo cambia el lugar, las respuestas se conservan.",
+            "Cuando confirmas el concierto, los músicos de su formación reciben el concierto como cualquier otro. A los miembros que no están en ella se les avisa: **La fecha vuelve a estar libre**.",
+            "A los miembros también se les avisa con **La fecha vuelve a estar libre** cuando el cliente rechaza, el presupuesto caduca, o lo cancelas o lo eliminas.",
+          ],
+        },
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Activa la consulta al crear el presupuesto (no al editarlo) y ve todas las respuestas." },
-            { role: "member", text: "Recibe una notificación «Disponibilidad» para la fecha, con su propio caché, y responde como a cualquier invitación. El presupuesto, el cliente y el total siguen ocultos, y el evento no está en su calendario hasta que se confirma como concierto." },
+            { role: "admin", text: "No recibe la pregunta: los admins ven el presupuesto. Ve todas las respuestas en **Quién está libre**." },
+            { role: "member", text: "Solo ve el día, la hora y el lugar. El cliente, el caché, las notas, el rider y el chat del presupuesto se quedan con los admins hasta que se confirma el concierto." },
           ],
         },
-        { type: "note", tone: "privacy", text: "Cada músico solo ve su propio caché en la consulta de disponibilidad, nunca el total del presupuesto ni los cachés de los demás." },
+        { type: "note", tone: "privacy", text: "Una tarjeta de fecha en reserva nunca muestra un caché, el cliente ni el total del presupuesto. Decir que estás libre no es aceptar un concierto." },
       ],
     },
     {
@@ -169,7 +189,7 @@ const business: AreaText = {
           ],
         },
         { type: "p", text: "En el iPad, **Guardar borrador** está en la cabecera del editor." },
-        { type: "note", tone: "privacy", text: "«Guardado como borrador de presupuesto que los miembros no ven.» En el calendario, un borrador de presupuesto muestra **OCULTO A LOS MIEMBROS**. Los músicos solo reciben la consulta de disponibilidad si activaste **Pregunta ya a la formación**." },
+        { type: "note", tone: "privacy", text: "Un borrador de presupuesto no se envía al cliente, y los miembros no pueden abrirlo. Solo reciben la tarjeta que les pide reservar la fecha, con el día, la hora y el lugar. Consulta [[ask-lineup-availability]]." },
       ],
     },
     {
@@ -801,7 +821,7 @@ const business: AreaText = {
             "En Inicio, busca **Pendientes** > **Pagos ({count})** y toca **Revisar pagos** en el concierto. También puedes abrir el concierto y tocar **CACHÉ Y PAGOS**.",
             "La hoja **Caché y pagos** muestra el **Caché de la banda**, **PAGOS PENDIENTES · {count}** con el importe y cada músico con su caché y **PAGADO** o **PENDIENTE**.",
             "Toca el interruptor redondo junto a un músico para marcarlo como pagado, o tócalo otra vez para deshacerlo.",
-            "O toca **MARCAR TODO COMO PAGADO** para marcar a todos los que quedan por pagar.",
+            "O toca **MARCAR TODO COMO PAGADO**. Marca a los músicos a los que se debe: los que confirmaron, tienen un caché mayor que cero y aún no están pagados. Los que no han confirmado se quedan como están.",
           ],
         },
         { type: "p", text: "Las estadísticas tienen la misma lista, con **MARCAR TODO COMO PAGADO** por concierto; consulta [[analytics]]. Un músico pagado sale de la lista al momento." },
@@ -853,7 +873,7 @@ const business: AreaText = {
           type: "table",
           head: ["Tema", "Admin", "Miembro o sustituto"],
           rows: [
-            ["Presupuestos", "Todo", "Nada. Solo una consulta de disponibilidad con su propio caché, si se le pregunta"],
+            ["Presupuestos", "Todo", "Nada. Los miembros solo reciben una tarjeta que les pide reservar la fecha: día, hora y lugar, sin caché"],
             ["Caché del concierto", "**Caché de la banda**, el caché de cada músico, el fondo de la banda, el anticipo", "Solo **Tu caché**"],
             ["Pagos", "Todos los que se deben", "Su propio pago y **PAGADO** / **PENDIENTE**"],
             ["Contratos y riders", "Todo", "Nada"],
@@ -1047,7 +1067,7 @@ const business: AreaText = {
   ],
 
   faq: [
-    { q: "¿Los miembros pueden ver un presupuesto o su total?", a: "No. Los presupuestos son solo para admins, en la app y en la base de datos. Un miembro solo recibe una consulta de disponibilidad, con su propio caché, si activas Pregunta ya a la formación.", roles: ["admin", "member"] },
+    { q: "¿Los miembros pueden ver un presupuesto o su total?", a: "No. Los presupuestos son solo para admins, en la app y en la base de datos. Mientras un concierto sigue siendo un presupuesto, los miembros solo reciben una tarjeta que les pide reservar la fecha, con el día, la hora y el lugar.", roles: ["admin", "member"] },
     { q: "¿El cliente necesita una cuenta para aceptar?", a: "No. El enlace personal abre una página web donde escribe su nombre, marca la casilla y toca Aceptar el presupuesto.", roles: ["admin"] },
     { q: "¿Un presupuesto aceptado es un contrato firmado?", a: "No. Guarda el nombre, la fecha y la versión que aceptó el cliente. Si necesitas una firma, prepara un contrato a partir del presupuesto aceptado.", roles: ["admin"] },
     { q: "El cliente ha aceptado. ¿Por qué el concierto aún no está en el calendario?", a: "Un sí en la página del cliente no confirma el concierto por sí solo. Abre el presupuesto y toca Crear concierto del presupuesto, o toca CONFIRMAR en el evento del presupuesto.", roles: ["admin"] },
@@ -1066,7 +1086,7 @@ const business: AreaText = {
     { term: "Evento provisional", definition: "El evento del calendario que crea un presupuesto. Solo lo ven los admins hasta que se confirma como concierto.", see: "quote-to-gig" },
     { term: "Enlace del cliente", definition: "El enlace web personal donde el cliente acepta, rechaza o escribe sobre un presupuesto, sin cuenta.", see: "client-quote-page" },
     { term: "Versión", definition: "Cada edición de un presupuesto enviado publica una nueva versión en la página del cliente; una aceptación va ligada a la versión que vio el cliente.", see: "client-confirmation" },
-    { term: "Consulta de disponibilidad", definition: "Una petición de respuesta que se envía a la formación antes de que el cliente confirme, marcada como aún sin confirmar.", see: "ask-lineup-availability" },
+    { term: "Fecha en reserva", definition: "Una fecha que los miembros deben reservar mientras un concierto sigue siendo un presupuesto. Ven el día, la hora y el lugar, y responden Estoy libre o No puedo.", see: "ask-lineup-availability" },
     { term: "Hoja de precios", definition: "Precios y servicios: las tarifas, paquetes, extras, viaje, sonido, impuestos y marca de la banda con los que empiezan los presupuestos nuevos.", see: "pricing-sheet" },
     { term: "Fondo de la banda", definition: "Un importe fijo o un porcentaje opcional que se suma a los cachés de los músicos para el ahorro de la banda, el equipo o la comisión de una agencia.", see: "pricing-sheet" },
     { term: "Paquetes fijos", definition: "Modelo de precios con un precio fijo por formación (solo, dúo, trío, banda completa…), en lugar de un caché por músico.", see: "pricing-sheet" },

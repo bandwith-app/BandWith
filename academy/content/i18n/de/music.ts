@@ -145,11 +145,9 @@ const music: AreaText = {
             ["**Dauer**", "Minuten und Sekunden in zwei Feldern (Min : Sek). Wird für die Summen der Setlists verwendet."],
             ["**BPM**", "Tempo, bis zu 3 Ziffern. Der Klick im Bühnenmodus nutzt es."],
             ["**Tonart**", "Freier Text, z. B. C-Dur. Erscheint in der Liste, auf der Bühne und in der Transponierung des Readers."],
-            // <draft live-tempo>
             ["**Taktart**", "4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 oder 7/8. Der Klick und das Einzählen nutzen sie. Ist keine gewählt, gilt die des Akkordcharts, sonst 4/4. Siehe [[song-live-settings]]."],
-            ["**Einzählen**", "**1 Takt** oder **2 Takte** und wie viele Schläge früher der Song beginnt (**Beginnt auf der Eins**, wenn keine)."],
+            ["**Einzählen**", "**1 Takt** oder **2 Takte** und der Schlag, auf dem die Band einsetzt: **Beginnt auf Schlag 1**, außer du verschiebst ihn mit − und +."],
             ["**Mit Playback gespielt**", "Der Song wird auf der Bühne nicht eingezählt: Das Playback startet die Band."],
-            // </draft>
             ["**Tap**, **BPM aus der Aufnahme**, ÷2 / ×2", "Werkzeuge unter BPM, um das Tempo zu finden. Siehe [[transpose-and-tempo]]."],
             ["**Für die Band transponieren**", "Verschiebt Tonart, Akkordchart und die Akkorde im Songtext für alle. Erscheint nur, wenn es etwas zu transponieren gibt."],
             ["**Genre**", "Tags aus den Genres der Band oder ein neues über den gestrichelten Chip **Genre** und dann **Genre hinzufügen**. Genres filtern die Bibliothek, wenn du eine Setlist zusammenstellst."],
@@ -160,7 +158,7 @@ const music: AreaText = {
             ["**Noten**", "Ein Link zu einem PDF oder Noten online, statt eines hochgeladenen Charts. Muss mit https:// beginnen."],
             ["**Akkorde**", "Ein Link zu einer Akkordseite. Er wird in den Notizen des Songs als „Chords: <link>“ gespeichert. Muss mit https:// beginnen."],
             ["**Notizen**", "Notizen der Band zum Song: Arrangement-Ideen, Tonartwechsel."],
-            ["**Songtext · Text, Markdown oder JSON**", "Der Songtext, auf Wunsch mit Akkorden in der Zeile. Siehe [[lyrics-and-chords-format]]. **Songtext einfügen oder importieren** unter dem Feld öffnet das Import-Fenster auf dem Tab Songtext."],
+            ["**Songtext · Text, Markdown oder JSON**", "Der Songtext, auf Wunsch mit Akkorden in der Zeile. Siehe [[lyrics-and-chords-format]]. **Songtext einfügen oder importieren** unter dem Feld öffnet das Import-Fenster auf dem Tab Songtext. Ein Songtext mit mehr als 20.000 Zeichen lässt sich nicht speichern: Das Formular sagt das und behält deinen Text, bis du ihn kürzt. Hat jemand anderes den Songtext geändert, während du ihn bearbeitet hast, fragt das Formular: **Neueste Version laden** (deine Änderungen gehen verloren) oder **Meine speichern**."],
           ],
         },
         {
@@ -487,7 +485,7 @@ const music: AreaText = {
         {
           type: "note",
           tone: "tip",
-          text: "Verlässt du den Editor mit ungespeicherten Änderungen, fragt er „Änderungen speichern?“ mit **Änderungen sichern**, **Verwerfen** und **Weiter bearbeiten**.",
+          text: "Verlässt du den Editor mit ungespeicherten Änderungen, fragt er „Änderungen speichern?“ mit **Änderungen sichern**, **Verwerfen** und **Weiter bearbeiten**. Hat jemand anderes denselben Songtext gespeichert, während du ihn bearbeitet hast, sagt der Editor das und behält deine Änderungen: Tippe auf **Neueste Version laden**, um die anderen Änderungen zu sehen (deine gehen verloren), oder auf **Meine speichern**, um deine darüber zu speichern.",
         },
         {
           type: "roles",
@@ -1057,7 +1055,7 @@ const music: AreaText = {
             "Hat sich der Song nach dem Vorschlag geändert, warnt der Bildschirm, dass du mit der aktuellen Version vergleichst.",
             "Eine Notiz für die Band wird zu den Notizen des Songs hinzugefügt.",
             "Ein Vorschlag mit Akkordchart ersetzt auch das Chart des Songs.",
-            "Geprüfte Vorschläge bleiben unter **Geprüft**.",
+            "Geprüfte Vorschläge bleiben unter **Geprüft**. Eine lange Liste zeigt die neuesten zuerst: Tippe unten auf **Ältere Vorschläge laden**, um die übrigen zu sehen.",
           ],
         },
         {
@@ -1568,22 +1566,19 @@ const music: AreaText = {
           type: "list",
           items: [
             "Der Klick ist nur visuell: Es gibt keinen Ton. Er blockiert keine Taps auf dem Bildschirm.",
-            // <draft live-tempo>
             "Die Schläge pro Takt kommen aus der **Taktart** des Songs, sonst aus seinem Akkordchart, sonst 4/4. In 6/8 und 12/8 leuchtet er auf den punktierten Schlägen. Zum Einzählen der Band siehe [[count-in]].",
-            // </draft>
             "Ein Song ohne BPM kann keinen Klick starten (**Kein BPM für diesen Song**). Trag das BPM im Songformular ein.",
             "Wechselst du zu einem anderen Song, wird der Klick des vorigen ausgeblendet.",
             "Die Handys bleiben auf etwa 20–40 ms genau im Takt: richtig zum Einzählen und als Tempo-Referenz, nicht als In-Ear-Klick.",
-            "Der Klick der Band braucht Internet: Er wird nicht per Bluetooth gesendet.",
+            "Ohne Internet erreicht der Klick des Leaders trotzdem die Handys, die per Bluetooth mit seinem verbunden sind, in den Apps für iPhone, iPad und Android. Im Bühnenmodus steht dann in einer Zeile **Mit dem Handy des Leaders verbunden**. Bleibt der Leader länger als 10 Sekunden außer Reichweite, stoppt der Klick auf deinem Handy. Er läuft im Takt weiter, sobald der Leader wieder in Reichweite ist. Im Web braucht der Klick der Band Internet. Siehe [[stage-bluetooth-sync]].",
           ],
         },
       ],
     },
-    // <draft live-tempo> Written from the plan (§4, §6) and PR #272 before D1, B2 and B4 landed: verify every label against the final UI.
     {
       id: "song-live-settings",
       title: "Einen Song fürs Einzählen einrichten",
-      summary: "Gib einem Song seine Taktart, die Länge des Einzählens, einen Auftakt und ob ein Playback ihn startet.",
+      summary: "Gib einem Song seine Taktart, die Länge des Einzählens, den Schlag, auf dem die Band einsetzt, und ob ein Playback ihn startet.",
       roles: ["admin"],
       kind: "task",
       keywords: ["Taktart", "Metrum", "6/8", "7/8", "Einzählen", "Auftakt", "Upbeat", "Playback", "Backing Track", "Sequenz", "Count-in"],
@@ -1595,7 +1590,7 @@ const music: AreaText = {
             "Öffne das Menü des Songs und tippe auf **Ändern**, dann auf **Weiter**, bis **Details · optional** erscheint.",
             "Wähle unter **BPM** und **Tonart** die **Taktart**: 4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 oder 7/8.",
             "Wähle unter **Einzählen** **1 Takt** oder **2 Takte**. Zwei Takte passen zu langsamen Songs: Der erste Takt zählt im halben Tempo.",
-            "Beginnt der Song vor dem ersten Schlag des Takts, tippe auf +, bis dort steht, wie viele Schläge früher, zum Beispiel **Beginnt 2 Schläge früher**. Tippe auf −, um zu **Beginnt auf der Eins** zurückzukehren.",
+            "Die Zeile darunter sagt, wo die Band einsetzt. **Beginnt auf Schlag 1** ist der erste Schlag des Takts. Beginnt der Song früher, tippe auf − (**Einen Schlag früher**): Im 4/4 ist **Beginnt auf Schlag 4** ein Schlag vor dem Takt. Tippe auf + (**Einen Schlag später**), um zurückzugehen.",
             "Startet ein Playback die Band, schalte **Mit Playback gespielt** ein: Der Song wird auf der Bühne nicht eingezählt.",
             "Tippe auf **Jetzt speichern**.",
           ],
@@ -1605,8 +1600,8 @@ const music: AreaText = {
           title: "Gut zu wissen",
           items: [
             "Ist keine Taktart gewählt, nutzt der Song die seines Akkordcharts (das Formular zeigt **Aus dem Akkordchart.**), sonst 4/4.",
-            "Klick und Einzählen folgen der Taktart: 6/8 und 12/8 werden in punktierten Schlägen gezählt, so wie Musiker sie zählen.",
-            "Das **BPM** ist der Schlag, den du zählst: die Viertel in 4/4, 3/4 oder 5/8, der punktierte Schlag in 6/8, 9/8 und 12/8.",
+            "Klick und Einzählen folgen der Taktart: 6/8, 9/8 und 12/8 werden in punktierten Schlägen gezählt, so wie Musiker sie zählen.",
+            "Das **BPM** ist der Schlag, den du zählst: Viertel in 4/4, 3/4, 5/8 oder 7/8, die punktierten Schläge in 6/8, 9/8 und 12/8. Bei Achtel-Taktarten sagt das Formular das unter der Taktart. Ein Song, der den 6/8 aus seinem Akkordchart nimmt, ohne hier gewählte Taktart, behält sein BPM auf jeder Achtel.",
           ],
         },
         {
@@ -1616,7 +1611,7 @@ const music: AreaText = {
             { role: "member", text: "Sieht das Ergebnis auf der Bühne. Kann es nicht ändern." },
           ],
         },
-        { type: "shot", id: "song-live-fields", caption: "Das Songformular unter BPM und Tonart: Taktart, Einzählen, der Auftakt und Mit Playback gespielt." },
+        { type: "shot", id: "song-live-fields", caption: "Das Songformular unter BPM und Tonart: Taktart, Einzählen, der Schlag, auf dem der Song beginnt, und Mit Playback gespielt." },
       ],
     },
     {
@@ -1633,10 +1628,10 @@ const music: AreaText = {
           title: "Das Einzählen leiten",
           items: [
             "Geh im Bühnenmodus oder Live-Modus zum Song.",
-            "Tippe auf **Einzählen**.",
+            "Tippe auf **Einzählen**, neben dem Klick-Button.",
             "Nach 1,5 Sekunden zeigt jedes Handy im Bühnenmodus einen Countdown im Vollbild, im Tempo des Songs: eine große Zahl auf jedem Schlag und einen Ring, der sich Takt für Takt füllt.",
             "Die Band setzt bei **LOS** ein. Der Countdown verschwindet von selbst.",
-            "Um ihn vor dem Ende zu stoppen, tippe auf **Stopp**. Er stoppt auf jedem Handy.",
+            "Um ihn vor dem Ende zu stoppen, tippe auf **Einzählen stoppen**. Er stoppt auf jedem Handy.",
           ],
         },
         {
@@ -1655,26 +1650,28 @@ const music: AreaText = {
           type: "list",
           title: "Wie gezählt wird",
           items: [
-            "Mit **2 Takte** im Song zählt der erste Takt im halben Tempo („1 — 2 —“) und der zweite im Tempo.",
-            "Beginnt ein Song ein paar Schläge früher, endet der Countdown mit **LOS** auf seiner ersten Note, nicht auf der 1.",
-            "Die Band wählt die Richtung: rückwärts (4 3 2 1, die Voreinstellung) oder klassisch (1 2 3 4).",
-            "Ist **Tempo folgen** an, setzt sich der Song bei **LOS** in Bewegung. Läuft der Klick, läuft er im Takt weiter.",
+            "Mit **2 Takte** im Song zählt der erste Takt im halben Tempo und der zweite im Tempo.",
+            "Beginnt ein Song vor Schlag 1 (zum Beispiel **Beginnt auf Schlag 4**), kommt **LOS** auf seiner ersten Note, nicht auf der 1.",
+            "Die Band zählt rückwärts (4 3 2 1, die Voreinstellung) oder vorwärts (1 2 3 4). Der Leader wählt das unter **Für die ganze Band** in den Einzähl-Optionen, und jedes Handy der Band zählt so.",
+            "Ist **Dem Tempo folgen** an, setzt sich der Song ab Takt 1 in Bewegung, wenn das Einzählen endet. Läuft der Klick, läuft er im Takt weiter.",
           ],
         },
         {
           type: "list",
           title: "Auf deinem eigenen Handy (optional)",
           items: [
-            "Vibration auf jedem Schlag, stärker auf dem ersten: für alle, die nicht auf den Bildschirm schauen können.",
-            "Gesprochenes Zählen oder ein Klick in deinen Kopfhörern. Er kommt nie aus dem Lautsprecher des Handys, außer du wählst das.",
+            "Tippe im Bühnenmodus auf **Einzählen**, in derselben Zeile wie **Setlist**, um die Optionen zu öffnen. Sie werden auf diesem Gerät gemerkt.",
+            "**Bei jedem Schlag vibrieren**: stärker auf dem ersten Schlag des Takts, für alle, die nicht auf den Bildschirm schauen können.",
+            "**Ton im Kopfhörer**: **Aus** oder **Klick**. Der Klick kommt nur im Kopfhörer oder In-Ear. Um ihn laut zu hören, schalte **Auch über den Lautsprecher des Telefons** ein; im Browser braucht es diesen Schalter, um ihn zu hören.",
           ],
         },
         {
           type: "list",
           title: "Wenn nicht eingezählt wird",
           items: [
-            "Ein Song mit **Mit Playback gespielt** hat keinen Button **Einzählen**: Das Playback startet die Band. Ein Admin kann trotzdem über das Menü des Songs einzählen.",
-            "Während die Regie das Audio des Songs abspielt, wird kein Einzählen angeboten.",
+            "Ein Song mit **Mit Playback gespielt** hat keinen Button **Einzählen**: Das Playback startet die Band. Der Leader kann trotzdem einzählen: Er öffnet die Einzähl-Optionen und tippt auf **Trotzdem einzählen**.",
+            "Während die Regie das Audio des Songs abspielt, ist **Einzählen** genauso ausgeblendet, und **Trotzdem einzählen** geht weiterhin.",
+            "Ein Song ohne BPM kann nicht eingezählt werden.",
           ],
         },
         {
@@ -1682,56 +1679,59 @@ const music: AreaText = {
           title: "Gut zu wissen",
           items: [
             "Ein Handy, das die Nachricht spät bekommt, steigt auf dem richtigen Schlag in den Countdown ein.",
-            "Ohne Empfang erreicht das Einzählen Handys in der Nähe per Bluetooth.",
+            "Der Countdown braucht Internet: Er wird nicht per Bluetooth gesendet. Ohne Empfang zeigt ihn nur das Handy des Leaders. Per Bluetooth verbundene Handys bekommen trotzdem den Klick, wenn er beim Leader läuft, und Dem Tempo folgen ab Takt 1.",
             "Die Handys bleiben auf etwa 20–40 ms genau im Takt.",
+            "Ein Mitglied kann den Countdown auf dem eigenen Bildschirm mit **Auf diesem Telefon ausblenden** schließen.",
           ],
         },
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Startet und stoppt das Einzählen für die ganze Band." },
-            { role: "member", text: "Sieht es auf dem eigenen Handy und wählt dort Vibration oder Kopfhörer." },
+            { role: "admin", text: "Startet und stoppt das Einzählen für die ganze Band und wählt, ob die Band rückwärts oder vorwärts zählt." },
+            { role: "member", text: "Sieht es auf dem eigenen Handy, kann es dort ausblenden und wählt Vibration oder einen Klick im Kopfhörer für das eigene Gerät." },
           ],
         },
-        { type: "shot", id: "stage-count-in", caption: "Das Einzählen auf jedem Handy: die Zahl des Schlags, der Ring und Stopp." },
+        { type: "shot", id: "stage-count-in", caption: "Das Einzählen auf jedem Handy: die Zahl des Schlags, der Ring und der Button, der es stoppt." },
       ],
     },
     {
       id: "follow-the-tempo",
-      title: "Tempo folgen",
-      summary: "Schalte es ein, und Chart, Struktur oder Songtext bewegen sich mit dem Song, im Takt mit dem Handy des Leaders.",
+      title: "Dem Tempo folgen",
+      summary: "Schalte es ein, und Akkordchart oder Songtext bewegen sich mit dem Song, im Takt mit dem Handy des Leaders.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["Tempo folgen", "automatisch scrollen", "Abspielposition", "aktueller Takt", "nächster Teil", "Songtext scrollen", "halten", "Vamp", "Probentempo", "Autoscroll"],
+      keywords: ["Tempo folgen", "automatisch scrollen", "Abspielposition", "aktueller Takt", "nächster Teil", "Songtext scrollen", "wiederholen", "Vamp", "Fermate", "Autoscroll"],
       related: ["count-in", "song-live-settings", "stage-click", "stage-mode"],
       body: [
         {
           type: "steps",
           title: "Einschalten",
           items: [
-            "Öffne im Bühnenmodus oder Live-Modus die Ansichtswahl des Song-Tabs (wo du **Text & Akkorde** oder **Akkordchart** wählst).",
-            "Schalte **Tempo folgen** ein. Es ist anfangs aus und wird auf diesem Gerät gemerkt.",
-            "Startet der Leader den Song mit **Einzählen** oder dem Klick, bewegt sich dein Bildschirm mit.",
+            "Öffne im Bühnenmodus oder Live-Modus den Song-Tab (**Songtext**, **Text & Akkorde** oder **Akkordchart**).",
+            "Tippe auf **Dem Tempo folgen**, neben der Ansichtswahl. Es ist anfangs aus und wird auf diesem Gerät gemerkt.",
+            "Die Zeile über dem Song sagt **Startet, wenn der Leader den Song startet**. Startet der Leader, bewegt sich dein Bildschirm mit der Band.",
           ],
         },
         {
           type: "table",
           head: ["Ansicht", "Was sich bewegt"],
           rows: [
-            ["**Akkordchart**", "Der aktuelle Takt leuchtet, und das Chart scrollt, damit er sichtbar bleibt."],
-            ["Struktur", "Der aktuelle Teil ist hervorgehoben. Ein Streifen oben sagt, was als Nächstes kommt, zum Beispiel „Als Nächstes: Bridge in 4 Takten“."],
-            ["**Text & Akkorde**, **Songtext**, **Nur der Song**", "Die aktuelle Zeile ist hervorgehoben, und der Text scrollt gleichmäßig. Ohne Zeilentiming geht es Teil für Teil."],
-            ["Bodenmonitor", "Ein großer Countdown bis zum nächsten Teil, zum Beispiel „Chorus in 4“."],
+            ["**Akkordchart**", "Der aktuelle Takt leuchtet, und das Chart scrollt, damit er sichtbar bleibt. Bei einem Song ohne Chart Takt für Takt leuchtet der aktuelle Teil."],
+            ["**Text & Akkorde**, **Songtext**", "Die aktuelle Zeile ist hervorgehoben, und der Text scrollt, damit sie sichtbar bleibt. Die Zeilen sind auf die Takte ihres Teils verteilt, eine Zeile kann also etwas früh oder spät aufleuchten."],
+            ["**Nur der Song**", "Dasselbe im Vollbild."],
+            ["Bodenmonitor", "Ein großer Countdown bis zum nächsten Teil, zum Beispiel „Refrain in 4“."],
           ],
         },
         {
           type: "steps",
           title: "Leiten",
           items: [
-            "Starte den Song mit **Einzählen** oder dem Klick. Takt 1 beginnt auf jedem Handy im selben Moment.",
-            "Spielt die Band einen Teil länger oder kürzer, tippe auf den Teil, Takt oder die Zeile, wo ihr seid: Alle springen dorthin.",
-            "Tippe auf **Halten**, um den aktuellen Teil zu wiederholen (ein Vamp, ein Solo), bis du noch einmal tippst.",
-            "Tippe auf **Stopp**, um es zu beenden. Ein Wechsel zu einem anderen Song stoppt es auch.",
+            "Schalte **Dem Tempo folgen** auch auf deinem eigenen Handy ein. Die Zeile über dem Song sagt **Die Band folgt dir, sobald du startest**, daneben stehen die Buttons des Leaders.",
+            "Tippe auf **Starten**: Takt 1 beginnt auf jedem Handy im selben Moment. Auch **Einzählen** startet es, mit Takt 1, wenn das Einzählen endet.",
+            "Spielt die Band einen Teil länger oder kürzer, tippe auf den Takt, die Zeile oder den Teil, wo ihr seid: Alle springen dorthin.",
+            "Tippe auf **Wiederholen**, um den aktuellen Teil zu wiederholen (ein Vamp, ein Solo). Tippe auf **Loslassen**, um weiterzugehen.",
+            "An einer Fermate wartet der Song, und die Zeile sagt **Warte auf den Leader**: Tippe auf **Weiter**.",
+            "Tippe auf **Stoppen**, um es zu beenden. Ein Wechsel zu einem anderen Song stoppt es auch.",
           ],
         },
         {
@@ -1739,16 +1739,16 @@ const music: AreaText = {
           title: "Gut zu wissen",
           items: [
             "Nur der Leader bewegt die Position der Band. Mitglieder schalten die Ansicht auf ihrem eigenen Handy ein oder aus.",
-            "Ein Song braucht ein BPM, um ihm zu folgen. Ohne BPM sagt der Schalter „Füge ein BPM hinzu, um diesem Song zu folgen“.",
-            "Wiederholungen, Endings, D.C., D.S., Segno und Coda im Chart werden der Reihe nach gespielt. Eine Fermate wartet, bis der Leader tippt.",
-            "Um Zeile für Zeile zu folgen, legt ein Admin das Zeilentiming im Song mit **Zeilen synchronisieren** fest: zur Aufnahme mittippen oder die Takte jeder Zeile eingeben.",
-            "Bei einer Probe verlangsamt **Mit 80 % spielen** Klick und Folgen zusammen. Das BPM des Songs bleibt gleich.",
+            "Um einem Song zu folgen, braucht er ein BPM und ein Akkordchart oder einen Songtext. Ohne BPM ist der Schalter aus und sagt „Füge BPM hinzu, um diesem Song zu folgen“.",
+            "Die Zeile über dem Song sagt, was als Nächstes kommt, zum Beispiel „Dann: Bridge in 4 Takten“.",
+            "Wiederholungen, Endings, D.C., D.S., Segno und Coda im Chart werden der Reihe nach gespielt.",
+            "Nachdem du von Hand gescrollt hast, bleibt der Song ein paar Sekunden dort, wo du ihn hingeschoben hast, und folgt dann wieder.",
+            "Ohne Internet erreicht die Position des Leaders trotzdem die per Bluetooth verbundenen Handys, in den Apps für iPhone, iPad und Android.",
           ],
         },
-        { type: "shot", id: "stage-follow-tempo", caption: "Tempo folgen im Akkordchart: der aktuelle Takt leuchtet, oben der nächste Teil." },
+        { type: "shot", id: "stage-follow-tempo", caption: "Dem Tempo folgen im Akkordchart: der aktuelle Takt leuchtet, oben der nächste Teil." },
       ],
     },
-    // </draft>
     {
       id: "stage-manager",
       title: "Das Audio der Songs von der Regie abspielen",
@@ -1840,7 +1840,7 @@ const music: AreaText = {
       body: [
         {
           type: "p",
-          text: "In den Apps für iPhone, iPad und Android sendet das Handy des Admins den aktuellen Song und die Reihenfolge auch per Bluetooth. Handys von Mitgliedern in der Nähe empfangen das ohne Kopplung und ohne Internet.",
+          text: "In den Apps für iPhone, iPad und Android sendet das Handy des Admins den aktuellen Song, die Reihenfolge, den Klick und die Stelle im Song (Dem Tempo folgen) auch per Bluetooth. Handys von Mitgliedern in der Nähe empfangen das ohne Kopplung und ohne Internet. Die Ausnahme ist das Einzählen: Es braucht Internet.",
         },
         {
           type: "steps",
@@ -2056,6 +2056,7 @@ const music: AreaText = {
           items: [
             "Sobald der Empfang zurück ist, wenn du die App wieder öffnest und alle 30 Sekunden, solange etwas wartet.",
             "Schließen der App behält, was wartet. Es geht raus, wenn du die App das nächste Mal mit Empfang öffnest.",
+            "Eine Probennotiz, die der Server ablehnt, wird nicht weggeworfen. Der Live-Modus meldet **Eine Notiz wurde nicht gespeichert**, und der Text der Notiz steht in den Notizen der Probe und unter Einstellungen › Offline & live, mit **Kopieren** und **Entfernen**.",
           ],
         },
         {
@@ -2063,7 +2064,7 @@ const music: AreaText = {
           tone: "tip",
           text: "Mitglieder in der Nähe sehen die neue Reihenfolge des Leaders sofort per Bluetooth, noch bevor sie gespeichert ist.",
         },
-        { type: "shot", id: "stage-offline-banner", caption: "Der Bühnenmodus ohne Empfang: der Inhalts-Hinweis und die Leiste mit den Änderungen, die auf Empfang warten." },
+        { type: "shot", id: "stage-offline-banner", caption: "Der Bühnenmodus ohne Empfang: der Inhalts-Hinweis und darunter die Änderungen, die auf Empfang warten." },
       ],
     },
     {
@@ -2155,12 +2156,10 @@ const music: AreaText = {
       q: "Warum sehe ich das iReal Pro Forum im Web nicht in der App?",
       a: "Das Forum lässt sich nicht in einer Webseite anzeigen, daher öffnet es sich in einem eigenen Fenster. Kopier dort einen Link und tippe auf „Link einfügen“ oder zieh den Link auf das Feld.",
     },
-    // <draft live-tempo>
     {
       q: "Warum hat ein Song keinen Button Einzählen?",
-      a: "Der Song ist auf „Mit Playback gespielt“ gestellt: Das Playback startet die Band. Ein Admin kann trotzdem über das Menü des Songs einzählen.",
+      a: "Der Song ist auf „Mit Playback gespielt“ gestellt, oder die Regie spielt ihn gerade ab. Der Leader kann trotzdem einzählen: Er öffnet die Einzähl-Optionen und tippt auf „Trotzdem einzählen“. Ein Song ohne BPM kann nicht eingezählt werden.",
     },
-    // </draft>
   ],
 
   glossary: [
@@ -2188,10 +2187,8 @@ const music: AreaText = {
     { term: "Offline-Setlist", definition: "Die Kopie der Setlist eines Gigs oder einer Probe, die für Orte ohne Empfang auf deinem Handy bleibt: Songtexte, Akkorde, Gesangsstimmen und deine eigenen Notizen.", see: "live-mode-offline" },
     { term: "Gesangsstimme", definition: "Wer eine Zeile oder ein paar Wörter singt: Hauptstimme, Zweite Stimme, Chor, Alle oder Gesprochen, jede mit eigenem Aussehen.", see: "voice-parts" },
     { term: "Meine Stimme hervorheben", definition: "Ein Schalter auf jedem Gerät, der die Zeilen, die du singst, hell hält und die anderen etwas abblendet.", see: "highlight-my-part" },
-    // <draft live-tempo>
     { term: "Einzählen", definition: "Der Countdown auf jedem Handy, im Tempo und in der Taktart des Songs, der mit LOS endet, wo die Band einsetzt.", see: "count-in" },
-    { term: "Tempo folgen", definition: "Ein Schalter auf jedem Gerät, der Chart, Struktur oder Songtext mit dem Song bewegt, im Takt mit dem Leader.", see: "follow-the-tempo" },
-    // </draft>
+    { term: "Dem Tempo folgen", definition: "Ein Schalter auf jedem Gerät, der Akkordchart oder Songtext mit dem Song bewegt, im Takt mit dem Leader.", see: "follow-the-tempo" },
   ],
 };
 

@@ -15,9 +15,9 @@
   <ul>
     <li><b class="ui">Songs</b> and <b class="ui">Setlists</b> at the top switch between the two lists. Each shows how many there are.</li>
     <li>The search field filters the list you are on: <b class="ui">Search songs, artists…</b> matches titles and artists, <b class="ui">Search setlists…</b> matches setlist names.</li>
-    <li>The <b class="ui">Band repertoire</b> card shows the number of <b class="ui">Songs</b> and <b class="ui">Setlists</b>, the <b class="ui">Total duration</b> of all songs, and <b class="ui">Status readiness</b>: one dot per song, coloured by status, with the counts for <b class="ui">Ready</b>, <b class="ui">Learning</b> and <b class="ui">Suggested</b> below.</li>
+    <li>The <b class="ui">Band repertoire</b> card shows the number of <b class="ui">Songs</b> and <b class="ui">Setlists</b>, the <b class="ui">Total duration</b> of all songs, and <b class="ui">Status readiness</b>: one dot per song, colored by status, with the counts for <b class="ui">Ready</b>, <b class="ui">Learning</b> and <b class="ui">Suggested</b> below.</li>
     <li>Each song row shows the title, the artist and key, the duration and the BPM. A <b class="ui">Suggested</b> or <b class="ui">Learning</b> tag shows when the song is not ready yet.</li>
-    <li>The round <b class="ui">Play</b> button at the left of a row plays the song's recording or opens its link. It is greyed out when the song has neither.</li>
+    <li>The round <b class="ui">Play</b> button at the left of a row plays the song's recording or opens its link. It is grayed out when the song has neither.</li>
     <li>Tap anywhere else on a song row to open its menu (see <a data-ref="song-menu-actions">Song menu: every action</a>).</li>
     <li>Above the songs, admins see <b class="ui">Suggestions from members</b> when something waits for review; members always see <b class="ui">My suggestions</b> (see <a data-ref="review-song-suggestions">Review members' suggestions</a> and <a data-ref="suggest-a-change-to-a-song">Suggest a change to a song</a>).</li>
   </ul>
@@ -73,11 +73,9 @@
       <tr><td><b class="ui">Duration</b></td><td>Minutes and seconds in two boxes (min : sec). Used for setlist totals.</td></tr>
       <tr><td><b class="ui">BPM</b></td><td>Tempo, up to 3 digits. Stage mode's click uses it.</td></tr>
       <tr><td><b class="ui">Key</b></td><td>Free text, e.g. C maj. Shown in the list, on stage and in the reader's transpose control.</td></tr>
-      <!-- <draft live-tempo> -->
       <tr><td><b class="ui">Time signature</b></td><td>4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 or 7/8. The click and the count-in use it. With none picked, the chord chart's, else 4/4 (see <a data-ref="song-live-settings">Set a song up for the count-in</a>).</td></tr>
-      <tr><td><b class="ui">Count-in</b></td><td><b class="ui">1 bar</b> or <b class="ui">2 bars</b>, and how many beats early the song starts (<b class="ui">Starts on the downbeat</b> when none).</td></tr>
+      <tr><td><b class="ui">Count-in</b></td><td><b class="ui">1 bar</b> or <b class="ui">2 bars</b>, and the beat the band comes in on: <b class="ui">Starts on beat 1</b> unless you move it with − and +.</td></tr>
       <tr><td><b class="ui">Played with a backing track</b></td><td>The song gets no count-in on stage: the track starts the band.</td></tr>
-      <!-- </draft> -->
       <tr><td><b class="ui">Tap</b>, <b class="ui">BPM from the recording</b>, ÷2 / ×2</td><td>Tools under BPM to find the tempo (see <a data-ref="transpose-and-tempo">Transpose a song and find its tempo</a>).</td></tr>
       <tr><td><b class="ui">Transpose for the band</b></td><td>Moves the key, the chord chart and the chords in the lyrics for everyone. Shown only when there is something to transpose.</td></tr>
       <tr><td><b class="ui">Genre</b></td><td>Tags to pick from the band's genres, or a new one with the dashed <b class="ui">Genre</b> chip, then <b class="ui">Add genre</b>. Genres filter the library when you build a setlist.</td></tr>
@@ -88,7 +86,7 @@
       <tr><td><b class="ui">Sheet music</b></td><td>A link to a PDF or sheet music online, used instead of an uploaded chart. Must start with https://.</td></tr>
       <tr><td><b class="ui">Chords</b></td><td>A link to a chord page, saved into the song's notes as “Chords: &lt;link&gt;”. Must start with https://.</td></tr>
       <tr><td><b class="ui">Notes</b></td><td>Band notes on the song: arrangement ideas, key changes.</td></tr>
-      <tr><td><b class="ui">Lyrics · text, Markdown or JSON</b></td><td>The song's lyrics, with chords inline if you want (see <a data-ref="lyrics-and-chords-format">How lyrics and chords are written</a>). <b class="ui">Paste or import lyrics</b> under the box opens the import sheet on its Lyrics tab.</td></tr>
+      <tr><td><b class="ui">Lyrics · text, Markdown or JSON</b></td><td>The song's lyrics, with chords inline if you want (see <a data-ref="lyrics-and-chords-format">How lyrics and chords are written</a>). <b class="ui">Paste or import lyrics</b> under the box opens the import sheet on its Lyrics tab. Lyrics over 20,000 characters can't be saved: the form says so and keeps your text until you shorten it. If someone else changed the lyrics while you were editing, the form asks: <b class="ui">Load the latest version</b> (your changes are dropped) or <b class="ui">Save mine instead</b>.</td></tr>
     </tbody>
   </table>
   <aside class="note privacy">Uploaded recordings and charts are stored privately for the band: only band members can open them.</aside>
@@ -262,7 +260,7 @@
     <li><b class="ui">“The chords sound in …, the song is in ….”</b> shows when the chords don't fit the song's key, with a button to transpose them.</li>
   </ul>
   <p>The chord editor needs lyrics: with none, it says to add them in Edit song first. After you save, the band gets a push that the chords changed.</p>
-  <aside class="note tip">Leaving with changes not saved asks <b class="ui">“Save your changes?”</b> with <b class="ui">Save changes</b>, <b class="ui">Discard</b> and <b class="ui">Keep editing</b>.</aside>
+  <aside class="note tip">Leaving with changes not saved asks <b class="ui">“Save your changes?”</b> with <b class="ui">Save changes</b>, <b class="ui">Discard</b> and <b class="ui">Keep editing</b>. If someone else saved the same lyrics while you were editing, the editor says so and keeps your changes: <b class="ui">Load the latest version</b> shows theirs (yours are dropped), <b class="ui">Save mine instead</b> saves yours over theirs.</aside>
   <div class="roles">
     <div data-role="admin">Edits the band's chords for everyone.</div>
     <div data-role="member">Has no chord editor. Suggests a chord correction with <b class="ui">Suggest a change</b> (see <a data-ref="suggest-a-change-to-a-song">Suggest a change to a song</a>).</div>
@@ -271,15 +269,15 @@
   <h2>Voice parts</h2>
 
   <h3 id="art-voice-parts" data-roles="admin,member">Voice parts in the lyrics</h3>
-  <p>When a song has more than one voice, its lyrics can show who sings which words. Each part has its own look, made of a shape and a colour, so it reads on a dark stage, in sunlight and for colour-blind players.</p>
+  <p>When a song has more than one voice, its lyrics can show who sings which words. Each part has its own look, made of a shape and a color, so it reads on a dark stage, in sunlight and for color-blind players.</p>
   <table class="grid">
     <thead><tr><th>Part</th><th>How it looks</th></tr></thead>
     <tbody>
       <tr><td><b class="ui">Lead</b></td><td>Plain text. Lines with no part are the lead.</td></tr>
-      <tr><td><b class="ui">2nd voice</b></td><td>A coloured line under the words.</td></tr>
-      <tr><td><b class="ui">Backing</b></td><td>Italic and softer, with a coloured bar on the left.</td></tr>
+      <tr><td><b class="ui">2nd voice</b></td><td>A colored line under the words.</td></tr>
+      <tr><td><b class="ui">Backing</b></td><td>Italic and softer, with a colored bar on the left.</td></tr>
       <tr><td><b class="ui">All</b></td><td>Bold: everyone sings.</td></tr>
-      <tr><td><b class="ui">Spoken</b></td><td>Small capitals, in grey.</td></tr>
+      <tr><td><b class="ui">Spoken</b></td><td>Small capitals, in gray.</td></tr>
     </tbody>
   </table>
   <p class="steps-title">Where you see them</p>
@@ -557,7 +555,7 @@
     <li>If the song changed after the suggestion, the screen warns that you are comparing with its current version.</li>
     <li>A note for the band is added to the song's notes.</li>
     <li>A suggestion that includes a chord chart also replaces the song's chart.</li>
-    <li>Reviewed suggestions stay on <b class="ui">Reviewed</b>.</li>
+    <li>Reviewed suggestions stay on <b class="ui">Reviewed</b>. A long list shows the newest first: <b class="ui">Load older suggestions</b> at the bottom brings the rest.</li>
   </ul>
   <div class="devnote" data-devices="tablet,duoBook,duoLand">Suggestions open in the second pane, beside the Repertoire.</div>
 
@@ -646,7 +644,7 @@
     <li>Tap <b class="ui">Export setlist as PDF</b> (the document button at the top right).</li>
     <li>On a phone, pick where to send it in the share sheet. On the web, the PDF downloads.</li>
   </ol>
-  <p>The PDF has the band name, the setlist name and each song with artist, key, BPM, duration and set. The button is greyed out while the setlist is empty.</p>
+  <p>The PDF has the band name, the setlist name and each song with artist, key, BPM, duration and set. The button is grayed out while the setlist is empty.</p>
 
   <h3 id="art-delete-a-setlist" data-roles="admin">Delete a setlist</h3>
   <ol class="steps">
@@ -752,13 +750,13 @@
     <li>Whoever a note is for taps <b class="ui">Practised</b> after working on it; an admin taps <b class="ui">OK</b> when the band has it (the author can too, on a note to members).</li>
     <li>The rehearsal's page lists the notes under <b class="ui">REHEARSAL NOTES</b>, by song. Notes reach the other phones at once; without internet they wait on the phone.</li>
   </ul>
-  <p class="steps-title">To practise, and the next rehearsal</p>
+  <p class="steps-title">To practice, and the next rehearsal</p>
   <ul>
     <li>Home shows <b class="ui">To practise</b>: the songs with open notes for you or the band, newest rehearsal first, with <b class="ui">Practised</b> on the notes for you. A song opens its page.</li>
     <li>The song's page shows <b class="ui">From rehearsals</b>. A <b class="ui">Tempo</b> or <b class="ui">Key</b> note that names the value (“Tempo: 96”, “Key: Bb”) gets a button: admins <b class="ui">Set on the song</b>, members <b class="ui">Suggest to the band</b>.</li>
     <li>The next rehearsal's page shows <b class="ui">FROM LAST TIME</b>, the open notes on its songs, with <b class="ui">OK</b> for admins. In Live mode a badge on each song opens them.</li>
     <li>A new rehearsal offers the songs with open notes as focus songs (<b class="ui">From open rehearsal notes</b>); a new rehearsal poll picks them in advance.</li>
-    <li>When a rehearsal ends, everyone with songs to practise gets one push listing them, in their language. <b class="ui">Push notifications</b> in Settings turns it off.</li>
+    <li>When a rehearsal ends, everyone with songs to practice gets one push listing them, in their language. <b class="ui">Push notifications</b> in Settings turns it off.</li>
   </ul>
   <p class="steps-title">Good to know</p>
   <ul>
@@ -835,33 +833,29 @@
   </table>
   <ul>
     <li>The click is visual only: there is no sound. It doesn't block taps on the screen.</li>
-    <!-- <draft live-tempo> -->
     <li>The beats in a bar come from the song's <b class="ui">Time signature</b>, else from its chord chart, else 4/4. In 6/8 and 12/8 it flashes on the dotted beats. To count the band in, see <a data-ref="count-in">Count the band in</a>.</li>
-    <!-- </draft> -->
     <li>A song without a BPM can't start a click (<b class="ui">No BPM for this song</b>). Add the BPM in the song form.</li>
     <li>Moving to another song hides the click for the song before.</li>
     <li>Phones keep in time to about 20–40 ms: right for a count-in and a tempo reference, not for an in-ear click.</li>
-    <li>The band's click needs the internet: it isn't sent over Bluetooth.</li>
+    <li>With no internet, the leader's click still reaches the phones linked to the leader's over Bluetooth, in the iPhone, iPad and Android apps. A line in Stage mode then says <b class="ui">Connected to the leader's phone</b>. If the leader stays out of reach for more than 10 seconds, the click stops on your phone; it comes back on the beat when they are in reach again. On the web the band's click needs the internet (see <a data-ref="stage-bluetooth-sync">Stage mode without internet (Bluetooth)</a>).</li>
   </ul>
 
-  <!-- <draft live-tempo> Written from the plan (§4, §6) and PR #272 before D1, B2 and B4 landed: verify against the final UI. -->
   <h2>Count-in and Follow the tempo</h2>
 
   <h3 id="art-song-live-settings" data-roles="admin">Set a song up for the count-in</h3>
-  <aside class="note draft">Written before this feature was finished, from the plan. Check every label against the app before relying on it.</aside>
-  <p>Give a song its time signature, how long the count-in lasts, a pickup, and whether a backing track starts it.</p>
+  <p>Give a song its time signature, how long the count-in lasts, the beat the band comes in on, and whether a backing track starts it.</p>
   <ol class="steps">
     <li>Open the song's menu and tap <b class="ui">Edit</b>, then <b class="ui">Next</b> to reach <b class="ui">Details · optional</b>.</li>
     <li>Under <b class="ui">BPM</b> and <b class="ui">Key</b>, pick the <b class="ui">Time signature</b>: 4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 or 7/8.</li>
     <li>Under <b class="ui">Count-in</b>, pick <b class="ui">1 bar</b> or <b class="ui">2 bars</b>. Two bars suit slow songs: the first bar counts in half time.</li>
-    <li>If the song starts before the first beat of the bar, tap + until it says how many beats early (<b class="ui">Starts 2 beats early</b>); − goes back to <b class="ui">Starts on the downbeat</b>.</li>
+    <li>The line below says where the band comes in. <b class="ui">Starts on beat 1</b> is the first beat of the bar. If the song starts earlier, tap − (<b class="ui">One beat earlier</b>): in 4/4, <b class="ui">Starts on beat 4</b> is one beat before the bar. + (<b class="ui">One beat later</b>) goes back.</li>
     <li>If a backing track starts the band, turn on <b class="ui">Played with a backing track</b>: the song gets no count-in on stage.</li>
     <li>Tap <b class="ui">Save now</b>.</li>
   </ol>
   <ul>
     <li>With no time signature picked, the song uses its chord chart's (<b class="ui">From the chord chart.</b>), else 4/4.</li>
-    <li>The click and the count-in follow the time signature: 6/8 and 12/8 are counted in dotted beats, as musicians count them.</li>
-    <li>The <b class="ui">BPM</b> is the beat you count: the quarter note in 4/4, 3/4 or 5/8, the dotted beat in 6/8, 9/8 and 12/8.</li>
+    <li>The click and the count-in follow the time signature: 6/8, 9/8 and 12/8 are counted in dotted beats, as musicians count them.</li>
+    <li>The <b class="ui">BPM</b> is the beat you count: quarter notes in 4/4, 3/4, 5/8 or 7/8, the dotted beats in 6/8, 9/8 and 12/8. In /8 time the form says which under the time signature. A song that takes 6/8 from its chord chart, with none picked here, keeps its BPM on every eighth note.</li>
   </ul>
   <div class="roles">
     <div data-role="admin">Sets the time signature, the count-in and the backing track for the band.</div>
@@ -870,14 +864,13 @@
   <!-- SCREENSHOT PLACEHOLDER: song-live-fields@phone (integrated pass) -->
 
   <h3 id="art-count-in" data-roles="admin,member">Count the band in</h3>
-  <aside class="note draft">Written before this feature was finished, from the plan. Check every label against the app before relying on it.</aside>
   <p>The leader taps Count in and every phone shows the same countdown in the song's tempo, then GO where the band comes in.</p>
   <ol class="steps">
     <li>In Stage mode or Live mode, go to the song.</li>
-    <li>Tap <b class="ui">Count in</b>.</li>
+    <li>Tap <b class="ui">Count in</b>, next to the click button.</li>
     <li>After 1.5 seconds every phone in Stage mode shows a full-screen countdown in the song's tempo: a big number on each beat and a ring that fills bar by bar.</li>
     <li>The band comes in on <b class="ui">GO</b>. The countdown goes away by itself.</li>
-    <li>To stop it before the end, tap <b class="ui">Stop</b>. It stops on every phone.</li>
+    <li>To stop it before the end, tap <b class="ui">Stop the count-in</b>. It stops on every phone.</li>
   </ol>
   <table class="grid">
     <thead><tr><th>Time signature</th><th>What the countdown shows</th></tr></thead>
@@ -891,53 +884,55 @@
     </tbody>
   </table>
   <ul>
-    <li>With <b class="ui">2 bars</b> set on the song, the first bar counts in half time (“1 — 2 —”) and the second in time.</li>
-    <li>A song that starts a few beats early ends the countdown with <b class="ui">GO</b> on its first note, not on 1.</li>
-    <li>The band picks the direction: a countdown (4 3 2 1, the default) or the classic count (1 2 3 4).</li>
-    <li>If <b class="ui">Follow the tempo</b> is on, the song starts moving on <b class="ui">GO</b>; a running click goes on in time.</li>
-    <li>Optional on each phone: vibration on every beat (stronger on the first), and a spoken count or click in headphones, never through the phone's speaker unless chosen.</li>
-    <li>A song set as <b class="ui">Played with a backing track</b> has no <b class="ui">Count in</b> button; an admin can still start one from the song's menu. While the stage manager plays the song's audio, the count-in isn't offered.</li>
-    <li>A phone that gets the message late joins on the right beat. With no signal, the count-in reaches phones nearby over Bluetooth. Phones keep in time to about 20–40 ms.</li>
+    <li>With <b class="ui">2 bars</b> set on the song, the first bar counts in half time and the second in time.</li>
+    <li>A song that starts before beat 1 (for example <b class="ui">Starts on beat 4</b>) gets <b class="ui">GO</b> on its first note, not on 1.</li>
+    <li>The band counts down (4 3 2 1, the default) or up (1 2 3 4). The leader picks it under <b class="ui">For the whole band</b> in the count-in options, and every phone in the band counts that way.</li>
+    <li>If <b class="ui">Follow the tempo</b> is on, the song starts moving from bar 1, as the count ends; a running click goes on in time.</li>
+    <li>Each phone has its own options: in Stage mode, <b class="ui">Count-in</b>, on the same row as <b class="ui">Setlist</b>, opens them. <b class="ui">Vibrate on every beat</b> is stronger on the first beat of the bar. <b class="ui">Sound in headphones</b> is <b class="ui">Off</b> or <b class="ui">Click</b>: the click plays in headphones or in-ear monitors only, unless <b class="ui">Also through the phone’s speaker</b> is on (in a browser it needs that switch to be heard at all).</li>
+    <li>A song set as <b class="ui">Played with a backing track</b> has no <b class="ui">Count in</b> button, and neither has a song the stage manager is playing. The leader can still count it in: open the count-in options and tap <b class="ui">Count in anyway</b>. A song without a BPM can't be counted in.</li>
+    <li>A phone that gets the message late joins on the right beat. Phones keep in time to about 20–40 ms. A member can close the countdown on their own screen with <b class="ui">Hide on this phone</b>.</li>
+    <li>The countdown needs the internet: it isn't sent over Bluetooth. With no signal only the leader's phone shows it. Phones linked over Bluetooth still get the click, if the leader has it running, and Follow the tempo from bar 1.</li>
   </ul>
   <div class="roles">
-    <div data-role="admin">Starts and stops the count-in for the whole band.</div>
-    <div data-role="member">Sees it on their phone and chooses vibration or headphones for their own device.</div>
+    <div data-role="admin">Starts and stops the count-in for the whole band, and picks whether the band counts down or up.</div>
+    <div data-role="member">Sees it on their phone, can hide it there, and chooses vibration or a click in headphones for their own device.</div>
   </div>
   <!-- SCREENSHOT PLACEHOLDER: stage-count-in@phone (integrated pass) -->
 
   <h3 id="art-follow-the-tempo" data-roles="admin,member">Follow the tempo</h3>
-  <aside class="note draft">Written before this feature was finished, from the plan. Check every label against the app before relying on it.</aside>
-  <p>Turn it on and the chart, the structure or the lyrics move with the song, in time with the leader's phone.</p>
+  <p>Turn it on and the chord chart or the lyrics move with the song, in time with the leader's phone.</p>
   <ol class="steps">
-    <li>In Stage mode or Live mode, open the song tab's view choices (where you pick <b class="ui">Lyrics &amp; chords</b> or <b class="ui">Chord chart</b>).</li>
-    <li>Turn on <b class="ui">Follow the tempo</b>. It is off by default and kept on this device.</li>
-    <li>When the leader starts the song with <b class="ui">Count in</b> or the click, the screen moves with it.</li>
+    <li>In Stage mode or Live mode, open the song tab (<b class="ui">Lyrics</b>, <b class="ui">Lyrics &amp; chords</b> or <b class="ui">Chord chart</b>).</li>
+    <li>Tap <b class="ui">Follow the tempo</b>, beside the view choices. It is off by default and kept on this device.</li>
+    <li>The line above the song says <b class="ui">Starts when the leader starts the song</b>. When the leader starts, the screen moves with the band.</li>
   </ol>
   <table class="grid">
     <thead><tr><th>View</th><th>What moves</th></tr></thead>
     <tbody>
-      <tr><td><b class="ui">Chord chart</b></td><td>The current bar lights up, and the chart scrolls to keep it in view.</td></tr>
-      <tr><td>Structure</td><td>The current section is highlighted; a strip at the top says what comes next (“Next: Bridge in 4 bars”).</td></tr>
-      <tr><td><b class="ui">Lyrics &amp; chords</b>, <b class="ui">Lyrics</b>, <b class="ui">Song only</b></td><td>The current line is highlighted and the text scrolls smoothly. Without line timing, it moves section by section.</td></tr>
+      <tr><td><b class="ui">Chord chart</b></td><td>The current bar lights up, and the chart scrolls to keep it in view. A song with no bar-by-bar chart lights the current section.</td></tr>
+      <tr><td><b class="ui">Lyrics &amp; chords</b>, <b class="ui">Lyrics</b></td><td>The current line is highlighted and the text scrolls to keep it in view. The lines are spread over the bars of their section, so a line can light up a little early or late.</td></tr>
+      <tr><td><b class="ui">Song only</b></td><td>The same, full screen.</td></tr>
       <tr><td>Floor wedge</td><td>A big countdown to the next section (“Chorus in 4”).</td></tr>
     </tbody>
   </table>
   <p class="steps-title">Lead it</p>
   <ol class="steps">
-    <li>Start the song with <b class="ui">Count in</b> or the click. Bar 1 starts on every phone at the same moment.</li>
-    <li>If the band plays a part longer or shorter, tap the section, bar or line where you are: everyone jumps there.</li>
-    <li>Tap <b class="ui">Hold</b> to repeat the current section (a vamp, a solo) until you tap it again.</li>
-    <li>Tap <b class="ui">Stop</b> to end it. Moving to another song stops it too.</li>
+    <li>Turn on <b class="ui">Follow the tempo</b> on your own phone too. The line above the song says <b class="ui">The band follows when you start</b>, with the leader's buttons beside it.</li>
+    <li>Tap <b class="ui">Start</b>: bar 1 starts on every phone at the same moment. <b class="ui">Count in</b> starts it too, on bar 1 as the count ends.</li>
+    <li>If the band plays a part longer or shorter, tap the bar, line or section where you are: everyone jumps there.</li>
+    <li><b class="ui">Hold</b> repeats the current section (a vamp, a solo); <b class="ui">Let go</b> moves on.</li>
+    <li>At a fermata the song waits and the line says <b class="ui">Waiting for the leader</b>: tap <b class="ui">Go on</b>.</li>
+    <li><b class="ui">Stop</b> ends it. Moving to another song stops it too.</li>
   </ol>
   <ul>
     <li>Only the leader moves the band's place; members turn the view on or off on their own phone.</li>
-    <li>A song needs a BPM to follow (“Add a BPM to follow this song”).</li>
-    <li>Repeats, endings, D.C., D.S., segno and coda in the chart are played out in order. A fermata waits until the leader taps.</li>
-    <li>To follow line by line, an admin sets the line timing in the song with <b class="ui">Sync lines</b>: tap along with the recording, or set the bars of each line.</li>
-    <li>At a rehearsal, <b class="ui">Play at 80%</b> slows down the click and the follow together; the song's BPM stays the same.</li>
+    <li>A song needs a BPM, and a chord chart or lyrics, to follow. Without a BPM the switch is off and says “Add a BPM to follow this song”.</li>
+    <li>The line above the song says what comes next (“Next: Bridge in 4 bars”).</li>
+    <li>Repeats, endings, D.C., D.S., segno and coda in the chart are played out in order.</li>
+    <li>After you scroll by hand, the song stays where you put it for a few seconds, then follows again.</li>
+    <li>With no internet, the leader's place still reaches phones linked over Bluetooth, in the iPhone, iPad and Android apps.</li>
   </ul>
   <!-- SCREENSHOT PLACEHOLDER: stage-follow-tempo@phone (integrated pass) -->
-  <!-- </draft> -->
 
   <h3 id="art-stage-manager" data-roles="admin,member">Play the songs' audio from the stage manager device</h3>
   <p>One admin's laptop or tablet, plugged into the mixer, is the stage manager: the only device that plays the songs' audio. When it plays a song, every screen in Stage mode moves to that song, even out of the setlist order. Members' phones never play any sound.</p>
@@ -987,7 +982,7 @@
   <div class="devnote" data-devices="web">On a laptop in the browser, the browser keeps the audio: use the same browser and don't clear its data before the gig. Google Drive links download too, when the file is shared as “Anyone with the link”.</div>
 
   <h3 id="art-stage-bluetooth-sync" data-roles="admin,member">Stage mode without internet (Bluetooth)</h3>
-  <p>In the iPhone, iPad and Android apps, the admin's phone also sends the current song and the order over Bluetooth. Members' phones nearby pick it up with no pairing and no internet.</p>
+  <p>In the iPhone, iPad and Android apps, the admin's phone also sends the current song, the order, the click and the place in the song (Follow the tempo) over Bluetooth. Members' phones nearby pick it up with no pairing and no internet. The count-in is the exception: it needs the internet.</p>
   <p class="steps-title">Get ready before the gig</p>
   <ol class="steps">
     <li>Everyone gets the setlist on their phone: a yes to the download (see <a data-ref="live-mode-offline">Use Stage and Live mode without signal</a>) or opening the gig once while online. The gig's Bluetooth key comes with it.</li>
@@ -1108,6 +1103,7 @@
   <ul>
     <li>As soon as the signal is back, when the app is opened again, and every 30 seconds while something is waiting.</li>
     <li>Closing the app keeps what is waiting; it goes the next time the app opens with signal.</li>
+    <li>A rehearsal note the server refuses is not thrown away. Live mode says <b class="ui">A note wasn't saved</b>, and the note's words are listed in the rehearsal's notes and in Settings › <b class="ui">Offline &amp; live</b>, with <b class="ui">Copy</b> and <b class="ui">Remove</b>.</li>
   </ul>
   <aside class="note tip">Members nearby see the leader's new order at once over Bluetooth, before it is saved.</aside>
   <!-- SCREENSHOT PLACEHOLDER: stage-offline-banner@phone (integrated pass) -->
@@ -1142,9 +1138,7 @@
     <dd>It is deleted with the files you attached, and you get a push with the admin's reason if they gave one.</dd>
     <dt>Why don't I see the iReal Pro forum inside the app on the web?</dt>
     <dd>The forum can't be shown inside a web page, so it opens in its own window. Copy a link there and tap <b class="ui">Paste link</b>, or drag the link onto the box.</dd>
-    <!-- <draft live-tempo> -->
     <dt>Why is there no Count in button on a song?</dt>
-    <dd>The song is set as <b class="ui">Played with a backing track</b>: the track starts the band. An admin can still start a count-in from the song's menu.</dd>
-    <!-- </draft> -->
+    <dd>The song is set as <b class="ui">Played with a backing track</b>, or the stage manager is playing it. The leader can still count it in: open the count-in options and tap <b class="ui">Count in anyway</b>. A song with no BPM can't be counted in.</dd>
   </dl>
 </section>

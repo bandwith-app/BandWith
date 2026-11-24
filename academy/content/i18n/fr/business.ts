@@ -125,30 +125,50 @@ const business: AreaText = {
     },
     {
       id: "ask-lineup-availability",
-      title: "Demander au line-up avant le oui du client",
-      summary: "Vérifie quels musiciens sont libres à la date pendant que le devis est encore ouvert.",
+      title: "Date en option : qui est libre avant le oui du client",
+      summary: "Tant qu’un concert est encore un devis, chaque membre reçoit une carte qui lui demande de garder la date libre, et y répond.",
       roles: ["admin", "member"],
       kind: "task",
-      keywords: ["demande de disponibilité", "rsvp", "es-tu dispo", "réserver la date", "provisoire", "option"],
+      keywords: ["date en option", "concert possible", "garder la date libre", "qui est libre", "demande de disponibilité", "es-tu dispo", "réserver la date", "provisoire", "option"],
       related: ["create-a-quote", "quote-to-gig", "quote-drafts"],
       body: [
+        { type: "p", text: "Il n’y a rien à activer. Quand tu enregistres un nouveau devis avec une date, même en brouillon, chaque membre du groupe qui n’est pas admin est invité à garder cette date libre. L’étape 3 d’un nouveau devis le dit sous **Disponibilités du line-up**." },
         {
           type: "steps",
+          title: "Répondre à une date en option (membres)",
           items: [
-            "À l’étape 3 d’un nouveau devis, active **Demander au line-up maintenant** (sous **Disponibilités du line-up**). Sur iPad, l’interrupteur se trouve sous le PDF en direct : « Vérifiez qui est libre avant d'envoyer ».",
-            "Enregistre le devis avec **Enregistrer et partager**, ou ferme-le et choisis **Enregistrer le brouillon**. Dans les deux cas, les musiciens sont sollicités.",
-            "Suis les réponses sur l’événement du devis dans le calendrier : il indique « Disponibilités : {free} sur {total} libres » et une liste que tu peux ouvrir.",
+            "Ouvre l’accueil. Sous **Concerts possibles**, la carte **Concert possible – garde la date libre** affiche le jour, l’heure et le lieu. Tu reçois aussi une notification et un push ; les toucher ouvre la même carte.",
+            "Touche **Je suis libre** ou **Je ne peux pas**.",
+            "Tu peux changer ta réponse tant que le concert n’est pas confirmé. La carte est aussi sur ce jour dans ton calendrier.",
           ],
         },
-        { type: "p", text: "Un message le confirme, par exemple « Devis Q-2026-0014 enregistré · disponibilité demandée à 4 ». Avec l’interrupteur désactivé, les musiciens ne sont sollicités que lorsque le devis devient un concert." },
+        { type: "shot", id: "quote-hold-card", caption: "La carte de date en option sur l’accueil d’un membre, avec sa réponse : le jour, l’heure, le lieu et les deux réponses." },
+        {
+          type: "steps",
+          title: "Voir qui est libre (admins)",
+          items: [
+            "Ouvre l’événement du devis dans le calendrier, ou le devis lui-même.",
+            "Sous **Qui est libre**, les membres sont regroupés en **Libres ({count})**, **Indisponibles ({count})** et **Sans réponse ({count})**. **Dans la formation** marque ceux que tu as mis sur le devis.",
+          ],
+        },
+        { type: "shot", id: "quote-hold-answers", caption: "Qui est libre sur l’événement du devis : qui est libre, qui ne peut pas et qui n’a pas encore répondu." },
+        {
+          type: "list",
+          title: "Et ensuite",
+          items: [
+            "Si le jour ou l’heure change, les membres reçoivent « Concert possible – nouveaux détails » et répondent de nouveau : leurs réponses précédentes sont effacées. Un nouveau lieu seul garde les réponses.",
+            "Quand tu confirmes le concert, les musiciens de son line-up reçoivent le concert comme n’importe quel autre. Les membres qui n’y figurent pas sont prévenus : **La date est de nouveau libre**.",
+            "Les membres reçoivent aussi **La date est de nouveau libre** quand le client refuse, que le devis expire, ou que tu l’annules ou le supprimes.",
+          ],
+        },
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Active la demande en créant le devis (pas en le modifiant) et voit chaque réponse." },
-            { role: "member", text: "Reçoit une notification « Disponibilité » pour la date, avec son propre cachet, et y répond comme à toute invitation. Le devis lui-même, le client et le total restent masqués, et l’événement n’apparaît pas dans son calendrier tant qu’il n’est pas confirmé en concert." },
+            { role: "admin", text: "N’est pas sollicité : les admins voient le devis. Voit chaque réponse sous **Qui est libre**." },
+            { role: "member", text: "Voit seulement le jour, l’heure et le lieu. Le client, le cachet, les notes, la fiche technique et le chat du devis restent aux admins tant que le concert n’est pas confirmé." },
           ],
         },
-        { type: "note", tone: "privacy", text: "Chaque musicien ne voit que son propre cachet dans la demande de disponibilité, jamais le total du devis ni les cachets des autres." },
+        { type: "note", tone: "privacy", text: "Une carte de date en option n’affiche jamais un cachet, le client ni le total du devis. Dire que tu es libre ne revient pas à accepter un concert." },
       ],
     },
     {
@@ -170,7 +190,7 @@ const business: AreaText = {
           ],
         },
         { type: "p", text: "Sur iPad, **Enregistrer le brouillon** se trouve dans l’en-tête de l’éditeur." },
-        { type: "note", tone: "privacy", text: "« Enregistré comme brouillon de devis que les membres ne voient pas. » Dans le calendrier, un brouillon de devis affiche **MASQUÉ AUX MEMBRES**. Les musiciens ne reçoivent la demande de disponibilité que si tu as activé **Demander au line-up maintenant**." },
+        { type: "note", tone: "privacy", text: "Un brouillon de devis n’est pas envoyé au client, et les membres ne peuvent pas l’ouvrir. Ils reçoivent seulement la carte qui leur demande de garder la date libre, avec le jour, l’heure et le lieu. Voir [[ask-lineup-availability]]." },
       ],
     },
     {
@@ -806,7 +826,7 @@ const business: AreaText = {
             "Sur l’accueil, trouve **À traiter** > **Paiements ({count})** et touche **Voir les paiements** sur le concert. Tu peux aussi ouvrir le concert et toucher **CACHET & PAIEMENTS**.",
             "La feuille **Cachet & paiements** montre le **Cachet du groupe**, **PAIEMENTS À FAIRE · {count}** avec le montant, et chaque musicien avec son cachet et **PAYÉ** ou **EN ATTENTE**.",
             "Touche l’interrupteur rond à côté d’un musicien pour le marquer payé, ou touche-le de nouveau pour annuler.",
-            "Ou touche **TOUT MARQUER COMME PAYÉ** pour marquer tous ceux qui ne sont pas encore payés.",
+            "Ou touche **TOUT MARQUER COMME PAYÉ**. Cela marque les musiciens à qui un paiement est dû : ceux qui ont confirmé, ont un cachet supérieur à zéro et ne sont pas encore payés. Ceux qui n’ont pas confirmé restent tels quels.",
           ],
         },
         { type: "p", text: "Les statistiques ont la même liste avec **TOUT MARQUER COMME PAYÉ** par concert, voir [[analytics]]. Un musicien payé quitte la liste aussitôt." },
@@ -858,7 +878,7 @@ const business: AreaText = {
           type: "table",
           head: ["Sujet", "Admin", "Membre ou remplaçant"],
           rows: [
-            ["Devis", "Tout", "Rien. Seulement une demande de disponibilité avec son propre cachet, si on le lui demande"],
+            ["Devis", "Tout", "Rien. Les membres reçoivent seulement une carte qui leur demande de garder la date libre : jour, heure et lieu, sans cachet"],
             ["Cachet du concert", "**Cachet du groupe**, le cachet de chaque musicien, caisse du groupe, acompte", "**Ton cachet** seulement"],
             ["Paiements", "Tous ceux qui sont dus", "Son propre paiement et **PAYÉ** / **EN ATTENTE**"],
             ["Contrats et fiches techniques", "Tout", "Rien"],
@@ -1056,7 +1076,7 @@ const business: AreaText = {
   ],
 
   faq: [
-    { q: "Les membres peuvent-ils voir un devis ou son total ?", a: "Non. Les devis sont réservés aux admins dans l’app et dans la base de données. Un membre reçoit seulement une demande de disponibilité, avec son propre cachet, si tu actives Demander au line-up maintenant.", roles: ["admin", "member"] },
+    { q: "Les membres peuvent-ils voir un devis ou son total ?", a: "Non. Les devis sont réservés aux admins dans l’app et dans la base de données. Tant qu’un concert est encore un devis, les membres reçoivent seulement une carte qui leur demande de garder la date libre, avec le jour, l’heure et le lieu.", roles: ["admin", "member"] },
     { q: "Le client a-t-il besoin d’un compte pour accepter ?", a: "Non. Le lien personnel ouvre une page web où il saisit son nom, coche la case et touche Accepter le devis.", roles: ["admin"] },
     { q: "Un devis accepté vaut-il contrat signé ?", a: "Non. Il enregistre le nom, la date et la version que le client a acceptés. Pour une signature, prépare un contrat à partir du devis accepté.", roles: ["admin"] },
     { q: "Le client a accepté. Pourquoi le concert n’est-il pas encore dans le calendrier ?", a: "Un oui sur la page du client ne confirme pas le concert tout seul. Ouvre le devis et touche Créer le concert depuis le devis, ou touche CONFIRMER sur l’événement du devis.", roles: ["admin"] },
@@ -1075,7 +1095,7 @@ const business: AreaText = {
     { term: "Événement provisoire", definition: "L’événement de calendrier créé par un devis. Seuls les admins le voient tant qu’il n’est pas confirmé en concert.", see: "quote-to-gig" },
     { term: "Lien client", definition: "Le lien web personnel où le client accepte, refuse ou écrit à propos d’un devis, sans compte.", see: "client-quote-page" },
     { term: "Version", definition: "Chaque modification d’un devis envoyé publie une nouvelle version sur la page du client ; une acceptation est liée à la version que le client a vue.", see: "client-confirmation" },
-    { term: "Demande de disponibilité", definition: "Une demande de réponse envoyée au line-up avant que le client confirme, marquée comme pas encore confirmée.", see: "ask-lineup-availability" },
+    { term: "Date en option", definition: "Une date que les membres sont invités à garder libre tant qu’un concert est encore un devis. Ils voient le jour, l’heure et le lieu, et répondent Je suis libre ou Je ne peux pas.", see: "ask-lineup-availability" },
     { term: "Grille tarifaire", definition: "Tarifs et services : les tarifs, formules, options, trajets, son, taxes et l’image du groupe dont partent les nouveaux devis.", see: "pricing-sheet" },
     { term: "Caisse du groupe", definition: "Un montant fixe ou un pourcentage facultatif ajouté aux cachets des musiciens pour l’épargne du groupe, le matériel ou une commission d’agence.", see: "pricing-sheet" },
     { term: "Forfaits", definition: "Modèle de tarif avec un prix fixe par formation (solo, duo, trio, groupe complet…), au lieu d’un cachet par musicien.", see: "pricing-sheet" },

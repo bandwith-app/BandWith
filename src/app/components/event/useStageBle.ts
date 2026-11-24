@@ -67,8 +67,15 @@ interface Options {
    * Members: one of the leader's live events (click, playhead, count-in) from
    * the live frame, unchecked: the same parser as on the Realtime channel
    * checks it. Called again with the same payloads on every read.
+   * The count-in also gets `signed`: the frame was read from a phone that,
+   * on this link, served a state with the admins' signature AND a signed
+   * clock reading within the 5-minute rule, both checked (the frame itself is
+   * checked with the band key, which every member has). A recorded signed
+   * state alone (the idle one never ages) is not enough. A count-in read
+   * before the link was checked is read again once it is. The click and the
+   * playhead are handed on as before, with no third argument.
    */
-  onLive?: (event: LiveEvent, payload: unknown) => void;
+  onLive?: (event: LiveEvent, payload: unknown, signed?: boolean) => void;
   /**
    * Leader: the stopped states to send as the last live frame. 'closing':
    * Stage closes, before Bluetooth stops. 'off': the click and playhead over
@@ -265,6 +272,8 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState, onLive
   /** Leader: the newest payload of each live event, all served in one frame. */
   const liveRef = useRef<LiveEvents>({});
   const liveSeqRef = useRef(0);
+  /** Leader: a frame is due at the end of this turn (states set together go out as one). */
+  const liveDueRef = useRef(false);
   /** Leader: Bluetooth stopping after the last frame went out; a new start waits for it. */
   const stoppingRef = useRef<Promise<void>>(Promise.resolve());
   const savedRef = useRef(savedIds);
@@ -341,7 +350,10 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState, onLive
     // Switched off: nothing goes out, but the frame that says it stopped (`lastWords`).
     if (!bleLiveRef.current && !lastWords) return;
     const seq = ++liveSeqRef.current;
-    const bytes = await encodeLive(seq, events, key);
+    let bytes = await encodeLive(seq, events, key);
+    // Too long for one value with the count-in in it: the click and the playhead still go out
+    // (tested never to happen with what the app makes: src/lib/__tests__/countInBle.test.ts).
+    if (!bytes && events.countin !== undefined) bytes = await encodeLive(seq, { ...events, countin: undefined }, key);
     if (!bytes) return;
     try {
       await StageBle.updateLive({ value: toBase64(bytes), notify: toBase64(seqBytes(seq)) });
@@ -355,7 +367,16 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState, onLive
     (event: LiveEvent, payload: unknown) => {
       if (!isLeader) return;
       liveRef.current = { ...liveRef.current, [event]: payload };
-      void pushLive();
+      // States set in the same turn go out as one frame, with one change notice: a count-in start
+      // is the count, the playhead at bar 1 and the running click, and a phone that read between
+      // two of them would have the count without the bar it leads to.
+      if (liveDueRef.current) return;
+      liveDueRef.current = true;
+      queueMicrotask(() => {
+        liveDueRef.current = false;
+        // Stage closed meanwhile: its last frame went out, nothing is served after it.
+        if (Object.keys(liveRef.current).length) void pushLive();
+      });
     },
     [isLeader, pushLive],
   );
@@ -691,6 +712,25 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState, onLive
     let link = 0;
     /** The leader's app has the live characteristic (not an older one). */
     let liveOn = false;
+    /** The link (its number) on which a state with the admins' signature was checked: -1, none yet. */
+    let checkedLink = -1;
+    /** The link on which a signed clock reading was checked and usable (the 5-minute rule): -1, none yet. */
+    let clockLink = -1;
+    /** The link on which a count-in was read before the link was checked: read again once it is. */
+    let countInUnchecked = -1;
+    /**
+     * This link is to a phone checked as an admin's, as far as Bluetooth can
+     * tell: its signed state and a signed, current clock reading, both on
+     * this link (a played-back state has no clock that agrees with now).
+     */
+    const linkChecked = () => signedLink && checkedLink === link && clockLink === link;
+    /** The link just became checked: a count-in it served before that is read again (a phone joining mid-count). */
+    const nowChecked = () => {
+      if (!linkChecked() || countInUnchecked !== link) return;
+      countInUnchecked = -1;
+      void readLiveRef();
+    };
+    let readLiveRef: () => Promise<void> = async () => {};
 
     /** The leader's id, from its state or its live events: the clock is tied to it. */
     const learnLeader = (from: unknown) => {
@@ -826,9 +866,15 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState, onLive
       const t2 = nowMs();
       const t1 = await decodeClock(new Uint8Array(view.buffer, view.byteOffset, view.byteLength).slice(), verify.public);
       if (t1 === null || cancelled || deviceId !== id) return true;
-      if (book.add(t0, t1, t2)) {
+      const sample = book.add(t0, t1, t2);
+      if (sample) {
         linkClock = 'has';
         emitClock();
+        // The leader's signature on a reading that agrees with now, on this link (see linkChecked).
+        if (usableOffset(sample.offset) !== null && clockLink !== link) {
+          clockLink = link;
+          nowChecked();
+        }
         // Its state may be plausible now that its clock is known.
         if (clockDropped) {
           clockDropped = false;
@@ -997,6 +1043,12 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState, onLive
           reads--;
         }
         if (cancelled || deviceId !== id) return;
+        // The admins' signature checked on this link (a setlist this phone lacks included): what
+        // its live frame says about the count-in counts as the leader's (see onLive).
+        if (signedLink && (result.ok || result.reason === 'setlist') && checkedLink !== link) {
+          checkedLink = link;
+          nowChecked();
+        }
         // The key changed during the read (a rotation, say): this link is left and found again
         // under what the phone knows now (Codex on #288).
         if (!result.ok && result.reason === 'rotated') {
@@ -1119,9 +1171,15 @@ export function useStageBle({ eventId, savedIds, open, isLeader, onState, onLive
       }
       for (const [event, payload] of Object.entries(frame.events) as Array<[LiveEvent, unknown]>) {
         learnLeader((payload as { from?: unknown })?.from);
-        onLiveRef.current?.(event, payload);
+        // The count-in is only the leader's from a phone checked as an admin's on this link.
+        if (event === 'countin') {
+          const checked = linkChecked();
+          if (!checked) countInUnchecked = link;
+          onLiveRef.current?.(event, payload, checked);
+        } else onLiveRef.current?.(event, payload);
       }
     };
+    readLiveRef = () => readLive();
 
     /**
      * Another phone advertising the gig, over a short link: what it leads

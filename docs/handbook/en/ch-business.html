@@ -38,7 +38,7 @@
     <tbody>
       <tr><td>Lineup base</td><td>Step 1, <b class="ui">Lineup formation package</b>. With flat packages you pick <b class="ui">Solo</b>, <b class="ui">Duo</b>, <b class="ui">Trio</b>, <b class="ui">Full band</b> or one of your packages. With per-musician pricing, <b class="ui">Customize</b> adds or removes musicians and lets you type each <b class="ui">Fee for {name}</b>.</td></tr>
       <tr><td>Base fee override</td><td>Drawer <b class="ui">Billing, discounts, VAT &amp; deposit</b>, field <b class="ui">Base fee override</b>: replaces the computed lineup base.</td></tr>
-      <tr><td>Extra sets &amp; add-ons</td><td>Step 1 chips, from your catalogue. Per-person items follow the lineup size; per-km items follow the travel distance.</td></tr>
+      <tr><td>Extra sets &amp; add-ons</td><td>Step 1 chips, from your catalog. Per-person items follow the lineup size; per-km items follow the travel distance.</td></tr>
       <tr><td>Custom line items</td><td>Drawer <b class="ui">Production &amp; travel</b>, <b class="ui">Custom Line Item</b>: <b class="ui">Item name</b>, <b class="ui">Quantity</b> and <b class="ui">Price</b>, then <b class="ui">Add item</b>. <b class="ui">Remove item</b> deletes it.</td></tr>
       <tr><td>Sound &amp; lighting</td><td>Drawer <b class="ui">Production &amp; travel</b>, <b class="ui">Sound &amp; lighting production</b>: <b class="ui">Included in base</b> or <b class="ui">Separate fee</b>, tier <b class="ui">Standard PA</b>, <b class="ui">Pro PA</b> or <b class="ui">Client PA</b>, and the <b class="ui">Production fee</b>.</td></tr>
       <tr><td>Travel</td><td>Step 2 calculates the one-way distance from the band's home base when you pick a venue: the driving distance by road from Google Maps or, when Google can't be reached, an estimate from the straight-line distance. In <b class="ui">Travel &amp; transport</b> choose <b class="ui">Included</b>, <b class="ui">Separate fee</b> or <b class="ui">Client arranged</b>, and adjust the distance or the <b class="ui">Travel fee</b>.</td></tr>
@@ -72,18 +72,29 @@
   <p>The totals are worked out the same way on screen, in the PDF, on the client page and in the database: subtotal, minus the discount, plus VAT, then the deposit as a share of the total.</p>
   <aside class="note tip">Once the client accepts, the client page shows how to pay the deposit: your bank details with copy buttons, a reference such as <b class="ui">Q-2026-0014 · Deposit</b>, and your own Stripe payment link if you set one (the PDF prints it too). Before accepting, the page already names the deposit to be paid. When the money arrives, tap <b class="ui">Deposit received</b> on the accepted quote and pick how it came (bank transfer, cash, other): the gig is confirmed (or created from the quote, with its lineup) and the client page says the deposit was received. <b class="ui">PayPal</b> stays switched off.</aside>
 
-  <h3 id="art-ask-lineup-availability" data-roles="admin,member">Ask the lineup before the client says yes</h3>
+  <h3 id="art-ask-lineup-availability" data-roles="admin,member">Date on hold: who is free before the client says yes</h3>
+  <p>There is nothing to turn on. When you save a new quote with a date, as a draft too, every member of the band who is not an admin is asked to keep that date free. Step 3 of a new quote says so under <b class="ui">Lineup availability</b>.</p>
+  <p class="steps-title">Answer a hold (members)</p>
   <ol class="steps">
-    <li>In step 3 of a new quote, turn on <b class="ui">Ask the lineup now</b> (under <b class="ui">Lineup availability</b>). On iPad the switch is under the live PDF: <b class="ui">Check who is free before you send</b>.</li>
-    <li>Save the quote with <b class="ui">Save &amp; share</b>, or close it and choose <b class="ui">Save draft</b>. Either way the musicians are asked.</li>
-    <li>Follow the answers on the quote's calendar event: it shows <b class="ui">Availability: {free} of {total} free</b> and a list you can open.</li>
+    <li>On Home, under <b class="ui">Possible gigs</b>, the card <b class="ui">Possible gig – keep the date free</b> shows the day, the time and the place. A notification and a push arrive too; tapping one opens the same card.</li>
+    <li>Tap <b class="ui">I'm free</b> or <b class="ui">I can't</b>.</li>
+    <li>The answer can be changed until the gig is confirmed. The card is also on that day in the calendar.</li>
   </ol>
-  <p>A toast confirms it, for example <b class="ui">Quote Q-2026-0014 saved · availability asked to 4</b>. With the switch off, musicians are asked only when the quote becomes a gig.</p>
+  <p class="steps-title">See who is free (admins)</p>
+  <ol class="steps">
+    <li>Open the quote's event in the calendar, or the quote itself.</li>
+    <li>Under <b class="ui">Who's free</b>, members are grouped as <b class="ui">Free ({count})</b>, <b class="ui">Can't ({count})</b> and <b class="ui">No answer yet ({count})</b>. <b class="ui">On the lineup</b> marks the ones you put on the quote.</li>
+  </ol>
+  <ul>
+    <li>If the day or the time changes, members get <b class="ui">Possible gig – new details</b> and answer again: their earlier answers are cleared. A new place alone keeps the answers.</li>
+    <li>When you confirm the gig, the musicians on its lineup get the gig like any other. Members who are not on it are told <b class="ui">The date is free again</b>.</li>
+    <li>Members are also told <b class="ui">The date is free again</b> when the client declines, the quote expires, or you cancel or delete it.</li>
+  </ul>
   <div class="roles">
-    <div data-role="admin">Turns the check on when creating the quote (not when editing one) and sees every answer.</div>
-    <div data-role="member">Gets an <b class="ui">Availability check</b> notification for the date, with their own fee, and answers it like any RSVP. The quote itself, the client and the total stay hidden, and the event is not on their calendar until it is confirmed as a gig.</div>
+    <div data-role="admin">Is not asked: admins see the quote itself. Sees every answer under <b class="ui">Who's free</b>.</div>
+    <div data-role="member">Sees only the day, the time and the place. The client, the fee, the notes, the rider and the quote's chat stay with the admins until the gig is confirmed.</div>
   </div>
-  <aside class="note privacy">In the availability check each musician sees only their own fee, never the quote total or the others' fees.</aside>
+  <aside class="note privacy">A hold card never shows a fee, the client or the quote total. Saying you are free is not accepting a gig.</aside>
 
   <h3 id="art-quote-drafts" data-roles="admin">Save a quote as a draft</h3>
   <ol class="steps">
@@ -93,7 +104,7 @@
     <li>When it is ready to go, open it and use <b class="ui">Share quote</b>.</li>
   </ol>
   <div class="devnote" data-devices="tablet">On iPad, <b class="ui">Save draft</b> is in the composer header.</div>
-  <aside class="note privacy">The app confirms <b class="ui">Saved as a draft quote that members can't see.</b> In the calendar a draft quote shows <b class="ui">HIDDEN FROM MEMBERS</b>. The musicians get the availability check only if you turned on <b class="ui">Ask the lineup now</b>.</aside>
+  <aside class="note privacy">A draft quote is not sent to the client, and members can't open it. They only get the card asking them to keep the date free, with the day, the time and the place (see <a data-ref="ask-lineup-availability">Date on hold: who is free before the client says yes</a>).</aside>
 
   <h2>Pricing sheet, branding and client language</h2>
 
@@ -271,7 +282,7 @@
     <li>Deposit not recorded: the whole total is asked until <b class="ui">Mark deposit received</b> (it asks how it arrived: bank transfer, cash or other).</li>
     <li>No bank details and no Stripe link: only cash, with <b class="ui">Set up payments</b> to the pricing sheet.</li>
     <li>Already asked: unchanged, sending again is <b class="ui">Send a reminder</b>; changed, it is <b class="ui">Send the update</b> and the page follows.</li>
-    <li>Nothing left to pay: no request, only <b class="ui">Mark as paid</b>. Cancelled gig: no button at all.</li>
+    <li>Nothing left to pay: no request, only <b class="ui">Mark as paid</b>. Canceled gig: no button at all.</li>
     <li>No client email: WhatsApp or the link. A Stripe link with a fixed price, a gig in another currency or a due date in the past: said before sending.</li>
   </ul>
   <p><b class="ui">Mark as paid</b> marks the gig paid (payment status <i>paid</i>, the deposit counted as received), so payouts, show readiness and analytics agree. <b class="ui">Undo</b> brings it back to partial or pending. The quote history records every request, reminder, update and payment.</p>
@@ -312,7 +323,7 @@
   <h3 id="art-quotes-overview" data-roles="admin">The Quotes screen</h3>
   <p>This is your sales pipeline: every quote, its status and what it could be worth. On Home, <b class="ui">ACTIVE QUOTES</b> opens <b class="ui">Quotes</b>; the number on Home counts quote events still to come.</p>
   <ul>
-    <li><b class="ui">Pipeline potential</b>: the value of every quote not declined or expired. Below it, one dot column per quote (up to seven): taller means bigger, brighter means closer to a yes (accepted is in the accent colour). Tap a column to see its amount.</li>
+    <li><b class="ui">Pipeline potential</b>: the value of every quote not declined or expired. Below it, one dot column per quote (up to seven): taller means bigger, brighter means closer to a yes (accepted is in the accent color). Tap a column to see its amount.</li>
     <li><b class="ui">All quotes</b>: one card per quote with its title, status tag, number of items and date; tap a card to open it.</li>
     <li><b class="ui">+</b> (<b class="ui">New quote</b>) at the top right starts a quote.</li>
   </ul>
@@ -455,7 +466,7 @@
     <li>On Home, under <b class="ui">Action center</b> &gt; <b class="ui">Payouts ({count})</b>, tap <b class="ui">Review payouts</b> on the gig; or open the gig and tap <b class="ui">FEE &amp; PAYOUTS</b>.</li>
     <li>The <b class="ui">Fee &amp; payouts</b> sheet shows the <b class="ui">Band fee</b>, <b class="ui">PAYOUTS DUE · {count}</b> with the amount, and each musician with their fee and <b class="ui">PAID</b> or <b class="ui">PENDING</b>.</li>
     <li>Tap the round toggle next to a musician to mark them paid; tap it again to undo.</li>
-    <li>Or tap <b class="ui">MARK ALL AS PAID</b> to mark everyone still unpaid.</li>
+    <li>Or tap <b class="ui">MARK ALL AS PAID</b>. It marks the musicians who are owed: those who confirmed, have a fee above zero and are not paid yet. Musicians who have not confirmed stay as they are.</li>
   </ol>
   <p>Analytics has the same list with <b class="ui">MARK ALL AS PAID</b> per gig (see <a data-ref="analytics">Analytics</a>). A paid musician leaves the list at once.</p>
   <div class="roles">
@@ -481,7 +492,7 @@
   <table class="grid">
     <thead><tr><th>Topic</th><th>Admin</th><th>Member or deputy</th></tr></thead>
     <tbody>
-      <tr><td>Quotes</td><td>Everything</td><td>Nothing; only an availability check with their own fee, if asked</td></tr>
+      <tr><td>Quotes</td><td>Everything</td><td>Nothing; members only get a card asking them to keep the date free: day, time and place, no fee</td></tr>
       <tr><td>Gig fee</td><td><b class="ui">Band fee</b>, every musician's fee, band fund, deposit</td><td><b class="ui">Your fee</b> only</td></tr>
       <tr><td>Payouts</td><td>Everyone owed</td><td>Their own payout and <b class="ui">PAID</b> / <b class="ui">PENDING</b></td></tr>
       <tr><td>Contracts and riders</td><td>Everything</td><td>Nothing</td></tr>
@@ -518,7 +529,7 @@
   <ul>
     <li>Played: band gigs this year, confirmed or completed, that the musician confirmed and that are in the past; their fee counts as earned.</li>
     <li>Coming up: the same, still to come.</li>
-    <li>Rehearsals: past rehearsals they confirmed, not cancelled.</li>
+    <li>Rehearsals: past rehearsals they confirmed, not canceled.</li>
     <li>Declined: every event they said no to. Awaiting reply: upcoming events they have not answered.</li>
     <li>Not paid yet: earned minus what was marked paid.</li>
   </ul>
@@ -572,7 +583,7 @@
   <ol class="steps">
     <li>In a new gig, open the tasks section and tap a list under <b class="ui">Load a to-do list</b>; you can then add or delete tasks.</li>
   </ol>
-  <p>Due dates are worked out from the event date: a task due "7 days before" a gig on 20 June is due on 13 June. Tasks the event already has (same title) are skipped: <b class="ui">"{title}" already has these tasks</b>.</p>
+  <p>Due dates are worked out from the event date: a task due "7 days before" a gig on June 20 is due on June 13. Tasks the event already has (same title) are skipped: <b class="ui">"{title}" already has these tasks</b>.</p>
 
   <h3 id="art-event-tasks" data-roles="admin,member">Tick off an event's tasks</h3>
   <ol class="steps">
@@ -591,7 +602,7 @@
   <h2>FAQ</h2>
   <dl class="faq">
     <dt>Can members see a quote or its total?</dt>
-    <dd>No. Quotes are admin-only, in the app and in the database. A member only gets an availability check, with their own fee, if <b class="ui">Ask the lineup now</b> is on.</dd>
+    <dd>No. Quotes are admin-only, in the app and in the database. While a gig is still a quote, members only get a card asking them to keep the date free, with the day, the time and the place.</dd>
     <dt>Does the client need an account to accept?</dt>
     <dd>No. The personal link opens a web page where they type their name, tick the box and tap <b class="ui">Accept the quote</b>.</dd>
     <dt>Is an accepted quote a signed contract?</dt>

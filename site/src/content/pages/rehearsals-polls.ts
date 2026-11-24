@@ -3,7 +3,7 @@ import type { ChannelPage } from './types';
 export const page: ChannelPage = {
   slug: 'rehearsals-polls',
   title: 'Rehearsals & polls',
-  description: 'Schedule a rehearsal directly, or send the band a few dates to vote on. Run it in Live mode with a shared timer and notes, and everyone leaves with their songs to practise.',
+  description: 'Schedule a rehearsal, or send the band a few dates to vote on. Run it in Live mode with a shared timer and notes. Everyone leaves with songs to practise.',
   ogTitle: 'Rehearsals & polls · Find the date in one round.',
   hero: {
     heading: { lines: ['Find the date', 'in one round.'], em: 'round.' },
@@ -54,7 +54,7 @@ export const page: ChannelPage = {
       { icon: 'eye', title: 'Free counts, not reasons', body: 'Each day in the builder shows how many members are free, from their calendars. Never who is busy, or why.' },
       { icon: 'wallet', title: 'The room, split', body: 'Enter the room cost and each person’s share is worked out. In a poll members see only their share; the total stays with the admins.' },
       { icon: 'list-music', title: 'Songs and prep tasks', body: 'Pick focus songs from the repertoire or a saved setlist. Add tasks like Bring chord charts, ticked off on the rehearsal page.' },
-      { icon: 'refresh', title: 'Weekly, biweekly, monthly', body: 'One rehearsal with a repeat rule, shown in the calendar about four months ahead. One roster and one answer for the series.' },
+      { icon: 'refresh', title: 'Weekly, biweekly, monthly', body: 'One rehearsal with a repeat rule, shown in the calendar about four months ahead. One roster and one answer for the series. Delete this date, or Delete the whole series.' },
       { icon: 'clock', title: 'A vote-by time', body: 'Pick a day before the first date and a time. Then voting closes, the poll shows Voting closed, and an admin locks in a date.', wide: true },
       { icon: 'timer', title: 'One clock for the band', body: 'In Live mode the admin taps Start rehearsal. Pause for the break, Resume, then End. The Rehearsal summary shows the time played without breaks and every song you went through, and the rehearsal page keeps it.', wide: true },
       { icon: 'zap', title: 'Mark now, write later', body: 'Tap Mark when something needs work: the song and the minute are kept, and you keep playing. At the pause, To write lists the marks to finish.' },

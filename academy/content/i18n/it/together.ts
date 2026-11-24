@@ -172,13 +172,13 @@ const together: AreaText = {
           items: [
             "Apri la prova.",
             "Tocca **ELIMINA** sotto **CHAT PROVA**.",
-            "Tocca **Sì, elimina**, oppure **ANNULLA** per tenerla.",
+            "Tocca **Sì, elimina**, oppure **ANNULLA** per tenerla. Una prova che si ripete chiede invece quali date: **Elimina questa data** toglie solo la data che hai aperto, **Elimina tutta la serie** toglie tutte le date con le loro note.",
           ],
         },
         {
           type: "note",
           tone: "warning",
-          text: "L’eliminazione non si può annullare. Una prova ricorrente è un unico evento, quindi eliminandola si tolgono tutte le date della serie.",
+          text: "L’eliminazione di una prova o di tutta una serie non si può annullare. Una singola data eliminata può tornare: un admin apre la serie e tocca **RIPRISTINA** accanto alla data, sotto **Date eliminate**.",
         },
         {
           type: "p",
@@ -245,7 +245,7 @@ const together: AreaText = {
         {
           type: "note",
           tone: "warning",
-          text: "Tutte le date di una serie condividono la stessa prova: un organico, una risposta per membro, una scaletta. Modificandola o eliminandola cambiano tutte le date.",
+          text: "Tutte le date di una serie condividono la stessa prova: un organico, una risposta per membro, una scaletta. Modificandola cambiano tutte le date. Due cose si possono fare su una sola data: eliminarla (**Elimina questa data**, vedi [[delete-a-rehearsal]]) e spostarla: quando cambi la data, **Quali date spostare?** propone **Solo questa data** o **Tutta la serie**.",
         },
       ],
     },
@@ -770,7 +770,7 @@ const together: AreaText = {
             "Nelle chat della band e degli eventi ogni messaggio mostra il nome di chi scrive, con “ · Admin” per gli admin.",
             "La chat carica gli ultimi 50 messaggi. Scorri verso l’alto e tocca **Carica messaggi precedenti** per vederne altri.",
             "I messaggi sono solo testo: niente allegati, reazioni, modifiche o eliminazione di singoli messaggi.",
-            "Senza connessione il messaggio non parte e torna nel campo di scrittura con “Messaggio non inviato. Controlla la connessione e riprova.” Invialo di nuovo quando sei online.",
+            "Senza connessione, il messaggio resta nella chat con la scritta **In attesa di connessione** e viene inviato da solo quando torni online, anche se chiudi la chat. Un messaggio che non è stato possibile inviare dice **Non inviato**: tocca **Riprova** o **Elimina**.",
             "Una menzione viene evidenziata per tutti ma non manda una notifica in più: tutti nella chat ricevono comunque una notifica per ogni messaggio.",
           ],
         },

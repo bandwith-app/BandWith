@@ -822,7 +822,7 @@ const people: AreaText = {
             ["Formación del concierto y respuestas", "Todos, con cachés y pagos", "Quién toca y sus respuestas, sin cachés"],
             ["Caché propio", "Sí", "Sí: su caché por concierto, pagado o no, su caché habitual y su propio **Pagado · …**"],
             ["Cachés de los demás", "Sí, de todos los miembros y sustitutos", "No"],
-            ["Presupuestos y sus totales", "Sí: crear, enviar y verlos todos", "No. La comprobación de disponibilidad de un presupuesto solo muestra la fecha"],
+            ["Presupuestos y sus totales", "Sí: crear, enviar y verlos todos", "No. Un presupuesto solo les pide reservar la fecha, y muestra el día, la hora y el lugar"],
             ["Finanzas, pagos y estadísticas de la banda", "Sí", "No. Solo sus propios ingresos"],
             ["Precios, datos bancarios y fiscales", "Sí", "No"],
             ["Setlists", "Crear, editar, asignar a conciertos", "Solo lectura"],
@@ -855,7 +855,7 @@ const people: AreaText = {
 
   faq: [
     { q: "¿Los miembros pueden ver lo que cobran los demás?", a: "No. Un miembro solo ve su propio caché en cada concierto y sus propios totales del año. Los admins ven los de todos." },
-    { q: "¿Cómo salgo de una banda?", a: "En **Miembros de la banda**, toca **⋯** en tu propia fila y luego **Salir de la banda**. Un admin puede salir mientras la banda tenga otro admin. Consulta [[leave-a-band]].", roles: ["admin", "member"] },
+    { q: "¿Cómo salgo de una banda?", a: "En **Miembros de la banda**, toca **⋯** en tu propia fila, luego **Salir de la banda** y confirma. Un admin puede salir mientras la banda tenga otro admin. Consulta [[leave-a-band]].", roles: ["admin", "member"] },
     { q: "¿Por qué no puedo quitar al último admin?", a: "Toda banda necesita al menos un admin. Primero haz admin a otra persona y luego cambia o quita al primero.", roles: ["admin"] },
     { q: "¿Cuánto tiempo vale una invitación?", a: "7 días. La dirección invitada recibe un recordatorio cuando quedan 2 días. Volver a invitar a la misma dirección la renueva.", roles: ["admin"] },
     { q: "La persona a la que invité dice que la invitación no funciona.", a: "Tiene que iniciar sesión con la dirección de email exacta a la que invitaste. Si ha caducado, vuelve a invitarla.", roles: ["admin"] },

@@ -145,11 +145,9 @@ const music: AreaText = {
             ["**Durata**", "Minuti e secondi in due caselle (min : sec). Serve per i totali delle scalette."],
             ["**BPM**", "Il tempo, fino a 3 cifre. Lo usa il click della Modalità palco."],
             ["**Tonalità**", "Testo libero, per esempio Do magg. Compare nell’elenco, sul palco e nel controllo di trasposizione del lettore."],
-            // <draft live-tempo>
             ["**Tempo (metro)**", "4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 o 7/8. Lo usano il click e il conteggio. Se non ne scegli uno, vale quello della griglia accordi, altrimenti 4/4. Vedi [[song-live-settings]]."],
-            ["**Conteggio**", "**1 battuta** o **2 battute**, e quanti movimenti prima parte il brano (**Parte sul primo movimento** se nessuno)."],
+            ["**Conteggio**", "**1 battuta** o **2 battute**, e il movimento su cui entra la band: **Parte sul movimento 1**, a meno che tu non lo sposti con − e +."],
             ["**Suonato con una base**", "Il brano non ha conteggio sul palco: è la base a far partire la band."],
-            // </draft>
             ["**Tap**, **BPM dalla registrazione**, ÷2 / ×2", "Strumenti sotto il BPM per trovare il tempo. Vedi [[transpose-and-tempo]]."],
             ["**Trasponi per la band**", "Sposta la tonalità, la griglia accordi e gli accordi del testo per tutti. Compare solo quando c’è qualcosa da trasporre."],
             ["**Genere**", "Etichette da scegliere tra i generi della band, oppure una nuova con il chip tratteggiato **Genere** e poi **Aggiungi genere**. I generi filtrano la libreria quando prepari una scaletta."],
@@ -160,7 +158,7 @@ const music: AreaText = {
             ["**Spartito**", "Un link a un PDF o a uno spartito online, al posto di uno spartito caricato. Deve iniziare con https://."],
             ["**Accordi**", "Un link a una pagina di accordi. Viene salvato nelle note del brano come “Chords: <link>”. Deve iniziare con https://."],
             ["**Note**", "Note della band sul brano: idee di arrangiamento, cambi di tonalità."],
-            ["**Testo · testo semplice, Markdown o JSON**", "Il testo del brano, con gli accordi in linea se vuoi. Vedi [[lyrics-and-chords-format]]. **Incolla o importa il testo** sotto la casella apre il foglio di importazione sulla scheda Testo."],
+            ["**Testo · testo semplice, Markdown o JSON**", "Il testo del brano, con gli accordi in linea se vuoi. Vedi [[lyrics-and-chords-format]]. **Incolla o importa il testo** sotto la casella apre il foglio di importazione sulla scheda Testo. Un testo oltre i 20.000 caratteri non si può salvare: il modulo lo dice e tiene il tuo testo finché non lo accorci. Se qualcun altro ha cambiato il testo mentre lo modificavi, il modulo chiede: **Carica l’ultima versione** (le tue modifiche vanno perse) o **Salva la mia**."],
           ],
         },
         {
@@ -487,7 +485,7 @@ const music: AreaText = {
         {
           type: "note",
           tone: "tip",
-          text: "Se esci con modifiche non salvate, l’app chiede “Salvare le modifiche?” con **Salva modifiche**, **Scarta** e **Continua a modificare**.",
+          text: "Se esci con modifiche non salvate, l’app chiede “Salvare le modifiche?” con **Salva modifiche**, **Scarta** e **Continua a modificare**. Se qualcun altro ha salvato lo stesso testo mentre lo modificavi, l’editor lo dice e tiene le tue modifiche: tocca **Carica l’ultima versione** per vedere le sue (le tue vanno perse) o **Salva la mia** per salvare le tue sopra le sue.",
         },
         {
           type: "roles",
@@ -1057,7 +1055,7 @@ const music: AreaText = {
             "Se il brano è cambiato dopo il suggerimento, la schermata avvisa che stai confrontando con la sua versione attuale.",
             "Una nota per la band viene aggiunta alle note del brano.",
             "Un suggerimento che contiene una griglia accordi sostituisce anche la chart del brano.",
-            "I suggerimenti rivisti restano in **Rivisti**.",
+            "I suggerimenti rivisti restano in **Rivisti**. Un elenco lungo mostra prima i più recenti: tocca **Carica suggerimenti precedenti** in fondo per vedere gli altri.",
           ],
         },
         {
@@ -1568,22 +1566,19 @@ const music: AreaText = {
           type: "list",
           items: [
             "Il click è solo visivo: non c’è suono. Non blocca i tocchi sullo schermo.",
-            // <draft live-tempo>
             "I battiti per battuta vengono dal **Tempo (metro)** del brano, altrimenti dalla sua griglia accordi, altrimenti 4/4. In 6/8 e 12/8 lampeggia sui movimenti puntati. Per dare il conteggio alla band, vedi [[count-in]].",
-            // </draft>
             "Un brano senza BPM non può avviare il click (**Nessun BPM per questo brano**). Aggiungi il BPM nel modulo del brano.",
             "Passando a un altro brano, il click del brano precedente si nasconde.",
             "I telefoni restano a tempo entro circa 20–40 ms: va bene per un conteggio iniziale e come riferimento di tempo, non come click in cuffia.",
-            "Il click della band ha bisogno di internet: non viene inviato via Bluetooth.",
+            "Senza internet, il click del leader arriva comunque ai telefoni collegati al suo via Bluetooth, nelle app per iPhone, iPad e Android. In Modalità palco una riga dice allora **Collegato al telefono del leader**. Se il leader resta fuori portata per più di 10 secondi, il click si ferma sul tuo telefono. Riparte a tempo quando torna a portata. Sul web il click della band ha bisogno di internet. Vedi [[stage-bluetooth-sync]].",
           ],
         },
       ],
     },
-    // <draft live-tempo> Written from the plan (§4, §6) and PR #272 before D1, B2 and B4 landed: verify every label against the final UI.
     {
       id: "song-live-settings",
       title: "Prepara un brano per il conteggio",
-      summary: "Dai a un brano il suo tempo (metro), la durata del conteggio, un’anacrusi, e se lo fa partire una base.",
+      summary: "Dai a un brano il suo tempo (metro), la durata del conteggio, il movimento su cui entra la band, e se lo fa partire una base.",
       roles: ["admin"],
       kind: "task",
       keywords: ["tempo in chiave", "metro", "6/8", "7/8", "conteggio", "anacrusi", "levare", "base", "sequenza", "battute"],
@@ -1595,7 +1590,7 @@ const music: AreaText = {
             "Apri il menu del brano e tocca **Modifica**, poi **Avanti** per arrivare a **Dettagli · opzionale**.",
             "Sotto **BPM** e **Tonalità**, scegli il **Tempo (metro)**: 4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 o 7/8.",
             "Sotto **Conteggio**, scegli **1 battuta** o **2 battute**. Due battute vanno bene per i brani lenti: la prima battuta conta a metà tempo.",
-            "Se il brano parte prima del primo movimento della battuta, tocca + finché dice quanti movimenti prima, per esempio **Parte 2 movimenti prima**. Tocca − per tornare a **Parte sul primo movimento**.",
+            "La riga sotto dice dove entra la band. **Parte sul movimento 1** è il primo movimento della battuta. Se il brano parte prima, tocca − (**Un movimento prima**): in 4/4, **Parte sul movimento 4** è un movimento prima della battuta. Tocca + (**Un movimento dopo**) per tornare indietro.",
             "Se è una base a far partire la band, attiva **Suonato con una base**: il brano non ha conteggio sul palco.",
             "Tocca **Salva ora**.",
           ],
@@ -1605,8 +1600,8 @@ const music: AreaText = {
           title: "Buono a sapersi",
           items: [
             "Se non scegli un tempo, il brano usa quello della sua griglia accordi (il modulo dice **Dalla griglia accordi.**), altrimenti 4/4.",
-            "Il click e il conteggio seguono il tempo: 6/8 e 12/8 si contano in movimenti puntati, come li contano i musicisti.",
-            "Il **BPM** è il movimento che conti: la semiminima in 4/4, 3/4 o 5/8, la semiminima puntata in 6/8, 9/8 e 12/8.",
+            "Il click e il conteggio seguono il tempo: 6/8, 9/8 e 12/8 si contano in movimenti puntati, come li contano i musicisti.",
+            "Il **BPM** è il movimento che conti: le semiminime in 4/4, 3/4, 5/8 o 7/8, i movimenti puntati in 6/8, 9/8 e 12/8. Nei tempi in ottavi il modulo lo dice sotto il tempo. Un brano che prende il 6/8 dalla griglia accordi, senza un tempo scelto qui, tiene il BPM su ogni croma.",
           ],
         },
         {
@@ -1616,13 +1611,13 @@ const music: AreaText = {
             { role: "member", text: "Vede il risultato sul palco. Non può cambiarlo." },
           ],
         },
-        { type: "shot", id: "song-live-fields", caption: "Il modulo del brano sotto BPM e Tonalità: Tempo (metro), Conteggio, l’anacrusi e Suonato con una base." },
+        { type: "shot", id: "song-live-fields", caption: "Il modulo del brano sotto BPM e Tonalità: Tempo (metro), Conteggio, il movimento su cui parte il brano e Suonato con una base." },
       ],
     },
     {
       id: "count-in",
       title: "Dai il conteggio alla band",
-      summary: "Il leader tocca Avvia il conteggio e ogni telefono mostra lo stesso conto alla rovescia nel tempo del brano, poi GO dove entra la band.",
+      summary: "Il leader tocca Conta e ogni telefono mostra lo stesso conto alla rovescia nel tempo del brano, poi VIA dove entra la band.",
       roles: ["admin", "member"],
       kind: "task",
       keywords: ["conteggio", "conto alla rovescia", "contare", "dare il quattro", "1 2 3 4", "partire insieme", "primo movimento", "vibrazione", "metronomo", "count-in"],
@@ -1633,20 +1628,20 @@ const music: AreaText = {
           title: "Guida il conteggio",
           items: [
             "In Modalità palco o Modalità live, vai al brano.",
-            "Tocca **Avvia il conteggio**.",
+            "Tocca **Conta**, accanto al pulsante del click.",
             "Dopo 1,5 secondi, ogni telefono in Modalità palco mostra un conto alla rovescia a tutto schermo nel tempo del brano: un numero grande a ogni movimento e un anello che si riempie battuta dopo battuta.",
-            "La band entra sul **GO**. Il conto alla rovescia sparisce da solo.",
-            "Per fermarlo prima della fine, tocca **Stop**. Si ferma su tutti i telefoni.",
+            "La band entra sul **VIA**. Il conto alla rovescia sparisce da solo.",
+            "Per fermarlo prima della fine, tocca **Ferma il conteggio**. Si ferma su tutti i telefoni.",
           ],
         },
         {
           type: "table",
           head: ["Tempo (metro)", "Cosa mostra il conto alla rovescia"],
           rows: [
-            ["4/4", "4 3 2 1 GO"],
-            ["3/4", "3 2 1 GO"],
-            ["2/4", "2 1 GO"],
-            ["5/4", "5 4 3 2 1 GO"],
+            ["4/4", "4 3 2 1 VIA"],
+            ["3/4", "3 2 1 VIA"],
+            ["2/4", "2 1 VIA"],
+            ["5/4", "5 4 3 2 1 VIA"],
             ["6/8, 12/8", "I movimenti puntati come numeri grandi (2 o 4), le crome come puntini piccoli."],
             ["5/8, 7/8", "I movimenti raggruppati come nella griglia, per esempio 2+2+3: corto, corto, lungo."],
           ],
@@ -1655,26 +1650,28 @@ const music: AreaText = {
           type: "list",
           title: "Come conta",
           items: [
-            "Con **2 battute** impostate sul brano, la prima battuta conta a metà tempo (“1 — 2 —”) e la seconda a tempo.",
-            "Un brano che parte qualche movimento prima chiude il conto alla rovescia con **GO** sulla sua prima nota, non sull’1.",
-            "La band sceglie il verso: un conto alla rovescia (4 3 2 1, quello predefinito) o il conteggio classico (1 2 3 4).",
-            "Se **Segui il tempo** è attivo, il brano inizia a scorrere sul **GO**. Se il click è in corso, continua a tempo.",
+            "Con **2 battute** impostate sul brano, la prima battuta conta a metà tempo e la seconda a tempo.",
+            "Un brano che parte prima del movimento 1 (per esempio **Parte sul movimento 4**) ha il **VIA** sulla sua prima nota, non sull’1.",
+            "La band conta alla rovescia (4 3 2 1, il modo predefinito) o in avanti (1 2 3 4). Lo sceglie il leader sotto **Per tutta la band** nelle opzioni del conteggio, e ogni telefono della band conta così.",
+            "Se **Segui il tempo** è attivo, il brano inizia a scorrere dalla battuta 1, quando finisce il conteggio. Se il click è in corso, continua a tempo.",
           ],
         },
         {
           type: "list",
           title: "Sul tuo telefono (facoltativo)",
           items: [
-            "Una vibrazione a ogni movimento, più forte sul primo: per chi non può guardare lo schermo.",
-            "Un conteggio a voce o un click nelle cuffie. Non suona mai dall’altoparlante del telefono, a meno che tu non lo scelga.",
+            "In Modalità palco, tocca **Conteggio**, sulla stessa riga di **Scaletta**, per aprire le opzioni. Restano salvate su questo dispositivo.",
+            "**Vibra a ogni tempo**: più forte sul primo movimento della battuta, per chi non può guardare lo schermo.",
+            "**Suono in cuffia**: **Disattivata** o **Click**. Il click suona solo in cuffia o negli in-ear. Per sentirlo ad alta voce, attiva **Anche dall’altoparlante del telefono**; in un browser serve questo interruttore per sentirlo.",
           ],
         },
         {
           type: "list",
           title: "Quando non c’è conteggio",
           items: [
-            "Un brano impostato come **Suonato con una base** non ha il pulsante **Avvia il conteggio**: è la base a far partire la band. Un admin può comunque avviarne uno dal menu del brano.",
-            "Mentre la regia suona l’audio del brano, il conteggio non è disponibile.",
+            "Un brano impostato come **Suonato con una base** non ha il pulsante **Conta**: è la base a far partire la band. Il leader può comunque dare il conteggio: apre le opzioni del conteggio e tocca **Conta lo stesso**.",
+            "Mentre la regia suona l’audio del brano, **Conta** è nascosto allo stesso modo, e **Conta lo stesso** funziona comunque.",
+            "Un brano senza BPM non può avere il conteggio.",
           ],
         },
         {
@@ -1682,45 +1679,46 @@ const music: AreaText = {
           title: "Buono a sapersi",
           items: [
             "Un telefono che riceve il messaggio in ritardo si unisce al conto alla rovescia sul movimento giusto.",
-            "Senza campo, il conteggio arriva ai telefoni vicini via Bluetooth.",
+            "Il conto alla rovescia ha bisogno di internet: non viene inviato via Bluetooth. Senza campo lo mostra solo il telefono del leader. I telefoni collegati via Bluetooth ricevono comunque il click, se il leader lo ha in corso, e Segui il tempo dalla battuta 1.",
             "I telefoni restano a tempo entro circa 20–40 ms.",
+            "Un membro può chiudere il conto alla rovescia sul proprio schermo con **Nascondi su questo telefono**.",
           ],
         },
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Avvia e ferma il conteggio per tutta la band." },
-            { role: "member", text: "Lo vede sul telefono e sceglie vibrazione o cuffie per il proprio dispositivo." },
+            { role: "admin", text: "Avvia e ferma il conteggio per tutta la band, e sceglie se la band conta alla rovescia o in avanti." },
+            { role: "member", text: "Lo vede sul telefono, può nasconderlo lì, e sceglie la vibrazione o un click in cuffia per il proprio dispositivo." },
           ],
         },
-        { type: "shot", id: "stage-count-in", caption: "Il conteggio su ogni telefono: il numero del movimento, l’anello e Stop." },
+        { type: "shot", id: "stage-count-in", caption: "Il conteggio su ogni telefono: il numero del movimento, l’anello e il pulsante che lo ferma." },
       ],
     },
     {
       id: "follow-the-tempo",
       title: "Segui il tempo",
-      summary: "Attivalo e la griglia, la struttura o il testo scorrono con il brano, a tempo con il telefono del leader.",
+      summary: "Attivalo e la griglia accordi o il testo scorrono con il brano, a tempo con il telefono del leader.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["seguire il tempo", "scorrimento automatico", "battuta corrente", "sezione successiva", "scorrere il testo", "tieni", "vamp", "velocità di prova", "auto scroll"],
+      keywords: ["seguire il tempo", "scorrimento automatico", "battuta corrente", "sezione successiva", "scorrere il testo", "ripeti", "vamp", "corona", "auto scroll"],
       related: ["count-in", "song-live-settings", "stage-click", "stage-mode"],
       body: [
         {
           type: "steps",
           title: "Attivalo",
           items: [
-            "In Modalità palco o Modalità live, apri le scelte di vista della scheda del brano (dove scegli **Testo e accordi** o **Griglia accordi**).",
-            "Attiva **Segui il tempo**. È spento all’inizio e resta salvato su questo dispositivo.",
-            "Quando il leader avvia il brano con **Avvia il conteggio** o con il click, il tuo schermo si muove con lui.",
+            "In Modalità palco o Modalità live, apri la scheda del brano (**Testo**, **Testo e accordi** o **Griglia accordi**).",
+            "Tocca **Segui il tempo**, accanto alle scelte di vista. È spento all’inizio e resta salvato su questo dispositivo.",
+            "La riga sopra il brano dice **Parte quando il leader avvia il brano**. Quando il leader avvia, il tuo schermo si muove con la band.",
           ],
         },
         {
           type: "table",
           head: ["Vista", "Cosa si muove"],
           rows: [
-            ["**Griglia accordi**", "La battuta corrente si illumina, e la griglia scorre per tenerla in vista."],
-            ["Struttura", "La sezione corrente è evidenziata. Una striscia in alto dice cosa viene dopo, per esempio “Poi: Bridge tra 4 battute”."],
-            ["**Testo e accordi**, **Testo**, **Solo il brano**", "La riga corrente è evidenziata e il testo scorre fluido. Senza i tempi delle righe, si muove sezione per sezione."],
+            ["**Griglia accordi**", "La battuta corrente si illumina, e la griglia scorre per tenerla in vista. In un brano senza griglia battuta per battuta si illumina la sezione corrente."],
+            ["**Testo e accordi**, **Testo**", "La riga corrente è evidenziata e il testo scorre per tenerla in vista. Le righe sono distribuite sulle battute della loro sezione, quindi una riga può accendersi un po’ prima o un po’ dopo."],
+            ["**Solo il brano**", "Lo stesso, a tutto schermo."],
             ["Spia da palco", "Un grande conto alla rovescia verso la sezione successiva, per esempio “Ritornello tra 4”."],
           ],
         },
@@ -1728,10 +1726,12 @@ const music: AreaText = {
           type: "steps",
           title: "Guidalo",
           items: [
-            "Avvia il brano con **Avvia il conteggio** o con il click. La battuta 1 parte su ogni telefono nello stesso momento.",
-            "Se la band allunga o accorcia una parte, tocca la sezione, la battuta o la riga dove siete: tutti saltano lì.",
-            "Tocca **Tieni** per ripetere la sezione corrente (un vamp, un assolo) finché non lo tocchi di nuovo.",
-            "Tocca **Stop** per finire. Anche passare a un altro brano lo ferma.",
+            "Attiva **Segui il tempo** anche sul tuo telefono. La riga sopra il brano dice **La band ti segue quando avvii**, con accanto i pulsanti del leader.",
+            "Tocca **Avvia**: la battuta 1 parte su ogni telefono nello stesso momento. Anche **Conta** lo avvia, dalla battuta 1 quando finisce il conteggio.",
+            "Se la band allunga o accorcia una parte, tocca la battuta, la riga o la sezione dove siete: tutti saltano lì.",
+            "Tocca **Ripeti** per ripetere la sezione corrente (un vamp, un assolo). Tocca **Lascia** per andare avanti.",
+            "Su una corona il brano aspetta e la riga dice **In attesa del leader**: tocca **Prosegui**.",
+            "Tocca **Ferma** per finire. Anche passare a un altro brano lo ferma.",
           ],
         },
         {
@@ -1739,16 +1739,16 @@ const music: AreaText = {
           title: "Buono a sapersi",
           items: [
             "Solo il leader sposta il punto della band. I membri accendono o spengono la vista sul proprio telefono.",
-            "Per seguire un brano serve un BPM. Senza, l’interruttore dice “Aggiungi un BPM per seguire questo brano”.",
-            "Ritornelli, finali, D.C., D.S., segno e coda della griglia vengono suonati in ordine. Una corona aspetta il tocco del leader.",
-            "Per seguire riga per riga, un admin imposta i tempi delle righe nel brano con **Sincronizza le righe**: tocca a tempo con la registrazione, oppure indica le battute di ogni riga.",
-            "A una prova, **Suona all’80%** rallenta insieme il click e lo scorrimento. Il BPM del brano resta lo stesso.",
+            "Per seguire un brano servono un BPM e una griglia accordi o un testo. Senza BPM l’interruttore è spento e dice “Aggiungi un BPM per seguire questo brano”.",
+            "La riga sopra il brano dice cosa viene dopo, per esempio “Poi: Bridge tra 4 battute”.",
+            "Ritornelli, finali, D.C., D.S., segno e coda della griglia vengono suonati in ordine.",
+            "Dopo che hai scorso a mano, il brano resta dove l’hai messo per qualche secondo, poi riprende a seguire.",
+            "Senza internet, il punto del leader arriva comunque ai telefoni collegati via Bluetooth, nelle app per iPhone, iPad e Android.",
           ],
         },
         { type: "shot", id: "stage-follow-tempo", caption: "Segui il tempo sulla griglia accordi: la battuta corrente illuminata e la sezione successiva in alto." },
       ],
     },
-    // </draft>
     {
       id: "stage-manager",
       title: "Suona l’audio dei brani dalla regia",
@@ -1840,7 +1840,7 @@ const music: AreaText = {
       body: [
         {
           type: "p",
-          text: "Nelle app per iPhone, iPad e Android, il telefono dell’admin invia il brano corrente e l’ordine anche via Bluetooth. I telefoni dei membri vicini li ricevono senza abbinamento e senza internet.",
+          text: "Nelle app per iPhone, iPad e Android, il telefono dell’admin invia anche via Bluetooth il brano corrente, l’ordine, il click e il punto del brano (Segui il tempo). I telefoni dei membri vicini li ricevono senza abbinamento e senza internet. Fa eccezione il conteggio: ha bisogno di internet.",
         },
         {
           type: "steps",
@@ -2056,6 +2056,7 @@ const music: AreaText = {
           items: [
             "Appena torna il campo, quando riapri l’app, e ogni 30 secondi finché c’è qualcosa in attesa.",
             "Chiudere l’app non perde ciò che è in attesa. Parte la prossima volta che apri l’app con il campo.",
+            "Una nota di prova che il server rifiuta non viene buttata via. La Modalità live dice **Una nota non è stata salvata**, e le parole della nota sono elencate nelle note della prova e in Impostazioni › Offline e live, con **Copia** e **Rimuovi**.",
           ],
         },
         {
@@ -2063,7 +2064,7 @@ const music: AreaText = {
           tone: "tip",
           text: "I membri vicini vedono subito il nuovo ordine del leader via Bluetooth, prima che venga salvato.",
         },
-        { type: "shot", id: "stage-offline-banner", caption: "La Modalità palco senza campo: l’etichetta dei contenuti e la barra con le modifiche in attesa di segnale." },
+        { type: "shot", id: "stage-offline-banner", caption: "La Modalità palco senza campo: l’etichetta dei contenuti e, sotto, le modifiche in attesa di segnale." },
       ],
     },
     {
@@ -2155,12 +2156,10 @@ const music: AreaText = {
       q: "Perché sul web non vedo il forum di iReal Pro dentro l’app?",
       a: "Il forum non si può mostrare dentro una pagina web, quindi si apre in una finestra a parte. Copia lì un link e tocca Incolla link, oppure trascina il link sulla casella.",
     },
-    // <draft live-tempo>
     {
-      q: "Perché su un brano non c’è il pulsante Avvia il conteggio?",
-      a: "Il brano è impostato come Suonato con una base: è la base a far partire la band. Un admin può comunque avviare un conteggio dal menu del brano.",
+      q: "Perché su un brano non c’è il pulsante Conta?",
+      a: "Il brano è impostato come Suonato con una base, oppure lo sta suonando la regia. Il leader può comunque dare il conteggio: apre le opzioni del conteggio e tocca Conta lo stesso. Un brano senza BPM non può avere il conteggio.",
     },
-    // </draft>
   ],
 
   glossary: [
@@ -2188,10 +2187,8 @@ const music: AreaText = {
     { term: "Scaletta offline", definition: "La copia della scaletta di un gig o di una prova salvata sul tuo telefono per quando non c’è campo: testi, accordi, parti vocali e le tue note.", see: "live-mode-offline" },
     { term: "Parte vocale", definition: "Chi canta una riga o alcune parole: Voce principale, Seconda voce, Cori, Tutti o Parlato, ognuna con il suo aspetto.", see: "voice-parts" },
     { term: "Evidenzia la mia parte", definition: "Un interruttore su ogni dispositivo che tiene accese le righe che canti e attenua un po’ le altre.", see: "highlight-my-part" },
-    // <draft live-tempo>
-    { term: "Conteggio", definition: "Il conto alla rovescia su ogni telefono, nel tempo e nel metro del brano, che finisce con GO dove entra la band.", see: "count-in" },
-    { term: "Segui il tempo", definition: "Un interruttore su ogni dispositivo che fa scorrere la griglia, la struttura o il testo con il brano, a tempo con il leader.", see: "follow-the-tempo" },
-    // </draft>
+    { term: "Conteggio", definition: "Il conto alla rovescia su ogni telefono, nel tempo e nel metro del brano, che finisce con VIA dove entra la band.", see: "count-in" },
+    { term: "Segui il tempo", definition: "Un interruttore su ogni dispositivo che fa scorrere la griglia accordi o il testo con il brano, a tempo con il leader.", see: "follow-the-tempo" },
   ],
 };
 

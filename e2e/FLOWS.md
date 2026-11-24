@@ -151,6 +151,12 @@ check (`app.check`) on each screen it reaches.
 | Keyboard focus stays in the top layer: Tab and Shift+Tab cycle inside the Create sheet and the iPad composer, never behind the scrim | `sheet-focus` | all (composer: iPad) |
 | Inbox opened while Home loads: no gig opens behind it; Back (and the Duo rail's) closes the inbox | `layers-back` | all |
 | Onboarding (web): the browser Back steps back like Escape; on the first screen it leaves | `layers-back` | full |
+| Sign-up link from the site (`/?start=signup&src=…`), signed out: opens on Create account, Back leads to Welcome, a reload opens the normal start | `signup-link` | all |
+| Sign-up link: an invite link wins; `?bw_screen=sign-in` unchanged; signed in, it opens the app as usual | `signup-link` | full |
+| Create account on a 320 px wide phone: the set-up line takes two lines at most, in every language | `signup-link` | phone-portrait |
+| Create account with email (confirmation on) → Check your email: a wrong code says so, Send a new code, the 6-digit code typed → What brings you here?, no second password prompt | `signup-code` | all |
+| Check your email: the whole code pasted at once; "I’ve confirmed it: sign in" (the email's link was used) opens the sign-in screen | `signup-code` | full |
+| Check your email on a 320 px wide phone: the code field, Verify, Send a new code and the sign-in fallback fit, in every language | `signup-code` | phone-portrait |
 | Expired reset link (query or fragment): says so, offers a new link | `auth-callback` | all / full |
 | Sign-in server error: explains, Back to sign in, Back doesn't return to the dead link | `auth-callback` | all |
 | Already signed in: Back to sign in lands in the app | `auth-callback` | full |

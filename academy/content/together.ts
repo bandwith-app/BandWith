@@ -179,13 +179,13 @@ const together: AreaModule = {
           items: [
             'Open the rehearsal.',
             'Tap **DELETE** under **REHEARSAL CHAT**.',
-            'Tap **Confirm delete**, or **CANCEL** to keep it.',
+            'Tap **Confirm delete**, or **CANCEL** to keep it. A rehearsal that repeats asks which dates instead: **Delete this date** removes only the date you opened, **Delete the whole series** removes every date with its notes.',
           ],
         },
         {
           type: 'note',
           tone: 'warning',
-          text: 'Deleting cannot be undone. A recurring rehearsal is one event, so deleting it removes every date of the series.',
+          text: 'Deleting a rehearsal or a whole series cannot be undone. One deleted date can come back: an admin opens the series and taps **RESTORE** next to it under **Deleted dates**.',
         },
         {
           type: 'p',
@@ -252,7 +252,7 @@ const together: AreaModule = {
         {
           type: 'note',
           tone: 'warning',
-          text: 'All dates of a series share the same rehearsal: one roster, one answer per member, one setlist. Editing or deleting it changes every date.',
+          text: 'All dates of a series share the same rehearsal: one roster, one answer per member, one setlist. Editing it changes every date. Two things can be done to one date alone: deleting it (**Delete this date**, see [[delete-a-rehearsal]]) and moving it: when you change the date, **Move which dates?** offers **Only this date** or **The whole series**.',
         },
       ],
     },
@@ -777,7 +777,7 @@ const together: AreaModule = {
             'In band and event chats each message shows the sender\'s name, with " · Admin" for admins.',
             'The chat loads the latest 50 messages. Scroll up and tap **Load earlier messages** for more.',
             'Messages are plain text: there are no attachments, reactions, editing or deleting single messages.',
-            'Without a connection, the message is not sent and goes back into the composer with "Message not sent. Check your connection and try again." Send it again when you are online.',
+            'Without a connection, the message stays in the chat marked **Waiting for connection** and is sent by itself when you are back online, also if you close the chat. A message that could not be sent says **Not sent**: tap **Try again** or **Delete**.',
             'A mention is highlighted for everyone but does not send an extra notification: everyone in the chat is notified of each message anyway.',
           ],
         },

@@ -130,11 +130,13 @@ export interface PillFieldProps extends React.InputHTMLAttributes<HTMLInputEleme
   tone?: 'default' | 'sheet';
   /** Hide the visual label but keep it for screen readers. */
   hideLabel?: boolean;
+  /** Classes for the input itself (`className` styles the whole field), e.g. a code's wide digits. */
+  inputClassName?: string;
 }
 
 /** Text field: label in micro caps above a 52pt pill (Figma "Input"). */
 export const PillField = React.forwardRef<HTMLInputElement, PillFieldProps>(
-  ({ label, icon, trailing, error, hint, tone = 'default', hideLabel, id, className, ...rest }, ref) => {
+  ({ label, icon, trailing, error, hint, tone = 'default', hideLabel, inputClassName, id, className, 'aria-describedby': describedBy, ...rest }, ref) => {
     const autoId = React.useId();
     const fieldId = id ?? autoId;
     const msgId = `${fieldId}-msg`;
@@ -160,10 +162,12 @@ export const PillField = React.forwardRef<HTMLInputElement, PillFieldProps>(
             ref={ref}
             id={fieldId}
             aria-invalid={!!error || undefined}
-            aria-describedby={error || hint ? msgId : undefined}
+            // The field's own message first, then what the caller ties to it.
+            aria-describedby={[error || hint ? msgId : null, describedBy].filter(Boolean).join(' ') || undefined}
             className={cn(
               'flex-1 min-w-0 bg-transparent outline-none text-[18px] font-medium leading-[1.35] tracking-[-0.005em]',
               sheet ? 'placeholder:text-white/40' : 'placeholder:text-muted-foreground/60',
+              inputClassName,
             )}
             {...rest}
           />

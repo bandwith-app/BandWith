@@ -829,7 +829,7 @@ const people: AreaText = {
             ["Line-up du concert et réponses", "Tout le monde, avec les cachets et les paiements", "Qui joue et leurs réponses, sans les cachets"],
             ["Son propre cachet", "Oui", "Oui : son cachet par concert, payé ou non, son cachet habituel, et son propre **Payé · …**"],
             ["Les cachets des autres", "Oui, pour chaque membre et remplaçant", "Non"],
-            ["Devis et totaux des devis", "Oui : créer, envoyer et tout voir", "Non. La vérification de disponibilité d’un devis n’affiche que la date"],
+            ["Devis et totaux des devis", "Oui : créer, envoyer et tout voir", "Non. Un devis leur demande seulement de garder la date libre, en affichant le jour, l’heure et le lieu"],
             ["Finances, paiements et statistiques du groupe", "Oui", "Non. Seulement ses propres revenus"],
             ["Tarifs, infos bancaires et fiscales", "Oui", "Non"],
             ["Setlists", "Créer, modifier, associer aux concerts", "Lecture seule"],
@@ -862,7 +862,7 @@ const people: AreaText = {
 
   faq: [
     { q: "Les membres voient-ils combien les autres sont payés ?", a: "Non. Un membre ne voit que son propre cachet sur chaque concert et ses propres totaux annuels. Les admins voient ceux de tout le monde." },
-    { q: "Comment quitter un groupe ?", a: "Sur **Membres du groupe**, touche **⋯** sur ta propre ligne, puis **Quitter le groupe**. Un admin peut partir tant que le groupe a un autre admin. Voir [[leave-a-band]].", roles: ["admin", "member"] },
+    { q: "Comment quitter un groupe ?", a: "Sur **Membres du groupe**, touche **⋯** sur ta propre ligne, puis **Quitter le groupe** et confirme. Un admin peut partir tant que le groupe a un autre admin. Voir [[leave-a-band]].", roles: ["admin", "member"] },
     { q: "Pourquoi je ne peux pas retirer le dernier admin ?", a: "Chaque groupe a besoin d’au moins un admin. Nomme d’abord quelqu’un d’autre admin, puis change ou retire le premier.", roles: ["admin"] },
     { q: "Combien de temps une invitation est-elle valable ?", a: "7 jours. L’adresse invitée reçoit un rappel quand il reste 2 jours. Inviter de nouveau la même adresse la renouvelle.", roles: ["admin"] },
     { q: "La personne que j’ai invitée dit que l’invitation ne marche pas.", a: "Elle doit se connecter avec exactement l’adresse e-mail que tu as invitée. Si l’invitation a expiré, invite-la de nouveau.", roles: ["admin"] },

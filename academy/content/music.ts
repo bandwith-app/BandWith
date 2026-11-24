@@ -155,11 +155,9 @@ const music: AreaModule = {
             ["**Duration**", "Minutes and seconds in two boxes (min : sec). Used for setlist totals."],
             ["**BPM**", "Tempo, up to 3 digits. Stage mode's click uses it."],
             ["**Key**", "Free text, e.g. C maj. Shown in the list, on stage and in the reader's transpose control."],
-            // <draft live-tempo>
             ["**Time signature**", "4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 or 7/8. The click and the count-in use it. With none picked, the chord chart's, else 4/4. See [[song-live-settings]]."],
-            ["**Count-in**", "**1 bar** or **2 bars**, and how many beats early the song starts (**Starts on the downbeat** when none)."],
+            ["**Count-in**", "**1 bar** or **2 bars**, and the beat the band comes in on: **Starts on beat 1** unless you move it with − and +."],
             ["**Played with a backing track**", "The song gets no count-in on stage: the track starts the band."],
-            // </draft>
             ["**Tap**, **BPM from the recording**, ÷2 / ×2", "Tools under BPM to find the tempo. See [[transpose-and-tempo]]."],
             ["**Transpose for the band**", "Moves the key, the chord chart and the chords in the lyrics for everyone. Shown only when there is something to transpose."],
             ["**Genre**", "Tags to pick from the band's genres, or a new one with the dashed **Genre** chip, then **Add genre**. Genres filter the library when you build a setlist."],
@@ -170,7 +168,7 @@ const music: AreaModule = {
             ["**Sheet music**", "A link to a PDF or sheet music online, used instead of an uploaded chart. Must start with https://."],
             ["**Chords**", "A link to a chord page. It is saved into the song's notes as “Chords: <link>”. Must start with https://."],
             ["**Notes**", "Band notes on the song: arrangement ideas, key changes."],
-            ["**Lyrics · text, Markdown or JSON**", "The song's lyrics, with chords inline if you want. See [[lyrics-and-chords-format]]. **Paste or import lyrics** under the box opens the import sheet on its Lyrics tab."],
+            ["**Lyrics · text, Markdown or JSON**", "The song's lyrics, with chords inline if you want. See [[lyrics-and-chords-format]]. **Paste or import lyrics** under the box opens the import sheet on its Lyrics tab. Lyrics over 20,000 characters can't be saved: the form says so and keeps your text until you shorten it. If someone else changed the lyrics while you were editing, the form asks: **Load the latest version** (your changes are dropped) or **Save mine instead**."],
           ],
         },
         {
@@ -497,7 +495,7 @@ const music: AreaModule = {
         {
           type: "note",
           tone: "tip",
-          text: "Leaving with changes not saved asks “Save your changes?” with **Save changes**, **Discard** and **Keep editing**.",
+          text: "Leaving with changes not saved asks “Save your changes?” with **Save changes**, **Discard** and **Keep editing**. If someone else saved the same lyrics while you were editing, the editor says so and keeps your changes: tap **Load the latest version** to see theirs (yours are dropped) or **Save mine instead** to save yours over theirs.",
         },
         {
           type: "roles",
@@ -1067,7 +1065,7 @@ const music: AreaModule = {
             "If the song changed after the suggestion, the screen warns that you are comparing with its current version.",
             "A note for the band is added to the song's notes.",
             "A suggestion that includes a chord chart also replaces the song's chart.",
-            "Reviewed suggestions stay on **Reviewed**.",
+            "Reviewed suggestions stay on **Reviewed**. A long list shows the newest first: tap **Load older suggestions** at the bottom for the rest.",
           ],
         },
         {
@@ -1578,22 +1576,19 @@ const music: AreaModule = {
           type: "list",
           items: [
             "The click is visual only: there is no sound. It doesn't block taps on the screen.",
-            // <draft live-tempo>
             "The beats in a bar come from the song's **Time signature**, else from its chord chart, else 4/4. In 6/8 and 12/8 it flashes on the dotted beats. To count the band in, see [[count-in]].",
-            // </draft>
             "A song without BPM can't start a click (**No BPM for this song**). Add the BPM in the song form.",
             "Moving to another song hides the click for the song before.",
             "Phones keep in time to about 20–40 ms: right for a count-in and a tempo reference, not for an in-ear click.",
-            "The band's click needs the internet: it isn't sent over Bluetooth.",
+            "With no internet, the leader's click still reaches the phones linked to the leader's over Bluetooth, in the iPhone, iPad and Android apps. A line in Stage mode then says **Connected to the leader's phone**. If the leader stays out of reach for more than 10 seconds, the click stops on your phone. It comes back on the beat when they are in reach again. On the web the band's click needs the internet. See [[stage-bluetooth-sync]].",
           ],
         },
       ],
     },
-    // <draft live-tempo> Written from the plan (§4, §6) and PR #272 before D1, B2 and B4 landed: verify every label against the final UI.
     {
       id: "song-live-settings",
       title: "Set a song up for the count-in",
-      summary: "Give a song its time signature, how long the count-in lasts, a pickup, and whether a backing track starts it.",
+      summary: "Give a song its time signature, how long the count-in lasts, the beat the band comes in on, and whether a backing track starts it.",
       roles: ["admin"],
       kind: "task",
       keywords: ["time signature", "meter", "6/8", "7/8", "count-in", "pickup", "upbeat", "backing track", "sequence"],
@@ -1605,7 +1600,7 @@ const music: AreaModule = {
             "Open the song's menu and tap **Edit**, then **Next** to reach **Details · optional**.",
             "Under **BPM** and **Key**, pick the **Time signature**: 4/4, 3/4, 2/4, 5/4, 6/8, 9/8, 12/8, 5/8 or 7/8.",
             "Under **Count-in**, pick **1 bar** or **2 bars**. Two bars suit slow songs: the first bar counts in half time.",
-            "If the song starts before the first beat of the bar, tap + until it says how many beats early, for example **Starts 2 beats early**. Tap − to go back to **Starts on the downbeat**.",
+            "The line below says where the band comes in. **Starts on beat 1** is the first beat of the bar. If the song starts earlier, tap − (**One beat earlier**): in 4/4, **Starts on beat 4** is one beat before the bar. Tap + (**One beat later**) to go back.",
             "If a backing track starts the band, turn on **Played with a backing track**: the song gets no count-in on stage.",
             "Tap **Save now**.",
           ],
@@ -1615,8 +1610,8 @@ const music: AreaModule = {
           title: "Good to know",
           items: [
             "With no time signature picked, the song uses its chord chart's (the form says **From the chord chart.**), else 4/4.",
-            "The click and the count-in follow the time signature: 6/8 and 12/8 are counted in dotted beats, as musicians count them.",
-            "The **BPM** is the beat you count: the quarter note in 4/4, 3/4 or 5/8, the dotted beat in 6/8, 9/8 and 12/8.",
+            "The click and the count-in follow the time signature: 6/8, 9/8 and 12/8 are counted in dotted beats, as musicians count them.",
+            "The **BPM** is the beat you count: quarter notes in 4/4, 3/4, 5/8 or 7/8, the dotted beats in 6/8, 9/8 and 12/8. In /8 time the form says which under the time signature. A song that takes 6/8 from its chord chart, with none picked here, keeps its BPM on every eighth note.",
           ],
         },
         {
@@ -1626,7 +1621,7 @@ const music: AreaModule = {
             { role: "member", text: "Sees the result on stage. Can't change it." },
           ],
         },
-        { type: "shot", id: "song-live-fields", caption: "The song form under BPM and Key: Time signature, Count-in, the pickup and Played with a backing track." },
+        { type: "shot", id: "song-live-fields", caption: "The song form under BPM and Key: Time signature, Count-in, the beat the song starts on and Played with a backing track." },
       ],
     },
     {
@@ -1643,10 +1638,10 @@ const music: AreaModule = {
           title: "Lead the count-in",
           items: [
             "In Stage mode or Live mode, go to the song.",
-            "Tap **Count in**.",
+            "Tap **Count in**, next to the click button.",
             "After 1.5 seconds, every phone in Stage mode shows a full-screen countdown in the song's tempo: a big number on each beat and a ring that fills bar by bar.",
             "The band comes in on **GO**. The countdown goes away by itself.",
-            "To stop it before the end, tap **Stop**. It stops on every phone.",
+            "To stop it before the end, tap **Stop the count-in**. It stops on every phone.",
           ],
         },
         {
@@ -1665,26 +1660,28 @@ const music: AreaModule = {
           type: "list",
           title: "How it counts",
           items: [
-            "With **2 bars** set on the song, the first bar counts in half time (“1 — 2 —”) and the second in time.",
-            "A song that starts a few beats early ends the countdown with **GO** on its first note, not on 1.",
-            "The band picks the direction: a countdown (4 3 2 1, the default) or the classic count (1 2 3 4).",
-            "If **Follow the tempo** is on, the song starts moving on **GO**. If the click is running, it goes on in time.",
+            "With **2 bars** set on the song, the first bar counts in half time and the second in time.",
+            "A song that starts before beat 1 (for example **Starts on beat 4**) gets **GO** on its first note, not on 1.",
+            "The band counts down (4 3 2 1, the default) or up (1 2 3 4). The leader picks it under **For the whole band** in the count-in options, and every phone in the band counts that way.",
+            "If **Follow the tempo** is on, the song starts moving from bar 1, as the count ends. If the click is running, it goes on in time.",
           ],
         },
         {
           type: "list",
           title: "On your own phone (optional)",
           items: [
-            "Vibration on every beat, stronger on the first: for whoever can't look at the screen.",
-            "A spoken count or a click in your headphones. It never plays through the phone's speaker unless you choose it.",
+            "In Stage mode, tap **Count-in**, on the same row as **Setlist**, to open the options. They are kept on this device.",
+            "**Vibrate on every beat**: stronger on the first beat of the bar, for whoever can't look at the screen.",
+            "**Sound in headphones**: **Off** or **Click**. The click plays in headphones or in-ear monitors only. To hear it out loud, turn on **Also through the phone’s speaker**; in a browser it needs that switch to be heard at all.",
           ],
         },
         {
           type: "list",
           title: "When there is no count-in",
           items: [
-            "A song set as **Played with a backing track** has no **Count in** button: the track starts the band. An admin can still start one from the song's menu.",
-            "While the stage manager plays the song's audio, the count-in isn't offered.",
+            "A song set as **Played with a backing track** has no **Count in** button: the track starts the band. The leader can still count it in: open the count-in options and tap **Count in anyway**.",
+            "While the stage manager plays the song's audio, **Count in** is hidden the same way, and **Count in anyway** still works.",
+            "A song without a BPM can't be counted in.",
           ],
         },
         {
@@ -1692,45 +1689,46 @@ const music: AreaModule = {
           title: "Good to know",
           items: [
             "A phone that gets the message late joins the countdown on the right beat.",
-            "With no signal, the count-in reaches phones nearby over Bluetooth.",
+            "The countdown needs the internet: it isn't sent over Bluetooth. With no signal only the leader's phone shows it. Phones linked over Bluetooth still get the click, if the leader has it running, and Follow the tempo from bar 1.",
             "Phones keep in time to about 20–40 ms.",
+            "A member can close the countdown on their own screen with **Hide on this phone**.",
           ],
         },
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Starts and stops the count-in for the whole band." },
-            { role: "member", text: "Sees it on their phone and chooses vibration or headphones for their own device." },
+            { role: "admin", text: "Starts and stops the count-in for the whole band, and picks whether the band counts down or up." },
+            { role: "member", text: "Sees it on their phone, can hide it there, and chooses vibration or a click in headphones for their own device." },
           ],
         },
-        { type: "shot", id: "stage-count-in", caption: "The count-in on every phone: the beat number, the ring and Stop." },
+        { type: "shot", id: "stage-count-in", caption: "The count-in on every phone: the beat number, the ring and the button that stops it." },
       ],
     },
     {
       id: "follow-the-tempo",
       title: "Follow the tempo",
-      summary: "Turn it on and the chart, the structure or the lyrics move with the song, in time with the leader's phone.",
+      summary: "Turn it on and the chord chart or the lyrics move with the song, in time with the leader's phone.",
       roles: ["admin", "member"],
       kind: "reference",
-      keywords: ["follow tempo", "auto scroll", "playhead", "current bar", "next section", "scroll lyrics", "hold", "vamp", "rehearsal speed"],
+      keywords: ["follow tempo", "auto scroll", "playhead", "current bar", "next section", "scroll lyrics", "hold", "vamp", "fermata"],
       related: ["count-in", "song-live-settings", "stage-click", "stage-mode"],
       body: [
         {
           type: "steps",
           title: "Turn it on",
           items: [
-            "In Stage mode or Live mode, open the song tab's view choices (where you pick **Lyrics & chords** or **Chord chart**).",
-            "Turn on **Follow the tempo**. It is off by default and kept on this device.",
-            "When the leader starts the song with **Count in** or the click, your screen moves with it.",
+            "In Stage mode or Live mode, open the song tab (**Lyrics**, **Lyrics & chords** or **Chord chart**).",
+            "Tap **Follow the tempo**, beside the view choices. It is off by default and kept on this device.",
+            "The line above the song says **Starts when the leader starts the song**. When the leader starts, your screen moves with the band.",
           ],
         },
         {
           type: "table",
           head: ["View", "What moves"],
           rows: [
-            ["**Chord chart**", "The current bar lights up, and the chart scrolls to keep it in view."],
-            ["Structure", "The current section is highlighted. A strip at the top says what comes next, for example “Next: Bridge in 4 bars”."],
-            ["**Lyrics & chords**, **Lyrics**, **Song only**", "The current line is highlighted and the text scrolls smoothly. Without line timing, it moves section by section."],
+            ["**Chord chart**", "The current bar lights up, and the chart scrolls to keep it in view. A song with no bar-by-bar chart lights the current section."],
+            ["**Lyrics & chords**, **Lyrics**", "The current line is highlighted and the text scrolls to keep it in view. The lines are spread over the bars of their section, so a line can light up a little early or late."],
+            ["**Song only**", "The same, full screen."],
             ["Floor wedge", "A big countdown to the next section, for example “Chorus in 4”."],
           ],
         },
@@ -1738,9 +1736,11 @@ const music: AreaModule = {
           type: "steps",
           title: "Lead it",
           items: [
-            "Start the song with **Count in** or the click. Bar 1 starts on every phone at the same moment.",
-            "If the band plays a part longer or shorter, tap the section, bar or line where you are: everyone jumps there.",
-            "Tap **Hold** to repeat the current section (a vamp, a solo) until you tap it again.",
+            "Turn on **Follow the tempo** on your own phone too. The line above the song says **The band follows when you start**, with the leader's buttons beside it.",
+            "Tap **Start**: bar 1 starts on every phone at the same moment. **Count in** starts it too, on bar 1 as the count ends.",
+            "If the band plays a part longer or shorter, tap the bar, line or section where you are: everyone jumps there.",
+            "Tap **Hold** to repeat the current section (a vamp, a solo). Tap **Let go** to move on.",
+            "At a fermata the song waits and the line says **Waiting for the leader**: tap **Go on**.",
             "Tap **Stop** to end it. Moving to another song stops it too.",
           ],
         },
@@ -1749,16 +1749,16 @@ const music: AreaModule = {
           title: "Good to know",
           items: [
             "Only the leader moves the band's place. Members turn the view on or off on their own phone.",
-            "A song needs a BPM to follow. Without one the switch says “Add a BPM to follow this song”.",
-            "Repeats, endings, D.C., D.S., segno and coda in the chart are played out in order. A fermata waits until the leader taps.",
-            "To follow line by line, an admin sets the line timing in the song with **Sync lines**: tap along with the recording, or set the bars of each line.",
-            "At a rehearsal, **Play at 80%** slows down the click and the follow together. The song's BPM stays the same.",
+            "A song needs a BPM, and a chord chart or lyrics, to follow. Without a BPM the switch is off and says “Add a BPM to follow this song”.",
+            "The line above the song says what comes next, for example “Next: Bridge in 4 bars”.",
+            "Repeats, endings, D.C., D.S., segno and coda in the chart are played out in order.",
+            "After you scroll by hand, the song stays where you put it for a few seconds, then follows again.",
+            "With no internet, the leader's place still reaches phones linked over Bluetooth, in the iPhone, iPad and Android apps.",
           ],
         },
         { type: "shot", id: "stage-follow-tempo", caption: "Follow the tempo on the chord chart: the current bar lit and the next section on top." },
       ],
     },
-    // </draft>
     {
       id: "stage-manager",
       title: "Play the songs' audio from the stage manager device",
@@ -1850,7 +1850,7 @@ const music: AreaModule = {
       body: [
         {
           type: "p",
-          text: "In the iPhone, iPad and Android apps, the admin's phone also sends the current song and the order over Bluetooth. Members' phones nearby pick it up with no pairing and no internet.",
+          text: "In the iPhone, iPad and Android apps, the admin's phone also sends the current song, the order, the click and the place in the song (Follow the tempo) over Bluetooth. Members' phones nearby pick it up with no pairing and no internet. The count-in is the exception: it needs the internet.",
         },
         {
           type: "steps",
@@ -2066,6 +2066,7 @@ const music: AreaModule = {
           items: [
             "As soon as the signal is back, when you open the app again, and every 30 seconds while something is waiting.",
             "Closing the app keeps what is waiting. It goes the next time you open the app with signal.",
+            "A rehearsal note the server refuses is not thrown away. Live mode says **A note wasn't saved**, and the note's words are listed in the rehearsal's notes and in Settings › Offline & live, with **Copy** and **Remove**.",
           ],
         },
         {
@@ -2073,7 +2074,7 @@ const music: AreaModule = {
           tone: "tip",
           text: "Members nearby see the leader's new order at once over Bluetooth, before it is saved.",
         },
-        { type: "shot", id: "stage-offline-banner", caption: "Stage mode with no signal: the content tag and the bar with the changes waiting for signal." },
+        { type: "shot", id: "stage-offline-banner", caption: "Stage mode with no signal: the content tag and, under it, the changes waiting for signal." },
       ],
     },
     {
@@ -2165,12 +2166,10 @@ const music: AreaModule = {
       q: "Why don't I see the iReal Pro forum inside the app on the web?",
       a: "The forum can't be shown inside a web page, so it opens in its own window. Copy a link there and tap Paste link, or drag the link onto the box.",
     },
-    // <draft live-tempo>
     {
       q: "Why is there no Count in button on a song?",
-      a: "The song is set as Played with a backing track: the track starts the band. An admin can still start a count-in from the song's menu.",
+      a: "The song is set as Played with a backing track, or the stage manager is playing it. The leader can still count it in: open the count-in options and tap Count in anyway. A song with no BPM can't be counted in.",
     },
-    // </draft>
   ],
 
   glossary: [
@@ -2198,10 +2197,8 @@ const music: AreaModule = {
     { term: "Offline setlist", definition: "The copy of a gig's or rehearsal's setlist kept on your phone for when there is no signal: lyrics, chords, voice parts and your own notes.", see: "live-mode-offline" },
     { term: "Voice part", definition: "Who sings a line or a few words: Lead, 2nd voice, Backing, All or Spoken, each with its own look.", see: "voice-parts" },
     { term: "Highlight my part", definition: "A switch on each device that keeps the lines you sing bright and dims the others a little.", see: "highlight-my-part" },
-    // <draft live-tempo>
     { term: "Count-in", definition: "The countdown on every phone, in the song's tempo and time signature, that ends with GO where the band comes in.", see: "count-in" },
-    { term: "Follow the tempo", definition: "A switch on each device that moves the chart, the structure or the lyrics with the song, in time with the leader.", see: "follow-the-tempo" },
-    // </draft>
+    { term: "Follow the tempo", definition: "A switch on each device that moves the chord chart or the lyrics with the song, in time with the leader.", see: "follow-the-tempo" },
   ],
 
   shots: [
@@ -2259,40 +2256,41 @@ const music: AreaModule = {
       role: "admin",
       viewport: "phone",
     },
-    // Placeholders for the live release: no capture yet (the integrated pass takes them).
+    // The live release. Captured by academy/scripts/capture.mjs, whose seeds put Paper Boats and Harbor Lights
+    // first in Rooftop set and the gig at The Loft, Brooklyn.
     {
       id: "live-pack-consent",
-      how: "As a member, open the Rooftop Session gig from the live_pack_ready push (or tap Download for offline under its setlist the first time). Leave the sheet Have the setlist with you, even without signal open.",
+      how: "As a member who was never asked, tap the “setlist ready without signal” push of Rooftop Session: the gig opens with the sheet Have the setlist with you, even without signal.",
       role: "member",
       viewport: "phone",
     },
     {
       id: "live-offline-ready",
-      how: "As admin, download the pack of Rooftop Session, with 4 of 5 members ready. Open the gig and scroll to the setlist so Offline ready · updated … and Offline: 4 of 5 members ready show; tap that row to list who is not ready.",
+      how: "As admin, with 4 of the 5 members' phones holding the setlist (not Lena P.), open Rooftop Session, tap Offline: 4 of 5 members ready to list who is not ready, and centre the two Offline rows.",
       role: "admin",
       viewport: "phone",
     },
     {
       id: "settings-offline-live",
-      how: "As a member with two packs kept, open the menu › Settings & account › Offline & live, with Automatic download on.",
+      how: "As a member, open Rooftop Session and Weekly rehearsal (with its focus songs) so two setlists are kept, then the menu › Settings & account › Offline & live, and turn Automatic download on.",
       role: "member",
       viewport: "phone",
     },
     {
       id: "stage-offline-banner",
-      how: "With the Rooftop Session pack downloaded, turn the network off, open the gig, tap Open stage mode, add a personal note on Paper Boats and suggest a change, so the bar says You’re offline · 2 changes waiting for signal and the Offline · content from … tag shows.",
+      how: "As a member, open Rooftop Session with signal, turn the network off, tap Open stage mode, the Lyrics & chords tab, add a note on the whole song (Paper Boats) and send a second one with Suggest to the band, so the tags say Offline · content from … and 2 changes waiting for signal.",
       role: "member",
       viewport: "phone",
     },
     {
       id: "voice-parts-stage",
-      how: "Give Paper Boats voice parts ({bv} on the chorus answers, {v2} on one verse line, {all} on the last chorus line) and Who sings what (Backing: two members). As a member with Backing vocals, open Rooftop Session in Stage mode, Lyrics & chords tab, Highlight my part on.",
+      how: "Give Paper Boats voice parts ({bv} on the answer lines, {v2} on one verse line, {all} on the first chorus line) and Who sings what (Lead: Lena P., 2nd voice: Marta C., Backing: Sam O. and you). As a member, open Rooftop Session in Stage mode, Lyrics & chords tab, Highlight my part on, and close the first-time hint with Got it.",
       role: "member",
       viewport: "phone",
     },
     {
       id: "voice-picker",
-      how: "As admin, Repertoire › Paper Boats › Edit chords. Tap the first word of a chorus answer line, so the bar shows Voice with Whole line selected and Backing pressed.",
+      how: "With the same Paper Boats, as admin: Repertoire › Paper Boats › Edit chords. Tap the first word of the backing line in verse 1, so the bar shows Voice with Whole line selected and Backing pressed.",
       role: "admin",
       viewport: "phone",
     },
@@ -2302,26 +2300,24 @@ const music: AreaModule = {
       role: "admin",
       viewport: "phone",
     },
-    // <draft live-tempo>
     {
       id: "song-live-fields",
-      how: "As admin, Repertoire › Harbor Lights › Edit › Next to Details · optional. Scroll so BPM, Key, Time signature (6/8), Count-in (2 bars, Starts 1 beats early) and Played with a backing track show.",
+      how: "As admin, Repertoire › Harbor Lights › Edit › Next to Details · optional. Pick 6/8, 2 bars and One beat earlier (Starts on beat 2), then scroll so BPM, Key, Time signature, Count-in and Played with a backing track show (on a tablet, from Transpose for the band down).",
       role: "admin",
       viewport: "phone",
     },
     {
       id: "stage-count-in",
-      how: "As admin, open Rooftop Session in Stage mode on Paper Boats and tap Count in; capture on beat 2 of the countdown.",
+      how: "As admin, open Rooftop Session in Stage mode on Paper Boats (96 BPM, 4/4) and tap Count in; capture on beat 2 of the countdown.",
       role: "admin",
       viewport: "phone",
     },
     {
       id: "stage-follow-tempo",
-      how: "As a member with Follow the tempo on, Chord chart tab, while the leader runs Harbor Lights; capture with a bar lit and the Next: … strip showing.",
+      how: "Two devices. The leader opens Rooftop Session in Stage mode, goes to Harbor Lights and turns Follow the tempo on; a member opens Stage mode with Follow the tempo on, Chord chart tab; the leader taps Start. Capture the member's screen on bar 3 of the Verse, when the line says Next: Chorus in 2 bars.",
       role: "member",
       viewport: "phone",
     },
-    // </draft>
   ],
 };
 

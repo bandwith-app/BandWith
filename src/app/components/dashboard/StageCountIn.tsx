@@ -13,6 +13,7 @@ import { countInAudible, setCountInPrefs, useCountInPrefs } from '@/lib/countInP
 import { startAudioScheduler, unlockAudio, wallNow } from '@/lib/liveAudio';
 import { currentAudioOutput, onAudioOutputChange, type AudioOutput } from '@/lib/audioOutput';
 import { getCountInStyle, setCountInStyle } from '@/lib/services/countInStyle';
+import { useFlag } from '@/lib/appFlags';
 import type { StageClickControls } from './StageClick';
 
 /** useStageLive().countIn */
@@ -119,7 +120,9 @@ export function useCountInUi(opts: {
   style: CountInStyle;
 }) {
   const { countIn, click, playhead, song, isLeader, regiaPlaying, style } = opts;
-  const state = countIn?.state ?? null;
+  // The kill switch (app_flags count_in, docs/flags.md): off, no Count in and nothing counting.
+  const flagOn = useFlag('count_in');
+  const state = (flagOn && countIn?.state) || null;
   const offset = countIn?.offset ?? 0;
   // Counting until bar 1 (re-rendered then, so the button goes back to Count in).
   const endsAt = state?.on ? state.startAt + countInPlan(state).endAt - offset : 0;
@@ -130,10 +133,10 @@ export function useCountInUi(opts: {
     return () => window.clearTimeout(id);
   }, [endsAt]);
   const counting = !!state?.on && !!song && (state.songId == null || state.songId === song.id) && wallNow() < endsAt;
-  const forceable = !!countIn && isLeader && !!song?.bpm;
+  const forceable = flagOn && !!countIn && isLeader && !!song?.bpm;
   const available = forceable && !song?.backingTrack && !regiaPlaying;
   const start = () => {
-    if (!countIn || !song?.bpm || !isLeader) return;
+    if (!flagOn || !countIn || !song?.bpm || !isLeader) return;
     unlockAudio();
     haptic.medium();
     const meter = songMeter(song);
@@ -190,7 +193,11 @@ const prefersReducedMotion = () => typeof window !== 'undefined' && !!window.mat
  * on their own phone. Vibration and the headphone sound follow this
  * phone's choices.
  */
-export const StageCountInOverlay: React.FC<{
+export const StageCountInOverlay: React.FC<React.ComponentProps<typeof CountInOverlay>> = (props) =>
+  // Switched off (app_flags count_in): no countdown, whatever state is still around.
+  useFlag('count_in') ? <CountInOverlay {...props} /> : null;
+
+const CountInOverlay: React.FC<{
   state: CountInState;
   offset: number;
   title?: string;
@@ -229,7 +236,10 @@ export const StageCountInOverlay: React.FC<{
     const still = prefersReducedMotion();
     let raf = 0;
     let lastStage = '';
-    const draw = () => {
+    // Where the count is now: its stage, and on a new count its number, bar
+    // line, dots and buzz. Run by every frame and by a timer on each beat (see
+    // below), whichever comes first; the other one finds the count already up.
+    const sync = () => {
       const last = lastRef.current;
       const pos = countInAt(plan, state, wallNow(), offsetRef.current);
       if (pos.stage !== lastStage) {
@@ -239,7 +249,7 @@ export const StageCountInOverlay: React.FC<{
       if (pos.stage === 'done') {
         // Gone from the screen: if it comes back, everything is drawn again.
         lastRef.current = -2;
-        return;
+        return pos;
       }
       // (Right after coming back, the elements show up on the next frame.)
       if (pos.stage === 'before' && last !== -1 && subRef.current) {
@@ -261,6 +271,12 @@ export const StageCountInOverlay: React.FC<{
         }
         if (vibrateRef.current) (e.downbeat || e.go ? haptic.medium : haptic.tap)();
       }
+      return pos;
+    };
+    const draw = () => {
+      const pos = sync();
+      if (pos.stage === 'done') return;
+      const e = pos.event >= 0 ? plan.events[pos.event] : null;
       if (e && numRef.current && !still) {
         const s = 1 + 0.22 * Math.exp(-pos.phase * 6);
         numRef.current.style.transform = `scale(${s.toFixed(3)})`;
@@ -281,7 +297,24 @@ export const StageCountInOverlay: React.FC<{
       raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
+    // The count is the beat, not the frame rate: each number (and its buzz)
+    // also goes up by a timer on its beat. A phone that draws only a frame or
+    // two a second (a heavy chart behind, an old phone) used to skip a number
+    // or buzz it late, with the next frame.
+    const timers = plan.events.map((_, i) => {
+      const arm = (ms: number): number =>
+        window.setTimeout(() => {
+          const pos = sync();
+          // A hair before its beat (timer rounding): once more, right after.
+          if (pos.stage === 'before' || (pos.stage !== 'done' && pos.event < i)) timers[i] = arm(1);
+        }, ms);
+      const wait = state.startAt + plan.events[i].at - offsetRef.current - wallNow();
+      return wait > 0 ? arm(Math.ceil(wait)) : 0;
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+      timers.forEach((id) => window.clearTimeout(id));
+    };
   }, [plan, state, t, offset]);
 
   // The count in headphones, on the shared clock.
@@ -371,6 +404,8 @@ export const CountInButton: React.FC<{ counting: boolean; onPress: () => void; c
 /** The header button that opens the count-in sheet (everyone: this phone's sound and vibration). */
 export const CountInSheetButton: React.FC<{ onPress: () => void }> = ({ onPress }) => {
   const t = useT();
+  const flagOn = useFlag('count_in');
+  if (!flagOn) return null;
   return (
     <button
       type="button"
@@ -445,8 +480,10 @@ export const CountInSheet: React.FC<{
   const t = useT();
   const output = useAudioOutput();
   const prefs = useCountInPrefs();
-  useSystemBack(open, onClose);
-  if (!open || typeof document === 'undefined') return null;
+  // Switched off (app_flags count_in) while open: the sheet goes with its button.
+  const shown = useFlag('count_in') && open;
+  useSystemBack(shown, onClose);
+  if (!shown || typeof document === 'undefined') return null;
   return createPortal(
     <div
       className="bw-countin-sheet fixed inset-0 z-[140] flex flex-col bg-black text-white"

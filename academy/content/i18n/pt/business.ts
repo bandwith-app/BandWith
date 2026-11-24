@@ -125,30 +125,50 @@ const business: AreaText = {
     },
     {
       id: "ask-lineup-availability",
-      title: "Consultar a formação antes do sim do cliente",
-      summary: "Veja quais músicos estão livres na data enquanto o orçamento ainda está em aberto.",
+      title: "Data reservada: quem está livre antes do sim do cliente",
+      summary: "Enquanto um show ainda é um orçamento, cada membro recebe um cartão pedindo para deixar a data livre, e responde nele.",
       roles: ["admin", "member"],
       kind: "task",
-      keywords: ["consulta de disponibilidade", "rsvp", "você está disponível", "segurar a data", "provisório"],
+      keywords: ["data reservada", "possível show", "deixar a data livre", "quem está livre", "consulta de disponibilidade", "você está disponível", "segurar a data", "provisório"],
       related: ["create-a-quote", "quote-to-gig", "quote-drafts"],
       body: [
+        { type: "p", text: "Não há nada para ativar. Quando você salva um novo orçamento com data, também como rascunho, cada membro da banda que não é admin é chamado a deixar essa data livre. A etapa 3 de um novo orçamento diz isso em **Disponibilidade da formação**." },
         {
           type: "steps",
+          title: "Responder a uma data reservada (membros)",
           items: [
-            "Na etapa 3 de um novo orçamento, ative **Perguntar à formação agora** (em **Disponibilidade da formação**). No iPad, o botão fica abaixo do PDF ao vivo: “Veja quem está livre antes de enviar”.",
-            "Salve o orçamento com **Salvar e compartilhar**, ou feche e escolha **Salvar rascunho**. Nos dois casos, os músicos são consultados.",
-            "Acompanhe as respostas no evento do orçamento no calendário: ele mostra “Disponibilidade: {free} de {total} livres” e uma lista que você pode abrir.",
+            "Abra a Início. Em **Possíveis shows**, o cartão **Possível show – deixe a data livre** mostra o dia, a hora e o local. Você também recebe uma notificação e um push; tocar neles abre o mesmo cartão.",
+            "Toque em **Estou livre** ou **Não posso**.",
+            "Você pode mudar a resposta até o show ser confirmado. O cartão também fica nesse dia no seu calendário.",
           ],
         },
-        { type: "p", text: "Um aviso rápido confirma, por exemplo “Orçamento Q-2026-0014 salvo · disponibilidade pedida a 4”. Com o botão desativado, os músicos só são consultados quando o orçamento vira show." },
+        { type: "shot", id: "quote-hold-card", caption: "O cartão de data reservada na Início de um membro, já respondido: o dia, a hora, o local e as duas respostas." },
+        {
+          type: "steps",
+          title: "Ver quem está livre (admins)",
+          items: [
+            "Abra o evento do orçamento no calendário, ou o próprio orçamento.",
+            "Em **Quem está livre**, os membros aparecem agrupados em **Livres ({count})**, **Não podem ({count})** e **Sem resposta ({count})**. **Na formação** marca os que você colocou no orçamento.",
+          ],
+        },
+        { type: "shot", id: "quote-hold-answers", caption: "Quem está livre no evento do orçamento: quem está livre, quem não pode e quem ainda não respondeu." },
+        {
+          type: "list",
+          title: "O que acontece depois",
+          items: [
+            "Se o dia ou a hora mudar, os membros recebem “Possível show – novos detalhes” e respondem de novo: as respostas anteriores são apagadas. Se só o local mudar, as respostas ficam.",
+            "Quando você confirma o show, os músicos da formação recebem o show como qualquer outro. Os membros que não estão nela são avisados: **A data está livre de novo**.",
+            "Os membros também recebem **A data está livre de novo** quando o cliente recusa, o orçamento expira, ou você o cancela ou exclui.",
+          ],
+        },
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Ativa a consulta ao criar o orçamento (não ao editar) e vê todas as respostas." },
-            { role: "member", text: "Recebe uma notificação “Disponibilidade” para a data, com o próprio cachê, e responde como a qualquer convite. O orçamento em si, o cliente e o total continuam ocultos, e o evento não entra no calendário dele até ser confirmado como show." },
+            { role: "admin", text: "Não é consultado: os admins veem o orçamento. Vê todas as respostas em **Quem está livre**." },
+            { role: "member", text: "Vê só o dia, a hora e o local. O cliente, o cachê, as notas, o rider e o chat do orçamento ficam com os admins até o show ser confirmado." },
           ],
         },
-        { type: "note", tone: "privacy", text: "Cada músico vê só o próprio cachê na consulta de disponibilidade, nunca o total do orçamento nem os cachês dos outros." },
+        { type: "note", tone: "privacy", text: "Um cartão de data reservada nunca mostra um cachê, o cliente nem o total do orçamento. Dizer que você está livre não é aceitar um show." },
       ],
     },
     {
@@ -170,7 +190,7 @@ const business: AreaText = {
           ],
         },
         { type: "p", text: "No iPad, **Salvar rascunho** fica no cabeçalho da tela de criação." },
-        { type: "note", tone: "privacy", text: "“Salvo como rascunho de orçamento que os membros não veem.” No calendário, um rascunho de orçamento mostra **OCULTO DOS MEMBROS**. Os músicos só recebem a consulta de disponibilidade se você tiver ativado **Perguntar à formação agora**." },
+        { type: "note", tone: "privacy", text: "Um rascunho de orçamento não é enviado ao cliente, e os membros não podem abri-lo. Eles só recebem o cartão pedindo para deixar a data livre, com o dia, a hora e o local. Veja [[ask-lineup-availability]]." },
       ],
     },
     {
@@ -806,7 +826,7 @@ const business: AreaText = {
             "Na tela Início, encontre **Pendências** > **Pagamentos ({count})** e toque em **Revisar pagamentos** no show. Você também pode abrir o show e tocar em **CACHÊ E PAGAMENTOS**.",
             "O painel **Cachê e pagamentos** mostra o **Cachê da banda**, **PAGAMENTOS PENDENTES · {count}** com o valor, e cada músico com o cachê e **PAGO** ou **PENDENTE**.",
             "Toque no botão redondo ao lado de um músico para marcá-lo como pago, ou toque de novo para desfazer.",
-            "Ou toque em **MARCAR TODOS COMO PAGOS** para marcar todos que ainda não foram pagos.",
+            "Ou toque em **MARCAR TODOS COMO PAGOS**. Isso marca os músicos que têm algo a receber: os que confirmaram, têm um cachê acima de zero e ainda não foram pagos. Quem não confirmou fica como está.",
           ],
         },
         { type: "p", text: "As estatísticas têm a mesma lista com **MARCAR TODOS COMO PAGOS** por show; veja [[analytics]]. Um músico pago sai da lista na hora." },
@@ -858,7 +878,7 @@ const business: AreaText = {
           type: "table",
           head: ["Assunto", "Admin", "Membro ou substituto"],
           rows: [
-            ["Orçamentos", "Tudo", "Nada. Só uma consulta de disponibilidade com o próprio cachê, se for consultado"],
+            ["Orçamentos", "Tudo", "Nada. Os membros só recebem um cartão pedindo para deixar a data livre: dia, hora e local, sem cachê"],
             ["Cachê do show", "**Cachê da banda**, o cachê de cada músico, caixa da banda, sinal", "Só **Seu cachê**"],
             ["Pagamentos", "Todos com algo a receber", "O próprio pagamento e **PAGO** / **PENDENTE**"],
             ["Contratos e riders", "Tudo", "Nada"],
@@ -1056,7 +1076,7 @@ const business: AreaText = {
   ],
 
   faq: [
-    { q: "Os membros podem ver um orçamento ou o total dele?", a: "Não. Os orçamentos são só para admins, no app e no banco de dados. Um membro só recebe uma consulta de disponibilidade, com o próprio cachê, se você ativar Perguntar à formação agora.", roles: ["admin", "member"] },
+    { q: "Os membros podem ver um orçamento ou o total dele?", a: "Não. Os orçamentos são só para admins, no app e no banco de dados. Enquanto um show ainda é um orçamento, os membros só recebem um cartão pedindo para deixar a data livre, com o dia, a hora e o local.", roles: ["admin", "member"] },
     { q: "O cliente precisa de uma conta para aceitar?", a: "Não. O link pessoal abre uma página web onde ele digita o nome, marca a caixa e toca em Aceitar o orçamento.", roles: ["admin"] },
     { q: "Um orçamento aceito é um contrato assinado?", a: "Não. Ele registra o nome, a data e a versão que o cliente aceitou. Para ter uma assinatura, prepare um contrato a partir do orçamento aceito.", roles: ["admin"] },
     { q: "O cliente aceitou. Por que o show ainda não está no calendário?", a: "Um sim na página do cliente não confirma o show sozinho. Abra o orçamento e toque em Criar show a partir do orçamento, ou toque em CONFIRMAR SHOW no evento do orçamento.", roles: ["admin"] },
@@ -1075,7 +1095,7 @@ const business: AreaText = {
     { term: "Evento provisório", definition: "O evento de calendário que um orçamento cria. Só os admins o veem até ele ser confirmado como show.", see: "quote-to-gig" },
     { term: "Link do cliente", definition: "O link web pessoal onde o cliente aceita, recusa ou escreve sobre um orçamento, sem conta.", see: "client-quote-page" },
     { term: "Versão", definition: "Cada edição de um orçamento enviado publica uma nova versão na página do cliente; um aceite fica ligado à versão que o cliente viu.", see: "client-confirmation" },
-    { term: "Consulta de disponibilidade", definition: "Um pedido de resposta enviado à formação antes de o cliente confirmar, marcado como ainda não confirmado.", see: "ask-lineup-availability" },
+    { term: "Data reservada", definition: "Uma data que os membros são chamados a deixar livre enquanto um show ainda é um orçamento. Eles veem o dia, a hora e o local, e respondem Estou livre ou Não posso.", see: "ask-lineup-availability" },
     { term: "Tabela de preços", definition: "Preços e serviços: as tarifas, pacotes, extras, viagem, som, impostos e marca da banda de que partem os novos orçamentos.", see: "pricing-sheet" },
     { term: "Caixa da banda", definition: "Um valor fixo ou porcentagem opcional somado aos cachês dos músicos para a poupança da banda, equipamento ou comissão de agência.", see: "pricing-sheet" },
     { term: "Pacotes fixos", definition: "Modelo de preço com um valor fixo por formação (solo, duo, trio, banda completa…), em vez de um cachê por músico.", see: "pricing-sheet" },

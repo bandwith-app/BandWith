@@ -3,7 +3,7 @@
   <head>
     <!--#head-->
     <title>Get the beta · BandWith</title>
-    <meta name="description" content="Join the BandWith private beta: sign up on the web, download the Android APK, or install it on iPhone and iPad with TestFlight. Free while in beta, with a limited number of spots." />
+    <meta name="description" content="Join the BandWith open beta: sign up on the web, download the Android APK, or install it on iPhone and iPad with TestFlight. Free, with limited spots." />
     <meta property="og:title" content="Get the BandWith beta" />
     <meta property="og:description" content="Web, Android or iPhone & iPad. Free while in beta." />
   </head>
@@ -15,31 +15,24 @@
       <!-- ─────────────────────────── HEAD ─────────────────────────── -->
       <section class="gethead" aria-labelledby="get-h">
         <div class="wrap">
-          <p class="label"><span class="led"></span>Private beta · free</p>
+          <p class="label" data-cap-beta="Private beta · free"><span class="led"></span>Open beta · free</p>
           <h1 class="h1 gethead__title" id="get-h" data-split>Get in.</h1>
-          <div class="gethead__grid">
+          <!-- Open: the intro, then the doors. Open spots gone: the counter comes back up here (pages/get.ts). -->
+          <div class="gethead__grid" data-cap-top>
             <p class="lead">Pick the door that fits your phone. The whole band can join through different doors: you all land in the same app.</p>
-            <div class="capblock gethead__cap" data-cap-block>
-              <div class="capblock__nums" aria-hidden="true">
-                <span><b data-cap-num="left">–</b> open spots left</span>
-                <span><b data-cap-num="kept">–</b> kept for band invites</span>
-              </div>
-              <div class="ledm" data-cap-meter data-cells="40"></div>
-              <p class="capblock__line"><span data-cap-line hidden><span data-cap-text></span></span> <a href="#why">Why a limit?</a></p>
-              <p class="capblock__sample mono" data-cap-sample hidden>Preview numbers · <a href="?capacity=open">open</a> · <a href="?capacity=invites">invites only</a> · <a href="?capacity=full">full</a></p>
-            </div>
           </div>
         </div>
       </section>
 
       <!-- ─────────────────── FULL (open spots gone) ─────────────────── -->
-      <section class="full" id="waitlist" aria-labelledby="full-h">
+      <!-- Out of the page (hidden) while open spots are left: core/capacity.ts shows what the state needs. -->
+      <section class="full" id="waitlist" aria-labelledby="full-h" data-cap-show="closed" hidden>
         <div class="wrap full__card">
           <div>
             <p class="label"><span class="led led--pink"></span>Sold out tonight</p>
             <h2 class="h2" id="full-h">Tonight’s show is full.</h2>
             <p class="lead">Every open spot is taken right now. We add more as we make the app lighter. Leave your email and you’ll be first to know.</p>
-            <p class="full__inv">Invited by a band that’s already inside? <span class="full__inv-open">Your spot is kept: pick your door below and sign up with the email the invite was sent to.</span><span class="full__inv-shut">The spots kept for band invites are taken too. Join the waitlist and we’ll write as soon as there’s room.</span></p>
+            <p class="full__inv">Invited by a band that’s already inside? <span class="full__inv-open" data-cap-show="invites" hidden>Your spot is kept: pick your door below and sign up with the email the invite was sent to.</span><span class="full__inv-shut" data-cap-show="full" hidden>The spots kept for band invites are taken too. Join the waitlist and we’ll write as soon as there’s room.</span></p>
           </div>
           <form class="bform bform--wait" data-beta-form="waitlist" novalidate>
             <div class="bform__fields">
@@ -56,13 +49,14 @@
 
       <!-- ─────────────────────────── DOORS ─────────────────────────── -->
       <section class="gdoors" aria-label="Three ways in">
-        <p class="wrap gdoors__inv mono">Invited by a band? Your door is still open.</p>
-        <div class="wrap gdoors__grid">
+        <p class="wrap gdoors__inv mono" data-cap-show="invites" hidden>Invited by a band? Your door is still open.</p>
+        <!-- Written web, Android, iPhone; the inline script after the grid puts the visitor's own door first. -->
+        <div class="wrap gdoors__grid" data-doors>
           <!-- WEB -->
           <article class="gdoor" id="web" aria-labelledby="web-h">
             <header class="gdoor__head">
               <span class="door__ico"><svg class="ico" aria-hidden="true"><use href="#i-globe"/></svg></span>
-              <p class="mono gdoor__no">Door 01</p>
+              <p class="mono gdoor__no" data-door-no>Door 01</p>
             </header>
             <h2 class="gdoor__name" id="web-h">Web app</h2>
             <p class="gdoor__line">Create your account in the browser. Nothing to install. Good on a laptop or a tablet.</p>
@@ -79,7 +73,7 @@
           <article class="gdoor" id="android" aria-labelledby="android-h">
             <header class="gdoor__head">
               <span class="door__ico"><svg class="ico" aria-hidden="true"><use href="#i-smartphone"/></svg></span>
-              <p class="mono gdoor__no">Door 02</p>
+              <p class="mono gdoor__no" data-door-no>Door 02</p>
             </header>
             <h2 class="gdoor__name" id="android-h">Android</h2>
             <p class="gdoor__line">The APK downloads straight away. Open it to install, then sign up in the app. Android asks once to allow installs from your browser.</p>
@@ -97,7 +91,7 @@
           <article class="gdoor" id="ios" aria-labelledby="ios-h">
             <header class="gdoor__head">
               <span class="door__ico"><svg class="ico" aria-hidden="true"><use href="#i-smartphone"/></svg></span>
-              <p class="mono gdoor__no">Door 03</p>
+              <p class="mono gdoor__no" data-door-no>Door 03</p>
             </header>
             <h2 class="gdoor__name" id="ios-h">iPhone &amp; iPad</h2>
             <p class="gdoor__line">The beta comes through TestFlight, Apple’s app for testing. The link sets up TestFlight first, then BandWith. Sign up in the app.</p>
@@ -111,6 +105,7 @@
             </div>
           </article>
         </div>
+        <!--@door-order-->
       </section>
 
       <!-- ─────────────────────── WATCH HOW ─────────────────────── -->
@@ -166,6 +161,15 @@
           <div>
             <p class="label">Why a limit?</p>
             <h2 class="h2" id="why-h" data-split>A small room<br />sounds better.</h2>
+            <div class="capblock why__cap" data-cap-block>
+              <div class="capblock__nums" aria-hidden="true">
+                <span><b data-cap-num="left">–</b> open spots left</span>
+                <span><b data-cap-num="kept">–</b> kept for band invites</span>
+              </div>
+              <div class="ledm" data-cap-meter data-cells="40"></div>
+              <p class="capblock__line"><span data-cap-line hidden><span data-cap-text></span></span> <a href="#why">Why a limit?</a></p>
+              <p class="capblock__sample mono" data-cap-sample hidden>Preview numbers · <a href="?capacity=open">open</a> · <a href="?capacity=invites">invites only</a> · <a href="?capacity=full">full</a></p>
+            </div>
           </div>
           <div class="why__copy">
             <p>BandWith runs on free plans while it’s in beta. They’re generous, but they have a ceiling: data sent to phones each month, live connections at the same moment, emails per day.</p>
@@ -188,8 +192,8 @@
             <details><summary>Do I need TestFlight on iPhone?</summary><p>Yes. While BandWith is in beta, Apple delivers it through TestFlight, its free app for testing. The link installs TestFlight first, then BandWith. Updates arrive there too.</p></details>
             <details><summary>Android says the app comes from an unknown source.</summary><p>That’s normal for an app installed outside the Play Store. Allow installs from your browser once, then install. The app tells you when a new version is ready.</p></details>
             <details><summary>Can we use different phones in the same band?</summary><p>Yes. iPhone, Android and the web all share the same band, live. Only the Bluetooth part of Stage mode needs the phone apps.</p></details>
-            <details><summary>Who sees my data?</summary><p>Your band sees what your role allows. Members see their own fee, never anyone else’s. We don’t sell data or show ads. The iPhone and Android apps share anonymous usage statistics only if you say yes. <a href="https://app.bandwith.fun/legal/privacy.html">Read the privacy policy</a>.</p></details>
-            <details><summary>Where do I learn how it works?</summary><p>In the <a href="https://app.bandwith.fun/academy/">BandWith Academy</a>: every screen, for admins, members and deputies, in six languages.</p></details>
+            <details><summary>Who sees my data?</summary><p>Your band sees what your role allows. Members see their own fee, never anyone else’s. We don’t sell data or show ads. When something breaks, the app sends an error report with no name, email or account id; you can switch that off in Settings. The iPhone and Android apps share anonymous usage statistics only if you say yes. <a href="https://app.bandwith.fun/legal/privacy.html">Read the privacy policy</a>.</p></details>
+            <details><summary>Where do I learn how it works?</summary><p>In the <a href="https://app.bandwith.fun/academy/en/">BandWith Academy</a>: every screen, for admins, members and deputies, in six languages.</p></details>
           </div>
         </div>
       </section>

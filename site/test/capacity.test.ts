@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'fs';
 import path from 'path';
-import { fromStatus, capText, meterCells, keptForInvites, meterLabel } from '../src/core/capacity';
+import { fromStatus, capText, meterCells, keptForInvites, meterLabel, capLineShown, capBlockShown } from '../src/core/capacity';
+import { HOME_ANSWERS } from '../src/content/answers';
+import { llmsTxt } from '../tools/seo';
+import { it as IT } from '../src/i18n/dict/it';
+import { es as ES } from '../src/i18n/dict/es';
 import { doneText } from '../src/ui/forms';
 import { APK_URL, TESTFLIGHT_URL, SIGNUP_URL } from '../src/content/site';
 
@@ -60,6 +64,35 @@ describe('beta counter', () => {
   });
 });
 
+describe('closed-beta blocks on the Get page', () => {
+  it('the waitlist and the lines for invited people show only once open spots are gone', () => {
+    const open = fromStatus(status(10))!;
+    const invites = fromStatus(status(255))!;
+    const full = fromStatus(status(300))!;
+    // Open, or no answer from the counter: nothing of the closed state is on the page.
+    for (const when of ['closed', 'invites', 'full']) {
+      expect(capBlockShown(open, when), when).toBe(false);
+      expect(capBlockShown(null, when), when).toBe(false);
+    }
+    expect(capBlockShown(invites, 'closed')).toBe(true);
+    expect(capBlockShown(invites, 'invites')).toBe(true);
+    expect(capBlockShown(invites, 'full')).toBe(false);
+    expect(capBlockShown(full, 'closed')).toBe(true);
+    expect(capBlockShown(full, 'invites')).toBe(false);
+    expect(capBlockShown(full, 'full')).toBe(true);
+  });
+
+  it('are written hidden in the page, each with the state that shows it', () => {
+    const html = read('get/index.html');
+    expect(html).toMatch(/<section class="full" id="waitlist"[^>]*data-cap-show="closed" hidden>/);
+    expect(html).toMatch(/class="full__inv-open" data-cap-show="invites" hidden>/);
+    expect(html).toMatch(/class="full__inv-shut" data-cap-show="full" hidden>/);
+    expect(html).toMatch(/class="wrap gdoors__inv mono" data-cap-show="invites" hidden>/);
+    // Shown by the script (core/capacity.ts), never by a stylesheet rule that a reader without CSS would miss.
+    expect(read('src/styles/get.css')).not.toMatch(/\.full\s*\{[^}]*display:\s*none/);
+  });
+});
+
 describe('waitlist reply', () => {
   it('gives the place in line and escapes the email', () => {
     expect(doneText('a<b>@x.io', { ok: true, position: 12 })).toContain('#12 in line');
@@ -83,5 +116,126 @@ describe('Get page doors', () => {
 
   it('never promises a hold or a release of spots the database does not do', () => {
     expect(html).not.toMatch(/72 hours|14 days|last 30 days|open today/);
+  });
+});
+
+/**
+ * While open spots are left the beta is open to anyone: the site says "Open
+ * beta" and the doors come first. The limit is still explained (the counter
+ * next to "Why a limit?"), and once only band invites get in, or nobody, the
+ * labels go back to "Private beta" and the notice returns to the top.
+ */
+describe('open beta wording', () => {
+  const pages = ['index.html', 'get/index.html', 'partials/nav.html'].map((f) => [f, read(f)] as const);
+  /** What a visitor reads: tags and attributes dropped. */
+  const visible = (html: string) => html.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
+
+  it('says Open beta wherever the page names the beta', () => {
+    expect(visible(read('index.html'))).toContain('Open beta · iPhone · Android · Web');
+    expect(visible(read('get/index.html'))).toContain('Open beta · free');
+    expect(visible(read('partials/nav.html'))).toContain('Open beta · iPhone, Android & web');
+    expect(read('index.html')).toMatch(/<section class="sec sec--bone getband"[\s\S]*?<p class="label"[^>]*>Open beta<\/p>/);
+    for (const [f, html] of pages) expect(visible(html), f).not.toMatch(/private beta/i);
+  });
+
+  it('keeps the Private beta label for when only invites, or nobody, get in', () => {
+    const labels = pages.flatMap(([, html]) => [...html.matchAll(/data-cap-beta="([^"]*)"[^>]*>(?:<span class="led"><\/span>)?([^<]*)</g)]);
+    expect(labels.map((m) => m[1].replace(/&amp;/g, '&'))).toEqual([
+      'Private beta · iPhone · Android · Web', 'Private beta', 'Private beta · free', 'Private beta · iPhone, Android & web',
+    ]);
+    for (const [, shut, open] of labels) expect(shut).toBe(open.replace('Open beta', 'Private beta'));
+  });
+
+  it('names the open beta in the descriptions search engines show', () => {
+    const desc = (f: string) => /<meta name="description" content="([^"]*)"/.exec(read(f))![1];
+    expect(desc('index.html')).toContain('Open beta on iPhone, Android and the web.');
+    expect(desc('get/index.html')).toContain('Join the BandWith open beta:');
+    for (const f of ['index.html', 'get/index.html']) expect(desc(f)).not.toMatch(/private/i);
+  });
+
+  it('answers "Is BandWith free?" without calling the beta private', () => {
+    const a = HOME_ANSWERS.find((x) => x.q === 'Is BandWith free?')!.a;
+    expect(a).toContain('BandWith is free while it’s in beta,');
+    expect(a).not.toMatch(/private/i);
+    // The limit stays in the answer: it is real.
+    expect(a).toContain('Beta spots are limited');
+    expect(llmsTxt()).not.toMatch(/private beta/i);
+  });
+
+  it('has the Italian and Spanish names', () => {
+    expect(IT['Open beta']).toBe('Beta aperta');
+    expect(ES['Open beta']).toBe('Beta abierta');
+    for (const k of ['Open beta · free', 'Open beta · iPhone · Android · Web', 'Open beta · iPhone, Android & web']) {
+      expect(IT[k], k).toMatch(/^Beta aperta · /);
+      expect(ES[k], k).toMatch(/^Beta abierta · /);
+    }
+    // The private names stay: the pages go back to them when the open spots are gone.
+    expect(IT['Private beta · free']).toBe('Beta privata · gratis');
+    expect(ES['Private beta · free']).toBe('Beta privada · gratis');
+  });
+});
+
+describe('home hero', () => {
+  const open = fromStatus(status(15))!;
+  const invites = fromStatus(status(271))!;
+  const full = fromStatus(status(300))!;
+
+  it('shows no spots count while the beta is open', () => {
+    expect(capLineShown(open, 'closed')).toBe(false);
+  });
+
+  it('still tells the visitor when only invites, or nobody, get in', () => {
+    expect(capLineShown(invites, 'closed')).toBe(true);
+    expect(capLineShown(full, 'closed')).toBe(true);
+  });
+
+  it('the other counters (Get page, the home’s Get in section) show in every state', () => {
+    for (const c of [open, invites, full]) expect(capLineShown(c, '')).toBe(true);
+    expect(capLineShown(open, undefined)).toBe(true);
+  });
+
+  it('nothing shows without numbers', () => {
+    expect(capLineShown(null, 'closed')).toBe(false);
+    expect(capLineShown(null, '')).toBe(false);
+  });
+
+  it('the hero’s line is the closed-only one; the section further down keeps its counter', () => {
+    const html = read('index.html');
+    expect(html).toMatch(/<p class="cap-line hero__cap" data-cap-line="closed" hidden>/);
+    const band = html.slice(html.indexOf('class="sec sec--bone getband"'));
+    expect(band).toMatch(/<span data-cap-line hidden>/);
+    expect(band).toContain('href="/get/#why"');
+  });
+});
+
+describe('Get page: the doors come first', () => {
+  const html = read('get/index.html');
+  const at = (s: string) => { const i = html.indexOf(s); expect(i, s).toBeGreaterThan(-1); return i; };
+
+  it('headline and intro, then the three doors, then the counter', () => {
+    const head = html.slice(at('<section class="gethead"'), at('class="full"'));
+    expect(head).toContain('id="get-h"');
+    expect(head).toContain('class="lead"');
+    // No counter between the headline and the doors.
+    expect(head).not.toMatch(/data-cap-block|data-cap-num|data-cap-meter/);
+    expect(at('class="gdoors"')).toBeLessThan(at('data-cap-block'));
+    expect(at('data-door="ios"')).toBeLessThan(at('data-cap-num="left"'));
+  });
+
+  it('the counter, the meter and its line sit in the Why a limit? section', () => {
+    const why = html.slice(at('id="why"'), at('class="sec faq"'));
+    expect(why).toContain('data-cap-block');
+    expect(why).toContain('data-cap-num="left"');
+    expect(why).toContain('data-cap-num="kept"');
+    expect(why).toContain('data-cap-meter');
+    expect(why).toContain('data-cap-line');
+    expect(html.match(/data-cap-block/g)).toHaveLength(1);
+  });
+
+  it('keeps a place under the headline for the notice when the open spots are gone', () => {
+    const head = html.slice(at('<section class="gethead"'), at('class="full"'));
+    expect(head).toContain('data-cap-top');
+    // The waitlist still comes before the doors.
+    expect(at('id="waitlist"')).toBeLessThan(at('class="gdoors"'));
   });
 });

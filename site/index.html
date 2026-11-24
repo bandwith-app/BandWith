@@ -3,7 +3,7 @@
   <head>
     <!--#head-->
     <title>BandWith · Run the band. Play the show.</title>
-    <meta name="description" content="BandWith runs a working band: gigs, quotes, rehearsals, setlists, fees and Stage mode on one shared app. Everyone sees their part. Private beta on iPhone, Android and the web." />
+    <meta name="description" content="BandWith runs a working band: gigs, quotes, rehearsals, setlists, fees and Stage mode in one app. Open beta on iPhone, Android and the web." />
     <meta property="og:title" content="BandWith · Run the band. Play the show." />
     <meta property="og:description" content="Gigs, quotes, rehearsals, setlists, fees and the show itself, on one app for the whole band." />
     <link rel="preload" as="image" href="/shots/gig-workspace-admin@phone.webp" fetchpriority="high" />
@@ -17,7 +17,7 @@
       <section class="hero" id="top" data-hero>
         <div class="hero__inner wrap">
           <div class="hero__copy">
-            <p class="label hero__kicker" data-hero-kicker><span class="led"></span>Private beta · iPhone · Android · Web</p>
+            <p class="label hero__kicker" data-hero-kicker data-cap-beta="Private beta · iPhone · Android · Web"><span class="led"></span>Open beta · iPhone · Android · Web</p>
             <h1 class="hero__title" data-hero-title>
               <span class="line"><span>Run the band.</span></span>
               <span class="line"><span>Play the <em>show.</em></span></span>
@@ -27,7 +27,7 @@
               <a class="btn btn--lime" href="/get/" data-magnetic>Get the beta <svg class="ico btn__arrow" aria-hidden="true"><use href="#i-arrow-up-right"/></svg></a>
               <a class="btn btn--ghost" href="#noise">See it work <svg class="ico btn__arrow btn__arrow--down" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
             </div>
-            <p class="cap-line hero__cap" data-cap-line hidden><span class="cap-line__led" aria-hidden="true"></span><span data-cap-text></span></p>
+            <p class="cap-line hero__cap" data-cap-line="closed" hidden><span class="cap-line__led" aria-hidden="true"></span><span data-cap-text></span></p>
           </div>
 
           <figure class="hero__screen" data-hero-stage>
@@ -233,7 +233,7 @@
       <section class="sec sec--bone getband" id="get" data-light aria-labelledby="get-h">
         <div class="wrap">
           <div class="head">
-            <p class="label">Private beta</p>
+            <p class="label" data-cap-beta="Private beta">Open beta</p>
             <h2 class="h2" id="get-h" data-split>Come in.<br />Bring the band.</h2>
             <p class="lead">BandWith is free while it’s in beta. We let people in at the pace our servers can take, so it stays fast for everyone already inside.</p>
           </div>
@@ -262,7 +262,7 @@
               <span class="door__go">Open TestFlight <svg class="ico" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
             </a>
           </div>
-          <a class="guide" href="https://app.bandwith.fun/academy/">
+          <a class="guide" href="https://app.bandwith.fun/academy/en/">
             <span class="guide__ico"><svg class="ico" aria-hidden="true"><use href="#i-book-open"/></svg></span>
             <span><b>New to it? The Guide walks you through.</b> Every screen, for admins, members and deputies. In English, Italiano, Español, Français, Deutsch and Português.</span>
             <svg class="ico guide__go" aria-hidden="true"><use href="#i-arrow-up-right"/></svg>

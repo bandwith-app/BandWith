@@ -125,30 +125,50 @@ const business: AreaText = {
     },
     {
       id: "ask-lineup-availability",
-      title: "Chiedi alla formazione prima del sì del cliente",
-      summary: "Controlla quali musicisti sono liberi in quella data mentre il preventivo è ancora aperto.",
+      title: "Data in sospeso: chi è libero prima del sì del cliente",
+      summary: "Finché un gig è ancora un preventivo, ogni membro riceve una scheda che chiede di tenere libera la data, e risponde lì.",
       roles: ["admin", "member"],
       kind: "task",
-      keywords: ["richiesta di disponibilità", "rsvp", "sei disponibile", "bloccare la data", "provvisorio"],
+      keywords: ["data in sospeso", "possibile gig", "tieni libera la data", "chi è libero", "richiesta di disponibilità", "sei disponibile", "bloccare la data", "provvisorio"],
       related: ["create-a-quote", "quote-to-gig", "quote-drafts"],
       body: [
+        { type: "p", text: "Non c’è niente da attivare. Quando salvi un nuovo preventivo con una data, anche come bozza, a ogni membro della band che non è admin viene chiesto di tenere libera quella data. Il passo 3 di un nuovo preventivo lo dice sotto **Disponibilità della formazione**." },
         {
           type: "steps",
+          title: "Rispondi a una data in sospeso (membri)",
           items: [
-            "Al passo 3 di un nuovo preventivo, attiva **Chiedi subito alla formazione** (sotto **Disponibilità della formazione**). Su iPad l’interruttore è sotto il PDF dal vivo: “Verifica chi è libero prima di inviare”.",
-            "Salva il preventivo con **Salva e condividi**, oppure chiudilo e scegli **Salva bozza**. In entrambi i casi la domanda arriva ai musicisti.",
-            "Segui le risposte sull’evento del preventivo in calendario: mostra “Disponibilità: {free} su {total} liberi” e un elenco che puoi aprire.",
+            "Apri la Home. Sotto **Possibili gig**, la scheda **Possibile gig – tieni libera la data** mostra il giorno, l’orario e il luogo. Ricevi anche una notifica e una push; toccandola si apre la stessa scheda.",
+            "Tocca **Sono libero** o **Non posso**.",
+            "Puoi cambiare risposta finché il gig non è confermato. La scheda è anche in quel giorno nel tuo calendario.",
           ],
         },
-        { type: "p", text: "Il messaggio di conferma lo dice, per esempio “Preventivo Q-2026-0014 salvato · disponibilità chiesta a 4”. Con l’interruttore spento, ai musicisti viene chiesto solo quando il preventivo diventa un gig." },
+        { type: "shot", id: "quote-hold-card", caption: "La scheda della data in sospeso nella Home di un membro, con la risposta data: il giorno, l’orario, il luogo e le due risposte." },
+        {
+          type: "steps",
+          title: "Guarda chi è libero (admin)",
+          items: [
+            "Apri l’evento del preventivo in calendario, oppure il preventivo stesso.",
+            "Sotto **Chi è libero**, i membri sono raggruppati in **Liberi ({count})**, **Non possono ({count})** e **Senza risposta ({count})**. **In formazione** segna quelli che hai messo nel preventivo.",
+          ],
+        },
+        { type: "shot", id: "quote-hold-answers", caption: "Chi è libero nell’evento del preventivo: chi è libero, chi non può e chi non ha ancora risposto." },
+        {
+          type: "list",
+          title: "Cosa succede dopo",
+          items: [
+            "Se cambia il giorno o l’orario, i membri ricevono “Possibile gig – nuovi dettagli” e rispondono di nuovo: le risposte di prima vengono cancellate. Se cambia solo il luogo, le risposte restano.",
+            "Quando confermi il gig, i musicisti in formazione ricevono il gig come qualsiasi altro. Ai membri che non ci sono viene detto **La data è di nuovo libera**.",
+            "Ai membri viene detto **La data è di nuovo libera** anche quando il cliente rifiuta, il preventivo scade, oppure lo annulli o lo elimini.",
+          ],
+        },
         {
           type: "roles",
           rows: [
-            { role: "admin", text: "Attiva la richiesta quando crea il preventivo (non quando lo modifica) e vede tutte le risposte." },
-            { role: "member", text: "Riceve una notifica “Disponibilità” per la data, con il proprio compenso, e risponde come a qualsiasi invito. Il preventivo, il cliente e il totale restano nascosti, e l’evento non compare nel suo calendario finché non viene confermato come gig." },
+            { role: "admin", text: "Non riceve la domanda: gli admin vedono il preventivo. Vede tutte le risposte sotto **Chi è libero**." },
+            { role: "member", text: "Vede solo il giorno, l’orario e il luogo. Il cliente, il compenso, le note, il rider e la chat del preventivo restano agli admin finché il gig non è confermato." },
           ],
         },
-        { type: "note", tone: "privacy", text: "Nella richiesta di disponibilità ogni musicista vede solo il proprio compenso, mai il totale del preventivo né i compensi degli altri." },
+        { type: "note", tone: "privacy", text: "Una scheda di data in sospeso non mostra mai un compenso, il cliente o il totale del preventivo. Dire che sei libero non significa accettare un gig." },
       ],
     },
     {
@@ -170,7 +190,7 @@ const business: AreaText = {
           ],
         },
         { type: "p", text: "Su iPad, **Salva bozza** si trova nell’intestazione del composer." },
-        { type: "note", tone: "privacy", text: "“Salvato come bozza di preventivo che i membri non vedono.” In calendario una bozza di preventivo mostra **NASCOSTO AI MEMBRI**. Solo se hai attivato **Chiedi subito alla formazione** i musicisti ricevono la richiesta di disponibilità." },
+        { type: "note", tone: "privacy", text: "Una bozza di preventivo non viene inviata al cliente, e i membri non possono aprirla. Ricevono solo la scheda che chiede di tenere libera la data, con il giorno, l’orario e il luogo. Vedi [[ask-lineup-availability]]." },
       ],
     },
     {
@@ -806,7 +826,7 @@ const business: AreaText = {
             "Nella Home, trova **Da gestire** > **Pagamenti ({count})** e tocca **Rivedi i pagamenti** sul gig. Puoi anche aprire il gig e toccare **COMPENSI E PAGAMENTI**.",
             "Il foglio **Compensi e pagamenti** mostra il **Compenso band**, **PAGAMENTI DA FARE · {count}** con l’importo, e ogni musicista con il suo compenso e **PAGATO** o **IN ATTESA**.",
             "Tocca l’interruttore rotondo accanto a un musicista per segnarlo come pagato, o toccalo di nuovo per annullare.",
-            "Oppure tocca **SEGNA TUTTI COME PAGATI** per segnare tutti quelli ancora da pagare.",
+            "Oppure tocca **SEGNA TUTTI COME PAGATI**. Segna i musicisti che devono essere pagati: quelli che hanno confermato, hanno un compenso sopra zero e non sono ancora pagati. Chi non ha confermato resta com’è.",
           ],
         },
         { type: "p", text: "Le statistiche hanno lo stesso elenco con **SEGNA TUTTI COME PAGATI** per ogni gig, vedi [[analytics]]. Un musicista pagato esce subito dall’elenco." },
@@ -858,7 +878,7 @@ const business: AreaText = {
           type: "table",
           head: ["Argomento", "Admin", "Membro o sostituto"],
           rows: [
-            ["Preventivi", "Tutto", "Niente. Solo una richiesta di disponibilità con il proprio compenso, se richiesta"],
+            ["Preventivi", "Tutto", "Niente. I membri ricevono solo una scheda che chiede di tenere libera la data: giorno, orario e luogo, nessun compenso"],
             ["Compenso del gig", "**Compenso band**, compenso di ogni musicista, cassa della band, acconto", "Solo **Il tuo compenso**"],
             ["Pagamenti", "Tutti quelli da pagare", "Il proprio pagamento e **PAGATO** / **IN ATTESA**"],
             ["Contratti e rider", "Tutto", "Niente"],
@@ -1056,7 +1076,7 @@ const business: AreaText = {
   ],
 
   faq: [
-    { q: "I membri possono vedere un preventivo o il suo totale?", a: "No. I preventivi sono solo per gli admin, nell’app e nel database. Un membro riceve solo una richiesta di disponibilità, con il proprio compenso, se attivi Chiedi subito alla formazione.", roles: ["admin", "member"] },
+    { q: "I membri possono vedere un preventivo o il suo totale?", a: "No. I preventivi sono solo per gli admin, nell’app e nel database. Finché un gig è ancora un preventivo, i membri ricevono solo una scheda che chiede di tenere libera la data, con il giorno, l’orario e il luogo.", roles: ["admin", "member"] },
     { q: "Al cliente serve un account per accettare?", a: "No. Il link personale apre una pagina web dove scrive il suo nome, spunta la casella e tocca Accetta il preventivo.", roles: ["admin"] },
     { q: "Un preventivo accettato è un contratto firmato?", a: "No. Registra il nome, la data e la versione che il cliente ha accettato. Per una firma, prepara un contratto dal preventivo accettato.", roles: ["admin"] },
     { q: "Il cliente ha accettato. Perché il gig non è ancora in calendario?", a: "Un sì sulla pagina del cliente non conferma da solo il gig. Apri il preventivo e tocca Crea gig dal preventivo, oppure tocca CONFERMA GIG sull’evento del preventivo.", roles: ["admin"] },
@@ -1075,7 +1095,7 @@ const business: AreaText = {
     { term: "Evento provvisorio", definition: "L’evento in calendario creato da un preventivo. Lo vedono solo gli admin finché non viene confermato come gig.", see: "quote-to-gig" },
     { term: "Link per il cliente", definition: "Il link web personale dove il cliente accetta, rifiuta o scrive riguardo a un preventivo, senza account.", see: "client-quote-page" },
     { term: "Versione", definition: "Ogni modifica di un preventivo inviato pubblica una nuova versione sulla pagina del cliente; un’accettazione è legata alla versione che il cliente ha visto.", see: "client-confirmation" },
-    { term: "Richiesta di disponibilità", definition: "Una domanda inviata alla formazione prima che il cliente confermi, segnata come non ancora confermata.", see: "ask-lineup-availability" },
+    { term: "Data in sospeso", definition: "Una data che i membri devono tenere libera finché un gig è ancora un preventivo. Vedono il giorno, l’orario e il luogo, e rispondono Sono libero o Non posso.", see: "ask-lineup-availability" },
     { term: "Listino prezzi", definition: "Prezzi e servizi: tariffe, pacchetti, extra, viaggio, audio, tasse e branding della band da cui partono i nuovi preventivi.", see: "pricing-sheet" },
     { term: "Cassa della band", definition: "Un importo fisso o una percentuale facoltativi aggiunti ai compensi dei musicisti, per i risparmi della band, l’attrezzatura o la commissione di un’agenzia.", see: "pricing-sheet" },
     { term: "Pacchetti fissi", definition: "Modello di prezzo con un prezzo fisso per formazione (Solo, Duo, Trio, Band al completo…), invece di un compenso per musicista.", see: "pricing-sheet" },

@@ -53,8 +53,8 @@
   <aside class="note tip">Past rehearsals are edited the same way, also on an iPad. Members see the page without the pencils and without <b class="ui">EDIT</b>.</aside>
 
   <h3 id="art-delete-a-rehearsal" data-roles="admin">Delete (cancel) a rehearsal</h3>
-  <p>On the rehearsal, tap <b class="ui">DELETE</b> (under <b class="ui">REHEARSAL CHAT</b>), then <b class="ui">Confirm delete</b>, or <b class="ui">CANCEL</b> to keep it.</p>
-  <aside class="note warning">Deleting cannot be undone. A recurring rehearsal is one event, so deleting it removes every date of the series.</aside>
+  <p>On the rehearsal, tap <b class="ui">DELETE</b> (under <b class="ui">REHEARSAL CHAT</b>), then <b class="ui">Confirm delete</b>, or <b class="ui">CANCEL</b> to keep it. A rehearsal that repeats asks which dates instead: <b class="ui">Delete this date</b> removes only the date you opened, <b class="ui">Delete the whole series</b> removes every date with its notes.</p>
+  <aside class="note warning">Deleting a rehearsal or a whole series cannot be undone. One deleted date can come back: an admin opens the series and taps <b class="ui">RESTORE</b> next to it under <b class="ui">Deleted dates</b>.</aside>
   <p>The people on the rehearsal get <b class="ui">Rehearsal cancelled</b> with a push. If they open it from an old notification, they see <b class="ui">Rehearsal cancelled</b> and a note that an admin removed it.</p>
 
   <h3 id="art-rehearsal-drafts" data-roles="admin">Save a rehearsal as a draft</h3>
@@ -79,12 +79,12 @@
       <tr><td><b class="ui">Monthly</b></td><td><b class="ui">MONTHLY</b></td></tr>
     </tbody>
   </table>
-  <aside class="note warning">All dates of a series share the same rehearsal: one roster, one answer per member, one setlist. Editing or deleting it changes every date.</aside>
+  <aside class="note warning">All dates of a series share the same rehearsal: one roster, one answer per member, one setlist. Editing it changes every date. Two things can be done to one date alone: deleting it (<b class="ui">Delete this date</b>, see <a data-ref="delete-a-rehearsal">Delete (cancel) a rehearsal</a>) and moving it: when you change the date, <b class="ui">Move which dates?</b> offers <b class="ui">Only this date</b> or <b class="ui">The whole series</b>.</aside>
 
   <h2>The rehearsal page and answers</h2>
 
   <h3 id="art-the-rehearsal-page" data-roles="admin,member">The rehearsal page</h3>
-  <p>It opens from the <b class="ui">Calendar</b> or Home. It is blue, the rehearsal colour, and has:</p>
+  <p>It opens from the <b class="ui">Calendar</b> or Home. It is blue, the rehearsal color, and has:</p>
   <ul>
     <li><b class="ui">Are you coming?</b>: the answer card for invited members.</li>
     <li><b class="ui">Open live mode</b>, the play button at the top right (in the side rail on a dual-screen device), on upcoming rehearsals: the focus songs with lyrics, chords and the click, the admin leading (see <a data-ref="stage-mode">Stage mode</a>).</li>
@@ -159,7 +159,7 @@
   <p>The members asked to vote get <b class="ui">Vote on Rehearsal Times</b> with a push. The poll shows as <b class="ui">Poll · Active</b> on Home and in the <b class="ui">Calendar</b> under <b class="ui">Rehearsal scheduling</b>.</p>
   <p>Changed your mind? <b class="ui">Back</b> (at the top or bottom, or the phone's Back) returns to the rehearsal form; <b class="ui">Close</b> leaves the builder. If anything changed, the app asks first, <b class="ui">Discard this poll?</b>: <b class="ui">Keep editing</b> or <b class="ui">Discard</b>. With no changes it simply closes. Polls have no drafts.</p>
   <p>Publishing is blocked when the title is missing (<b class="ui">Please give your poll a title.</b>), when there is no slot (<b class="ui">Add at least one candidate time slot for members to vote on.</b>) or when the deadline falls after the first slot (<b class="ui">Pick a day before the first slot</b>). A slot with the same day and start time cannot be added twice (<b class="ui">This slot is already added.</b>).</p>
-  <div class="devnote" data-devices="tablet">On an iPad the poll is a one-screen composer, <b class="ui">New rehearsal</b> with <b class="ui">Poll · members vote on dates</b>, with the cards <b class="ui">Session &amp; roster</b>, <b class="ui">Candidate slots</b> (a week strip coloured by how many members are free; tap a day to add it with the chosen times), <b class="ui">Place, cost &amp; songs</b> and <b class="ui">Vote deadline &amp; note</b>. The <b class="ui">Live preview</b> shows the slots <b class="ui">As members vote</b>, with the <b class="ui">Top pick</b>.</div>
+  <div class="devnote" data-devices="tablet">On an iPad the poll is a one-screen composer, <b class="ui">New rehearsal</b> with <b class="ui">Poll · members vote on dates</b>, with the cards <b class="ui">Session &amp; roster</b>, <b class="ui">Candidate slots</b> (a week strip colored by how many members are free; tap a day to add it with the chosen times), <b class="ui">Place, cost &amp; songs</b> and <b class="ui">Vote deadline &amp; note</b>. The <b class="ui">Live preview</b> shows the slots <b class="ui">As members vote</b>, with the <b class="ui">Top pick</b>.</div>
   <figure class="shot" data-shot="shot-poll-builder" data-device="phone"><figcaption>The availability poll builder on a phone.</figcaption></figure>
   <aside class="note privacy">The free counts come from everyone's calendars, but only the number is shown (<b class="ui">4 of 5 free</b>), never who is busy or why.</aside>
 
@@ -267,7 +267,7 @@
     <li>In band and event chats each message shows the sender, with <b class="ui"> · Admin</b> for admins.</li>
     <li>The latest 50 messages load; for older ones, scroll up and tap <b class="ui">Load earlier messages</b>.</li>
     <li>Plain text only: no attachments or photos, reactions, editing or deleting single messages.</li>
-    <li>Without a connection the message is not sent and goes back into the composer with <b class="ui">Message not sent. Check your connection and try again.</b>, ready to send again once online.</li>
+    <li>Without a connection the message stays in the chat marked <b class="ui">Waiting for connection</b> and is sent by itself once back online, also if the chat is closed. A message that could not be sent says <b class="ui">Not sent</b>, with <b class="ui">Try again</b> and <b class="ui">Delete</b>.</li>
   </ul>
   <div class="devnote" data-devices="duoLaptop">In Laptop pose the messages fill the top screen and the composer opens on the bottom one.</div>
 
@@ -304,8 +304,8 @@
     <tbody>
       <tr><td>Clock (<b class="ui">Sending</b>)</td><td>On its way.</td></tr>
       <tr><td>One tick (<b class="ui">Sent</b>)</td><td>Saved on the server.</td></tr>
-      <tr><td>Two grey ticks (<b class="ui">Delivered</b>)</td><td>It reached the other people's phones.</td></tr>
-      <tr><td>Two coloured ticks (<b class="ui">Read</b>)</td><td>They opened the chat after the message.</td></tr>
+      <tr><td>Two gray ticks (<b class="ui">Delivered</b>)</td><td>It reached the other people's phones.</td></tr>
+      <tr><td>Two colored ticks (<b class="ui">Read</b>)</td><td>They opened the chat after the message.</td></tr>
     </tbody>
   </table>
   <p>In band and event chats the ticks change only once everyone has received or read the message; people who joined after it was sent do not count. The header of a direct chat shows <b class="ui">Online</b> or <b class="ui">Offline</b>; a group chat shows <b class="ui">{count} members · {count} online</b>.</p>

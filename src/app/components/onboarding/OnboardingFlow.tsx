@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
@@ -24,7 +24,7 @@ import { declineInvitation, declineInvitationByToken, inviteErrorMessage, Invite
 import { closeTopOverlay, isEditableTarget } from '@/lib/overlayBack';
 import { DuoAuthLayout, CREATOR_BRAND_STEPS, SOLO_BRAND_STEPS } from './DuoAuthLayout';
 import { t } from '@/lib/i18n';
-import { AUTH_SCREEN_PARAM, authScreenFromUrl } from '@/lib/authCallback';
+import { AUTH_SCREEN_PARAM, START_PARAM, authScreenFromUrl, dropUrlParams } from '@/lib/authCallback';
 
 interface OnboardingFlowProps {
   onComplete: () => void;
@@ -72,16 +72,25 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   }, [path, isAuthenticated, currentStep, linkToken, pendingInvitationId, joinEarly]);
 
   // Screen mode state. From a dead auth link (/auth/callback error screen):
-  // straight to "Reset password" or the sign-in screen.
-  const [screenMode, setScreenMode] = useState<ScreenMode>(
-    () => authScreenFromUrl(window.location.search) ?? (path ? 'flow' : 'welcome')
+  // straight to "Reset password" or the sign-in screen. From the site's
+  // "Create your account" (/?start=signup), signed out and with no invite:
+  // straight to the Create account form (its Back leads to Welcome).
+  const [urlScreen] = useState(() => authScreenFromUrl(window.location.search));
+  const [signUpFromLink, setSignUpFromLink] = useState(
+    () => urlScreen === 'sign-up' && !isAuthenticated && !inviteToken && !path
   );
+  const [screenMode, setScreenMode] = useState<ScreenMode>(() =>
+    urlScreen && urlScreen !== 'sign-up' ? urlScreen : path || signUpFromLink ? 'flow' : 'welcome'
+  );
+  // Before the first paint, so Welcome never shows on the way to the form.
+  useLayoutEffect(() => {
+    if (!signUpFromLink) return;
+    startOnboarding('creator');
+    setSignUpFromLink(false);
+  }, [signUpFromLink, startOnboarding]);
   useEffect(() => {
-    // Drop it from the address bar so a refresh opens the normal start.
-    const url = new URL(window.location.href);
-    if (!url.searchParams.has(AUTH_SCREEN_PARAM)) return;
-    url.searchParams.delete(AUTH_SCREEN_PARAM);
-    window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+    // Drop them from the address bar so a refresh opens the normal start.
+    dropUrlParams([AUTH_SCREEN_PARAM, START_PARAM]);
   }, []);
 
   // Joiner flow state
@@ -470,6 +479,11 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       {node}
     </DuoAuthLayout>
   );
+
+  // The one render before the sign-up link's form (never painted).
+  if (signUpFromLink) {
+    return duo(<div className="min-h-screen bg-background" />);
+  }
 
   // Loading state for invite
   if (isLoading) {

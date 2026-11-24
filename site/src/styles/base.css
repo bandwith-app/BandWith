@@ -332,6 +332,21 @@ html.has-motion [data-ab] { visibility: hidden; }
   .nav__cta { min-height: 38px; padding: 0 14px; }
   .menu { top: 10px; height: calc(100svh - 20px); padding-top: 76px; }
   .nav__word { font-size: 16px; }
+}
+/* Narrow phones: the menu button stays inside the bar. "Scarica l'app" and "Obtén la app" are wider than
+   "Get the app", so there the button gives up its arrow first; on the narrowest screens the mark stands alone. */
+@media (max-width: 389px) {
+  html:not([lang="en"]) .nav__cta .btn__arrow { display: none; }
+  html:not([lang="en"]) .nav__cta { padding: 0 13px; }
+}
+@media (max-width: 360px) {
+  .nav__cta .btn__arrow { display: none; }
+  .nav__cta { padding: 0 12px; }
+}
+@media (max-width: 350px) {
+  .nav__word { display: none; }
+}
+@media (max-width: 720px) {
   .foot { padding-top: 72px; }
   .foot__top .btn { width: 100%; }
   .hero__cta .btn { flex: 1 1 auto; }

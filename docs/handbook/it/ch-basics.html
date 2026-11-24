@@ -12,7 +12,7 @@
     <li>Toccare <b class="ui">Continue with Google</b> o <b class="ui">Continue with Apple</b> per usare quell'account, oppure compilare il modulo email sotto <b class="ui">or with email</b>.</li>
     <li>Nel modulo email inserire <b class="ui">Full name</b>, <b class="ui">Email</b> e una <b class="ui">Password</b> di almeno 8 caratteri (il suggerimento indica <b class="ui">Min 8 characters</b>).</li>
     <li>Toccare <b class="ui">Continue</b> in basso. Proseguendo si accettano i <b class="ui">Terms</b> e la <b class="ui">Privacy Policy</b>, entrambi apribili dai link sotto il modulo.</li>
-    <li>Se compare <b class="ui">Check your email</b>, aprire il link ricevuto per email per confermare l'indirizzo (vedi <a data-ref="confirm-your-email">Confermare l'indirizzo email</a>).</li>
+    <li>Se compare <b class="ui">Check your email</b>, inserire il codice di 6 cifre ricevuto per email per confermare l'indirizzo (vedi <a data-ref="confirm-your-email">Confermare l'indirizzo email</a>).</li>
     <li>In <b class="ui">What brings you here?</b> scegliere <b class="ui">Manage my band</b> o <b class="ui">Solo schedule</b> e toccare <b class="ui">Continue</b> (vedi <a data-ref="solo-and-band-mode">Modalità solista e modalità band</a>).</li>
   </ol>
   <aside class="note tip">Se l'indirizzo appartiene già a un account, l'app avvisa con <b class="ui">This email is already registered. Try signing in.</b> In quel caso si usa l'<a data-ref="sign-in">accesso</a>.</aside>
@@ -23,14 +23,14 @@
   <div class="devnote" data-devices="duoLaptop">In postura Laptop il titolo e i pulsanti Google / Apple restano sulla metà superiore e il modulo email comincia sulla metà inferiore. In <b class="ui">What brings you here?</b> le scelte sono sulla metà inferiore: si scorre fino a <b class="ui">Continue</b>.</div>
 
   <h3 id="art-confirm-your-email" data-roles="admin,member,deputy">Confermare l'indirizzo email</h3>
-  <p>Quando la conferma email è attiva, l'account esiste solo dopo l'apertura del link inviato; fino ad allora l'app mostra <b class="ui">Check your email</b>.</p>
+  <p>Quando la conferma email è attiva, l'account esiste solo dopo aver confermato l'indirizzo con il codice di 6 cifre inviato per email; fino ad allora l'app mostra <b class="ui">Check your email</b>.</p>
   <ol class="steps">
-    <li>Aprire l'email di BandWith sullo stesso dispositivo su cui si è creato l'account.</li>
-    <li>Toccare il link: l'app si apre e completa la creazione dell'account.</li>
-    <li>Se l'app resta su <b class="ui">Check your email</b>, toccare <b class="ui">I’ve confirmed it: sign in</b>.</li>
-    <li>Email non arrivata: controllare lo spam, poi toccare <b class="ui">Send the email again</b>; il pulsante diventa <b class="ui">Email sent again</b>.</li>
+    <li>Aprire l'email di BandWith e individuare il codice di 6 cifre.</li>
+    <li>Tornare nell'app e inserirlo in <b class="ui">Confirmation code</b>: alla sesta cifra il controllo parte da solo (oppure toccare <b class="ui">Verify</b>) e l'app prosegue con il nuovo account.</li>
+    <li>Se si è usato il link dell'email e l'app resta su <b class="ui">Check your email</b>, toccare <b class="ui">I’ve confirmed it: sign in</b>.</li>
+    <li>Email non arrivata: controllare lo spam, poi toccare <b class="ui">Send a new code</b>; il pulsante diventa <b class="ui">New code sent</b> e il codice precedente smette di funzionare.</li>
   </ol>
-  <aside class="note tip">Il link va aperto sul dispositivo della registrazione: aperto su un altro dispositivo non può completare l'iscrizione.</aside>
+  <aside class="note tip">L'email contiene anche un link che conferma l'indirizzo. Va aperto sul dispositivo della registrazione: aperto su un altro dispositivo non può completare l'iscrizione.</aside>
 
   <h3 id="art-sign-in" data-roles="admin,member,deputy">Accedere</h3>
   <ol class="steps">
@@ -494,7 +494,7 @@
     <li>Aprire il menu (ultima scheda).</li>
     <li>Scorrere in fondo e toccare <b class="ui">Sign out</b>, che riporta l'indirizzo con cui si è collegati.</li>
   </ol>
-  <p>Le modifiche in attesa di sincronizzazione vengono inviate prima; poi dati in cache e coda offline di quell'account vengono rimossi dal dispositivo, così la persona successiva non può vederli. In caso di errore compare <b class="ui">Couldn’t sign out. Try again.</b></p>
+  <p>Le modifiche non ancora inviate non vanno perse quando si esce. Se ce ne sono ancora in attesa, l'app chiede prima: <b class="ui">Send now</b> le invia, <b class="ui">Sign out anyway</b> le conserva su quel dispositivo per l'account, e vengono inviate al prossimo accesso. I dati in cache di quell'account vengono rimossi dal dispositivo, così la persona successiva non può vederli. In caso di errore compare <b class="ui">Couldn’t sign out. Try again.</b></p>
   <p>Se l'accesso rapido è attivo per l'account, la volta successiva Face ID consente comunque di entrare.</p>
 
   <h3 id="art-help-and-about" data-roles="admin,member,deputy">Aiuto, documenti legali e versione</h3>
@@ -539,7 +539,7 @@
     <dt>Ho dimenticato la password.</dt>
     <dd>Nella schermata di accesso toccare <b class="ui">Forgot password?</b> e seguire il link ricevuto via email, valido un'ora (<a data-ref="forgot-password">Reimpostare la password</a>).</dd>
     <dt>Mi sono registrato ma non riesco ad accedere.</dt>
-    <dd>Un nuovo account può richiedere prima la conferma dell'indirizzo: aprire il link dell'email sul dispositivo usato per la registrazione, poi accedere (<a data-ref="confirm-your-email">Confermare l'email</a>).</dd>
+    <dd>Un nuovo account può richiedere prima la conferma dell'indirizzo. In <b class="ui">Check your email</b> inserire il codice di 6 cifre ricevuto per email; oppure aprire il link di quell'email sul dispositivo usato per la registrazione, poi accedere (<a data-ref="confirm-your-email">Confermare l'email</a>).</dd>
     <dt>Face ID (o l'impronta) non funziona più.</dt>
     <dd>Accedere una volta con la password per riattivare l'accesso rapido; succede dopo un cambio password o quando l'accesso salvato scade (<a data-ref="quick-sign-in">Accesso rapido</a>).</dd>
     <dt>Perché l'app chiede Face ID a ogni avvio?</dt>
@@ -555,7 +555,7 @@
     <dt>Come si passa da una band all'altra?</dt>
     <dd>In Home toccare <b class="ui">Switch band</b> sotto il nome della band e scegliere la band (<a data-ref="several-bands">Suonare in più band</a>).</dd>
     <dt>Come si lascia una band?</dt>
-    <dd>In <b class="ui">Band members</b> toccare <b class="ui">⋯</b> sulla propria riga, poi <b class="ui">Leave band</b> e confermare (<a data-ref="leave-a-band">Lasciare una band</a>).</dd>
+    <dd>In <b class="ui">Band members</b> toccare <b class="ui">⋯</b> sulla propria riga, poi <b class="ui">Leave band</b> e confermare. Un admin può uscire finché la band ha un altro admin (<a data-ref="leave-a-band">Lasciare una band</a>).</dd>
     <dt>Si può eliminare l'account se si gestisce una band?</dt>
     <dd>Sì, quando la band ha un altro admin. Se si è l'unico admin di una band con altri membri, prima bisogna nominare admin uno di loro (<a data-ref="delete-your-account">Eliminare l'account</a>).</dd>
     <dt>BandWith funziona senza connessione?</dt>
