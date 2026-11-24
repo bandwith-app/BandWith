@@ -154,7 +154,7 @@ export const BandCreation: React.FC<BandCreationProps> = ({
       </AnimatePresence>
 
       <Kicker overline={t('Your band')} title={t('Name your band')} />
-      <p className="text-[16px] leading-[1.45] tracking-[-0.003em] text-muted-foreground max-w-[340px] -mt-1">
+      <p className="bw-auth-lede text-[16px] leading-[1.45] tracking-[-0.003em] text-muted-foreground max-w-[340px] -mt-1">
         {t('This is how your band appears to members and clients.')}
       </p>
 

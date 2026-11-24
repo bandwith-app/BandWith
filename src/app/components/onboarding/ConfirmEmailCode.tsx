@@ -209,7 +209,8 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({
   ).split('\u0000');
 
   return (
-    <div className="bw-auth-screen bw-fold-form min-h-[100dvh] bg-background text-foreground flex flex-col">
+    // `bw-code-*`: the narrower measure and quiet links of a computer window (onboarding-desktop.css).
+    <div className="bw-auth-screen bw-code-screen bw-fold-form min-h-[100dvh] bg-background text-foreground flex flex-col">
       <div className="shrink-0" style={{ paddingTop: 'var(--safe-top)' }}>
         <div className="h-14 shrink-0 flex items-center px-4 bw-status-clear">
           <WizardTop onBack={onBack} step={step} total={total} />
@@ -219,7 +220,7 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({
             clearance covers, so they stop before it like the top bar does. */}
         <div className="flex flex-col px-4 pt-2 gap-5 [[data-bw-posture=closed][data-bw-status-edge=right]_&]:pe-[max(1rem,var(--bw-status-clear-x))]">
           <Kicker overline={t('Account')} title={t('Check your email')} />
-          <p role="status" className="text-[16px] leading-[1.45] tracking-[-0.003em] text-muted-foreground -mt-1 break-words">
+          <p role="status" className="bw-auth-lede text-[16px] leading-[1.45] tracking-[-0.003em] text-muted-foreground -mt-1 break-words">
             {sentBefore}
             <span className="text-foreground font-medium">{email}</span>
             {sentAfter}
@@ -234,7 +235,7 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({
           e.preventDefault();
           void verify(code);
         }}
-        className="flex-1 flex flex-col px-4 pt-5 pb-6 gap-5"
+        className="bw-code-form flex-1 flex flex-col px-4 pt-5 pb-6 gap-5"
       >
         {error && <FormError>{error}</FormError>}
         <div className="flex flex-col gap-2">
@@ -258,6 +259,7 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({
           error={code ? codeError : null}
           // The last digit sends the code and the screen changes: said before it happens.
           aria-describedby={hintId}
+          className="bw-code-field"
           inputClassName="text-center text-[24px] tracking-[0.3em] tabular-nums placeholder:tracking-[0.3em]"
           autoFocus
         />
@@ -272,7 +274,7 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({
           the Duo's Laptop pose, where the field itself rests on that strip. */}
       <div
         ref={verifyBarRef}
-        className="shrink-0 px-4 pt-3 pb-3 bg-background [html[data-keyboard=open]:not([data-bw-posture=tabletop])_&]:sticky [html[data-keyboard=open]:not([data-bw-posture=tabletop])_&]:bottom-0 [html[data-keyboard=open]:not([data-bw-posture=tabletop])_&]:z-10 [html[data-keyboard=open]:not([data-bw-posture=tabletop])_&]:py-2"
+        className="bw-code-verify shrink-0 px-4 pt-3 pb-3 bg-background [html[data-keyboard=open]:not([data-bw-posture=tabletop])_&]:sticky [html[data-keyboard=open]:not([data-bw-posture=tabletop])_&]:bottom-0 [html[data-keyboard=open]:not([data-bw-posture=tabletop])_&]:z-10 [html[data-keyboard=open]:not([data-bw-posture=tabletop])_&]:py-2"
       >
         <PillButton
           type="submit"
@@ -284,7 +286,7 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({
           {t('Verify')}
         </PillButton>
       </div>
-      <div className="shrink-0 px-4 flex flex-col gap-3" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}>
+      <div className="bw-code-actions shrink-0 px-4 flex flex-col gap-3" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}>
         <PillButton variant="ghost" size="md" onClick={handleResend} loading={resend === 'sending'} disabled={resend === 'sent' || verifying}>
           {resend === 'sent' ? t('New code sent') : t('Send a new code')}
         </PillButton>

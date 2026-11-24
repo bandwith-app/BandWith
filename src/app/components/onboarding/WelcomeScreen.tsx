@@ -90,7 +90,8 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 
   return (
     <div
-      className="min-h-[100dvh] bg-accent text-accent-foreground flex flex-col relative"
+      // `bw-welcome*`: the column of a computer window (onboarding-desktop.css).
+      className="bw-welcome min-h-[100dvh] bg-accent text-accent-foreground flex flex-col relative"
       style={{ paddingTop: 'var(--safe-top)' }}
     >
       <div
@@ -146,7 +147,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         </motion.div>
 
         <motion.div
-          className="mt-auto flex flex-col gap-3"
+          className="bw-welcome-cta mt-auto flex flex-col gap-3"
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.35, duration: 0.5 }}
