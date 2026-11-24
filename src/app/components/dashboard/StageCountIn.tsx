@@ -342,6 +342,9 @@ const CountInOverlay: React.FC<{
       data-stage={phase}
     >
       <div ref={flashRef} data-testid="countin-flash" className="absolute inset-0 pointer-events-none" style={{ background: accent, opacity: 0 }} aria-hidden />
+      {/* Laptop pose (stage.css): this is the Display's half, the countdown whole and sized to it;
+          Stop sits on the Deck, nothing on the fold. Everywhere else it is not a box at all. */}
+      <div className="bw-countin-pane contents">
       {title && <p className={cn('bw-label text-white/70 truncate max-w-[90cqw] px-4 shrink-0', go && 'invisible')}>{title}</p>}
       <div className="relative flex items-center justify-center my-auto" style={{ '--bw-countin-ring': size, width: 'var(--bw-countin-ring)', height: 'var(--bw-countin-ring)' } as React.CSSProperties}>
         <svg viewBox="0 0 100 100" className={cn('absolute inset-0 w-full h-full -rotate-90', go && 'invisible')} aria-hidden>
@@ -364,6 +367,7 @@ const CountInOverlay: React.FC<{
         </div>
       </div>
       <span ref={subRef} className={cn('bw-label-xs text-white/60 h-5 shrink-0', go && 'invisible')} aria-hidden />
+      </div>
       {/* Gone at GO: the band is playing, nothing left to stop or hide. */}
       {!go && (
         <button
