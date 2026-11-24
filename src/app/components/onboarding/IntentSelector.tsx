@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { ArrowUpRight } from '@/app/components/icons';
+import { ArrowUpRight, Check } from '@/app/components/icons';
 import { cn } from '@/app/components/ui/utils';
 import { useOnboarding } from '@/lib/OnboardingContext';
 import { useAuth } from '@/lib/AuthContext';
@@ -75,14 +75,15 @@ export const IntentSelector: React.FC<IntentSelectorProps> = ({
   // title holds the Display, the path cards start on the Deck, so no card
   // lies across the fold. Elsewhere it looks the same.
   return (
-    <div className="bw-auth-screen bw-fold-form min-h-[100dvh] bg-background text-foreground flex flex-col">
+    // `bw-auth-pin-cta`: in a short computer window Continue stays in reach under the cards (onboarding-desktop.css).
+    <div className="bw-auth-screen bw-auth-pin-cta bw-fold-form min-h-[100dvh] bg-background text-foreground flex flex-col">
       <div className="shrink-0" style={{ paddingTop: 'var(--safe-top)' }}>
         <div className="h-14 shrink-0 flex items-center px-4 bw-status-clear">
           <WizardTop onBack={onBack} step={step} total={total} />
         </div>
         <div className="flex flex-col px-4 pt-2 gap-3">
           <Kicker overline={t('Choose your path')} title={t('What brings you here?')} />
-          <p className="text-[16px] leading-[1.45] tracking-[-0.003em] text-muted-foreground max-w-[340px]">
+          <p className="bw-auth-lede text-[16px] leading-[1.45] tracking-[-0.003em] text-muted-foreground max-w-[340px]">
             {t('Choose how you want to use BandWith. You can change this later.')}
           </p>
         </div>
@@ -102,7 +103,8 @@ export const IntentSelector: React.FC<IntentSelectorProps> = ({
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.05 + i * 0.08, duration: 0.4 }}
                 className={cn(
-                  'w-full text-left flex flex-col gap-3 p-5 rounded-[24px] transition-colors',
+                  // `bw-intent-*`: the pointer look of a computer window (onboarding-desktop.css).
+                  'bw-intent-card w-full text-left flex flex-col gap-3 p-5 rounded-[24px] transition-colors',
                   'active:scale-[var(--press-scale,0.97)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground',
                   // Selected card is the dark Figma card; scoping `dark` flips the tokens inside it.
                   selected ? 'dark bg-sheet text-foreground border border-transparent' : 'bg-card text-foreground border border-border',
@@ -138,8 +140,9 @@ export const IntentSelector: React.FC<IntentSelectorProps> = ({
                 >
                   {opt.description}
                 </span>
-                <span className="flex items-center gap-2">
-                  <DotMatrixRadio checked={selected} />
+                <span className="bw-intent-select flex items-center gap-2">
+                  <DotMatrixRadio checked={selected} className="bw-intent-radio" />
+                  <Check className="bw-intent-check hidden w-3.5 h-3.5 shrink-0" strokeWidth={2.5} aria-hidden />
                   <span className={cn('bw-label-sm', selected ? 'text-accent' : 'text-muted-foreground')}>
                     {selected ? t('Selected') : t('Select')}
                   </span>

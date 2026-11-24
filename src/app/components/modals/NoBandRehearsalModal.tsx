@@ -1,14 +1,16 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { RailCover } from '@/lib/railActions';
-import { Users, Plus } from '@/app/components/icons';
 import { PillButton } from '@/app/components/bw';
+import { BandRequired, type BandRequiredReason } from '@/app/components/band/BandRequired';
 import { useT } from '@/lib/i18n';
 
 interface NoBandRehearsalModalProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenUpgrade: () => void;
+  /** What was asked for: proposing a rehearsal (default), the chat, or another band screen. */
+  reason?: BandRequiredReason;
 }
 
 /** Figma "Rehearsal / No band – modal" (27:551): centred canvas card over a dark scrim. */
@@ -16,6 +18,7 @@ export const NoBandRehearsalModal: React.FC<NoBandRehearsalModalProps> = ({
   isOpen,
   onClose,
   onOpenUpgrade,
+  reason = 'rehearsal',
 }) => {
   const tr = useT();
   if (!isOpen) return null;
@@ -26,7 +29,8 @@ export const NoBandRehearsalModal: React.FC<NoBandRehearsalModalProps> = ({
           its scrim stops at the rail (Figma "Rehearsal / No band – modal"). */}
       <div className="bw-pane-detail fixed inset-0 z-[180]">
       <RailCover pane />
-      <div className="relative h-full flex items-center justify-center p-6">
+      {/* Duo Laptop pose: the card sits on the Deck, clear of the fold (bw-deck-dialog, index.css). */}
+      <div className="bw-deck-dialog relative h-full flex items-center justify-center p-6">
         {/* Scrim (clickable to close) */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -48,39 +52,19 @@ export const NoBandRehearsalModal: React.FC<NoBandRehearsalModalProps> = ({
           onClick={(e) => e.stopPropagation()}
           className="relative z-10 w-full max-w-[342px] bg-background text-foreground rounded-[24px] p-6 flex flex-col gap-4 select-none"
         >
-          <span className="w-14 h-14 rounded-full bg-accent text-accent-foreground flex items-center justify-center">
-            <Users className="w-6 h-6" />
-          </span>
-
-          <div className="flex flex-col gap-2">
-            <h2 id="no-band-rehearsal-title" className="bw-h1 uppercase">
-              {tr('Band required')}
-            </h2>
-            <p className="bw-body-md text-muted-foreground">
-              {tr('Proposing a rehearsal is only available when you’re in a band. Create one or ask an admin for an invite.')}
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-3 pt-1">
-            <div className="flex flex-col gap-2">
-              <PillButton
-                onClick={() => {
-                  onClose();
-                  onOpenUpgrade();
-                }}
-                icon={<Plus className="w-[18px] h-[18px]" />}
-              >
-                {tr('Create a band')}
-              </PillButton>
-              <p className="bw-label-xs text-muted-foreground">
-                {tr('Free, with every tool')}
-              </p>
-            </div>
-
+          <BandRequired
+            reason={reason}
+            size="dialog"
+            titleId="no-band-rehearsal-title"
+            onCreateBand={() => {
+              onClose();
+              onOpenUpgrade();
+            }}
+          >
             <PillButton variant="outline" onClick={onClose}>
               {tr('Maybe later')}
             </PillButton>
-          </div>
+          </BandRequired>
         </motion.div>
       </div>
       </div>

@@ -124,6 +124,8 @@ export const InviteMembers: React.FC<InviteMembersProps> = ({
 
   return (
     <AuthScreen
+      // The list grows: in a computer window the buttons stay in reach (onboarding-desktop.css).
+      className="bw-auth-pin-cta"
       top={<WizardTop onBack={onBack} step={step} total={total} />}
       bodyClassName="pt-2 gap-4"
       footer={

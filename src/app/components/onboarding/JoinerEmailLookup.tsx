@@ -124,7 +124,7 @@ export const JoinerEmailLookup: React.FC<JoinerEmailLookupProps> = ({
 
         <Kicker overline={t('Join a band')} title={t('Find your invite')} />
 
-        <p className="text-[16px] leading-[1.45] tracking-[-0.003em] text-muted-foreground max-w-[340px]">
+        <p className="bw-auth-lede text-[16px] leading-[1.45] tracking-[-0.003em] text-muted-foreground max-w-[340px]">
           {t('Enter the email where your band invitation was sent.')}
         </p>
 

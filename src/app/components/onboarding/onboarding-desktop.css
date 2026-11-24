@@ -1,0 +1,235 @@
+/* ── Sign-in and onboarding on a computer ─────────────────────────────────
+   A tablet-sized window (`data-bw-wide`) wide enough for two pages
+   (`data-bw-two-pane`) shows the BRAND page beside the screen, as the open
+   iPhone Duo and the iPad do (src/styles/duo-panes.css, tablet.css). This
+   file is what a window driven by a mouse adds on top: windows there are
+   often much taller and wider than a tablet, and nobody types a code with
+   their thumbs.
+
+   Every rule sits in the media query below, so phones, tablets and the Duo
+   (touch first: `pointer: coarse`) keep their own layout untouched.
+
+   The screens are built from AuthScreen (bw/Form.tsx) or its two-block copy
+   (`.bw-fold-form`): a top bar (`.bw-status-clear`), a body (`.flex-1`) and a
+   footer with the main button (the last `.shrink-0`). The rules name those. */
+
+@media (hover: hover) and (pointer: fine) {
+  :root[data-bw-wide][data-bw-two-pane] {
+    /* Above the first row of both pages (the mark, the wizard bar): the
+       Figma 44, less in a short window. */
+    --bw-auth-top: clamp(16px, calc((100vh - 640px) * 0.35), 44px);
+    /* A taller window lowers the headline and the title together, so the
+       screen sits in the upper third instead of hanging from the top edge. */
+    --bw-auth-lead: clamp(0px, calc((100vh - 800px) * 0.3), 140px);
+    /* The top bar's bottom to the title block: 29 lines the title up with
+       the brand page's headline (mark 56 + 20 + label + 20). Less in a short
+       window, on both pages alike. */
+    --bw-auth-title-gap: clamp(21px, calc((100vh - 660px) * 0.35), 29px);
+  }
+
+  /* ── The two pages share one grid ─────────────────────────────────────
+     Row 1: the mark | Back, progress, "STEP 2 OF 6". Row 2: the headline |
+     the screen's title. */
+  :root[data-bw-wide][data-bw-two-pane] .bw-auth-brand {
+    padding-top: calc(var(--safe-top, 0px) + var(--bw-auth-top));
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-auth-brand-title {
+    margin-top: calc(var(--bw-auth-title-gap) - 9px + var(--bw-auth-lead));
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-auth-trailing .bw-auth-screen .bw-status-clear {
+    margin-top: var(--bw-auth-top);
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-auth-trailing .bw-auth-screen .bw-status-clear + * {
+    margin-top: calc(var(--bw-auth-title-gap) + var(--bw-auth-lead));
+    /* 8 on the wizard's screens, 16 on the others: one line for every title. */
+    padding-top: 0.5rem;
+  }
+  /* A screen without a top bar starts on the title's line all the same. */
+  :root[data-bw-wide][data-bw-two-pane] .bw-auth-trailing .bw-auth-screen > .flex-1:first-child {
+    padding-top: calc(var(--bw-auth-top) + 56px + var(--bw-auth-title-gap) + var(--bw-auth-lead) + 0.5rem);
+  }
+  /* "Ready to rock": its pills (every step done) take the top bar's place. */
+  :root[data-bw-wide][data-bw-two-pane] .bw-auth-trailing .bw-auth-finish > .flex-1:first-child {
+    padding-top: calc(var(--bw-auth-top) + 23px);
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-auth-trailing .bw-auth-finish > .flex-1:first-child > :first-child {
+    margin-bottom: calc(var(--bw-auth-title-gap) + var(--bw-auth-lead) + 24px);
+  }
+
+  /* ── The screen fills its page ────────────────────────────────────────
+     Each step is wrapped for its slide-in (OnboardingFlow's
+     `motion.div.min-h-screen`). A wrapper with only a min-height gives the
+     screen's own `min-height: 100%` nothing to measure, so a short step
+     ended with its content and the window showed through below it. */
+  :root[data-bw-wide][data-bw-two-pane] .bw-auth-trailing-scroll > .min-h-screen {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-auth-trailing-scroll > .min-h-screen > .bw-auth-screen {
+    flex: 1 0 auto;
+  }
+
+  /* ── Vertical rhythm ──────────────────────────────────────────────────
+     On a phone the body stretches and the button rests on the bottom edge,
+     under the thumb. In a tall window that tears the button away from the
+     form it sends: here it follows the form, and the room left over stays
+     below. */
+  :root[data-bw-wide][data-bw-two-pane] .bw-auth-trailing .bw-auth-screen > .flex-1 {
+    flex-grow: 0;
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-auth-trailing .bw-auth-screen > .shrink-0:last-child:not(:first-child) {
+    padding-bottom: 24px;
+  }
+  /* The steps whose list grows (bandmates, songs) and the choice of path:
+     once the screen is longer than the window, the button stays in reach at
+     the bottom edge and what scrolls under it fades out instead of being
+     cut. Not on the forms, where it would cover a field's hint. */
+  :root[data-bw-wide][data-bw-two-pane] .bw-auth-trailing .bw-auth-pin-cta > .shrink-0:last-child {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    background-color: inherit;
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-auth-trailing .bw-auth-pin-cta > .shrink-0:last-child::before {
+    content: '';
+    position: absolute;
+    inset: -24px 0 100%;
+    background-color: inherit;
+    -webkit-mask-image: linear-gradient(to top, #000, transparent);
+    mask-image: linear-gradient(to top, #000, transparent);
+    pointer-events: none;
+  }
+
+  /* ── Welcome ──────────────────────────────────────────────────────────
+     The same column and the same two rows as every other screen, instead of
+     a headline in the corner and buttons as wide as the window. */
+  :root[data-bw-wide][data-bw-two-pane] .bw-auth-trailing .bw-welcome > .flex-1 {
+    flex-grow: 0;
+    width: 100%;
+    max-width: 560px;
+    margin-inline: auto;
+    /* The lockup (18) centred on the mark's row. */
+    padding-top: calc(var(--bw-auth-top) + 19px);
+    gap: clamp(20px, calc((100vh - 640px) * 0.1), 24px);
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-auth-trailing .bw-welcome > .flex-1 > :nth-child(2) {
+    margin-top: calc(var(--bw-auth-lead) + clamp(0px, calc((100vh - 720px) * 0.4), 32px));
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-auth-trailing .bw-welcome .bw-welcome-cta {
+    margin-top: clamp(0px, calc((100vh - 720px) * 0.2), 16px);
+  }
+
+  /* The lines under a title: a readable measure instead of the phone's 340. */
+  :root[data-bw-wide][data-bw-two-pane] .bw-auth-trailing .bw-auth-lede {
+    max-width: 30rem;
+  }
+
+  /* A top bar that only holds Back: on the Duo it moves under the clock, in
+     the system column (duo-panes.css). A window has no such column, and the
+     rule left Back alone at the far edge: here it leads the top bar. */
+  :root[data-bw-wide][data-bw-two-pane] .bw-auth-trailing .bw-duo-rail-back {
+    position: static;
+    margin: -0.25rem;
+  }
+
+  /* ── A main button that can't be pressed yet ──────────────────────────
+     The app dims a disabled button (`disabled:opacity-40`). Lime at 40% on
+     a dark page turns olive and still reads as a button to press, so here
+     it rests in the neutral pair the app uses for what is not chosen
+     (`muted` / `muted-foreground`), and so does the black / white one of
+     "Reset password". A button that is busy keeps its colour. */
+  :root[data-bw-wide][data-bw-two-pane] .bw-auth-trailing .bw-auth-screen button:is(.bg-accent, .bg-surface-inverse.h-14):disabled:not(:has(.animate-spin)) {
+    background-color: var(--muted);
+    color: var(--muted-fg);
+    opacity: 1;
+    cursor: default;
+  }
+
+  /* ── "What brings you here?" ──────────────────────────────────────────
+     The whole card is the choice. With a pointer it answers to it (hover),
+     says what a click does ("SELECT", as a pill instead of the dot-matrix
+     radio, which reads as a spinner at this size) and leaves no doubt once
+     chosen: a lime ring and a lime "SELECTED". */
+  :root[data-bw-wide][data-bw-two-pane] .bw-intent-card {
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s;
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-intent-card:hover:not([aria-checked='true']) {
+    border-color: var(--fg);
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-intent-card[aria-checked='true'] {
+    box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-intent-select {
+    align-self: flex-start;
+    height: 32px;
+    padding-inline: 14px;
+    gap: 6px;
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    color: var(--fg);
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-intent-select > * {
+    color: inherit;
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-intent-select > .bw-intent-radio {
+    display: none;
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-intent-card:hover:not([aria-checked='true']) .bw-intent-select {
+    border-color: var(--fg);
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-intent-card[aria-checked='true'] .bw-intent-select {
+    background-color: var(--accent);
+    border-color: transparent;
+    color: var(--accent-fg);
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-intent-card[aria-checked='true'] .bw-intent-select > .bw-intent-check {
+    display: block;
+  }
+
+  /* ── "Check your email" ───────────────────────────────────────────────
+     Six digits don't need the whole column: the field, Verify and the two
+     ways out share a 400 px measure under the title. The digits are large,
+     and "Send a new code" / "I’ve confirmed it" are quiet links under the
+     one button that matters. */
+  :root[data-bw-wide][data-bw-two-pane] .bw-auth-trailing .bw-code-screen > :is(.bw-code-form, .bw-code-verify, .bw-code-actions) {
+    /* 560 − 2 × 16 − 128 = 400 */
+    padding-inline-end: calc(1rem + 128px);
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-code-field > div {
+    height: 64px;
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-code-field input {
+    font-size: 28px;
+    letter-spacing: 0.4em;
+    /* The last digit's spacing would push the six off centre. */
+    text-indent: 0.4em;
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-code-field input::placeholder {
+    letter-spacing: 0.4em;
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-auth-trailing .bw-code-screen > .bw-code-verify {
+    padding-top: 0;
+    padding-bottom: 0.5rem;
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-code-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0 1.25rem;
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-code-actions > button {
+    width: auto;
+    height: 36px;
+    padding-inline: 0;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    color: var(--muted-fg);
+    transition: color 0.15s;
+  }
+  :root[data-bw-wide][data-bw-two-pane] .bw-code-actions > button:hover:not(:disabled) {
+    color: var(--fg);
+  }
+}
