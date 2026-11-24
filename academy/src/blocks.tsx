@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Block, Role, ShotDevice } from '../content/types';
 import { ROLE_LABEL } from '../content';
 import { u } from './ui';
-import { SHOT_FILES } from '../content/shotFiles';
+import { SHOT_FILES, SHOT_SIZES } from '../content/shotFiles';
 import { shotFor, useViewDevice, VIEW_DEVICE_LABEL } from './viewer';
 import { Inline } from './inline';
 import { DeviceGlyph, DEVICE_SHORT } from './devices';
@@ -22,6 +22,8 @@ function Shot({ id, caption, device: pinned }: { id: string; caption: string; de
   // (a screen that exists on one device only) always shows that device.
   const dev = pinned ? ((SHOT_FILES[id] ?? []).includes(pinned) ? pinned : null) : shotFor(id, want);
   const src = dev ? `./shots/${id}@${dev}.webp` : null;
+  // The file's own size: the frame keeps its place (and its ratio) while the capture loads.
+  const size = dev ? SHOT_SIZES[`${id}@${dev}`] : undefined;
   const kind = dev ?? pinned ?? want;
   const portrait = kind === 'phone' || kind === 'duoClosed';
   return (
@@ -50,6 +52,8 @@ function Shot({ id, caption, device: pinned }: { id: string; caption: string; de
               key={src}
               src={src}
               alt={caption}
+              width={size?.[0]}
+              height={size?.[1]}
               loading="lazy"
               onError={() => setFailed(src)}
               onLoad={(e) => {

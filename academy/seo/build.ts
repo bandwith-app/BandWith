@@ -19,6 +19,7 @@
  */
 import type { AreaModule, AreaText, Article, Faq, GlossaryTerm } from '../content/types';
 import { SOURCE } from '../content/source';
+import { SHOT_SIZES } from '../content/shotFiles';
 import { localize } from '../content/localize';
 import { LANGS, type Lang } from '../src/langs';
 import itTexts from '../content/i18n/it';
@@ -79,7 +80,6 @@ export type LastmodManifest = Record<string, LastmodEntry>;
 export interface BuildInput {
   /** The interactive guide's built stylesheet, '/academy/assets/index-….css'. */
   cssHref: string;
-  shotSize?: Ctx['shotSize'];
   /** academy/seo/lastmod.json. Pages missing or changed since get `today`. */
   lastmod?: LastmodManifest;
   today?: string;
@@ -319,11 +319,10 @@ ${s.main}
 
 /* ── Pages ── */
 
-const ctxOf = (c: LangContent, input: BuildInput): Ctx => ({
+const ctxOf = (c: LangContent): Ctx => ({
   lang: c.lang,
   titles: c.titles,
   articlePath: (id) => pathOf(c.lang, `a/${id}`),
-  shotSize: input.shotSize,
 });
 
 const crumbsHtml = (c: LangContent, items: { name: string; path?: string }[]) =>
@@ -364,20 +363,20 @@ function firstShot(articles: Article[], c: LangContent): Shell['image'] | null {
   return null;
 }
 
-function image(articles: Article[], c: LangContent, input: BuildInput, fallbackAlt: string): Shell['image'] {
+function image(articles: Article[], c: LangContent, fallbackAlt: string): Shell['image'] {
   const found = (firstShot(articles, c) as (Shell['image'] & { file: string }) | null) ?? {
     url: shotUrl(DEFAULT_SHOT, 'web'),
     alt: fallbackAlt,
     file: shotFile(DEFAULT_SHOT, 'web'),
   };
-  const size = input.shotSize?.(found.file);
-  return { url: found.url, alt: found.alt, ...(size ? { w: size.w, h: size.h } : {}) };
+  const size = SHOT_SIZES[found.file.replace(/^shots\/|\.webp$/g, '')];
+  return { url: found.url, alt: found.alt, ...(size ? { w: size[0], h: size[1] } : {}) };
 }
 
-function articlePage(c: LangContent, id: string, base: Omit<Shell, 'title' | 'description' | 'image' | 'graph' | 'hash' | 'main'>, input: BuildInput) {
+function articlePage(c: LangContent, id: string, base: Omit<Shell, 'title' | 'description' | 'image' | 'graph' | 'hash' | 'main'>) {
   const a = c.byId.get(id)!;
   const m = c.modules.find((x) => x.area.id === a.areaId)!;
-  const ctx = ctxOf(c, input);
+  const ctx = ctxOf(c);
   const url = abs(pathOf(c.lang, base.rel));
   const siblings = m.articles.map((x) => c.byId.get(x.id)!);
   const idx = siblings.findIndex((x) => x.id === id);
@@ -385,7 +384,7 @@ function articlePage(c: LangContent, id: string, base: Omit<Shell, 'title' | 'de
   const next = siblings[idx + 1];
   const related = (a.related ?? []).map((r) => c.byId.get(r)).filter((x): x is Article & { areaId: string } => !!x);
   const description = clip(plain(a.summary, c.titles));
-  const img = image([a], c, input, a.title);
+  const img = image([a], c, a.title);
   const steps = a.body.flatMap((b) => (b.type === 'steps' ? b.items : []));
   const common = {
     '@id': `${url}#article`,
@@ -444,9 +443,9 @@ ${related.length ? `<section class="block"><h2 class="mini">${esc(t(c, 'Related'
   });
 }
 
-function areaPage(c: LangContent, areaId: string, base: Omit<Shell, 'title' | 'description' | 'image' | 'graph' | 'hash' | 'main'>, input: BuildInput) {
+function areaPage(c: LangContent, areaId: string, base: Omit<Shell, 'title' | 'description' | 'image' | 'graph' | 'hash' | 'main'>) {
   const m = c.modules.find((x) => x.area.id === areaId)!;
-  const ctx = ctxOf(c, input);
+  const ctx = ctxOf(c);
   const url = abs(pathOf(c.lang, base.rel));
   const list = m.articles.map((a) => c.byId.get(a.id)!);
   const refs = list.filter((a) => a.kind === 'reference');
@@ -458,7 +457,7 @@ function areaPage(c: LangContent, areaId: string, base: Omit<Shell, 'title' | 'd
     ...base,
     title: `${m.area.title} · BandWith Academy`,
     description,
-    image: image(list, c, input, m.area.title),
+    image: image(list, c, m.area.title),
     graph: [
       {
         '@type': 'CollectionPage',
@@ -487,8 +486,8 @@ ${m.faq.length ? `<section class="block"><h2 class="mini">${esc(t(c, 'Questions'
   });
 }
 
-function faqPage(c: LangContent, base: Omit<Shell, 'title' | 'description' | 'image' | 'graph' | 'hash' | 'main'>, input: BuildInput) {
-  const ctx = ctxOf(c, input);
+function faqPage(c: LangContent, base: Omit<Shell, 'title' | 'description' | 'image' | 'graph' | 'hash' | 'main'>) {
+  const ctx = ctxOf(c);
   const url = abs(pathOf(c.lang, base.rel));
   const name = t(c, 'FAQ & common problems');
   const description = clip(`${name}: ${c.faq.slice(0, 4).map((f) => f.q).join(' ')}`);
@@ -496,7 +495,7 @@ function faqPage(c: LangContent, base: Omit<Shell, 'title' | 'description' | 'im
     ...base,
     title: `${name} · BandWith Academy`,
     description,
-    image: image([], c, input, name),
+    image: image([], c, name),
     graph: [
       {
         '@type': 'FAQPage',
@@ -527,8 +526,8 @@ ${c.modules
   });
 }
 
-function glossaryPage(c: LangContent, base: Omit<Shell, 'title' | 'description' | 'image' | 'graph' | 'hash' | 'main'>, input: BuildInput) {
-  const ctx = ctxOf(c, input);
+function glossaryPage(c: LangContent, base: Omit<Shell, 'title' | 'description' | 'image' | 'graph' | 'hash' | 'main'>) {
+  const ctx = ctxOf(c);
   const url = abs(pathOf(c.lang, base.rel));
   const name = t(c, 'Glossary');
   const description = clip(`BandWith Academy · ${name}: ${c.glossary.map((g) => g.term).join(', ')}`);
@@ -542,7 +541,7 @@ function glossaryPage(c: LangContent, base: Omit<Shell, 'title' | 'description' 
     ...base,
     title: `${name} · BandWith Academy`,
     description,
-    image: image([], c, input, name),
+    image: image([], c, name),
     graph: [
       {
         '@type': 'DefinedTermSet',
@@ -581,7 +580,7 @@ function glossaryPage(c: LangContent, base: Omit<Shell, 'title' | 'description' 
   });
 }
 
-function indexPage(c: LangContent, base: Omit<Shell, 'title' | 'description' | 'image' | 'graph' | 'hash' | 'main'>, input: BuildInput) {
+function indexPage(c: LangContent, base: Omit<Shell, 'title' | 'description' | 'image' | 'graph' | 'hash' | 'main'>) {
   const url = abs(pathOf(c.lang, ''));
   const h1 = t(c, 'Everything your band can do, step by step.');
   const lede = t(c, '{n} guides for admins, members and deputies, on phone, iPad, dual-screen, Android and the web.', { n: c.articles.length });
@@ -593,7 +592,7 @@ function indexPage(c: LangContent, base: Omit<Shell, 'title' | 'description' | '
     ...base,
     title: `BandWith Academy: ${h1}`,
     description,
-    image: image([], c, input, 'BandWith Academy'),
+    image: image([], c, 'BandWith Academy'),
     graph: [
       {
         '@type': 'CollectionPage',
@@ -666,14 +665,14 @@ export function buildPages(input: BuildInput): StaticPage[] {
       const base = { c, rel, kind, lastmod, cssHref: input.cssHref };
       const html =
         kind === 'article'
-          ? articlePage(c, rel.slice(2), base, input)
+          ? articlePage(c, rel.slice(2), base)
           : kind === 'area'
-            ? areaPage(c, rel.slice(5), base, input)
+            ? areaPage(c, rel.slice(5), base)
             : kind === 'faq'
-              ? faqPage(c, base, input)
+              ? faqPage(c, base)
               : kind === 'glossary'
-                ? glossaryPage(c, base, input)
-                : indexPage(c, base, input);
+                ? glossaryPage(c, base)
+                : indexPage(c, base);
       const title = unesc(/<title>([^<]*)<\/title>/.exec(html)![1]);
       const description = unesc(/<meta name="description" content="([^"]*)">/.exec(html)![1]);
       pages.push({ path: pathOf(lang, rel), rel, lang, kind, title, description, lastmod: lastmod.d, html });

@@ -14,7 +14,7 @@
  *     refreshes academy/seo/lastmod.json (each page's content hash and the
  *     date it last changed, for the sitemap; the Vercel build has no git).
  */
-import { mkdirSync, readFileSync, readdirSync, writeFileSync, openSync, readSync, closeSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
@@ -23,23 +23,6 @@ const ACADEMY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const DIST = path.resolve(ACADEMY, '../dist');
 const MANIFEST = path.join(ACADEMY, 'seo/lastmod.json');
 const today = new Date().toISOString().slice(0, 10);
-
-/** Width and height from a WebP header (VP8, VP8L, VP8X). */
-function webpSize(file) {
-  const fd = openSync(file, 'r');
-  const b = Buffer.alloc(30);
-  readSync(fd, b, 0, 30, 0);
-  closeSync(fd);
-  if (b.toString('ascii', 0, 4) !== 'RIFF' || b.toString('ascii', 8, 12) !== 'WEBP') return null;
-  const chunk = b.toString('ascii', 12, 16);
-  if (chunk === 'VP8 ') return { w: b.readUInt16LE(26) & 0x3fff, h: b.readUInt16LE(28) & 0x3fff };
-  if (chunk === 'VP8L') {
-    const [b0, b1, b2, b3] = [b[21], b[22], b[23], b[24]];
-    return { w: 1 + (((b1 & 0x3f) << 8) | b0), h: 1 + (((b3 & 0xf) << 10) | (b2 << 2) | ((b1 & 0xc0) >> 6)) };
-  }
-  if (chunk === 'VP8X') return { w: 1 + b.readUIntLE(24, 3), h: 1 + b.readUIntLE(27, 3) };
-  return null;
-}
 
 const server = await createServer({
   configFile: path.join(ACADEMY, 'vite.config.ts'),
@@ -63,11 +46,7 @@ try {
     if (!existsSync(assets)) throw new Error('dist/academy is missing: run `vite build --config academy/vite.config.ts` first.');
     const css = readdirSync(assets).filter((f) => f.endsWith('.css'));
     if (css.length !== 1) throw new Error(`Expected one stylesheet in dist/academy/assets, found: ${css.join(', ') || 'none'}`);
-    const shotSize = (file) => {
-      const f = path.join(ACADEMY, 'public', file);
-      return existsSync(f) ? webpSize(f) : null;
-    };
-    const { pages, files } = seo.buildSite({ cssHref: `/academy/assets/${css[0]}`, shotSize, lastmod: manifest, today });
+    const { pages, files } = seo.buildSite({ cssHref: `/academy/assets/${css[0]}`, lastmod: manifest, today });
     let bytes = 0;
     for (const p of pages) {
       const out = path.join(DIST, p.path, 'index.html');
