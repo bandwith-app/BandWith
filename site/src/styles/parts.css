@@ -80,6 +80,11 @@
 .chips li { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px; border-radius: 99px; border: 1px solid var(--line); font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: var(--track-mono); text-transform: uppercase; color: var(--fg-2); }
 .chips .ico { width: 14px; height: 14px; color: var(--lime); }
 
+/* ── A small cell of the mark: times and step numbers sit in it. Lit = now; outlined = still to come. ── */
+.cell { display: inline-grid; place-items: center; flex: none; width: 56px; height: 56px; border-radius: 19px; background: #161616; font-family: var(--font-mono); font-size: 12px; font-weight: 500; letter-spacing: var(--track-mono); color: var(--fg-2); }
+.cell.is-on { background: var(--lime); color: #000; }
+.cell.is-next { background: none; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.22); color: var(--fg-dim); }
+
 /* ── Screen crop: the part of a screen that matters, zoomed (ui/crop.ts) ── */
 .crop {
   --r: 26px;
