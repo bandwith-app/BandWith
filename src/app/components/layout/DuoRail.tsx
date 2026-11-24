@@ -385,15 +385,22 @@ export const DuoRail: React.FC<DuoRailProps> = ({ tabs, isPlusMenuOpen, onPlus, 
               ))}
             </motion.nav>
           )}
-          {/* Duo/Side Actions is always on screen: the profile stays reachable. */}
+        </AnimatePresence>
+        {/* Duo/Side Actions is always on screen: the profile stays reachable.
+            Outside the tabs' AnimatePresence, which draws its children from its
+            own state: when the tabs finished leaving it could put back the
+            toolbar of an earlier render (the page's Go back, Create and Search
+            in place of the Back of the form just opened on top), and that stayed
+            until the next change of the rail. Seen on slow devices (CI 11-23). */}
           <motion.div
-            key="actions"
             role="toolbar"
             aria-label={t('Screen actions, search and profile')}
             // A layer's Close and Back move here on the Duo: a trapped layer's
             // Tab cycle includes this toolbar (src/lib/focusTrap.ts).
             data-bw-trap-include=""
             {...containerMotion}
+            // (Already there when the rail shows up: no entrance of its own.)
+            initial={false}
             className={cn('bw-glass pointer-events-auto shrink-0 rounded-[24px] flex items-center', onDeck ? 'gap-[14px] h-12 px-3 flex-row' : 'gap-[var(--bw-rail-gap,14px)] w-12 py-[var(--bw-rail-pill-py,12px)] flex-col')}
           >
             {back && (
@@ -463,7 +470,6 @@ export const DuoRail: React.FC<DuoRailProps> = ({ tabs, isPlusMenuOpen, onPlus, 
               )}
             </button>
           </motion.div>
-        </AnimatePresence>
         {!onDeck && <span aria-hidden style={{ flex: '1 1 0', minHeight: 'var(--bw-rail-clear-bottom, 0px)' }} />}
       </div>
 
