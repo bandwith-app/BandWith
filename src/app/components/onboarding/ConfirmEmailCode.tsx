@@ -8,6 +8,7 @@ import {
   SIGNUP_CODE_OTP_TYPE,
   SIGNUP_CODE_RESEND_COOLDOWN_MS,
   codeDigits,
+  resendWaitSeconds,
   signupCodeErrorKind,
   signupCodeErrorMessage,
 } from '@/lib/signupCode';
@@ -76,6 +77,14 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({
   /** When the last code went out: the sign-up itself, then each "Send a new code". */
   const [sentAt, setSentAt] = useState(() => Date.now());
   const [resend, setResend] = useState<'idle' | 'sending' | 'sent'>('idle');
+  /**
+   * "Send a new code" waits until then: a minute after every email (Supabase
+   * sends one a minute per address), the sign-up's own included, or as long
+   * as Supabase says when it refuses one for coming too soon.
+   */
+  const [resendAt, setResendAt] = useState(() => Date.now() + SIGNUP_CODE_RESEND_COOLDOWN_MS);
+  const [now, setNow] = useState(() => Date.now());
+  const waitSeconds = Math.max(0, Math.ceil((resendAt - now) / 1000));
   // Checking a code and sending a new one never overlap: a new code makes the
   // one being checked worthless, and would empty the field under its answer.
   const resendingRef = useRef(false);
@@ -120,12 +129,21 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linkError]);
 
-  // "New code sent" rests for a minute (Supabase sends one a minute), then offers another.
+  // The seconds left before "Send a new code", one tick a second.
   useEffect(() => {
-    if (resend !== 'sent') return;
-    const timer = setTimeout(() => setResend('idle'), SIGNUP_CODE_RESEND_COOLDOWN_MS);
-    return () => clearTimeout(timer);
-  }, [resend]);
+    if (Date.now() >= resendAt) return;
+    const timer = setInterval(() => {
+      const at = Date.now();
+      setNow(at);
+      if (at >= resendAt) clearInterval(timer);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendAt]);
+  const waitFor = (ms: number) => {
+    const at = Date.now();
+    setNow(at);
+    setResendAt(at + ms);
+  };
 
   const refuse = (err: unknown) => {
     verifyingRef.current = false;
@@ -175,7 +193,7 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({
   };
 
   const handleResend = async () => {
-    if (resend !== 'idle' || verifyingRef.current || resendingRef.current) return;
+    if (resend === 'sending' || waitSeconds > 0 || verifyingRef.current || resendingRef.current) return;
     resendingRef.current = true;
     setResend('sending');
     setError(null);
@@ -192,7 +210,14 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({
     resendingRef.current = false;
     if (!mountedRef.current) return;
     if (resendError) {
-      setError(authErrorMessage(resendError));
+      // Too soon after the last email: that one is on its way, often in spam.
+      const wait = resendWaitSeconds(resendError);
+      if (wait !== null) {
+        setError(t('We just sent you a code. Check your inbox and your spam folder.'));
+        waitFor(wait * 1000);
+      } else {
+        setError(authErrorMessage(resendError));
+      }
       setResend('idle');
       return;
     }
@@ -200,6 +225,7 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({
     setCode('');
     setCodeError(null);
     setSentAt(Date.now());
+    waitFor(SIGNUP_CODE_RESEND_COOLDOWN_MS);
     setResend('sent');
   };
 
@@ -287,8 +313,12 @@ export const ConfirmEmailCode: React.FC<ConfirmEmailCodeProps> = ({
         </PillButton>
       </div>
       <div className="bw-code-actions shrink-0 px-4 flex flex-col gap-3" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}>
-        <PillButton variant="ghost" size="md" onClick={handleResend} loading={resend === 'sending'} disabled={resend === 'sent' || verifying}>
-          {resend === 'sent' ? t('New code sent') : t('Send a new code')}
+        <PillButton variant="ghost" size="md" onClick={handleResend} loading={resend === 'sending'} disabled={waitSeconds > 0 || verifying}>
+          {waitSeconds === 0
+            ? t('Send a new code')
+            : resend === 'sent'
+              ? t('New code sent')
+              : t('Send a new code ({seconds} s)', { seconds: waitSeconds })}
         </PillButton>
         {onSignIn && (
           <PillButton variant="ghost" size="md" onClick={onSignIn}>

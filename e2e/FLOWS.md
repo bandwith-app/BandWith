@@ -155,6 +155,7 @@ check (`app.check`) on each screen it reaches.
 | Sign-up link: an invite link wins; `?bw_screen=sign-in` unchanged; signed in, it opens the app as usual | `signup-link` | full |
 | Create account on a 320 px wide phone: the set-up line takes two lines at most, in every language | `signup-link` | phone-portrait |
 | Create account with email (confirmation on) → Check your email: a wrong code says so, Send a new code, the 6-digit code typed → What brings you here?, no second password prompt | `signup-code` | all |
+| Check your email: Send a new code rests the minute after the sign-up's email, with the seconds left; then it sends, says so, rests again and clears the field | `signup-code` | full |
 | Check your email: the whole code pasted at once; "I’ve confirmed it: sign in" (the email's link was used) opens the sign-in screen | `signup-code` | full |
 | Check your email on a 320 px wide phone: the code field, Verify, Send a new code and the sign-in fallback fit, in every language | `signup-code` | phone-portrait |
 | Check your email: the title and the text never run under the clock block (the closed Duo's reaches beside them) | `signup-code-layout` | all |

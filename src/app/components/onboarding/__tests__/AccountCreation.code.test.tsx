@@ -70,6 +70,13 @@ const flush = async () => {
   });
 };
 
+/** "Send a new code" rests a minute after the sign-up's own email. */
+const waitOutResendCooldown = async () => {
+  await act(async () => {
+    vi.advanceTimersByTime(60_000);
+  });
+};
+
 const codeField = () => screen.getByLabelText('Confirmation code') as HTMLInputElement;
 const verifyButton = () => screen.getByRole('button', { name: 'Verify' }) as HTMLButtonElement;
 const type = async (value: string) => {
@@ -206,6 +213,7 @@ describe('Check your email: the 6-digit code', () => {
     expect(screen.getByRole('heading', { name: 'Check your email' })).toBeInTheDocument();
     expect(screen.getByRole('alert').textContent).toBe('This link has expired or was already used. Ask for a new one.');
     expect(codeField()).not.toHaveAttribute('aria-invalid');
+    await waitOutResendCooldown();
     expect(screen.getByRole('button', { name: 'Send a new code' })).toBeEnabled();
     // It goes away once the person acts on it.
     await type('4');
@@ -225,6 +233,7 @@ describe('Check your email: the 6-digit code', () => {
     const check = pending<unknown>();
     mocks.verifyOtp.mockReturnValueOnce(check.promise);
     await signUpToCodeStep();
+    await waitOutResendCooldown();
     await type('482913');
     const send = screen.getByRole('button', { name: 'Send a new code' });
     expect(send).toBeDisabled();
@@ -246,6 +255,7 @@ describe('Check your email: the 6-digit code', () => {
     const sending = pending<unknown>();
     mocks.resend.mockReturnValueOnce(sending.promise);
     const { onComplete } = await signUpToCodeStep();
+    await waitOutResendCooldown();
     await type('48291');
     fireEvent.click(screen.getByRole('button', { name: 'Send a new code' }));
     await flush();
@@ -269,6 +279,7 @@ describe('Check your email: the 6-digit code', () => {
   it('an empty field never says the code does not match', async () => {
     mocks.verifyOtp.mockResolvedValueOnce({ data: { user: null, session: null }, error: REFUSED });
     await signUpToCodeStep();
+    await waitOutResendCooldown();
     await type('000000');
     expect(screen.getByRole('alert').textContent).toBe(WRONG);
     fireEvent.click(screen.getByRole('button', { name: 'Send a new code' }));
@@ -363,12 +374,53 @@ describe('Check your email: the 6-digit code', () => {
     expect(screen.getByRole('alert').textContent).toBe(WRONG);
   });
 
-  it('a refused resend says why and can be tried again', async () => {
+  // Reddit report, 26 Nov 2026: "Send a new code" pressed 7 s after the
+  // sign-up email went out. Supabase sends one email a minute per address
+  // (429 over_email_send_rate_limit) and the screen said "Too many attempts"
+  // with the button live again, so every press failed the same way.
+  it('Send a new code rests for a minute from the sign-up itself, with the seconds left', async () => {
+    await signUpToCodeStep();
+    const waiting = screen.getByRole('button', { name: 'Send a new code (60 s)' });
+    expect(waiting).toBeDisabled();
+    fireEvent.click(waiting);
+    await flush();
+    expect(mocks.resend).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(18_000);
+    });
+    expect(screen.getByRole('button', { name: 'Send a new code (42 s)' })).toBeDisabled();
+    await act(async () => {
+      vi.advanceTimersByTime(42_000);
+    });
+    expect(screen.getByRole('button', { name: 'Send a new code' })).toBeEnabled();
+  });
+
+  it('a resend refused for coming too soon waits the seconds Supabase gives and points to the spam folder', async () => {
     mocks.resend.mockResolvedValueOnce({ data: {}, error: { status: 429, code: 'over_email_send_rate_limit', message: 'For security purposes, you can only request this after 42 seconds.' } });
     await signUpToCodeStep();
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Send a new code' }));
     await flush();
-    expect(screen.getByRole('alert').textContent).toBe('Too many attempts. Wait a minute and try again.');
+    expect(screen.getByRole('alert').textContent).toBe('We just sent you a code. Check your inbox and your spam folder.');
+    expect(screen.getByRole('button', { name: 'Send a new code (42 s)' })).toBeDisabled();
+    await act(async () => {
+      vi.advanceTimersByTime(42_000);
+    });
+    expect(screen.getByRole('button', { name: 'Send a new code' })).toBeEnabled();
+  });
+
+  it('a resend refused for another reason says why and can be tried again', async () => {
+    mocks.resend.mockResolvedValueOnce({ data: {}, error: { name: 'AuthRetryableFetchError', status: 0, message: 'Failed to fetch' } });
+    await signUpToCodeStep();
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send a new code' }));
+    await flush();
+    expect(screen.getByRole('alert').textContent).toBe('Check your connection and try again.');
     expect(screen.getByRole('button', { name: 'Send a new code' })).toBeEnabled();
   });
 
@@ -392,7 +444,7 @@ describe('Check your email: the 6-digit code', () => {
     const display = document.querySelector('.bw-auth-screen.bw-fold-form > :first-child') as HTMLElement;
     expect(display).not.toBeNull();
     expect(display.contains(screen.getByRole('heading', { name: 'Check your email' }))).toBe(true);
-    for (const control of [codeField(), verifyButton(), screen.getByRole('button', { name: 'Send a new code' })]) {
+    for (const control of [codeField(), verifyButton(), screen.getByRole('button', { name: /^Send a new code/ })]) {
       expect(display.contains(control)).toBe(false);
     }
   });
@@ -406,6 +458,8 @@ describe('Check your email: the 6-digit code', () => {
     );
     const input = screen.getByLabelText('Codice di conferma');
     expect(screen.getByRole('button', { name: 'Verifica' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Invia un nuovo codice (60 s)' })).toBeDisabled();
+    await waitOutResendCooldown();
     expect(screen.getByRole('button', { name: 'Invia un nuovo codice' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'L’ho confermato: accedi' })).toBeEnabled();
     fireEvent.change(input, { target: { value: '000000' } });

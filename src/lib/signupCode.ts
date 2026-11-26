@@ -25,8 +25,24 @@ export const SIGNUP_CODE_LENGTH = 6;
  */
 export const SIGNUP_CODE_TTL_MS = 60 * 60_000;
 
-/** Supabase sends one confirmation email a minute per address: "Send a new code" rests that long. */
+/**
+ * Supabase sends one email a minute per address (Authentication → Rate
+ * Limits → "Minimum interval per user", 60 s): "Send a new code" rests that
+ * long after every email, the sign-up's own included.
+ */
 export const SIGNUP_CODE_RESEND_COOLDOWN_MS = 60_000;
+
+/**
+ * A resend refused for coming too soon (429): how many seconds to wait, from
+ * Supabase's "you can only request this after 52 seconds", or a whole minute
+ * when it doesn't say. Null for any other refusal.
+ */
+export function resendWaitSeconds(error: unknown): number | null {
+  if (authErrorKind(error) !== 'rate_limit') return null;
+  const message = String((error as { message?: unknown } | null)?.message ?? '');
+  const seconds = Number(/after (\d+) seconds?/i.exec(message)?.[1]);
+  return seconds > 0 ? seconds : SIGNUP_CODE_RESEND_COOLDOWN_MS / 1000;
+}
 
 /**
  * The verifyOtp type for a sign-up code. In @supabase/auth-js 2.108 `signup`

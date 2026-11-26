@@ -4133,6 +4133,8 @@ const dict: Dictionary = {
   "Verify": "Vérifier",
   "I’ve confirmed it: sign in": "C’est confirmé : se connecter",
   "New code sent": "Nouveau code envoyé",
+  "Send a new code ({seconds} s)": "Envoyer un nouveau code ({seconds} s)",
+  "We just sent you a code. Check your inbox and your spam folder.": "On vient de t’envoyer un code. Regarde dans ta boîte de réception et dans tes spams.",
   "Send a new code": "Envoyer un nouveau code",
   "That code doesn’t match. Check it and try again, or send a new one.": "Ce code ne correspond pas. Vérifie-le et réessaie, ou envoies-en un nouveau.",
   "This code has expired. Send a new one.": "Ce code a expiré. Envoies-en un nouveau.",

@@ -10,6 +10,7 @@ import {
   SIGNUP_CODE_OTP_TYPE,
   SIGNUP_CODE_RESEND_COOLDOWN_MS,
   SIGNUP_CODE_TTL_MS,
+  resendWaitSeconds,
   codeDigits,
   signupCodeErrorKind,
   signupCodeErrorMessage,
@@ -94,5 +95,23 @@ describe('signupCodeErrorMessage', () => {
     );
     expect(signupCodeErrorMessage(REFUSED, NOW - SIGNUP_CODE_TTL_MS - 1, NOW)).not.toBe('This code has expired. Send a new one.');
     setLocalePref('en');
+  });
+});
+
+describe('resendWaitSeconds', () => {
+  const tooSoon = (message: string) => ({ status: 429, code: 'over_email_send_rate_limit', message });
+
+  it('reads the seconds Supabase gives for a resend that came too soon', () => {
+    expect(resendWaitSeconds(tooSoon('For security purposes, you can only request this after 53 seconds.'))).toBe(53);
+    expect(resendWaitSeconds(tooSoon('For security purposes, you can only request this after 1 second.'))).toBe(1);
+  });
+
+  it('waits the whole minute when the refusal does not say how long', () => {
+    expect(resendWaitSeconds(tooSoon('Email rate limit exceeded'))).toBe(SIGNUP_CODE_RESEND_COOLDOWN_MS / 1000);
+  });
+
+  it('is null for any other refusal', () => {
+    expect(resendWaitSeconds({ name: 'AuthRetryableFetchError', status: 0, message: 'Failed to fetch' })).toBeNull();
+    expect(resendWaitSeconds(null)).toBeNull();
   });
 });
