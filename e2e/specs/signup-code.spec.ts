@@ -37,7 +37,16 @@ async function asNewPerson(app: App) {
 const heading = (app: App, source: string) => app.page.getByRole('heading', { name: new RegExp(app.t(source), 'i') }).first();
 const codeField = (app: App) => app.page.getByLabel(app.t('Confirmation code'), { exact: true });
 const verify = (app: App) => app.page.getByRole('button', { name: app.t('Verify'), exact: true });
+const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** "Send a new code", ready to press. */
 const sendNew = (app: App) => app.page.getByRole('button', { name: app.t('Send a new code'), exact: true });
+/** "Send a new code (42 s)": resting the minute after an email. */
+const sendNewWaiting = (app: App) =>
+  app.page.getByRole('button', {
+    name: new RegExp(`^${esc(app.t('Send a new code ({seconds} s)', { seconds: '__N__' })).replace('__N__', '\\d+')}$`),
+  });
+/** Either of the two. */
+const sendNewAny = (app: App) => sendNew(app).or(sendNewWaiting(app));
 const usedTheLink = (app: App) => app.page.getByRole('button', { name: app.t('I’ve confirmed it: sign in'), exact: true });
 
 /** Welcome → Create account → Continue: lands on "Check your email". */
@@ -70,21 +79,34 @@ test('@smoke sign up, type the code from the email, and the onboarding goes on',
   await expect(heading(app, 'Check your email')).toBeVisible();
   await app.check('Check your email, wrong code');
 
-  // A new code: the button says so and rests, the old digits are gone.
-  await sendNew(app).click();
-  const sent = app.page.getByRole('button', { name: app.t('New code sent'), exact: true });
-  await expect(sent).toBeVisible();
-  await expect(sent).toBeDisabled();
-  await expect(codeField(app)).toHaveValue('');
-  await expect(app.page.getByRole('alert')).toHaveCount(0);
+  // Supabase sends one email a minute per address: right after the sign-up's
+  // own email, "Send a new code" rests and says for how long (Reddit, 26 Nov 2026).
+  await expect(sendNewWaiting(app)).toBeDisabled();
 
   // Typed as people type it, a slip included: digits only, and the sixth one verifies.
+  await codeField(app).fill('');
   await codeField(app).pressSequentially('48a29 13');
   await expect(heading(app, 'What brings you here?')).toBeVisible();
   // In, with no second password prompt.
   await expect(app.page.getByPlaceholder('you@yourband.com')).toHaveCount(0);
   await expect(codeField(app)).toHaveCount(0);
   await app.check('What brings you here? after the code');
+});
+
+test('Send a new code, once the minute is over: the button says so and rests, the old digits are gone', async ({ app }) => {
+  test.slow(); // the minute is real time here (fixtures.ts fakes Date only)
+  await signUp(app);
+  await codeField(app).fill('000000');
+  await expect(sendNewWaiting(app)).toBeDisabled();
+  await expect(sendNew(app)).toBeEnabled({ timeout: 65_000 });
+  await sendNew(app).click();
+  const sent = app.page.getByRole('button', { name: app.t('New code sent'), exact: true });
+  await expect(sent).toBeVisible();
+  await expect(sent).toBeDisabled();
+  await expect(codeField(app)).toHaveValue('');
+  await expect(app.page.getByRole('alert')).toHaveCount(0);
+  await codeField(app).fill(CODE);
+  await expect(heading(app, 'What brings you here?')).toBeVisible();
 });
 
 test('the whole code pasted at once verifies too', async ({ app }) => {
@@ -115,7 +137,7 @@ for (const lang of LOCALES) {
         app.page.getByRole('alert').filter({ hasText: app.t('That code doesn’t match. Check it and try again, or send a new one.') }),
       ).toBeVisible();
 
-      for (const control of [codeField(app), verify(app), sendNew(app), usedTheLink(app)]) {
+      for (const control of [codeField(app), verify(app), sendNewAny(app), usedTheLink(app)]) {
         await control.scrollIntoViewIfNeeded();
         const box = await control.boundingBox();
         expect(box, 'on screen').not.toBeNull();
@@ -123,7 +145,7 @@ for (const lang of LOCALES) {
         expect(box!.x + box!.width).toBeLessThanOrEqual(320);
       }
       // No label wider than its button (labels never wrap: they would be cut).
-      for (const button of [verify(app), sendNew(app), usedTheLink(app)]) {
+      for (const button of [verify(app), sendNewAny(app), usedTheLink(app)]) {
         const cut = await button.evaluate((el) => {
           const label = el.firstElementChild as HTMLElement;
           const s = getComputedStyle(el);

@@ -293,7 +293,8 @@ test.describe('a 1440×900 window on a computer: the controls', () => {
 
     const field = codeField(app);
     const verify = button(app, 'Verify');
-    const resend = button(app, 'Send a new code');
+    // Resting the minute after the sign-up's email: "Send a new code (60 s)".
+    const resend = app.page.getByRole('button', { name: new RegExp(`^${app.t('Send a new code')}`) });
     const usedLink = button(app, 'I’ve confirmed it: sign in');
     const box = async (l: typeof field) => (await l.boundingBox())!;
     const [f, v, r, u] = [await box(field), await box(verify), await box(resend), await box(usedLink)];
